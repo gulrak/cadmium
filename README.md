@@ -17,6 +17,8 @@ try to cobble an implementation together in a few hours.
 It worked quite well, and as I was using raylib for some tools and took part
 in a raylib game jam, I saw this as a good fit.
 
+![Cadmium debug view](screenshots/screenshot01.png?raw=true "A screenshot of the debug view")
+
 ## Features
 
 * Emulation uses a number of configurable "quirks" or options, to allow a wide
