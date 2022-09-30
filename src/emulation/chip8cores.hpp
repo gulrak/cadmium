@@ -1,0 +1,767 @@
+//---------------------------------------------------------------------------------------
+// src/emulation/chip8.hpp
+//---------------------------------------------------------------------------------------
+//
+// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+//---------------------------------------------------------------------------------------
+// sound def:
+// 0    tone in quarter halftones
+// 1    pulse width
+// 2    control (sin|saw|rect|noise)
+// 3    attack/decay
+// 4    sustain/release
+// 5    filter cu-off
+// 6    lp/bp/hp / resonance
+
+#pragma once
+
+#include <emulation/chip8meta.hpp>
+#include <emulation/chip8options.hpp>
+#include <emulation/chip8emulatorbase.hpp>
+#include <emulation/time.hpp>
+
+namespace emu
+{
+
+//---------------------------------------------------------------------------------------
+// ChipEmulator - a templated switch based CHIP-8 core
+//---------------------------------------------------------------------------------------
+template<uint16_t addressLines = 12, uint16_t quirks = 0>
+class Chip8Emulator : public Chip8EmulatorBase
+{
+public:
+    using Chip8EmulatorBase::ExecMode;
+    using Chip8EmulatorBase::CpuState;
+    constexpr static uint16_t ADDRESS_MASK = (1<<addressLines)-1;
+    constexpr static uint32_t MEMORY_SIZE = 1<<addressLines;
+    constexpr static int SCREEN_WIDTH = quirks&HiresSupport ? 128 : 64;
+    constexpr static int SCREEN_HEIGHT = quirks&HiresSupport ? 64 : 32;
+
+    Chip8Emulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
+    : Chip8EmulatorBase(host, options, other)
+    {
+        _memory.resize(MEMORY_SIZE, 0);
+        _memory_b.resize(MEMORY_SIZE, 0);
+    }
+    ~Chip8Emulator() override = default;
+
+    std::string name() const override
+    {
+        return "Chip-8-TS";
+    }
+
+    void executeInstruction() override
+    {
+        if (_execMode == ePAUSED || _cpuState == eERROR)
+            return;
+        uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
+        ++_cycleCounter;
+        _rPC = (_rPC + 2) & ADDRESS_MASK;
+        addCycles(68);
+        switch (opcode >> 12) {
+            case 0:
+                if((opcode & 0xfff0) == 0x00C0) { // scroll-down
+                    auto n = (opcode & 0xf);
+                    std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
+                    std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+                }
+                else if((opcode & 0xfff0) == 0x00D0) { // scroll-up
+                    auto n = (opcode & 0xf);
+                    std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
+                    std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+                }
+                else if (opcode == 0x00E0) {  // 00E0 - CLS
+                    clearScreen();
+                    ++_clearCounter;
+                    addCycles(24);
+                }
+                else if (opcode == 0x00EE) {  // 00EE - RET
+                    _rPC = _stack[--_rSP];
+                    addCycles(10);
+                    if (_execMode == eSTEPOUT)
+                        _execMode = ePAUSED;
+                }
+                else if(opcode == 0x00FB) { // scroll-right
+                    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+                        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
+                        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
+                    }
+                }
+                else if(opcode == 0x00FC) { // scroll-left
+                    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+                        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
+                        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4, 0, 4);
+                    }
+                }
+                else if(opcode == 0x00FD) {
+                    halt();
+                }
+                else if(opcode == 0x00FE && _options.optAllowHires && !_options.optOnlyHires) { // LORES
+                    _isHires = false;
+                }
+                else if(opcode == 0x00FF && _options.optAllowHires) { // HIRES
+                    _isHires = true;
+                }
+                break;
+            case 1:  // 1nnn - JP addr
+                if((opcode & 0xFFF) == _rPC - 2)
+                    _execMode = ePAUSED; 
+                _rPC = opcode & 0xFFF;
+                addCycles(12);
+                break;
+            case 2:  // 2nnn - CALL addr
+                _stack[_rSP++] = _rPC;
+                _rPC = opcode & 0xFFF;
+                addCycles(26);
+                break;
+            case 3:  // 3xkk - SE Vx, byte
+                if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
+                    _rPC += 2;
+                    addCycles(14);
+                }
+                else {
+                    addCycles(10);
+                }
+                break;
+            case 4:  // 4xkk - SNE Vx, byte
+                if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
+                    _rPC += 2;
+                    addCycles(14);
+                }
+                else {
+                    addCycles(10);
+                }
+                break;
+            case 5: {
+                switch (opcode & 0xF) {
+                    case 0: // 5xy0 - SE Vx, Vy
+                        if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
+                            _rPC += 2;
+                            addCycles(18);
+                        }
+                        else {
+                            addCycles(14);
+                        }
+                        break;
+                    case 2: {  // 5xy2  - save vx - vy
+                        auto x = (opcode >> 8) & 0xF;
+                        auto y = (opcode >> 4) & 0xF;
+                        for(int i=0; i <= std::abs(x-y); ++i)
+                            _memory[(_rI + i) & ADDRESS_MASK] = _rV[x < y ? x + i : x - i];
+                        break;
+                    }
+                    case 3: {  // 5xy3 - load vx - vy
+                        auto x = (opcode >> 8) & 0xF;
+                        auto y = (opcode >> 4) & 0xF;
+                        for(int i=0; i <= std::abs(x-y); ++i)
+                            _rV[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+                        break;
+                    }
+                    case 4: { // palette x y
+                        auto x = (opcode >> 8) & 0xF;
+                        auto y = (opcode >> 4) & 0xF;
+                        for(int i=0; i <= std::abs(x-y); ++i)
+                            _xxoPalette[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+                        _host.updatePalette(_xxoPalette);
+                        break;
+                    }
+                    default:
+                        errorHalt();
+                        break;
+                }
+                break;
+            }
+            case 6:  // 6xkk - LD Vx, byte
+                _rV[(opcode >> 8) & 0xF] = opcode & 0xFF;
+                addCycles(6);
+                break;
+            case 7:  // 7xkk - ADD Vx, byte
+                _rV[(opcode >> 8) & 0xF] += opcode & 0xFF;
+                addCycles(10);
+                break;
+            case 8: {
+                switch (opcode & 0xF) {
+                    case 0:  // 8xy0 - LD Vx, Vy
+                        _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF];
+                        addCycles(12);
+                        break;
+                    case 1:  // 8xy1 - OR Vx, Vy
+                        _rV[(opcode >> 8) & 0xF] |= _rV[(opcode >> 4) & 0xF];
+                        if (!_options.optDontResetVf)
+                            _rV[0xF] = 0;
+                        break;
+                    case 2:  // 8xy2 - AND Vx, Vy
+                        _rV[(opcode >> 8) & 0xF] &= _rV[(opcode >> 4) & 0xF];
+                        if (!_options.optDontResetVf)
+                            _rV[0xF] = 0;
+                        break;
+                    case 3:  // 8xy3 - XOR Vx, Vy
+                        _rV[(opcode >> 8) & 0xF] ^= _rV[(opcode >> 4) & 0xF];
+                        if (!_options.optDontResetVf)
+                            _rV[0xF] = 0;
+                        break;
+                    case 4: {  // 8xy4 - ADD Vx, Vy
+                        uint16_t result = _rV[(opcode >> 8) & 0xF] + _rV[(opcode >> 4) & 0xF];
+                        _rV[(opcode >> 8) & 0xF] = result;
+                        _rV[0xF] = result>>8;
+                        addCycles(44);
+                        break;
+                    }
+                    case 5: {  // 8xy5 - SUB Vx, Vy
+                        uint16_t result = _rV[(opcode >> 8) & 0xF] - _rV[(opcode >> 4) & 0xF];
+                        _rV[(opcode >> 8) & 0xF] = result;
+                        _rV[0xF] = result > 255 ? 0 : 1;
+                        addCycles(44);
+                        break;
+                    }
+                    case 6:  // 8xy6 - SHR Vx, Vy
+                        if (!_options.optJustShiftVx) {
+                            uint8_t carry = _rV[(opcode >> 4) & 0xF] & 1;
+                            _rV[(opcode >> 8) & 0xF] /*= rV[(opcode >> 4) & 0xF]*/ = _rV[(opcode >> 4) & 0xF] >> 1;
+                            _rV[0xF] = carry;
+                        }
+                        else {
+                            uint8_t carry = _rV[(opcode >> 8) & 0xF] & 1;
+                            _rV[(opcode >> 8) & 0xF] >>= 1;
+                            _rV[0xF] = carry;
+                        }
+                        addCycles(44);
+                        break;
+                    case 7: {  // 8xy7 - SUBN Vx, Vy
+                        uint16_t result = _rV[(opcode >> 4) & 0xF] - _rV[(opcode >> 8) & 0xF];
+                        _rV[(opcode >> 8) & 0xF] = result;
+                        _rV[0xF] = result > 255 ? 0 : 1;
+                        addCycles(44);
+                        break;
+                    }
+                    case 0xE:  // 8xyE - SHL Vx, Vy
+                        if (!_options.optJustShiftVx) {
+                            uint8_t carry = _rV[(opcode >> 4) & 0xF] >> 7;
+                            _rV[(opcode >> 8) & 0xF] /*= rV[(opcode >> 4) & 0xF]*/ = _rV[(opcode >> 4) & 0xF] << 1;
+                            _rV[0xF] = carry;
+                        }
+                        else {
+                            uint8_t carry = _rV[(opcode >> 8) & 0xF] >> 7;
+                            _rV[(opcode >> 8) & 0xF] <<= 1;
+                            _rV[0xF] = carry;
+                        }
+                        addCycles(44);
+                        break;
+                    default:
+                        errorHalt();
+                        break;
+                }
+                break;
+            }
+            case 9:  // 9xy0 - SNE Vx, Vy
+                if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
+                    _rPC += 2;
+                    addCycles(18);
+                }
+                else {
+                    addCycles(14);
+                }
+                break;
+            case 0xA:  // Annn - LD I, addr
+                _rI = opcode & 0xFFF;
+                addCycles(12);
+                break;
+            case 0xB:  // Bnnn - JP V0, addr / Bxnn - JP Vx, addr
+                _rPC = _options.optJump0Bxnn ? (_rV[(opcode >> 8) & 0xF] + (opcode & 0xFFF)) & ADDRESS_MASK : (_rV[0] + (opcode & 0xFFF)) & ADDRESS_MASK;
+                addCycles(22); // TODO: Check page crossing +2MC
+                break;
+            case 0xC: {  // Cxkk - RND Vx, byte
+                ++_randomSeed;
+                uint16_t val = _randomSeed>>8;
+                val += _chip8_cosmac_vip[0x100 + (_randomSeed&0xFF)];
+                uint8_t result = val;
+                val >>= 1;
+                val += result;
+                _randomSeed = (_randomSeed & 0xFF) | (val << 8);
+                result = val & (opcode & 0xFF);
+                _rV[(opcode >> 8) & 0xF] = result; // GetRandomValue(0, 255) & (opcode & 0xFF);
+                addCycles(36);
+                break;
+            }
+            case 0xD: {  // Dxyn - DRW Vx, Vy, nibble
+                if constexpr (quirks&HiresSupport) {
+                    if(_isHires)
+                    {
+                        int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+                        int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+                        int lines = opcode & 0xF;
+                        _rV[15] = drawSprite(x, y, &_memory[_rI & ADDRESS_MASK], lines, true) ? 1 : 0;
+                    }
+                    else
+                    {
+                        int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH / 2 - 1);
+                        int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT / 2 - 1);
+                        int lines = opcode & 0xF;
+                        _rV[15] = drawSprite(x*2, y*2, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+                    }
+                }
+                else {
+                    int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+                    int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+                    int lines = opcode & 0xF;
+                    _rV[15] = drawSprite(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+                }
+                break;
+            }
+            case 0xE:
+                if ((opcode & 0xff) == 0x9E) {  // Ex9E - SKP Vx
+                    if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+                        _rPC += 2;
+                        addCycles(18);
+                    }
+                    else {
+                        addCycles(14);
+                    }
+                }
+                else if ((opcode & 0xff) == 0xA1) {  // ExA1 - SKNP Vx
+                    if (!_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+                        _rPC += 2;
+                        addCycles(18);
+                    }
+                    else {
+                        addCycles(14);
+                    }
+                }
+                break;
+            case 0xF: {
+                addCycles(4);
+                switch (opcode & 0xFF) {
+                    case 0x00: // i := long nnnn
+                        if constexpr (addressLines == 16) {
+                            _rI = ((_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
+                            _rPC = (_rPC + 2) & ADDRESS_MASK;
+                        }
+                        else {
+                            errorHalt();
+                        }
+                        break;
+                    case 0x01: // Fx01 - planes x
+                        _planes = (opcode >> 8) & 0xF;
+                        break;
+                    case 0x02: // F002 - audio
+                        if(opcode == 0xF002) {
+                            for(int i = 0; i < 16; ++i) {
+                                _xoAudioPattern[i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            }
+                        }
+                        else
+                            errorHalt();
+                    case 0x07:  // Fx07 - LD Vx, DT
+                        _rV[(opcode >> 8) & 0xF] = _rDT;
+                        break;
+                    case 0x0A: {  // Fx0A - LD Vx, K
+                        auto key = _host.getKeyPressed();
+                        if (key) {
+                            _rV[(opcode >> 8) & 0xF] = key - 1;
+                            _cpuState = eNORMAL;
+                        }
+                        else {
+                            // keep waiting...
+                            _rPC -= 2;
+                            --_cycleCounter;
+                            _cpuState = eWAITING;
+                        }
+                        break;
+                    }
+                    case 0x15:  // Fx15 - LD DT, Vx
+                        _rDT = _rV[(opcode >> 8) & 0xF];
+                        break;
+                    case 0x18:  // Fx18 - LD ST, Vx
+                        _rST = _rV[(opcode >> 8) & 0xF];
+                        if(!_rST) _wavePhase = 0;
+                        break;
+                    case 0x1E:  // Fx1E - ADD I, Vx
+                        _rI = (_rI + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
+                        break;
+                    case 0x29:  // Fx29 - LD F, Vx
+                        _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 5;
+                        break;
+                    case 0x30:  // Fx30 - LD big F, Vx
+                        _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 10 + 16*5;
+                        break;
+                    case 0x33: {  // Fx33 - LD B, Vx
+                        uint8_t val = _rV[(opcode >> 8) & 0xF];
+                        _memory[_rI & ADDRESS_MASK] = val / 100;
+                        _memory[(_rI + 1) & ADDRESS_MASK] = (val / 10) % 10;
+                        _memory[(_rI + 2) & ADDRESS_MASK] = val % 10;
+                        break;
+                    }
+                    case 0x3A: // Fx3A - pitch vx
+                        _xoPitch.store(_rV[(opcode >> 8) & 0xF]);
+                        break;
+                    case 0x55: {  // Fx55 - LD [I], Vx
+                        uint8_t upto = (opcode >> 8) & 0xF;
+                        addCycles(14);
+                        for (int i = 0; i <= upto; ++i) {
+                            _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+                            addCycles(14);
+                        }
+                        if (_options.optLoadStoreIncIByX) {
+                            _rI = (_rI + upto) & ADDRESS_MASK;
+                        }
+                        else if (!_options.optLoadStoreDontIncI) {
+                            _rI = (_rI + upto + 1) & ADDRESS_MASK;
+                        }
+                        break;
+                    }
+                    case 0x65: {  // Fx65 - LD Vx, [I]
+                        uint8_t upto = (opcode >> 8) & 0xF;
+                        addCycles(14);
+                        for (int i = 0; i <= upto; ++i) {
+                            _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            addCycles(14);
+                        }
+                        if (_options.optLoadStoreIncIByX) {
+                            _rI = (_rI + upto) & ADDRESS_MASK;
+                        }
+                        else if (!_options.optLoadStoreDontIncI) {
+                            _rI = (_rI + upto + 1) & ADDRESS_MASK;
+                        }
+                        break;
+                    }
+                    default:
+                        errorHalt();
+                        break;
+                }
+                break;
+            }
+        }
+        if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP <= _stepOverSP)) {
+            _execMode = ePAUSED;
+        }
+    }
+
+    void executeInstructions(int numInstructions) override
+    {
+        if(_options.optInstantDxyn) {
+            for (int i = 0; i < numInstructions; ++i)
+                Chip8Emulator::executeInstruction();
+        }
+        else {
+            for (int i = 0; i < numInstructions; ++i) {
+                if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000)
+                    return;
+                Chip8Emulator::executeInstruction();
+            }
+        }
+    }
+
+    inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    {
+        auto* pixel = _screenBuffer.data() + MAX_SCREEN_WIDTH * y + x;
+        //const uint8_t planes = colorSupport ? chipEmu->_planes : 1;
+        bool collision = false;
+        if constexpr (quirks&HiresSupport) {
+            if (*pixel & planes)
+                collision = true;
+            *pixel ^= planes;
+            if(!hires) {
+                if (*(pixel + 1) & planes)
+                    collision = true;
+                *(pixel + 1) ^= planes;
+                if (*(pixel + MAX_SCREEN_WIDTH) & planes)
+                    collision = true;
+                *(pixel + MAX_SCREEN_WIDTH) ^= planes;
+                if (*(pixel + MAX_SCREEN_WIDTH + 1) & planes)
+                    collision = true;
+                *(pixel + MAX_SCREEN_WIDTH + 1) ^= planes;
+            }
+        }
+        else {
+            if (*pixel & planes)
+                collision = true;
+            *pixel ^= planes;
+        }
+        return collision;
+    }
+
+    bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
+    {
+        bool collision = false;
+        const int scrWidth = quirks&HiresSupport ? MAX_SCREEN_WIDTH : MAX_SCREEN_WIDTH/2;
+        const int scrHeight = quirks&HiresSupport ? MAX_SCREEN_HEIGHT : MAX_SCREEN_HEIGHT/2;
+        int scale = quirks&HiresSupport ? (hires ? 1 : 2) : 1;
+        int width = 8;
+        x %= scrWidth;
+        y %= scrHeight;
+        if(height == 0) {
+            width = height = 16;
+        }
+        uint8_t planes = quirks&MultiColor ? _planes : 1;
+        while(planes) {
+            auto plane = planes & -planes;
+            planes &= planes - 1;
+            for (int l = 0; l < height; ++l) {
+                uint8_t value = *data++;
+                if constexpr ((quirks&WrapSprite) != 0) {
+                    for (unsigned b = 0; b < width; ++b, value <<= 1) {
+                        if (b == 8)
+                            value = *data++;
+                        if (value & 0x80) {
+                            if (drawSpritePixelEx((x + b * scale) % scrWidth, (y + l * scale) % scrHeight, plane, hires))
+                                collision = true;
+                        }
+                    }
+                }
+                else {
+                    if (y + l * scale < scrHeight) {
+                        for (unsigned b = 0; b < width; ++b, value <<= 1) {
+                            if (b == 8)
+                                value = *data++;
+                            if (x + b * scale < scrWidth && (value & 0x80)) {
+                                if (drawSpritePixelEx(x + b * scale, y + l * scale, plane, hires))
+                                    collision = true;
+                            }
+                        }
+                    }
+                    else if (width == 16)
+                        ++data;
+                }
+            }
+        }
+        //updateScreen = true;
+        return collision;
+    }
+};
+
+using Chip8EmulatorVIP = Chip8Emulator<12>;
+using Chip8EmulatorXO = Chip8Emulator<16>;
+
+
+//---------------------------------------------------------------------------------------
+// ChipEmulatorFP - a method pointer table based CHIP-8 core
+//---------------------------------------------------------------------------------------
+class Chip8EmulatorFP : public Chip8EmulatorBase
+{
+public:
+    using OpcodeHandler = void (Chip8EmulatorFP::*)(uint16_t);
+    const uint32_t ADDRESS_MASK;
+    const int SCREEN_WIDTH;
+    const int SCREEN_HEIGHT;
+    
+    Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr);
+    ~Chip8EmulatorFP() override;
+
+    std::string name() const override
+    {
+        return "Chip-8-HT";
+    }
+
+    void executeInstruction() override;
+    void executeInstructions(int numInstructions) override;
+
+    void on(uint16_t mask, uint16_t opcode, OpcodeHandler handler);
+
+    void setHandler();
+
+    void opNop(uint16_t opcode);
+    void opInvalid(uint16_t opcode);
+    void op00Cn(uint16_t opcode);
+    void op00Dn(uint16_t opcode);
+    void op00E0(uint16_t opcode);
+    void op00EE(uint16_t opcode);
+    void op00FB(uint16_t opcode);
+    void op00FC(uint16_t opcode);
+    void op00FD(uint16_t opcode);
+    void op00FE(uint16_t opcode);
+    void op00FE_withClear(uint16_t opcode);
+    void op00FF(uint16_t opcode);
+    void op00FF_withClear(uint16_t opcode);
+    void op1nnn(uint16_t opcode);
+    void op2nnn(uint16_t opcode);
+    void op3xnn(uint16_t opcode);
+    void op4xnn(uint16_t opcode);
+    void op5xy0(uint16_t opcode);
+    void op5xy2(uint16_t opcode);
+    void op5xy3(uint16_t opcode);
+    void op5xy4(uint16_t opcode);
+    void op6xnn(uint16_t opcode);
+    void op7xnn(uint16_t opcode);
+    void op8xy0(uint16_t opcode);
+    void op8xy1(uint16_t opcode);
+    void op8xy1_dontResetVf(uint16_t opcode);
+    void op8xy2(uint16_t opcode);
+    void op8xy2_dontResetVf(uint16_t opcode);
+    void op8xy3(uint16_t opcode);
+    void op8xy3_dontResetVf(uint16_t opcode);
+    void op8xy4(uint16_t opcode);
+    void op8xy5(uint16_t opcode);
+    void op8xy6(uint16_t opcode);
+    void op8xy6_justShiftVx(uint16_t opcode);
+    void op8xy7(uint16_t opcode);
+    void op8xyE(uint16_t opcode);
+    void op8xyE_justShiftVx(uint16_t opcode);
+    void op9xy0(uint16_t opcode);
+    void opAnnn(uint16_t opcode);
+    void opBnnn(uint16_t opcode);
+    void opBxnn(uint16_t opcode);
+    void opBxyn(uint16_t opcode);
+    void opCxnn(uint16_t opcode);
+    void opEx9E(uint16_t opcode);
+    void opExA1(uint16_t opcode);
+    void opF000(uint16_t opcode);
+    void opF002(uint16_t opcode);
+    void opFx01(uint16_t opcode);
+    void opFx07(uint16_t opcode);
+    void opFx0A(uint16_t opcode);
+    void opFx15(uint16_t opcode);
+    void opFx18(uint16_t opcode);
+    void opFx1E(uint16_t opcode);
+    void opFx29(uint16_t opcode);
+    void opFx29_ship10Beta(uint16_t opcode);
+    void opFx30(uint16_t opcode);
+    void opFx33(uint16_t opcode);
+    void opFx3A(uint16_t opcode);
+    void opFx55(uint16_t opcode);
+    void opFx55_loadStoreIncIByX(uint16_t opcode);
+    void opFx55_loadStoreDontIncI(uint16_t opcode);
+    void opFx65(uint16_t opcode);
+    void opFx65_loadStoreIncIByX(uint16_t opcode);
+    void opFx65_loadStoreDontIncI(uint16_t opcode);
+
+    template<uint16_t quirks>
+    void opDxyn(uint16_t opcode)
+    {
+        if constexpr (quirks&HiresSupport) {
+            if(_isHires)
+            {
+                int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+                int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+                int lines = opcode & 0xF;
+                _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, true) ? 1 : 0;
+            }
+            else
+            {
+                int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH / 2 - 1);
+                int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT / 2 - 1);
+                int lines = opcode & 0xF;
+                _rV[15] = drawSprite<quirks>(x*2, y*2, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+            }
+        }
+        else {
+            int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+            int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+            int lines = opcode & 0xF;
+            _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+        }
+    }
+
+    template<uint16_t quirks>
+    inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    {
+        auto* pixel = _screenBuffer.data() + MAX_SCREEN_WIDTH * y + x;
+        bool collision = false;
+        if constexpr (quirks&HiresSupport) {
+            if (*pixel & planes)
+                collision = true;
+            *pixel ^= planes;
+            if(!hires) {
+                if (*(pixel + 1) & planes)
+                    collision = true;
+                *(pixel + 1) ^= planes;
+                if (*(pixel + MAX_SCREEN_WIDTH) & planes)
+                    collision = true;
+                *(pixel + MAX_SCREEN_WIDTH) ^= planes;
+                if (*(pixel + MAX_SCREEN_WIDTH + 1) & planes)
+                    collision = true;
+                *(pixel + MAX_SCREEN_WIDTH + 1) ^= planes;
+            }
+        }
+        else {
+            if (*pixel & planes)
+                collision = true;
+            *pixel ^= planes;
+        }
+        return collision;
+    }
+
+    template<uint16_t quirks>
+    bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
+    {
+        bool collision = false;
+        constexpr int scrWidth = quirks&HiresSupport ? MAX_SCREEN_WIDTH : MAX_SCREEN_WIDTH/2;
+        constexpr int scrHeight = quirks&HiresSupport ? MAX_SCREEN_HEIGHT : MAX_SCREEN_HEIGHT/2;
+        int scale = quirks&HiresSupport ? (hires ? 1 : 2) : 1;
+        int width = 8;
+        x %= scrWidth;
+        y %= scrHeight;
+        if(height == 0) {
+            width = height = 16;
+        }
+        uint8_t planes;
+        if constexpr ((quirks&MultiColor) != 0) planes = _planes; else planes = 1;
+        while(planes) {
+            auto plane = planes & -planes;
+            planes &= planes - 1;
+            for (int l = 0; l < height; ++l) {
+                uint8_t value = *data++;
+                if constexpr ((quirks&WrapSprite) != 0) {
+                    for (unsigned b = 0; b < width; ++b, value <<= 1) {
+                        if (b == 8)
+                            value = *data++;
+                        if (value & 0x80) {
+                            if (drawSpritePixelEx<quirks>((x + b * scale) % scrWidth, (y + l * scale) % scrHeight, plane, hires))
+                                collision = true;
+                        }
+                    }
+                }
+                else {
+                    if (y + l * scale < scrHeight) {
+                        for (unsigned b = 0; b < width; ++b, value <<= 1) {
+                            if (b == 8)
+                                value = *data++;
+                            if (x + b * scale < scrWidth && (value & 0x80)) {
+                                if (drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, plane, hires))
+                                    collision = true;
+                            }
+                        }
+                    }
+                    else if (width == 16)
+                        ++data;
+                }
+            }
+        }
+        return collision;
+    }
+private:
+    std::vector<OpcodeHandler> _opcodeHandler;
+};
+
+
+class Chip8HeadlessHost : public Chip8EmulatorHost
+{
+public:
+    explicit Chip8HeadlessHost(const Chip8EmulatorOptions& options_) : options(options_) {}
+    ~Chip8HeadlessHost() override = default;
+    bool isHeadless() const override { return true; }
+    uint8_t getKeyPressed() override { return 0; }
+    bool isKeyDown(uint8_t key) override { return false; }
+    void updatePalette(const std::array<uint8_t,16>& palette) override {}
+    Chip8EmulatorOptions options;
+};
+
+}
