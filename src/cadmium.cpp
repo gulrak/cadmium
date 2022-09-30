@@ -715,7 +715,7 @@ public:
         if(true/*updateScreen*/) {
             auto* pixel = (uint32_t*)screen.data;
             const uint8_t* planes = chipEmu->getScreenBuffer();
-            const uint8_t* end = planes + chipEmu->getCurrentScreenWidth()*chipEmu->getCurrentScreenHeight();
+            const uint8_t* end = planes + chipEmu->getMaxScreenWidth()*chipEmu->getMaxScreenHeight();
             while(planes < end) {
                 *pixel++ = colorPalette[*planes++ & 0xF];
             }
