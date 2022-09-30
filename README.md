@@ -47,16 +47,6 @@ in a raylib game jam, I saw this as a good fit.
 * Traditional 1400Hz buzzer or XO-CHIP audio emulation
 * When muticolor support is active, 16 colors in four planes are supported
 
-## TODOs
-
-* Resizable GUI
-* Breakpoints
-* File Open Dialog
-* Save dialog
-* Real Clipboard support for Web target
-* About dialog
-* Help dialog
-
 ### Compiling from Source
 
 Cadmium is written in C++17 and uses CMake as a build solution. To build it,
@@ -93,3 +83,5 @@ cmake --build build
   assembler for support of generating binaries from [octo assembler syntax](http://johnearnest.github.io/Octo/docs/Manual.html).
 * [fmtlib](https://github.com/fmtlib/fmt) - a modern formatting library in
   the style of C++20 std::format
+* [date](https://howardhinnant.github.io/date/date.html) - A date and time library based on the C++11/14/17 <chrono> header
+
