@@ -54,9 +54,11 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <thread>
 #include <mutex>
+#include <new>
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
@@ -91,8 +93,7 @@ extern "C" {
 #include <filesystem>
 // #endif
 
-
-const uint16_t START_ADDRESS = 0x200;
+namespace fs = std::filesystem;
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
@@ -408,6 +409,7 @@ public:
     enum MemFlags { eNONE = 0, eBREAKPOINT = 1, eWATCHPOINT = 2 };
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
+    enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     Cadmium(int screenWidth_, int screenHeight_, emu::Chip8EmulatorOptions chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP))
         : screenWidth(screenWidth_)
         , screenHeight(screenHeight_)
@@ -455,6 +457,7 @@ public:
         ImageColorReplace(&titleImage, {0,0,0,255}, {0x1a,0x1c,0x2c,0xff});
         ImageColorReplace(&titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
         titleTexture = LoadTextureFromImage(titleImage);
+        currentDirectory = librarian.currentDirectory();
 
         // SWEETIE-16:
         // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57, 0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75, 0xb13e53, 0x38b764, 0x29366f, 0x566c86, 0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
@@ -877,7 +880,7 @@ public:
 #ifndef PLATFORM_WEB
                     Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 72};
 #else
-                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 45};
+                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 57};
 #endif
                     BeginPopup(menuRect, &menuOpen);
                     SetRowHeight(12);
@@ -891,11 +894,21 @@ public:
                         editor.setText(": main\n    jump main");
                         romName = "unnamed.8o";
                     }
-                    if(LabelButton(" Open..."))
-                        mainView = eROM_SELECTOR, menuOpen = false;
+                    if(LabelButton(" Open...")) {
 #ifndef PLATFORM_WEB
-                    if(LabelButton(" Save..."))
+                        mainView = eROM_SELECTOR;
+                        librarian.fetchDir(currentDirectory);
+#endif
                         menuOpen = false;
+                    }
+                    if(LabelButton(" Save...")) {
+                        mainView = eROM_EXPORT;
+#ifndef PLATFORM_WEB
+                        librarian.fetchDir(currentDirectory);
+#endif
+                        menuOpen = false;
+                    }
+#ifndef PLATFORM_WEB
                     Space(3);
                     if(LabelButton(" Quit"))
                         menuOpen = false, shouldClose = true;
@@ -948,6 +961,7 @@ public:
                 if (iconButton(ICON_ROM, mainView == eROM_SELECTOR)) {
 #ifndef PLATFORM_WEB
                     mainView = eROM_SELECTOR;
+                    librarian.fetchDir(currentDirectory);
 #endif
                 }
                 SetNextWidth(130);
@@ -1258,11 +1272,14 @@ public:
                     End();
                     break;
                 }
+#ifndef PLATFORM_WEB
                 case eROM_SELECTOR: {
                     SetSpacing(0);
                     Begin();
-                    BeginPanel(("Load/Import from '" + librarian.currentDirectory() + "'").c_str());
+                    BeginPanel("Load/Import ROM or Octo Source");
                     {
+                        renderFileBrowser(eLOAD);
+#if 0
                         static Vector2 scroll{0,0};
                         static Librarian::Info selectedInfo;
                         SetRowHeight(16);
@@ -1331,6 +1348,7 @@ public:
                         GuiEnable();
                         BeginColumns();
                         EndColumns();
+#endif
                     }
                     EndPanel();
                     End();
@@ -1338,12 +1356,20 @@ public:
                         mainView = lastView;
                     break;
                 }
+#else
+                case eROM_SELECTOR:
+                    break;
+#endif // !PLATFORM_WEB
                 case eROM_EXPORT: {
                     SetSpacing(0);
                     Begin();
-                    BeginPanel("Save/Export");
+                    BeginPanel("Save/Export ROM or Source");
                     {
-
+#ifdef PLATFORM_WEB
+                        renderFileBrowser(eWEB_SAVE);
+#else
+                        renderFileBrowser(eSAVE);
+#endif
                     }
                     EndPanel();
                     End();
@@ -1357,6 +1383,158 @@ public:
         if(chipEmu->execMode() != ExecMode::ePAUSED) {
             instructionOffset = -1;
             chipEmu->copyState();
+        }
+    }
+
+    void renderFileBrowser(FileBrowserMode mode)
+    {
+        using namespace gui;
+        static Vector2 scroll{0,0};
+        static Librarian::Info selectedInfo;
+        SetRowHeight(16);
+        auto area = GetContentAvailable();
+#ifdef PLATFORM_WEB
+        Space(area.height - 54);
+#else
+        if(TextBox(currentDirectory, 4096)) {
+            librarian.fetchDir(currentDirectory);
+            currentDirectory = librarian.currentDirectory();
+        }
+        Space(1);
+        BeginTableView(area.height - 54, 4, &scroll);
+        for(int i = 0; i < librarian.numEntries(); ++i) {
+            const auto& info = librarian.getInfo(i);
+            auto rowCol = Color{0,0,0,0};
+            if(info.analyzed) {
+                //if(info.type == Librarian::Info::eROM_FILE)
+                //    rowCol = Color{0,128,128,32}; //ColorAlpha(GetColor(GetStyle(DEFAULT, BASE_COLOR_NORMAL)), 64);
+            }
+            else {
+                rowCol = Color{0,128,0,10};
+            }
+            TableNextRow(16, rowCol);
+            if(TableNextColumn(24)) {
+                int icon = ICON_HELP2;
+                switch (info.type) {
+                    case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
+                    case Librarian::Info::eROM_FILE: icon = ICON_ROM; break;
+                    case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
+                    default: icon = ICON_FILE_DELETE; break;
+                }
+                Label(GuiIconText(icon, ""));
+            }
+            if(TableNextColumn(.6f)) {
+                if(LabelButton(info.filePath.c_str())) {
+                    if(info.type == Librarian::Info::eDIRECTORY) {
+                        if(info.filePath != "..") {
+                            librarian.intoDir(info.filePath);
+                            currentDirectory = librarian.currentDirectory();
+                            selectedInfo.analyzed = false;
+                            if(mode == eLOAD)
+                                currentFileName = "";
+                        }
+                        else {
+                            librarian.parentDir();
+                            currentDirectory = librarian.currentDirectory();
+                            selectedInfo.analyzed = false;
+                            if(mode == eLOAD)
+                                currentFileName = "";
+                        }
+                        selectedInfo.analyzed = false;
+                    }
+                    else if(info.type == Librarian::Info::eOCTO_SOURCE) {
+                        selectedInfo = info;
+                        currentFileName = info.filePath;
+                    }
+                    else if(info.type == Librarian::Info::eROM_FILE) {
+                        selectedInfo = info;
+                        currentFileName = info.filePath;
+                    }
+                }
+            }
+            if(TableNextColumn(.15f))
+                Label(info.type == Librarian::Info::eDIRECTORY ? "" : TextFormat("%8d", info.fileSize));
+            if(TableNextColumn(.2f) && info.filePath != "..")
+                Label(date::format("%F", date::floor<std::chrono::seconds>(info.changeDate)).c_str());
+        }
+        EndTableView();
+#endif
+        Space(1);
+        BeginColumns();
+        SetNextWidth(25);
+        Label("File:");
+        TextBox(currentFileName, 4096);
+        EndColumns();
+        Space(2);
+        switch(mode) {
+            case eLOAD: {
+                Label(TextFormat("Estimated minimum opcode variant: %s", selectedInfo.minimumOpcodeProfile().c_str()));
+                Space(3);
+                SetNextWidth(80);
+                SetIndent(32);
+                if(!selectedInfo.analyzed) GuiDisable();
+                if(Button("Load") && selectedInfo.analyzed) {
+                    if(selectedInfo.variant != options.behaviorBase) {
+                        options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
+                        updateEmulatorOptions();
+                    }
+                    loadRom(librarian.fullPath(selectedInfo.filePath).c_str());
+                    mainView = lastView;
+                }
+                GuiEnable();
+                break;
+            }
+            case eWEB_SAVE:
+            case eSAVE: {
+                BeginColumns();
+                SetNextWidth(100);
+                Label("Select file type:");
+                static int activeType = 0;
+                SetNextWidth(70);
+                activeType = ToggleGroup("ROM File;Source Code", activeType);
+                EndColumns();
+                Space(3);
+                SetNextWidth(80);
+                SetIndent(32);
+                if(currentFileName.empty() && ((activeType == 0 && romImage.empty()) || (activeType == 1 && editor.getText().empty()))) GuiDisable();
+                if(Button("Save") && !currentFileName.empty()) {
+                    if (activeType == 0 && fs::path(currentFileName).extension() != romExtension()) {
+                        if (fs::path(currentFileName).has_extension())
+                            currentFileName = fs::path(currentFileName).replace_extension(romExtension()).string();
+                        else
+                            currentFileName += romExtension();
+                    }
+                    else if (activeType == 1 && fs::path(currentFileName).extension() != ".8o") {
+                        if (fs::path(currentFileName).has_extension())
+                            currentFileName = fs::path(currentFileName).replace_extension(".8o").string();
+                        else
+                            currentFileName += ".8o";
+                    }
+                    if(activeType == 0) {
+                        writeFile(librarian.fullPath(currentFileName), (const char*)romImage.data(), romImage.size());
+                    }
+                    else {
+                        writeFile(librarian.fullPath(currentFileName), editor.getText().data(), editor.getText().size());
+                    }
+                    mainView = lastView;
+                }
+                GuiEnable();
+                break;
+            }
+        }
+        BeginColumns();
+        EndColumns();
+    }
+
+    const std::string& romExtension()
+    {
+        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".xo8"};
+        switch(options.behaviorBase) {
+            case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
+            case emu::Chip8EmulatorOptions::eSCHIP10:
+            case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
+            case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[3];
+            default: return extensions[0];
         }
     }
 
@@ -1537,6 +1715,8 @@ private:
     int frameBoost{1};
     int memoryOffset{-1};
     int instructionOffset{-1};
+    std::string currentDirectory;
+    std::string currentFileName;
     std::string romName;
     std::vector<uint8_t> romImage;
     std::string romSha1Hex;

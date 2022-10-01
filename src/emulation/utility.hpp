@@ -73,6 +73,14 @@ inline std::vector<uint8_t> loadFile(const std::string& file)
     return {};
 }
 
+inline bool writeFile(const std::string& filename, const char* data, size_t size)
+{
+    std::ofstream os(filename, std::ios::binary | std::ios::trunc);
+    if(os.write(data, size))
+        return true;
+    return false;
+}
+
 inline std::string loadTextFile(const std::string& file)
 {
     std::ifstream is(file, std::ios::binary | std::ios::ate);
