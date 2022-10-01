@@ -29,7 +29,7 @@
 static std::string aboutText = R"(           An emulator environment for CHIP-8 derivates
 
 
-Cadmium allows loading and running files for various CHIIP-8 derivates,
+Cadmium allows loading and running files for various CHIP-8 derivates,
 as well as developing software for them using Octo assembler language.
 
 # Supported Variants
@@ -43,7 +43,7 @@ Currently supported CHIP-8 variants are:
   * XO-CHIP
 
 Besides selecting a CHIP-8 variant it is possible to configure various
-quirks and behaviors to further tweek compatibility for a special
+quirks and behaviors to further tweak compatibility for a special
 CHIP-8 rom.
 
 # File Extensions Detected

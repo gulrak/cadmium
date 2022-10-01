@@ -92,7 +92,7 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eXOCHIP;
                 else if(ext == ".c8b")
                     type = Info::eROM_FILE;
-                _directoryEntries.push_back({de.path().filename(), type, variant, de.file_size(), convertClock(de.last_write_time())});
+                _directoryEntries.push_back({de.path().filename(), type, variant, (size_t)de.file_size(), convertClock(de.last_write_time())});
             }
         }
         std::sort(_directoryEntries.begin(), _directoryEntries.end(), [](const Info& a, const Info& b){

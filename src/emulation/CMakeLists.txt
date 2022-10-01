@@ -15,4 +15,5 @@ set(CHIP8_EMU_SOURCE
 )
 
 add_library(emulation ${CHIP8_EMU_SOURCE})
+set_source_files_properties(src/emulation/chip8compiler.cpp PROPERTIES COMPILE_FLAGS "-fpermissive -Wno-write-strings")
 target_link_libraries(emulation PUBLIC fmt::fmt c_octo)

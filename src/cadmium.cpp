@@ -412,7 +412,9 @@ public:
         : screenWidth(screenWidth_)
         , screenHeight(screenHeight_)
     {
+#ifndef PLATFORM_WEB
         auto dataDir = dataPath();
+#endif
         _instance = this;
         InitAudioDevice();
         SetAudioStreamBufferSizeDefault(1470);
@@ -1664,6 +1666,7 @@ int main(int argc, char* argv[])
     }
     if(traceLines < 0 && !compareRun && !benchmark) {
 #else
+    auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
     {
 #endif
         const int screenWidth = 512;
@@ -1674,9 +1677,11 @@ int main(int argc, char* argv[])
         SetExitKey(0);
         {
             Cadmium cadmium(screenWidth, screenHeight, chip8options);
+#ifndef PLATFORM_WEB
             if (!romFile.empty()) {
                 cadmium.loadRom(romFile.c_str());
             }
+#endif
 
 #if defined(PLATFORM_WEB)
             emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);

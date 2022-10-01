@@ -1,4 +1,6 @@
+if (NOT (${PLATFORM} MATCHES "Web"))
 add_executable(resourcer resourcer.cpp)
+endif()
 
 add_executable(soundfreq soundfreq.cpp)
 

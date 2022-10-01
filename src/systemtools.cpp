@@ -131,6 +131,10 @@ static std::string getOS()
     }
     return "unknown macOS";
 #endif
+
+#ifdef HOST_OS_EMSCRIPTEN
+    return "Emscripten";
+#endif
 }
 
 static void append2Digits(std::string& s, unsigned val)
@@ -233,7 +237,7 @@ std::string dataPath()
 #elif defined(HOST_OS_LINUX)
         dir = fs::path(home) / ".local/share" / appName();
 #elif defined(HOST_OS_EMSCRIPTEN)
-        throw std::runtime_error("Web client does not have an application directory!")
+        throw std::runtime_error("Web client does not have an application directory!");
 #else
 #error "Unsupported OS!"
 #endif
