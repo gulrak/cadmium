@@ -19,6 +19,10 @@ in a raylib game jam, I saw this as a good fit.
 
 ![Cadmium debug view](screenshots/screenshot01.png?raw=true "A screenshot of the debug view")
 
+An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
+simply drag rom files (`.ch8`, `.sc8`, `.xo8`) or Octo sources (`.8o`) onto the
+window to load them.
+
 ## Features
 
 * Emulation uses a number of configurable "quirks" or options, to allow a wide
