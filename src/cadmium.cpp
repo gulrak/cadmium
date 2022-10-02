@@ -405,8 +405,8 @@ void CenterWindow(int width, int height)
 }
 
 
-std::atomic_uint8_t _soundTimer{0};
-std::atomic_int _frameBoost{1};
+std::atomic_uint8_t g_soundTimer{0};
+std::atomic_int g_frameBoost{1};
 
 class Cadmium : public emu::Chip8EmulatorHost
 {
@@ -418,8 +418,8 @@ public:
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     Cadmium(int screenWidth_, int screenHeight_, emu::Chip8EmulatorOptions chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP))
-        : screenWidth(screenWidth_)
-        , screenHeight(screenHeight_)
+        : _screenWidth(screenWidth_)
+        , _screenHeight(screenHeight_)
     {
 #ifndef PLATFORM_WEB
         auto dataDir = dataPath();
@@ -427,44 +427,44 @@ public:
         _instance = this;
         InitAudioDevice();
         SetAudioStreamBufferSizeDefault(1470);
-        audioStream = LoadAudioStream(44100, 16, 1);
-        SetAudioStreamCallback(audioStream, Cadmium::audioInputCallback);
-        PlayAudioStream(audioStream);
+        _audioStream = LoadAudioStream(44100, 16, 1);
+        SetAudioStreamCallback(_audioStream, Cadmium::audioInputCallback);
+        PlayAudioStream(_audioStream);
         SetTargetFPS(60);
 #ifdef PLATFORM_WEB
-        scaleBy2 = false;
+        _scaleBy2 = false;
 #else
-        scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
+        _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
 #endif
-        renderTexture = LoadRenderTexture(screenWidth, screenHeight);
-        SetTextureFilter(renderTexture.texture, TEXTURE_FILTER_POINT);
+        _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+        SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
         for (auto chip8StyleProp : chip8StyleProps) {
             GuiSetStyle(chip8StyleProp.controlId, chip8StyleProp.propertyId, chip8StyleProp.propertyValue);
         }
         generateFont();
-        options = chip8options;
+        _options = chip8options;
         updateEmulatorOptions();
-        chipEmu->reset();
-        screen = GenImageColor(chipEmu->getMaxScreenWidth(), chipEmu->getMaxScreenHeight(), BLACK);
-        screenTexture = LoadTextureFromImage(screen);
-        auto titleRes = resources.resourceForName("cadmium-title.png");
-        titleImage = LoadImageFromMemory(".png", titleRes.data(), titleRes.size());
-        auto microRes = resources.resourceForName("micro-font.png");
-        microFont = LoadImageFromMemory(".png", microRes.data(), microRes.size());
-        drawMicroText(titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
-        drawMicroText(titleImage, "Beta", 38, 53, WHITE);
+        _chipEmu->reset();
+        _screen = GenImageColor(_chipEmu->getMaxScreenWidth(), _chipEmu->getMaxScreenHeight(), BLACK);
+        _screenTexture = LoadTextureFromImage(_screen);
+        auto titleRes = _resources.resourceForName("cadmium-title.png");
+        _titleImage = LoadImageFromMemory(".png", titleRes.data(), titleRes.size());
+        auto microRes = _resources.resourceForName("micro-font.png");
+        _microFont = LoadImageFromMemory(".png", microRes.data(), microRes.size());
+        drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
+        drawMicroText(_titleImage, "Beta", 38, 53, WHITE);
         std::string buildDate = __DATE__;
         auto dateText = buildDate.substr(0, 3);
         bool shortDate = (buildDate[4] == ' ');
-        drawMicroText(titleImage, buildDate.substr(9), 83, 53, WHITE);
-        drawMicroText(titleImage, buildDate.substr(4,2), 75, 52, WHITE);
-        drawMicroText(titleImage, buildDate.substr(0,3), shortDate ? 67 : 63, 53, WHITE);
+        drawMicroText(_titleImage, buildDate.substr(9), 83, 53, WHITE);
+        drawMicroText(_titleImage, buildDate.substr(4,2), 75, 52, WHITE);
+        drawMicroText(_titleImage, buildDate.substr(0,3), shortDate ? 67 : 63, 53, WHITE);
         //ImageColorReplace(&titleImage, {0,0,0,255}, {0x00,0x22,0x2b,0xff});
-        ImageColorReplace(&titleImage, {0,0,0,255}, {0x1a,0x1c,0x2c,0xff});
-        ImageColorReplace(&titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
-        titleTexture = LoadTextureFromImage(titleImage);
-        currentDirectory = librarian.currentDirectory();
+        ImageColorReplace(&_titleImage, {0,0,0,255}, {0x1a,0x1c,0x2c,0xff});
+        ImageColorReplace(&_titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
+        _titleTexture = LoadTextureFromImage(_titleImage);
+        _currentDirectory = _librarian.currentDirectory();
 
         // SWEETIE-16:
         // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57, 0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75, 0xb13e53, 0x38b764, 0x29366f, 0x566c86, 0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
@@ -487,7 +487,7 @@ public:
         // Soul of the Sea
         // {0x01141a, 0xcfbc95, 0x93a399, 0x2f4845, 0x92503f, 0x949576, 0x425961, 0x81784d, 0x703a28, 0x7a7e67, 0x203633, 0x605f33, 0x56452b, 0x467e73, 0x403521, 0x51675a}
 
-        colorPalette = {
+        _colorPalette = {
             be32(0x1a1c2cff), be32(0xf4f4f4ff), be32(0x94b0c2ff), be32(0x333c57ff),
             be32(0xb13e53ff), be32(0xa7f070ff), be32(0x3b5dc9ff), be32(0xffcd75ff),
             be32(0x5d275dff), be32(0x38b764ff), be32(0x29366fff), be32(0x566c86ff),
@@ -498,14 +498,14 @@ public:
     ~Cadmium() override
     {
         gui::UnloadGui();
-        UnloadFont(font);
-        UnloadRenderTexture(renderTexture);
-        UnloadImage(titleImage);
-        UnloadTexture(titleTexture);
-        UnloadTexture(screenTexture);
-        UnloadAudioStream(audioStream);
+        UnloadFont(_font);
+        UnloadRenderTexture(_renderTexture);
+        UnloadImage(_titleImage);
+        UnloadTexture(_titleTexture);
+        UnloadTexture(_screenTexture);
+        UnloadAudioStream(_audioStream);
         CloseAudioDevice();
-        UnloadImage(screen);
+        UnloadImage(_screen);
         _instance = nullptr;
     }
 
@@ -515,7 +515,7 @@ public:
     {
         for(auto c : text) {
             if((uint8_t)c < 128)
-                ImageDraw(&dest, microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
+                ImageDraw(&dest, _microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
             x += 4;
         }
     }
@@ -532,12 +532,12 @@ public:
 
     void renderAudio(int16_t *samples, unsigned int frames)
     {
-        std::scoped_lock lock(audioMutex);
-        if(chipEmu) {
-            auto st = chipEmu->soundTimer();
-            auto samplesLeftToPlay = std::min(st * (44100 / 60) / _frameBoost, (int)frames);
-            float phase = st ? chipEmu->getAudioPhase() : 0.0f;
-            if (!options.optXOChipSound) {
+        std::scoped_lock lock(_audioMutex);
+        if(_chipEmu) {
+            auto st = _chipEmu->soundTimer();
+            auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
+            float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
+            if (!_options.optXOChipSound) {
                 const float step = 1400.0f / 44100;
                 for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
                     *samples++ = (phase > 0.5f) ? 16384 : -16384;
@@ -545,14 +545,14 @@ public:
                 }
             }
             else {
-                auto step = 4000 * std::pow(2.0f, (float(chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
+                auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
                 for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
                     auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
-                    *samples++ = chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
+                    *samples++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
                     phase = std::fmod(phase + step, 1.0f);
                 }
             }
-            chipEmu->setAudioPhase(phase);
+            _chipEmu->setAudioPhase(phase);
         }
         while(frames--) {
             *samples++ = 0;
@@ -564,7 +564,7 @@ public:
         static int64_t instruction = 0;
         static int waitKeyUp = 0;
         static int keyId = 0;
-        if(waitKeyUp && instruction == chipEmu->cycles()) {
+        if(waitKeyUp && instruction == _chipEmu->cycles()) {
             if(IsKeyUp(waitKeyUp)) {
                 waitKeyUp = 0;
                 return keyId;
@@ -575,8 +575,8 @@ public:
         auto key = GetKeyPressed();
         if (key) {
             for (int i = 0; i < 16; ++i) {
-                if (key == keyMapping[i]) {
-                    instruction = chipEmu->cycles();
+                if (key == _keyMapping[i]) {
+                    instruction = _chipEmu->cycles();
                     waitKeyUp = key;
                     keyId = i + 1;
                     return 0;
@@ -588,7 +588,7 @@ public:
 
     bool isKeyDown(uint8_t key) override
     {
-        return IsKeyDown(keyMapping[key & 0xF]);
+        return IsKeyDown(_keyMapping[key & 0xF]);
     }
 
     static Vector3 rgbToXyz(Color c)
@@ -660,21 +660,21 @@ public:
 
     void updatePalette(const std::array<uint8_t,16>& palette) override
     {
-        if(!customPalette) {
+        if(!_customPalette) {
             for (int i = 0; i < palette.size(); ++i) {
-                colorPalette[i] = be32((rgb332To888(palette[i]) << 8) | 0xff);
+                _colorPalette[i] = be32((rgb332To888(palette[i]) << 8) | 0xff);
             }
-            updateScreen = true;
+            _updateScreen = true;
         }
     }
 
     void generateFont()
     {
-        fontImage = GenImageColor(256, 256, {0, 0, 0, 0});
+        _fontImage = GenImageColor(256, 256, {0, 0, 0, 0});
         int glyphCount = 0;
         for(const auto& fci : fontRom) {
             auto c = fci.codepoint;
-            drawChar(fontImage, c, (glyphCount % 32) * 6, (glyphCount / 32) * 8, WHITE);
+            drawChar(_fontImage, c, (glyphCount % 32) * 6, (glyphCount / 32) * 8, WHITE);
             ++glyphCount;
         }
 #if !defined(NDEBUG)
@@ -693,46 +693,46 @@ public:
             fos << std::endl;
         }
 #endif
-        font.baseSize = 8;
-        font.glyphCount = glyphCount;
-        font.texture = LoadTextureFromImage(fontImage);
-        font.recs = (Rectangle*)std::calloc(font.glyphCount, sizeof(Rectangle));
-        font.glyphs = (GlyphInfo*)std::calloc(font.glyphCount, sizeof(GlyphInfo));
+        _font.baseSize = 8;
+        _font.glyphCount = glyphCount;
+        _font.texture = LoadTextureFromImage(_fontImage);
+        _font.recs = (Rectangle*)std::calloc(_font.glyphCount, sizeof(Rectangle));
+        _font.glyphs = (GlyphInfo*)std::calloc(_font.glyphCount, sizeof(GlyphInfo));
         int idx = 0;
         for(const auto& fci : fontRom) {
             int i = fci.codepoint;
-            font.recs[idx].x = (idx % 32) * 6;
-            font.recs[idx].y = (idx / 32) * 8;
-            font.recs[idx].width = 6;
-            font.recs[idx].height = 8;
-            font.glyphs[idx].value = i;
-            font.glyphs[idx].offsetX = 0;
-            font.glyphs[idx].offsetY = 0;
-            font.glyphs[idx].advanceX = 6;
+            _font.recs[idx].x = (idx % 32) * 6;
+            _font.recs[idx].y = (idx / 32) * 8;
+            _font.recs[idx].width = 6;
+            _font.recs[idx].height = 8;
+            _font.glyphs[idx].value = i;
+            _font.glyphs[idx].offsetX = 0;
+            _font.glyphs[idx].offsetY = 0;
+            _font.glyphs[idx].advanceX = 6;
             ++idx;
         }
-        GuiSetFont(font);
+        GuiSetFont(_font);
     }
 
     bool screenChanged() const
     {
-        return updateScreen;
+        return _updateScreen;
     }
 
-    int getFrameBoost() const { return frameBoost>0 ? frameBoost : 1; }
-    int getInstrPerFrame() const { return options.instructionsPerFrame>=0 ? options.instructionsPerFrame : 0; }
+    int getFrameBoost() const { return _frameBoost >0 ? _frameBoost : 1; }
+    int getInstrPerFrame() const { return _options.instructionsPerFrame>=0 ? _options.instructionsPerFrame : 0; }
 
     void updateScreenTexture()
     {
         if(true/*updateScreen*/) {
-            auto* pixel = (uint32_t*)screen.data;
-            const uint8_t* planes = chipEmu->getScreenBuffer();
-            const uint8_t* end = planes + chipEmu->getMaxScreenWidth()*chipEmu->getMaxScreenHeight();
+            auto* pixel = (uint32_t*)_screen.data;
+            const uint8_t* planes = _chipEmu->getScreenBuffer();
+            const uint8_t* end = planes + _chipEmu->getMaxScreenWidth()* _chipEmu->getMaxScreenHeight();
             while(planes < end) {
-                *pixel++ = colorPalette[*planes++ & 0xF];
+                *pixel++ = _colorPalette[*planes++ & 0xF];
             }
-            UpdateTexture(screenTexture, screen.data);
-            updateScreen = false;
+            UpdateTexture(_screenTexture, _screen.data);
+            _updateScreen = false;
         }
     }
 
@@ -744,25 +744,25 @@ public:
     void updateAndDraw()
     {
 #ifndef PLATFORM_WEB
-        if (scaleBy2) {
+        if (_scaleBy2) {
             // Screen size x2
-            if (GetScreenWidth() < screenWidth * 2) {
-                SetWindowSize(screenWidth * 2, screenHeight * 2);
-                CenterWindow(screenWidth * 2, screenHeight * 2);
+            if (GetScreenWidth() < _screenWidth * 2) {
+                SetWindowSize(_screenWidth * 2, _screenHeight * 2);
+                CenterWindow(_screenWidth * 2, _screenHeight * 2);
                 SetMouseScale(0.5f, 0.5f);
             }
         }
         else {
             // Screen size x1
-            if (screenWidth < GetScreenWidth()) {
-                SetWindowSize(screenWidth, screenHeight);
-                CenterWindow(screenWidth, screenHeight);
+            if (_screenWidth < GetScreenWidth()) {
+                SetWindowSize(_screenWidth, _screenHeight);
+                CenterWindow(_screenWidth, _screenHeight);
                 SetMouseScale(1.0f, 1.0f);
             }
         }
 #endif
 
-        librarian.update(options); // allows librarian to complete background tasks
+        _librarian.update(_options); // allows librarian to complete background tasks
 
         if (IsFileDropped()) {
             auto files = LoadDroppedFiles();
@@ -773,11 +773,11 @@ public:
         }
 
 #ifdef WITH_EDITOR
-        if(mainView == eEDITOR) {
-            editor.update();
-            if(!editor.compiler().isError() && editor.compiler().sha1Hex() != romSha1Hex) {
-                romImage.assign(editor.compiler().code(), editor.compiler().code() + editor.compiler().codeSize());
-                romSha1Hex = editor.compiler().sha1Hex();
+        if(_mainView == eEDITOR) {
+            _editor.update();
+            if(!_editor.compiler().isError() && _editor.compiler().sha1Hex() != _romSha1Hex) {
+                _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
+                _romSha1Hex = _editor.compiler().sha1Hex();
                 reloadRom();
             }
         }
@@ -785,24 +785,24 @@ public:
 
         auto fb = getFrameBoost();
         for(int i = 0; i < fb; ++i) {
-            chipEmu->tick(getInstrPerFrame());
-            _soundTimer.store(chipEmu->soundTimer());
+            _chipEmu->tick(getInstrPerFrame());
+            g_soundTimer.store(_chipEmu->soundTimer());
         }
 
         updateScreenTexture();
 
-        BeginTextureMode(renderTexture);
+        BeginTextureMode(_renderTexture);
         drawGui();
         EndTextureMode();
 
         BeginDrawing();
         {
-            if (scaleBy2) {
-                DrawTexturePro(renderTexture.texture, (Rectangle){0, 0, (float)renderTexture.texture.width, -(float)renderTexture.texture.height}, (Rectangle){0, 0, (float)renderTexture.texture.width * 2, (float)renderTexture.texture.height * 2},
+            if (_scaleBy2) {
+                DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * 2, (float)_renderTexture.texture.height * 2},
                                (Vector2){0, 0}, 0.0f, WHITE);
             }
             else {
-                DrawTextureRec(renderTexture.texture, (Rectangle){0, 0, (float)renderTexture.texture.width, -(float)renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
+                DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
             // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
             // DrawFPS(10,10);
@@ -813,10 +813,10 @@ public:
     void drawScreen(Rectangle dest, int gridScale)
     {
         const Color gridLineCol{40,40,40,255};
-        int scrWidth = chipEmu->getCurrentScreenWidth();
-        int scrHeight = chipEmu->getCurrentScreenHeight();
-        DrawTexturePro(screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, dest, {0, 0}, 0, WHITE);
-        if (grid) {
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, dest, {0, 0}, 0, WHITE);
+        if (_grid) {
             for (short x = 0; x < scrWidth; ++x) {
                 DrawRectangle(dest.x + x * gridScale, dest.y, 1, dest.height, gridLineCol);
             }
@@ -824,8 +824,8 @@ public:
                 DrawRectangle(dest.x, dest.y + y * gridScale, dest.width, 1, gridLineCol);
             }
         }
-        if(GetTime() < 5 && romImage.empty()) {
-            DrawTexturePro(titleTexture, {0, 0, 128, 64}, dest, {0, 0}, 0, {255,255,255,uint8_t(GetTime()>4 ? 255.0f*(4.0f-GetTime()) : 255.0f)});
+        if(GetTime() < 5 && _romImage.empty()) {
+            DrawTexturePro(_titleTexture, {0, 0, 128, 64}, dest, {0, 0}, 0, {255,255,255,uint8_t(GetTime()>4 ? 255.0f*(4.0f-GetTime()) : 255.0f)});
         }
     }
 
@@ -848,31 +848,31 @@ public:
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
 
-        BeginGui({}, &renderTexture);
+        BeginGui({}, &_renderTexture);
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
             SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
 
             SetRowHeight(16);
             SetSpacing(0);
-            auto ips = (chipEmu->cycles() - lastInstructionCount) / GetFrameTime();
-            if(mainView == eEDITOR) {
+            auto ips = (_chipEmu->cycles() - lastInstructionCount) / GetFrameTime();
+            if(_mainView == eEDITOR) {
 #ifdef WITH_EDITOR
-                StatusBar({{0.75f, editor.compiler().errorMessage().c_str()},
-                    {0.25f, fmt::format("Cursor: {}:{}", editor.line(), editor.column()).c_str()}});
+                StatusBar({{0.75f, _editor.compiler().errorMessage().c_str()},
+                    {0.25f, fmt::format("Cursor: {}:{}", _editor.line(), _editor.column()).c_str()}});
 #endif
             }
             else if(getFrameBoost() > 1) {
-                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", chipEmu->cycles()).c_str()},
+                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
                            {0.25f, formatUnit(ips, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
                            {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/}});
             }
             else {
-                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", chipEmu->cycles()).c_str()},
+                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
                            {0.25f, formatUnit(ips, "IPS").c_str()},
                            {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()}});
             }
-            lastInstructionCount = chipEmu->cycles();
+            lastInstructionCount = _chipEmu->cycles();
             BeginColumns();
             {
                 SetRowHeight(20);
@@ -896,31 +896,31 @@ public:
                         aboutOpen = true, aboutScroll = {0,0}, menuOpen = false;
                     Space(3);
                     if(LabelButton(" New...")) {
-                        mainView = eEDITOR;
+                        _mainView = eEDITOR;
                         menuOpen = false;
-                        editor.setText(": main\n    jump main");
-                        romName = "unnamed.8o";
+                        _editor.setText(": main\n    jump main");
+                        _romName = "unnamed.8o";
                     }
                     if(LabelButton(" Open...")) {
 #ifdef PLATFORM_WEB
                         loadFileWeb();
 #else
-                        mainView = eROM_SELECTOR;
-                        librarian.fetchDir(currentDirectory);
+                        _mainView = eROM_SELECTOR;
+                        _librarian.fetchDir(_currentDirectory);
 #endif
                         menuOpen = false;
                     }
                     if(LabelButton(" Save...")) {
-                        mainView = eROM_EXPORT;
+                        _mainView = eROM_EXPORT;
 #ifndef PLATFORM_WEB
-                        librarian.fetchDir(currentDirectory);
+                        _librarian.fetchDir(_currentDirectory);
 #endif
                         menuOpen = false;
                     }
 #ifndef PLATFORM_WEB
                     Space(3);
                     if(LabelButton(" Quit"))
-                        menuOpen = false, shouldClose = true;
+                        menuOpen = false, _shouldClose = true;
 #endif
                     EndPopup();
                     if(IsKeyPressed(KEY_ESCAPE) || (IsMouseButtonPressed(0) && !CheckCollisionPointRec(GetMousePosition(), menuRect)))
@@ -932,7 +932,7 @@ public:
                     static size_t newlines = std::count_if( aboutText.begin(), aboutText.end(), [](char c){ return c =='\n'; });
                     BeginScrollPanel(-1, {0,0,440,newlines*10.0f + 100}, &aboutScroll);
                     SetRowHeight(10);
-                    DrawTextureRec(titleTexture, {34,2,60,60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
+                    DrawTextureRec(_titleTexture, {34,2,60,60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
                     auto styleColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
                     SetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(WHITE));
                     Label("           Cadmium v" CADMIUM_VERSION);
@@ -967,57 +967,57 @@ public:
                         aboutOpen = false;
                 }
                 SetNextWidth(20);
-                if (iconButton(ICON_ROM, mainView == eROM_SELECTOR)) {
+                if (iconButton(ICON_ROM, _mainView == eROM_SELECTOR)) {
 #ifdef PLATFORM_WEB
                     loadFileWeb();
 #else
-                    mainView = eROM_SELECTOR;
-                    librarian.fetchDir(currentDirectory);
+                    _mainView = eROM_SELECTOR;
+                    _librarian.fetchDir(_currentDirectory);
 #endif
                 }
                 SetNextWidth(130);
                 SetStyle(TEXTBOX, BORDER_WIDTH, 1);
-                TextBox(romName, 4095);
+                TextBox(_romName, 4095);
 
-                if (iconButton(ICON_PLAYER_PAUSE, chipEmu->execMode() == ExecMode::ePAUSED)) {
-                    chipEmu->setExecMode(ExecMode::ePAUSED);
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eVIDEO;
+                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->execMode() == ExecMode::ePAUSED)) {
+                    _chipEmu->setExecMode(ExecMode::ePAUSED);
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eVIDEO;
                     }
                 }
                 SetTooltip("PAUSE");
-                if (iconButton(ICON_PLAYER_PLAY, chipEmu->execMode() == ExecMode::eRUNNING)) {
-                    chipEmu->setExecMode(ExecMode::eRUNNING);
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eVIDEO;
+                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->execMode() == ExecMode::eRUNNING)) {
+                    _chipEmu->setExecMode(ExecMode::eRUNNING);
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eVIDEO;
                     }
                 }
                 SetTooltip("RUN");
-                if (iconButton(ICON_STEP_OVER, chipEmu->execMode() == ExecMode::eSTEPOVER)) {
-                    chipEmu->setExecMode(ExecMode::eSTEPOVER);
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eDEBUGGER;
+                if (iconButton(ICON_STEP_OVER, _chipEmu->execMode() == ExecMode::eSTEPOVER)) {
+                    _chipEmu->setExecMode(ExecMode::eSTEPOVER);
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eDEBUGGER;
                     }
                 }
                 SetTooltip("STEP OVER");
-                if (iconButton(ICON_STEP_INTO, chipEmu->execMode() == ExecMode::eSTEP)) {
-                    chipEmu->setExecMode(ExecMode::eSTEP);
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eDEBUGGER;
+                if (iconButton(ICON_STEP_INTO, _chipEmu->execMode() == ExecMode::eSTEP)) {
+                    _chipEmu->setExecMode(ExecMode::eSTEP);
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eDEBUGGER;
                     }
                 }
                 SetTooltip("STEP INTO");
-                if (iconButton(ICON_STEP_OUT, chipEmu->execMode() == ExecMode::eSTEPOUT)) {
-                    chipEmu->setExecMode(ExecMode::eSTEPOUT);
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eDEBUGGER;
+                if (iconButton(ICON_STEP_OUT, _chipEmu->execMode() == ExecMode::eSTEPOUT)) {
+                    _chipEmu->setExecMode(ExecMode::eSTEPOUT);
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eDEBUGGER;
                     }
                 }
                 SetTooltip("STEP OUT");
                 if (iconButton(ICON_RESTART)) {
                     reloadRom();
-                    if(mainView == eEDITOR || mainView == eSETTINGS) {
-                        mainView = eDEBUGGER;
+                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                        _mainView = eDEBUGGER;
                     }
                 }
                 SetTooltip("RESTART");
@@ -1033,41 +1033,41 @@ public:
                 auto spacePos = GetCurrentPos();
                 auto spaceWidth = avail - buttonsRight * 20;
                 Space(spaceWidth);
-                if (iconButton(ICON_BOX_GRID, grid))
-                    grid = !grid;
+                if (iconButton(ICON_BOX_GRID, _grid))
+                    _grid = !_grid;
                 SetTooltip("TOGGLE GRID");
                 Space(10);
-                if (iconButton(ICON_ZOOM_ALL, mainView == eVIDEO))
-                    mainView = eVIDEO;
+                if (iconButton(ICON_ZOOM_ALL, _mainView == eVIDEO))
+                    _mainView = eVIDEO;
                 SetTooltip("FULL VIDEO");
-                if (iconButton(ICON_CPU, mainView == eDEBUGGER))
-                    mainView = eDEBUGGER;
+                if (iconButton(ICON_CPU, _mainView == eDEBUGGER))
+                    _mainView = eDEBUGGER;
                 SetTooltip("DEBUGGER");
 #ifdef WITH_EDITOR
-                if (iconButton(ICON_FILETYPE_TEXT, mainView == eEDITOR))
-                    mainView = eEDITOR, chipEmu->setExecMode(ExecMode::ePAUSED);
+                if (iconButton(ICON_FILETYPE_TEXT, _mainView == eEDITOR))
+                    _mainView = eEDITOR, _chipEmu->setExecMode(ExecMode::ePAUSED);
                 SetTooltip("Editor");
 #endif
-                if (iconButton(ICON_GEAR, mainView == eSETTINGS))
-                    mainView = eSETTINGS;
+                if (iconButton(ICON_GEAR, _mainView == eSETTINGS))
+                    _mainView = eSETTINGS;
                 SetTooltip("SETTINGS");
 
                 static Vector2 versionSize = MeasureTextEx(guiFont, "v" CADMIUM_VERSION, 8, 0);
                 DrawTextEx(guiFont, "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
 #ifndef PLATFORM_WEB
                 Space(10);
-                if (iconButton(ICON_HIDPI, scaleBy2))
-                    scaleBy2 = !scaleBy2;
+                if (iconButton(ICON_HIDPI, _scaleBy2))
+                    _scaleBy2 = !_scaleBy2;
                 SetTooltip("TOGGLE ZOOM    ");
 #endif
             }
             EndColumns();
 
-            switch (mainView) {
+            switch (_mainView) {
                 case eDEBUGGER: {
                     const int lineSpacing = 10;
-                    const int debugScale = 256/chipEmu->getCurrentScreenWidth();
-                    lastView = mainView;
+                    const int debugScale = 256/ _chipEmu->getCurrentScreenWidth();
+                    _lastView = _mainView;
                     gridScale = debugScale;
                     BeginColumns();
                     SetSpacing(-1);
@@ -1088,26 +1088,26 @@ public:
                         if(CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
                             auto wheel = GetMouseWheelMoveV();
                             if(std::fabs(wheel.y) >= 0.5f) {
-                                if(instructionOffset < 0) {
-                                    instructionOffset = chipEmu->getPC();
+                                if(_instructionOffset < 0) {
+                                    _instructionOffset = _chipEmu->getPC();
                                 }
                                 int step = 0;
                                 if(wheel.y >= 0.5f) step = 2;
                                 else if(wheel.y <= 0.5f) step = -2;
-                                instructionOffset = std::clamp(instructionOffset - step, 0, 4096 - 9*2);
+                                _instructionOffset = std::clamp(_instructionOffset - step, 0, 4096 - 9*2);
                             }
                         }
-                        auto insOff = chipEmu->execMode() == ExecMode::ePAUSED && instructionOffset >= 0 ? instructionOffset : (chipEmu->getPC() > 8 ? chipEmu->getPC() - 8 : 0);
+                        auto insOff = _chipEmu->execMode() == ExecMode::ePAUSED && _instructionOffset >= 0 ? _instructionOffset : (_chipEmu->getPC() > 8 ? _chipEmu->getPC() - 8 : 0);
                         bool inIf = false;
                         for (int i = -1; i < 9; ++i) {
-                            if(insOff + i * 2 + 1 < chipEmu->memSize()) {
-                                uint16_t opcode = (chipEmu->memory()[insOff + i * 2] << 8) | chipEmu->memory()[insOff + i * 2 + 1];
-                                auto [bytes, instruction] = chipEmu->disassembleInstruction(chipEmu->memory() + insOff + i * 2, chipEmu->memory() + chipEmu->memSize());
+                            if(insOff + i * 2 + 1 < _chipEmu->memSize()) {
+                                uint16_t opcode = (_chipEmu->memory()[insOff + i * 2] << 8) | _chipEmu->memory()[insOff + i * 2 + 1];
+                                auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + insOff + i * 2, _chipEmu->memory() + _chipEmu->memSize());
                                 if (i >= 0) {
                                     if (inIf)
-                                        DrawTextEx(font, TextFormat("%04X: %04X         %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
+                                        DrawTextEx(_font, TextFormat("%04X: %04X         %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, _chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
                                     else
-                                        DrawTextEx(font, TextFormat("%04X: %04X       %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
+                                        DrawTextEx(_font, TextFormat("%04X: %04X       %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, _chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
                                 }
                                 inIf = instruction.rfind("if ", 0) == 0;
                             }
@@ -1124,19 +1124,20 @@ public:
                         Space(area.height);
                         int i;
                         for (i = 0; i < 16; ++i) {
-                            DrawTextEx(font, TextFormat("V%X: %02X", i, chipEmu->getV(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, chipEmu->getV(i) == chipEmu->getCopyV(i) ? LIGHTGRAY : YELLOW);
+                            DrawTextEx(_font, TextFormat("V%X: %02X", i, _chipEmu->getV(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getV(i) == _chipEmu->getCopyV(i) ? LIGHTGRAY : YELLOW);
                         }
                         ++i;
-                        DrawTextEx(font, chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", chipEmu->getPC()) : TextFormat("PC: %03X", chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                        DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                         ++i;
-                        DrawTextEx(font, chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", chipEmu->getI()) : TextFormat(" I: %03X", chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0, chipEmu->getI() == chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                        DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
+                                   _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
                         ++i;
-                        DrawTextEx(font, TextFormat("SP: %02X", chipEmu->getSP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, chipEmu->getSP() == chipEmu->getCopySP() ? LIGHTGRAY : YELLOW);
+                        DrawTextEx(_font, TextFormat("SP: %02X", _chipEmu->getSP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getSP() == _chipEmu->getCopySP() ? LIGHTGRAY : YELLOW);
                         ++i;
                         ++i;
-                        DrawTextEx(font, TextFormat("DT: %02X", chipEmu->delayTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, chipEmu->delayTimer() == chipEmu->getCopyDT() ? LIGHTGRAY : YELLOW);
+                        DrawTextEx(_font, TextFormat("DT: %02X", _chipEmu->delayTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->delayTimer() == _chipEmu->getCopyDT() ? LIGHTGRAY : YELLOW);
                         ++i;
-                        DrawTextEx(font, TextFormat("ST: %02X", chipEmu->soundTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, chipEmu->soundTimer() == chipEmu->getCopyST() ? LIGHTGRAY : YELLOW);
+                        DrawTextEx(_font, TextFormat("ST: %02X", _chipEmu->soundTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->soundTimer() == _chipEmu->getCopyST() ? LIGHTGRAY : YELLOW);
                     }
                     EndPanel();
                     SetNextWidth(44);
@@ -1146,11 +1147,11 @@ public:
                         auto area = GetContentAvailable();
                         pos.x += 0;
                         Space(area.height);
-                        auto stackSize = chipEmu->stackSize();
-                        const auto* stack = chipEmu->getStackElements();
-                        const auto* stackCopy = chipEmu->getCopyStackElements();
+                        auto stackSize = _chipEmu->stackSize();
+                        const auto* stack = _chipEmu->getStackElements();
+                        const auto* stackCopy = _chipEmu->getCopyStackElements();
                         for (int i = 0; i < stackSize; ++i) {
-                            DrawTextEx(font, TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
+                            DrawTextEx(_font, TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
                         }
                     }
                     EndPanel();
@@ -1162,13 +1163,13 @@ public:
                         pos.x += 0;
                         Space(area.height);
                         for (int i = 0; i < 23; ++i) {
-                            DrawTextEx(font, TextFormat("%04X", chipEmu->getI() + i * 8), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            DrawTextEx(_font, TextFormat("%04X", _chipEmu->getI() + i * 8), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                             for(int j = 0; j < 8; ++j) {
-                                if(chipEmu->memory()[chipEmu->getI() + i * 8 + j] == chipEmu->memoryCopy()[chipEmu->getI() + i * 8 + j]) {
-                                    DrawTextEx(font, TextFormat("%02X", chipEmu->memory()[chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? LIGHTGRAY : GRAY);
+                                if(_chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
+                                    DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[_chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? LIGHTGRAY : GRAY);
                                 }
                                 else {
-                                    DrawTextEx(font, TextFormat("%02X", chipEmu->memory()[chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? YELLOW : BROWN);
+                                    DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[_chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? YELLOW : BROWN);
                                 }
                             }
                         }
@@ -1178,14 +1179,14 @@ public:
                     break;
                 }
                 case eVIDEO: {
-                    lastView = mainView;
-                    gridScale = screenWidth / chipEmu->getCurrentScreenWidth();
-                    video = {0, 20, (float)screenWidth, (float)screenHeight - 36};
+                    _lastView = _mainView;
+                    gridScale = _screenWidth / _chipEmu->getCurrentScreenWidth();
+                    video = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
                     drawScreen(video, gridScale);
                     break;
                 }
                 case eEDITOR:
-                    lastView = mainView;
+                    _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Editor", {1,1});
@@ -1194,7 +1195,7 @@ public:
                         //Space(rect.height);
 #ifdef WITH_EDITOR
                         //BeginScissorMode(rect.x, rect.y - 1, rect.width, rect.height);
-                        editor.draw(font, {rect.x, rect.y - 1, rect.width, rect.height});
+                        _editor.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
                         //EndScissorMode();
 #endif
                     }
@@ -1202,7 +1203,7 @@ public:
                     End();
                     break;
                 case eSETTINGS: {
-                    lastView = mainView;
+                    _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Settings");
@@ -1213,16 +1214,16 @@ public:
                         Space(5);
                         SetIndent(180);
                         SetRowHeight(20);
-                        Spinner("Instructions per frame", &options.instructionsPerFrame, 0, 500000);
-                        Spinner("Frame boost", &frameBoost, 1, 100000);
-                        _frameBoost = getFrameBoost();
+                        Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                        Spinner("Frame boost", &_frameBoost, 1, 100000);
+                        g_frameBoost = getFrameBoost();
                         EndGroupBox();
                         Space(20);
-                        SetNextWidth(screenWidth - 373);
+                        SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;XO-CHIP", &behaviorSel)) {
-                            auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(behaviorSel);
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;XO-CHIP", &_behaviorSel)) {
+                            auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
                         End();
@@ -1233,49 +1234,49 @@ public:
                         BeginColumns();
                         SetNextWidth(GetContentAvailable().width/2);
                         Begin();
-                        emu::Chip8EmulatorOptions oldOptions = options;
-                        options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", options.optJustShiftVx);
-                        options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", options.optDontResetVf);
-                        bool oldInc = !(options.optLoadStoreIncIByX | options.optLoadStoreDontIncI);
+                        emu::Chip8EmulatorOptions oldOptions = _options;
+                        _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
+                        _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
+                        bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
                         bool newInc = CheckBox("Fx55/Fx65 increment I by X + 1", oldInc);
                         if(newInc != oldInc) {
-                            options.optLoadStoreIncIByX = !newInc;
-                            options.optLoadStoreDontIncI = false;
+                            _options.optLoadStoreIncIByX = !newInc;
+                            _options.optLoadStoreDontIncI = false;
                         }
-                        oldInc = options.optLoadStoreIncIByX;
-                        options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", options.optLoadStoreIncIByX);
-                        if(options.optLoadStoreIncIByX != oldInc) {
-                            options.optLoadStoreDontIncI = false;
+                        oldInc = _options.optLoadStoreIncIByX;
+                        _options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", _options.optLoadStoreIncIByX);
+                        if(_options.optLoadStoreIncIByX != oldInc) {
+                            _options.optLoadStoreDontIncI = false;
                         }
-                        oldInc = options.optLoadStoreDontIncI;
-                        options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", options.optLoadStoreDontIncI);
-                        if(options.optLoadStoreDontIncI != oldInc) {
-                            options.optLoadStoreIncIByX = false;
+                        oldInc = _options.optLoadStoreDontIncI;
+                        _options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", _options.optLoadStoreDontIncI);
+                        if(_options.optLoadStoreDontIncI != oldInc) {
+                            _options.optLoadStoreIncIByX = false;
                         }
-                        options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", options.optJump0Bxnn);
+                        _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
                         End();
                         Begin();
-                        options.optWrapSprites = CheckBox("Wrap sprite pixels", options.optWrapSprites);
-                        options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", options.optInstantDxyn);
-                        bool oldAllowHires = options.optAllowHires;
-                        options.optAllowHires = CheckBox("128x64 hires support", options.optAllowHires);
-                        if(!options.optAllowHires && oldAllowHires)
-                            options.optOnlyHires = false;
-                        bool oldOnlyHires = options.optOnlyHires;
-                        options.optOnlyHires = CheckBox("Only 128x64 mode", options.optOnlyHires);
-                        if(options.optOnlyHires && !oldOnlyHires)
-                            options.optAllowHires = true;
-                        options.optAllowColors = CheckBox("Multicolor support", options.optAllowColors);
-                        options.optXOChipSound = CheckBox("XO-CHIP sound engine", options.optXOChipSound);
+                        _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
+                        _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
+                        bool oldAllowHires = _options.optAllowHires;
+                        _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
+                        if(!_options.optAllowHires && oldAllowHires)
+                            _options.optOnlyHires = false;
+                        bool oldOnlyHires = _options.optOnlyHires;
+                        _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
+                        if(_options.optOnlyHires && !oldOnlyHires)
+                            _options.optAllowHires = true;
+                        _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
+                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
                         End();
                         EndColumns();
                         EndGroupBox();
                         Space(30);
-                        if(std::memcmp(&oldOptions, &options, sizeof(emu::Chip8EmulatorOptions)) != 0) {
+                        if(std::memcmp(&oldOptions, &_options, sizeof(emu::Chip8EmulatorOptions)) != 0) {
                             updateEmulatorOptions();
                         }
                         auto pos = GetCurrentPos();
-                        Space(screenHeight - pos.y - 20 - 16);
+                        Space(_screenHeight - pos.y - 20 - 16);
                         SetIndent(110);
                         Label("(C) 2022 by Steffen '@gulrak' Schümann");
                     }
@@ -1290,81 +1291,11 @@ public:
                     BeginPanel("Load/Import ROM or Octo Source");
                     {
                         renderFileBrowser(eLOAD);
-#if 0
-                        static Vector2 scroll{0,0};
-                        static Librarian::Info selectedInfo;
-                        SetRowHeight(16);
-                        auto area = GetContentAvailable();
-                        BeginTableView(area.height - 48, 4, &scroll);
-                        for(int i = 0; i < librarian.numEntries(); ++i) {
-                            const auto& info = librarian.getInfo(i);
-                            auto rowCol = Color{0,0,0,0};
-                            if(info.analyzed) {
-                                //if(info.type == Librarian::Info::eROM_FILE)
-                                //    rowCol = Color{0,128,128,32}; //ColorAlpha(GetColor(GetStyle(DEFAULT, BASE_COLOR_NORMAL)), 64);
-                            }
-                            else {
-                                rowCol = Color{0,128,0,10};
-                            }
-                            TableNextRow(16, rowCol);
-                            if(TableNextColumn(24)) {
-                                int icon = ICON_HELP2;
-                                switch (info.type) {
-                                    case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
-                                    case Librarian::Info::eROM_FILE: icon = ICON_ROM; break;
-                                    case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
-                                    default: icon = ICON_FILE_DELETE; break;
-                                }
-                                Label(GuiIconText(icon, ""));
-                            }
-                            if(TableNextColumn(.6f)) {
-                                if(LabelButton(info.filePath.c_str())) {
-                                    if(info.type == Librarian::Info::eDIRECTORY) {
-                                        if(info.filePath != "..") {
-                                            librarian.intoDir(info.filePath);
-                                        }
-                                        else {
-                                            librarian.parentDir();
-                                        }
-                                        selectedInfo.analyzed = false;
-                                    }
-                                    else if(info.type == Librarian::Info::eOCTO_SOURCE) {
-                                        selectedInfo = info;
-                                    }
-                                    else if(info.type == Librarian::Info::eROM_FILE) {
-                                        selectedInfo = info;
-                                    }
-                                }
-                            }
-                            if(TableNextColumn(.15f))
-                                Label(info.type == Librarian::Info::eDIRECTORY ? "" : TextFormat("%8d", info.fileSize));
-                            if(TableNextColumn(.2f))
-                                Label(date::format("%F", date::floor<std::chrono::seconds>(info.changeDate)).c_str());
-                        }
-                        EndTableView();
-                        //Space(5);
-                        Label(TextFormat("ROM: %s", (selectedInfo.analyzed ? selectedInfo.filePath.c_str() : "<nothing selected>")));
-                        Label(TextFormat("Estimated minimum opcode variant: %s", selectedInfo.minimumOpcodeProfile().c_str()));
-                        SetNextWidth(80);
-                        SetIndent(32);
-                        if(!selectedInfo.analyzed) GuiDisable();
-                        if(Button("Load") && selectedInfo.analyzed) {
-                            if(selectedInfo.variant != options.behaviorBase) {
-                                options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
-                                updateEmulatorOptions();
-                            }
-                            loadRom(librarian.fullPath(selectedInfo.filePath).c_str());
-                            mainView = lastView;
-                        }
-                        GuiEnable();
-                        BeginColumns();
-                        EndColumns();
-#endif
                     }
                     EndPanel();
                     End();
                     if(IsKeyPressed(KEY_ESCAPE))
-                        mainView = lastView;
+                        _mainView = _lastView;
                     break;
                 }
 #else
@@ -1385,15 +1316,15 @@ public:
                     EndPanel();
                     End();
                     if(IsKeyPressed(KEY_ESCAPE))
-                        mainView = lastView;
+                        _mainView = _lastView;
                     break;
                 }
             }
             EndGui();
         }
-        if(chipEmu->execMode() != ExecMode::ePAUSED) {
-            instructionOffset = -1;
-            chipEmu->copyState();
+        if(_chipEmu->execMode() != ExecMode::ePAUSED) {
+            _instructionOffset = -1;
+            _chipEmu->copyState();
         }
     }
 
@@ -1407,14 +1338,14 @@ public:
 #ifdef PLATFORM_WEB
         Space(area.height - 54);
 #else
-        if(TextBox(currentDirectory, 4096)) {
-            librarian.fetchDir(currentDirectory);
-            currentDirectory = librarian.currentDirectory();
+        if(TextBox(_currentDirectory, 4096)) {
+            _librarian.fetchDir(_currentDirectory);
+            _currentDirectory = _librarian.currentDirectory();
         }
         Space(1);
         BeginTableView(area.height - 54, 4, &scroll);
-        for(int i = 0; i < librarian.numEntries(); ++i) {
-            const auto& info = librarian.getInfo(i);
+        for(int i = 0; i < _librarian.numEntries(); ++i) {
+            const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};
             if(info.analyzed) {
                 //if(info.type == Librarian::Info::eROM_FILE)
@@ -1438,28 +1369,28 @@ public:
                 if(LabelButton(info.filePath.c_str())) {
                     if(info.type == Librarian::Info::eDIRECTORY) {
                         if(info.filePath != "..") {
-                            librarian.intoDir(info.filePath);
-                            currentDirectory = librarian.currentDirectory();
+                            _librarian.intoDir(info.filePath);
+                            _currentDirectory = _librarian.currentDirectory();
                             selectedInfo.analyzed = false;
                             if(mode == eLOAD)
-                                currentFileName = "";
+                                _currentFileName = "";
                         }
                         else {
-                            librarian.parentDir();
-                            currentDirectory = librarian.currentDirectory();
+                            _librarian.parentDir();
+                            _currentDirectory = _librarian.currentDirectory();
                             selectedInfo.analyzed = false;
                             if(mode == eLOAD)
-                                currentFileName = "";
+                                _currentFileName = "";
                         }
                         selectedInfo.analyzed = false;
                     }
                     else if(info.type == Librarian::Info::eOCTO_SOURCE) {
                         selectedInfo = info;
-                        currentFileName = info.filePath;
+                        _currentFileName = info.filePath;
                     }
                     else if(info.type == Librarian::Info::eROM_FILE) {
                         selectedInfo = info;
-                        currentFileName = info.filePath;
+                        _currentFileName = info.filePath;
                     }
                 }
             }
@@ -1474,7 +1405,7 @@ public:
         BeginColumns();
         SetNextWidth(25);
         Label("File:");
-        TextBox(currentFileName, 4096);
+        TextBox(_currentFileName, 4096);
         EndColumns();
         Space(2);
         switch(mode) {
@@ -1485,12 +1416,12 @@ public:
                 SetIndent(32);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
-                    if(selectedInfo.variant != options.behaviorBase) {
-                        options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
+                    if(selectedInfo.variant != _options.behaviorBase) {
+                        _options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
                         updateEmulatorOptions();
                     }
-                    loadRom(librarian.fullPath(selectedInfo.filePath).c_str());
-                    mainView = lastView;
+                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str());
+                    _mainView = _lastView;
                 }
                 GuiEnable();
                 break;
@@ -1507,36 +1438,36 @@ public:
                 Space(3);
                 SetNextWidth(80);
                 SetIndent(32);
-                if(currentFileName.empty() && ((activeType == 0 && romImage.empty()) || (activeType == 1 && editor.getText().empty()))) GuiDisable();
-                if(Button("Save") && !currentFileName.empty()) {
-                    if (activeType == 0 && fs::path(currentFileName).extension() != romExtension()) {
-                        if (fs::path(currentFileName).has_extension())
-                            currentFileName = fs::path(currentFileName).replace_extension(romExtension()).string();
+                if(_currentFileName.empty() && ((activeType == 0 && _romImage.empty()) || (activeType == 1 && _editor.getText().empty()))) GuiDisable();
+                if(Button("Save") && !_currentFileName.empty()) {
+                    if (activeType == 0 && fs::path(_currentFileName).extension() != romExtension()) {
+                        if (fs::path(_currentFileName).has_extension())
+                            _currentFileName = fs::path(_currentFileName).replace_extension(romExtension()).string();
                         else
-                            currentFileName += romExtension();
+                            _currentFileName += romExtension();
                     }
-                    else if (activeType == 1 && fs::path(currentFileName).extension() != ".8o") {
-                        if (fs::path(currentFileName).has_extension())
-                            currentFileName = fs::path(currentFileName).replace_extension(".8o").string();
+                    else if (activeType == 1 && fs::path(_currentFileName).extension() != ".8o") {
+                        if (fs::path(_currentFileName).has_extension())
+                            _currentFileName = fs::path(_currentFileName).replace_extension(".8o").string();
                         else
-                            currentFileName += ".8o";
+                            _currentFileName += ".8o";
                     }
 #ifdef PLATFORM_WEB
-                    auto targetFile = currentFileName;
+                    auto targetFile = _currentFileName;
 #else
-                    auto targetFile = librarian.fullPath(currentFileName);
+                    auto targetFile = _librarian.fullPath(_currentFileName);
 #endif
                     if(activeType == 0) {
-                        writeFile(targetFile, (const char*)romImage.data(), romImage.size());
+                        writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
                     }
                     else {
-                        writeFile(targetFile, editor.getText().data(), editor.getText().size());
+                        writeFile(targetFile, _editor.getText().data(), _editor.getText().size());
                     }
 #ifdef PLATFORM_WEB
                     // can only use path-less filenames
                     emscripten_run_script(TextFormat("saveFileFromMEMFSToDisk('%s','%s')", targetFile.c_str(), targetFile.c_str()));
 #endif
-                    mainView = lastView;
+                    _mainView = _lastView;
                 }
                 GuiEnable();
                 break;
@@ -1549,7 +1480,6 @@ public:
 #ifdef PLATFORM_WEB
     void loadFileWeb()
     {
-        //
         openFileCallback = [&](const std::string& filename)
         {
             loadRom(filename.c_str());
@@ -1587,7 +1517,7 @@ public:
     const std::string& romExtension()
     {
         static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".xo8"};
-        switch(options.behaviorBase) {
+        switch(_options.behaviorBase) {
             case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
             case emu::Chip8EmulatorOptions::eSCHIP10:
             case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
@@ -1598,16 +1528,16 @@ public:
 
     void setEmulatorPresetsTo(emu::Chip8EmulatorOptions::SupportedPreset preset)
     {
-        options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-        frameBoost = 1;
+        _options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+        _frameBoost = 1;
         updateEmulatorOptions();
     }
 
     void updateEmulatorOptions()
     {
-        std::scoped_lock lock(audioMutex);
-        chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8HT, options, chipEmu.get());
-        behaviorSel = options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
+        std::scoped_lock lock(_audioMutex);
+        _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8HT, _options, _chipEmu.get());
+        _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
     }
 
     void loadRom(const char* filename)
@@ -1615,52 +1545,52 @@ public:
         if (strlen(filename) < 4095) {
             unsigned int size = 0;
             bool valid = false;
-            customPalette = false;
-            chipEmu->reset();
+            _customPalette = false;
+            _chipEmu->reset();
 #ifdef WITH_EDITOR
-            editor.setText("");
+            _editor.setText("");
 #endif
-            instructionOffset = -1;
+            _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
                 std::string source = loadTextFile(filename);
                 Chip8Compiler c8c;
                 if(c8c.compile(source))
                 {
-                    romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
+                    _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
 #ifdef WITH_EDITOR
-                    editor.setText(source);
-                    mainView = eEDITOR;
+                    _editor.setText(source);
+                    _mainView = eEDITOR;
 #endif
                     valid = true;
                 }
             }
             else if(endsWith(filename, ".ch8")) {
-                if (size < chipEmu->memSize() - 512) {
-                    romImage = loadFile(filename);
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
                     valid = true;
                 }
             }
             else if(endsWith(filename, ".ch10")) {
-                options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP10);
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP10);
                 updateEmulatorOptions();
-                if (size < chipEmu->memSize() - 512) {
-                    romImage = loadFile(filename);
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
                     valid = true;
                 }
             }
             else if(endsWith(filename, ".sc8")) {
-                options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
                 updateEmulatorOptions();
-                if (size < chipEmu->memSize() - 512) {
-                    romImage = loadFile(filename);
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
                     valid = true;
                 }
             }
             else if(endsWith(filename, ".xo8")) {
-                options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP);
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP);
                 updateEmulatorOptions();
-                if (size < chipEmu->memSize() - 512) {
-                    romImage = loadFile(filename);
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
                     valid = true;
                 }
             }
@@ -1668,10 +1598,10 @@ public:
                 C8BFile c8b;
                 if(c8b.load(filename) == C8BFile::eOK) {
                     if(!c8b.palette.empty()) {
-                        customPalette = true;
+                        _customPalette = true;
                         auto numCol = std::max(c8b.palette.size(), (size_t)16);
                         for(size_t i = 0; i < numCol; ++i) {
-                            colorPalette[i] = be32(ColorToInt({c8b.palette[i].r, c8b.palette[i].g, c8b.palette[i].b, 255}));
+                            _colorPalette[i] = be32(ColorToInt({c8b.palette[i].r, c8b.palette[i].g, c8b.palette[i].b, 255}));
                         }
                     }
                     uint16_t codeOffset = 0;
@@ -1704,27 +1634,27 @@ public:
                                 break;
                         }
                         if(c8b.executionSpeed > 0) {
-                            options.instructionsPerFrame = c8b.executionSpeed;
+                            _options.instructionsPerFrame = c8b.executionSpeed;
                         }
-                        romImage.assign(c8b.rawData.data() + codeOffset, c8b.rawData.data() + codeOffset + codeSize);
+                        _romImage.assign(c8b.rawData.data() + codeOffset, c8b.rawData.data() + codeOffset + codeSize);
                         valid = true;
                     }
                     else {
-                        customPalette = false;
-                        chipEmu->reset();
+                        _customPalette = false;
+                        _chipEmu->reset();
                     }
                 }
             }
             if (valid) {
-                romSha1Hex = calculateSha1Hex(romImage.data(), romImage.size());
-                romName = filename;
-                std::memcpy(chipEmu->memory() + 512, romImage.data(), romImage.size());
+                _romSha1Hex = calculateSha1Hex(_romImage.data(), _romImage.size());
+                _romName = filename;
+                std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
 #ifdef WITH_EDITOR
-                if(editor.isEmpty()) {
+                if(_editor.isEmpty()) {
                     std::stringstream os;
                     emu::Chip8Decompiler decomp;
-                    decomp.decompile(filename, romImage.data(), 0x200, romImage.size(), 0x200, &os, false, true);
-                    editor.setText(os.str());
+                    decomp.decompile(filename, _romImage.data(), 0x200, _romImage.size(), 0x200, &os, false, true);
+                    _editor.setText(os.str());
                 }
 #endif
             }
@@ -1734,60 +1664,60 @@ public:
 
     void reloadRom()
     {
-        if(!romImage.empty()) {
+        if(!_romImage.empty()) {
             unsigned int size = 0;
-            chipEmu->reset();
-            instructionOffset = -1;
-            std::memcpy(chipEmu->memory() + 512, romImage.data(), romImage.size());
+            _chipEmu->reset();
+            _instructionOffset = -1;
+            std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
         }
     }
 
     bool windowShouldClose() const
     {
-        return shouldClose || WindowShouldClose();
+        return _shouldClose || WindowShouldClose();
     }
 
 private:
-    std::mutex audioMutex;
-    ResourceManager resources;
-    Image fontImage{};
-    Image microFont{};
-    Image titleImage{};
-    Font font{};
-    Image screen{};
-    Texture2D titleTexture{};
-    Texture2D screenTexture{};
-    bool shouldClose{false};
-    int screenWidth{};
-    int screenHeight{};
-    RenderTexture renderTexture{};
-    AudioStream audioStream{};
-    bool scaleBy2{false};
-    bool customPalette{false};
-    std::unique_ptr<emu::IChip8Emulator> chipEmu;
-    emu::Chip8EmulatorOptions options;
-    int behaviorSel{0};
-    //float messageTime{};
-    std::string timedMessage;
-    bool updateScreen{false};
-    int frameBoost{1};
-    int memoryOffset{-1};
-    int instructionOffset{-1};
-    std::string currentDirectory;
-    std::string currentFileName;
-    std::string romName;
-    std::vector<uint8_t> romImage;
-    std::string romSha1Hex;
-    std::array<uint32_t, 16> colorPalette{};
-    volatile bool grid{false};
-    MainView mainView{eDEBUGGER};
-    MainView lastView{eDEBUGGER};
-    Librarian librarian;
+    std::mutex _audioMutex;
+    ResourceManager _resources;
+    Image _fontImage{};
+    Image _microFont{};
+    Image _titleImage{};
+    Font _font{};
+    Image _screen{};
+    Texture2D _titleTexture{};
+    Texture2D _screenTexture{};
+    bool _shouldClose{false};
+    int _screenWidth{};
+    int _screenHeight{};
+    RenderTexture _renderTexture{};
+    AudioStream _audioStream{};
+    bool _scaleBy2{false};
+    bool _customPalette{false};
+    std::unique_ptr<emu::IChip8Emulator> _chipEmu;
+    emu::Chip8EmulatorOptions _options;
+    int _behaviorSel{0};
+    //float _messageTime{};
+    std::string _timedMessage;
+    bool _updateScreen{false};
+    int _frameBoost{1};
+    int _memoryOffset{-1};
+    int _instructionOffset{-1};
+    std::string _currentDirectory;
+    std::string _currentFileName;
+    std::string _romName;
+    std::vector<uint8_t> _romImage;
+    std::string _romSha1Hex;
+    std::array<uint32_t, 16> _colorPalette{};
+    volatile bool _grid{false};
+    MainView _mainView{eDEBUGGER};
+    MainView _lastView{eDEBUGGER};
+    Librarian _librarian;
 #ifdef WITH_EDITOR
-    Editor editor;
+    Editor _editor;
 #endif
 
-    inline static KeyboardKey keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
+    inline static KeyboardKey _keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
     inline static Cadmium* _instance{};
 };
 
