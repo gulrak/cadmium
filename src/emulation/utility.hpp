@@ -30,6 +30,7 @@
 #include <vector>
 #include <fstream>
 #include <cmath>
+#include <new>
 
 #include <sha1/sha1.hpp>
 

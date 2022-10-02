@@ -62,6 +62,13 @@ extern "C" {
 
 #if defined(PLATFORM_WEB)
 #include <emscripten/emscripten.h>
+extern "C" void openFileCallbackC(const char* str) __attribute__((used));
+static std::function<void(const std::string&)> openFileCallback;
+void openFileCallbackC(const char* str)
+{
+    if (openFileCallback)
+        openFileCallback(str);
+}
 #else
 
 #ifdef __GNUC__
@@ -895,7 +902,9 @@ public:
                         romName = "unnamed.8o";
                     }
                     if(LabelButton(" Open...")) {
-#ifndef PLATFORM_WEB
+#ifdef PLATFORM_WEB
+                        loadFileWeb();
+#else
                         mainView = eROM_SELECTOR;
                         librarian.fetchDir(currentDirectory);
 #endif
@@ -959,7 +968,9 @@ public:
                 }
                 SetNextWidth(20);
                 if (iconButton(ICON_ROM, mainView == eROM_SELECTOR)) {
-#ifndef PLATFORM_WEB
+#ifdef PLATFORM_WEB
+                    loadFileWeb();
+#else
                     mainView = eROM_SELECTOR;
                     librarian.fetchDir(currentDirectory);
 #endif
@@ -1534,6 +1545,44 @@ public:
         BeginColumns();
         EndColumns();
     }
+
+#ifdef PLATFORM_WEB
+    void loadFileWeb()
+    {
+        //
+        openFileCallback = [&](const std::string& filename)
+        {
+            loadRom(filename.c_str());
+        };
+        EM_ASM({
+            if (typeof(open_file_element) == "undefined")
+            {
+                open_file_element = document.createElement('input');
+                open_file_element.type = "file";
+                open_file_element.style.display = "none";
+                document.body.appendChild(open_file_element);
+                open_file_element.addEventListener("change", function() {
+                    var filename = "/upload/" + this.files[0].name;
+                    var name = this.files[0].name;
+                    this.files[0].arrayBuffer().then(function(buffer) {
+                         try { FS.unlink(filename); } catch (exception) { }
+                         FS.createDataFile("/upload/", name, new Uint8Array(buffer), true, true, true);
+                         var stack = Module.stackSave();
+                         var name_ptr = Module.stackAlloc(filename.length * 4 + 1);
+                         stringToUTF8(filename, name_ptr, filename.length * 4 + 1);
+                         Module._openFileCallbackC(name_ptr);
+                         stackRestore(stack);
+                        });
+                    }, false
+                );
+                FS.mkdir("/upload");
+            }
+            open_file_element.value = "";
+            open_file_element.accept = '.ch8,.ch10,.sc8,.xo8,.c8b,.8o';
+            open_file_element.click();
+        });
+    }
+#endif
 
     const std::string& romExtension()
     {
