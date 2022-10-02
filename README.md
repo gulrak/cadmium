@@ -5,8 +5,8 @@ A CHIP-8 emulation environment written in C++ with a raylib backend.
 ## Introduction
 
 CHIP-8 is maybe the first breed of what is today called a "fantasy console".
-The first opcode interpreter  was written for the RCA COSMAV VIP in 1977.
-CHIP-8 is today sen as the "Hello world" of emulators, so the  first
+The first opcode interpreter  was written for the RCA COSMAC VIP in 1977.
+CHIP-8 is today seen as the "Hello world" of emulators, so the  first
 suggestion if someone wants to get into emulator coding is to write a CHIP-8
 the get the feeling for it. I already had done some work on emulators and
 wrote my own implementation of a Commodore 64 emulator in C++, so one could
@@ -40,7 +40,7 @@ window to load them.
     * only 128x64 mode
     * multicolor support
     * xo-chip sound engine
-* Presets allow easy selection of quirks sets. Currently the emulator supports
+* Presets allow easy selection of quirks sets. Currently, the emulator supports
   the following presets:
     * chip-8
     * chip-10
@@ -49,7 +49,7 @@ window to load them.
     * superchip-1.1
     * xo-chip
 * Traditional 1400Hz buzzer or XO-CHIP audio emulation
-* When muticolor support is active, 16 colors in four planes are supported
+* When multicolor support is active, 16 colors in four planes are supported
 
 ### Compiling from Source
 
@@ -87,5 +87,5 @@ cmake --build build
   assembler for support of generating binaries from [octo assembler syntax](http://johnearnest.github.io/Octo/docs/Manual.html).
 * [fmtlib](https://github.com/fmtlib/fmt) - a modern formatting library in
   the style of C++20 std::format
-* [date](https://howardhinnant.github.io/date/date.html) - A date and time library based on the C++11/14/17 <chrono> header
+* [date](https://howardhinnant.github.io/date/date.html) - A date and time library based on the C++11/14/17 &lt;chrono&gt; header
 
