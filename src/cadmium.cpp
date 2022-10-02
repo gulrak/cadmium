@@ -931,7 +931,7 @@ public:
                     Space(4);
                     Label("           (c) 2022 by Steffen 'Gulrak' Schümann");
                     if(LabelButton("           https://github.com/gulrak/cadmium")) {
-                        openURL("https://github.com/gulrak/cadmium");
+                        OpenURL("https://github.com/gulrak/cadmium");
                     }
                     Space(8);
                     std::istringstream iss(aboutText);
@@ -940,7 +940,7 @@ public:
                         auto trimmedLine = trim(line);
                         if(startsWith(trimmedLine, "http")) {
                             if(LabelButton(line.c_str()))
-                                openURL(trimmedLine);
+                                OpenURL(trimmedLine.c_str());
                         }
                         else if(startsWith(line, "# "))
                         {
@@ -1510,12 +1510,21 @@ public:
                         else
                             currentFileName += ".8o";
                     }
+#ifdef PLATFORM_WEB
+                    auto targetFile = currentFileName;
+#else
+                    auto targetFile = librarian.fullPath(currentFileName);
+#endif
                     if(activeType == 0) {
-                        writeFile(librarian.fullPath(currentFileName), (const char*)romImage.data(), romImage.size());
+                        writeFile(targetFile, (const char*)romImage.data(), romImage.size());
                     }
                     else {
-                        writeFile(librarian.fullPath(currentFileName), editor.getText().data(), editor.getText().size());
+                        writeFile(targetFile, editor.getText().data(), editor.getText().size());
                     }
+#ifdef PLATFORM_WEB
+                    // can only use path-less filenames
+                    emscripten_run_script(TextFormat("saveFileFromMEMFSToDisk('%s','%s')", targetFile.c_str(), targetFile.c_str()));
+#endif
                     mainView = lastView;
                 }
                 GuiEnable();
