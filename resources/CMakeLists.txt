@@ -8,8 +8,7 @@ add_custom_command(
 )
 else()
     add_custom_command(
-        OUTPUT resourcer resourcedata.c
-        COMMAND clang++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp
+        OUTPUT resourcedata.c
         COMMAND resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
         DEPENDS resourcer ${RESOURCE_FILES}
     )

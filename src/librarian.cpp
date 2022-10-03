@@ -61,13 +61,13 @@ Librarian::Librarian()
 
 std::string Librarian::fullPath(std::string file) const
 {
-    return fs::path(_currentPath) / file;
+    return (fs::path(_currentPath) / file).string();
 }
 
 bool Librarian::fetchDir(std::string directory)
 {
     std::error_code ec;
-    _currentPath = fs::canonical(directory, ec);
+    _currentPath = fs::canonical(directory, ec).string();
     _directoryEntries.clear();
     _activeEntry = -1;
     _analyzing = true;
@@ -75,7 +75,7 @@ bool Librarian::fetchDir(std::string directory)
         _directoryEntries.push_back({"..", Info::eDIRECTORY, emu::Chip8EmulatorOptions::eCHIP8, 0, {}});
         for(auto& de : fs::directory_iterator(directory)) {
             if(de.is_directory()) {
-                _directoryEntries.push_back({de.path().filename(), Info::eDIRECTORY, emu::Chip8EmulatorOptions::eCHIP8, 0, convertClock(de.last_write_time())});
+                _directoryEntries.push_back({de.path().filename().string(), Info::eDIRECTORY, emu::Chip8EmulatorOptions::eCHIP8, 0, convertClock(de.last_write_time())});
             }
             else if(de.is_regular_file()) {
                 auto ext = de.path().extension();
@@ -92,7 +92,7 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eXOCHIP;
                 else if(ext == ".c8b")
                     type = Info::eROM_FILE;
-                _directoryEntries.push_back({de.path().filename(), type, variant, (size_t)de.file_size(), convertClock(de.last_write_time())});
+                _directoryEntries.push_back({de.path().filename().string(), type, variant, (size_t)de.file_size(), convertClock(de.last_write_time())});
             }
         }
         std::sort(_directoryEntries.begin(), _directoryEntries.end(), [](const Info& a, const Info& b){
@@ -114,12 +114,12 @@ bool Librarian::fetchDir(std::string directory)
 
 bool Librarian::intoDir(std::string subDirectory)
 {
-    return fetchDir(fs::path(_currentPath) / subDirectory);
+    return fetchDir((fs::path(_currentPath) / subDirectory).string());
 }
 
 bool Librarian::parentDir()
 {
-    return fetchDir(fs::path(_currentPath).parent_path());
+    return fetchDir(fs::path(_currentPath).parent_path().string());
 }
 
 bool Librarian::update(const emu::Chip8EmulatorOptions& options)
@@ -131,7 +131,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                 foundOne = true;
                 if(entry.type == Info::eROM_FILE) {
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
-                        auto file = loadFile(fs::path(_currentPath) / entry.filePath);
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         emu::Chip8Decompiler dec;
                         uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
                         dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);

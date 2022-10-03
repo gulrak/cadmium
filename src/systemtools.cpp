@@ -45,7 +45,9 @@
 #include <unistd.h>
 #elif defined(_WIN32) || defined(_WIN64)
 #define HOST_OS_WINDOWS
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #elif defined(__EMSCRIPTEN__)
 #define HOST_OS_EMSCRIPTEN
@@ -67,9 +69,9 @@ static std::string getSysEnv(const std::string& name)
 #ifdef _WIN32
     std::wstring result;
     result.resize(65535);
-    auto size = ::GetEnvironmentVariableW(utf8::toWString(name).c_str(), &result[0], 65535);
+    auto size = ::GetEnvironmentVariableW(ghc::utf8::toWString(name).c_str(), &result[0], 65535);
     result.resize(size);
-    return fs::detail::toUtf8(result);
+    return ghc::utf8::toUtf8(result);
 #elif !defined(HOST_OS_EMSCRIPTEN)
     auto env = ::getenv(name.c_str());
     return env ? std::string(env) : "";

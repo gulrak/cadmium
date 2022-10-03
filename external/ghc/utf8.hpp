@@ -156,6 +156,75 @@ inline std::wstring toWString(const std::string& utf8String)
     return result;
 }
 
+inline bool in_range(uint32_t c, uint32_t lo, uint32_t hi)
+{
+    return (static_cast<uint32_t>(c - lo) < (hi - lo + 1));
+}
+
+inline bool is_surrogate(uint32_t c)
+{
+    return in_range(c, 0xd800, 0xdfff);
+}
+
+inline bool is_high_surrogate(uint32_t c)
+{
+    return (c & 0xfffffc00) == 0xd800;
+}
+
+inline bool is_low_surrogate(uint32_t c)
+{
+    return (c & 0xfffffc00) == 0xdc00;
+}
+
+inline void appendUTF8(std::string& str, uint32_t unicode)
+{
+    if (unicode <= 0x7f) {
+        str.push_back(static_cast<char>(unicode));
+    }
+    else if (unicode >= 0x80 && unicode <= 0x7ff) {
+        str.push_back(static_cast<char>((unicode >> 6) + 192));
+        str.push_back(static_cast<char>((unicode & 0x3f) + 128));
+    }
+    else if ((unicode >= 0x800 && unicode <= 0xd7ff) || (unicode >= 0xe000 && unicode <= 0xffff)) {
+        str.push_back(static_cast<char>((unicode >> 12) + 224));
+        str.push_back(static_cast<char>(((unicode & 0xfff) >> 6) + 128));
+        str.push_back(static_cast<char>((unicode & 0x3f) + 128));
+    }
+    else if (unicode >= 0x10000 && unicode <= 0x10ffff) {
+        str.push_back(static_cast<char>((unicode >> 18) + 240));
+        str.push_back(static_cast<char>(((unicode & 0x3ffff) >> 12) + 128));
+        str.push_back(static_cast<char>(((unicode & 0xfff) >> 6) + 128));
+        str.push_back(static_cast<char>((unicode & 0x3f) + 128));
+    }
+    else {
+        appendUTF8(str, 0xfffd);
+    }
+}
+
+inline std::string toUtf8(const std::wstring& unicodeString)
+{
+    std::string result;
+    for (auto iter = unicodeString.begin(); iter != unicodeString.end(); ++iter) {
+        char32_t c = *iter;
+        if (is_surrogate(c)) {
+            ++iter;
+            if (iter != unicodeString.end() && is_high_surrogate(c) && is_low_surrogate(*iter)) {
+                appendUTF8(result, (char32_t(c) << 10) + *iter - 0x35fdc00);
+            }
+            else {
+                appendUTF8(result, 0xfffd);
+                if (iter == unicodeString.end()) {
+                    break;
+                }
+            }
+        }
+        else {
+            appendUTF8(result, c);
+        }
+    }
+    return result;
+}
+
 inline std::string heuristicUtf8(const std::string& str)
 {
     if(utf8::isValid(str)) {
