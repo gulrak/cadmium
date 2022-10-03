@@ -72,6 +72,16 @@ cmake --build build
 
 to compile it.
 
+#### Windows
+
+Currently Cadmium is not been able to compile with MSVC++ so the recommended
+toolchain is W64devkit.
+
+```
+export PATH="$PATH;C:/Program Files/CMake/bin"
+cmake -G"Unix Makefiles" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DGRAPHICS=GRAPHICS_API_OPENGL_21 -S . -B build-w64dev
+```
+
 #### Build for Web
 
 ```

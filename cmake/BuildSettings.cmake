@@ -30,6 +30,10 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type, available options: Debug Release RelWithDebInfo MinSizeRel" FORCE)
 endif()
 
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Force universal bianry 2 builds" FORCE)
+endif()
+
 if(EMSCRIPTEN)
     set(PLATFORM "Web")
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g3 -gsource-map")

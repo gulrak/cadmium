@@ -1,6 +1,6 @@
 add_subdirectory(emulation)
 
-add_executable(cadmium
+set(CADMIUM_SOURCE
     cadmium.cpp
     editor.cpp
     editor.hpp
@@ -11,6 +11,28 @@ add_executable(cadmium
     resourcemanager.cpp
     resourcemanager.hpp
 )
+
+if(WIN32)
+    add_executable(cadmium WIN32 ${CADMIUM_SOURCE} cadmium.rc)
+elseif(APPLE)
+    set(CADMIUM_ICON ${PROJECT_SOURCE_DIR}/resources/cadmium.icns)
+    set_source_files_properties(${CADMIUM_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    add_executable(cadmium MACOSX_BUNDLE ${CADMIUM_SOURCE} ${CADMIUM_ICON})
+    set_target_properties(cadmium PROPERTIES
+        BUNDLE True
+        MACOSX_BUNDLE_GUI_IDENTIFIER "net.gulrak.cadmium"
+        MACOSX_BUNDLE_BUNDLE_NAME "cadmium"
+        MACOSX_BUNDLE_INFO_STRING "Cadmium CHIP-8 Environment"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_LONG_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+        MACOSX_BUNDLE_ICON_FILE "cadmium.icns"
+        MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2022 by Steffen Schümann"
+        MACOSX_BUNDLE_INFO_PLIST ${PROJECT_SOURCE_DIR}/cmake/MacOSXBundleInfo.plist.in
+    )
+else()
+    add_executable(cadmium ${CADMIUM_SOURCE})
+endif()
 
 target_compile_definitions(cadmium PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}" CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
 if(WEB_WITH_CLIPBOARD)
