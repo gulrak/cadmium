@@ -13,7 +13,7 @@ set(CADMIUM_SOURCE
 )
 
 if(WIN32)
-    set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium_icon.ico")
+    set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium.ico")
     configure_file(${PROJECT_SOURCE_DIR}/cmake/cadmium.rc.in cadmium.rc)
     add_executable(cadmium WIN32 ${CADMIUM_SOURCE} cadmium.rc)
 elseif(APPLE)
