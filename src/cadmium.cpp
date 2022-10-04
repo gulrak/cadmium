@@ -678,7 +678,7 @@ public:
             ++glyphCount;
         }
 #if !defined(NDEBUG)
-        ExportImage(fontImage, "Test.png");
+        ExportImage(_fontImage, "Test.png");
         {
             std::ofstream fos("font.txt");
             for (uint8_t c = 32; c < 128; ++c) {
@@ -1343,7 +1343,7 @@ public:
             _currentDirectory = _librarian.currentDirectory();
         }
         Space(1);
-        BeginTableView(area.height - 54, 4, &scroll);
+        BeginTableView(area.height - 71, 4, &scroll);
         for(int i = 0; i < _librarian.numEntries(); ++i) {
             const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};

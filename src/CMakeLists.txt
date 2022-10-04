@@ -13,6 +13,8 @@ set(CADMIUM_SOURCE
 )
 
 if(WIN32)
+    set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium_icon.ico")
+    configure_file(${PROJECT_SOURCE_DIR}/cmake/cadmium.rc.in cadmium.rc)
     add_executable(cadmium WIN32 ${CADMIUM_SOURCE} cadmium.rc)
 elseif(APPLE)
     set(CADMIUM_ICON ${PROJECT_SOURCE_DIR}/resources/cadmium.icns)
@@ -33,7 +35,7 @@ elseif(APPLE)
 else()
     add_executable(cadmium ${CADMIUM_SOURCE})
 endif()
-
+add_dependencies(cadmium cadmium_icon)
 target_compile_definitions(cadmium PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}" CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
 if(WEB_WITH_CLIPBOARD)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_CLIPBOARD)
