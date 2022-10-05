@@ -463,6 +463,9 @@ public:
         //ImageColorReplace(&titleImage, {0,0,0,255}, {0x00,0x22,0x2b,0xff});
         ImageColorReplace(&_titleImage, {0,0,0,255}, {0x1a,0x1c,0x2c,0xff});
         ImageColorReplace(&_titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
+        Image icon = GenImageColor(64,64,{0,0,0,0});
+        ImageDraw(&icon, _titleImage, {34,2,60,60}, {2,2,60,60}, WHITE);
+        SetWindowIcon(icon);
         _titleTexture = LoadTextureFromImage(_titleImage);
         _currentDirectory = _librarian.currentDirectory();
 
@@ -678,7 +681,7 @@ public:
             ++glyphCount;
         }
 #if !defined(NDEBUG)
-        ExportImage(fontImage, "Test.png");
+        ExportImage(_fontImage, "Test.png");
         {
             std::ofstream fos("font.txt");
             for (uint8_t c = 32; c < 128; ++c) {
@@ -1343,7 +1346,7 @@ public:
             _currentDirectory = _librarian.currentDirectory();
         }
         Space(1);
-        BeginTableView(area.height - 54, 4, &scroll);
+        BeginTableView(area.height - 71, 4, &scroll);
         for(int i = 0; i < _librarian.numEntries(); ++i) {
             const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};

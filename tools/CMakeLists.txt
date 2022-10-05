@@ -1,5 +1,8 @@
 if (NOT (${PLATFORM} MATCHES "Web"))
 add_executable(resourcer resourcer.cpp)
+add_executable(icongenerator icongenerator.cpp)
+target_compile_definitions(icongenerator PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
+target_link_libraries(icongenerator PUBLIC raylib)
 endif()
 
 add_executable(soundfreq soundfreq.cpp)
