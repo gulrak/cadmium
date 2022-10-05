@@ -17,8 +17,8 @@ if(WIN32)
     configure_file(${PROJECT_SOURCE_DIR}/cmake/cadmium.rc.in cadmium.rc)
     add_executable(cadmium WIN32 ${CADMIUM_SOURCE} cadmium.rc)
 elseif(APPLE)
-    set(CADMIUM_ICON ${PROJECT_SOURCE_DIR}/resources/cadmium.icns)
-    set_source_files_properties(${CADMIUM_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+    set(CADMIUM_ICON "${PROJECT_BINARY_DIR}/resources/cadmium.icns")
+    set_source_files_properties(${CADMIUM_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources" GENERATED 1)
     add_executable(cadmium MACOSX_BUNDLE ${CADMIUM_SOURCE} ${CADMIUM_ICON})
     set_target_properties(cadmium PROPERTIES
         BUNDLE True

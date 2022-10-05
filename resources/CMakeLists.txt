@@ -7,12 +7,22 @@ if (${PLATFORM} MATCHES "Web")
             DEPENDS ${RESOURCE_FILES}
     )
 else()
-    add_custom_command(
-            OUTPUT cadmium_icon.png
-            COMMAND icongenerator ${CMAKE_CURRENT_SOURCE_DIR}/files/cadmium-title.png ${CMAKE_CURRENT_SOURCE_DIR}/files/micro-font.png cadmium-icon.png
-            DEPENDS icongenerator ${RESOURCE_FILES}
-    )
-    add_custom_target(cadmium_icon DEPENDS cadmium_icon.png)
+    if(APPLE)
+        add_custom_command(
+                OUTPUT cadmium_icon.png cadmium.icns
+                COMMAND icongenerator ${CMAKE_CURRENT_SOURCE_DIR}/files/cadmium-title.png ${CMAKE_CURRENT_SOURCE_DIR}/files/micro-font.png cadmium-icon.png
+                COMMAND iconutil -c icns ${CMAKE_CURRENT_BINARY_DIR}/cadmium.iconset
+                DEPENDS icongenerator ${RESOURCE_FILES}
+        )
+        add_custom_target(cadmium_icon ALL DEPENDS cadmium.icns)
+    else()
+        add_custom_command(
+                OUTPUT cadmium_icon.png
+                COMMAND icongenerator ${CMAKE_CURRENT_SOURCE_DIR}/files/cadmium-title.png ${CMAKE_CURRENT_SOURCE_DIR}/files/micro-font.png cadmium-icon.png
+                DEPENDS icongenerator ${RESOURCE_FILES}
+        )
+        add_custom_target(cadmium_icon DEPENDS cadmium_icon.png)
+    endif()
     add_custom_command(
         OUTPUT resourcedata.c
         COMMAND resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
