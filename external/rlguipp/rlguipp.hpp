@@ -94,41 +94,40 @@ inline const auto DEFAULT_ROW_HEIGHT = 26.0f;
 
 enum WindowBoxFlags { WBF_NONE = 0, WBF_CLOSABLE = 1, WBF_MOVABLE = 2, WBF_MODAL = 4 };
 
-RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr);                             // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
-RLGUIPP_API void EndGui();                                                                                          // ends the GUI description
-RLGUIPP_API void UnloadGui();                                                                                       // unload any stuff cached by the gui handling
-RLGUIPP_API void Begin();                                                                                           // start of a hierarchical group of elements, must be closed with End()
-RLGUIPP_API void End();                                                                                             // end of the group
-RLGUIPP_API void BeginColumns();                                                                                    // start of a list of columns of elements, must be closed with EndColumns()
-RLGUIPP_API void EndColumns();                                                                                      // end the column grouping
-RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5});                                  // start a panel (a group with a kind of title bar, if title is given), must be closed with EndPanel()
-RLGUIPP_API void EndPanel();                                                                                        // end the description of a panel group
-RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll);                                              // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
-RLGUIPP_API void EndScrollPanel();                                                                                  // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns);
-RLGUIPP_API void TableNextRow(float height, Color background = {0,0,0,0});
-RLGUIPP_API bool TableNextColumn();
-RLGUIPP_API void EndTableView();
-RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                         // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
-RLGUIPP_API void EndGroupBox();                                                                                     // end the description of a group box
-RLGUIPP_API void BeginPopup(Rectangle area, bool* isOpen);                                                          // show a popup at the given area, open as long as `*isOpen` is true
-RLGUIPP_API void EndPopup();                                                                                        // end of the popup description
-RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);  // same as a popup, but with a title bar and a close button, optionally draggable
-RLGUIPP_API void EndWindowBox();                                                                                    // end of the WindowBox
-RLGUIPP_API void SetState(int state);                                                                               // same as raygui GuiSetState
-RLGUIPP_API int GetState();                                                                                         // same as raygui GuiGetState
-RLGUIPP_API void SetStyle(int control, int property, int value);                                                    // Set one style property
-RLGUIPP_API int GetStyle(int control, int property);                                                                // Get one style property
-RLGUIPP_API void SetIndent(float width);                                                                            // Indents all following elements in this level
-RLGUIPP_API void SetReserve(float width);                                                                           // Sets the space reserved for right side labels of bar widgets
-RLGUIPP_API void SetNextWidth(float width);                                                                         // Set the width of the next element, default is the width of the parent
-RLGUIPP_API void SetRowHeight(float height);                                                                        // Set the height for elements that can be typically in a row, like buttons, edit fields, spinner...
-RLGUIPP_API void SetSpacing(float spacing);                                                                         // Set the spacing, depending on the parent layout it will set the horizontal or vertical spacing
-RLGUIPP_API Vector2 GetCurrentPos();                                                                                // Get the position that will be used by the next widget
-RLGUIPP_API Rectangle GetContentAvailable();                                                                        // Get the area from current position to content edges
-RLGUIPP_API Rectangle GetLastWidgetRect();                                                                          // Get the position and dimensions of the previous widget
-RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                            // Set a tooltip for the rectangle of the previously defined widget
-// Basic controls set
+RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr);                                   // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
+RLGUIPP_API void EndGui();                                                                                                // ends the GUI description
+RLGUIPP_API void UnloadGui();                                                                                             // unload any stuff cached by the gui handling
+RLGUIPP_API void Begin();                                                                                                 // start of a hierarchical group of elements, must be closed with End()
+RLGUIPP_API void End();                                                                                                   // end of the group
+RLGUIPP_API void BeginColumns();                                                                                          // start of a list of columns of elements, must be closed with EndColumns()
+RLGUIPP_API void EndColumns();                                                                                            // end the column grouping
+RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5});                                        // start a panel (a group with a kind of title bar, if title is given), must be closed with EndPanel()
+RLGUIPP_API void EndPanel();                                                                                              // end the description of a panel group
+RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
+RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
+RLGUIPP_API void BeginTableView(float height, int numColumns);                                                            //
+RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                             //
+RLGUIPP_API bool TableNextColumn();                                                                                       //
+RLGUIPP_API void EndTableView();                                                                                          //
+RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
+RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
+RLGUIPP_API void BeginPopup(Rectangle area, bool* isOpen);                                                                // show a popup at the given area, open as long as `*isOpen` is true
+RLGUIPP_API void EndPopup();                                                                                              // end of the popup description
+RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar and a close button, optionally draggable
+RLGUIPP_API void EndWindowBox();                                                                                          // end of the WindowBox
+RLGUIPP_API void SetState(int state);                                                                                     // same as raygui GuiSetState
+RLGUIPP_API int GetState();                                                                                               // same as raygui GuiGetState
+RLGUIPP_API void SetStyle(int control, int property, int value);                                                          // Set one style property
+RLGUIPP_API int GetStyle(int control, int property);                                                                      // Get one style property
+RLGUIPP_API void SetIndent(float width);                                                                                  // Indents all following elements in this level
+RLGUIPP_API void SetReserve(float width);                                                                                 // Sets the space reserved for right side labels of bar widgets
+RLGUIPP_API void SetNextWidth(float width);                                                                               // Set the width of the next element, default is the width of the parent
+RLGUIPP_API void SetRowHeight(float height);                                                                              // Set the height for elements that can be typically in a row, like buttons, edit fields, spinner...
+RLGUIPP_API void SetSpacing(float spacing);                                                                               // Set the spacing, depending on the parent layout it will set the horizontal or vertical spacing
+RLGUIPP_API Vector2 GetCurrentPos();                                                                                      // Get the position that will be used by the next widget
+RLGUIPP_API Rectangle GetContentAvailable();                                                                              // Get the area from current position to content edges
+RLGUIPP_API Rectangle GetLastWidgetRect();                                                                                // Get the position and dimensions of the previous widget
+RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                                  // Set a tooltip for the rectangle of the previously defined widget
 RLGUIPP_API void Space(float size = -1);                                                                                  // Depending on the parent it inserts a vertical or horizontal space, defaulting to the spacing
 RLGUIPP_API void Separator(float size = -1);                                                                              // Insert a seperator line
 RLGUIPP_API void Label(const char* text);                                                                                 // Label control, shows text
@@ -141,8 +140,10 @@ RLGUIPP_API int ComboBox(const char* text, int active);                         
 RLGUIPP_API bool DropdownBox(const char* text, int* active);                                                              // Dropdown Box control, returns selected item
 RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue, bool editMode);                        // Spinner control, returns selected value
 RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue, bool editMode);                       // Value Box control, updates input text with numbers
-RLGUIPP_API bool TextBox(char* text, int textSize);                                                        // Text Box control, updates input text
-RLGUIPP_API bool TextBox(std::string& text, int textSize, bool editMode);                                                 // same for std::string
+RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
+RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
+RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
+RLGUIPP_API bool TextBox(std::string& text, int textSize);                                                                // same for std::string
 RLGUIPP_API bool TextBoxMulti(char* text, int textSize, bool editMode);                                                   // Text Box control with multiple lines
 RLGUIPP_API float Slider(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);       // Slider control, returns selected value
 RLGUIPP_API float Slider(const char* textLeft, float value, float minValue, float maxValue);                              // Slider control with default "%.2f" formatting, returns selected value
@@ -152,7 +153,6 @@ RLGUIPP_API float ProgressBar(const char* textLeft, const char* textRight, float
 RLGUIPP_API void StatusBar(const char* text);                                                                             // Status Bar control, shows info text
 RLGUIPP_API void StatusBar(std::initializer_list<std::pair<float, const char*>> fields);                                  // Status Bar control, shows multiple fields
 RLGUIPP_API Vector2 Grid(float height, float spacing, int subdivs);                                                       // Grid control, returns mouse cell position
-
 // Advanced controls set
 RLGUIPP_API int ListView(float height, const char* text, int* scrollIndex, int active);                                                         // List View control, returns selected list item index
 RLGUIPP_API int ListViewEx(float height, const char** text, int count, int* focus, int* scrollIndex, int active);                               // List View with extended parameters
@@ -599,16 +599,26 @@ typename std::invoke_result<Func, Rectangle, Args..., bool>::type editableWidget
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
-    auto editMode = GuiContext::editFocusId == key;
+    auto editMode = HasKeyboardFocus(key);
     auto rc = (*fp)({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, std::forward<Args>(args)..., editMode);
     if (rc) {
-        GuiContext::editFocusId = editMode ? nullptr : key;
+        SetKeyboardFocus(editMode ? nullptr : key);
     }
     ctx.increment(size);
     return rc;
 }
 
 }  // namespace detail
+
+void SetKeyboardFocus(void* key)
+{
+    GuiContext::editFocusId = key;
+}
+
+bool HasKeyboardFocus(void* key)
+{
+    return GuiContext::editFocusId == key;
+}
 
 void BeginGui(Rectangle area, RenderTexture* renderTexture)
 {
@@ -1316,10 +1326,10 @@ bool TextBoxMulti(float height, char* text, int textSize)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize(height);
-    auto editMode = GuiContext::editFocusId == (void*)text;
+    auto editMode = HasKeyboardFocus((void*)text);
     auto rc = GuiTextBoxMulti({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, textSize, editMode);
     if (rc) {
-        GuiContext::editFocusId = editMode ? nullptr : (void*)text;
+        SetKeyboardFocus(editMode ? nullptr : (void*)text);
     }
     ctx.increment(size);
     return rc;

@@ -45,6 +45,7 @@ class Editor
 {
 public:
     static constexpr float INACTIVITY_DELAY{1.0f};
+    enum FindReplaceMode { eNONE, eFIND, eFIND_REPLACE };
     enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
     inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
     inline static Color selected{100, 100, 120, 255};
@@ -69,6 +70,9 @@ public:
 
     void updateLineInfo(uint32_t fromLine = 0);
     void update();
+
+    void setFocus();
+    bool hasFocus() const;
 
     void cursorLeft(int steps = 1);
     void cursorRight(int steps = 1);
@@ -113,10 +117,11 @@ public:
     }
 
     void draw(Font& font, Rectangle rect);
-    void highlightLine(const char* text, const char* end);
-    void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
 
 protected:
+    void highlightLine(const char* text, const char* end);
+    void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
+    Rectangle drawToolArea();
     void safeInsert(uint32_t offset, const std::string& text);
     void safeErase(uint32_t offset, uint32_t length);
     template <typename F>
@@ -136,6 +141,7 @@ protected:
     {
         return alpha >= 'A' && alpha <= 'Z' && _alphabetKeys[alpha - 'A'] != 0;
     }
+    void updateFindResults();
 
     struct ColorPair {
         Color front;
@@ -172,7 +178,21 @@ protected:
     uint32_t _selectionEnd{0};
     uint32_t _editId{0};
     uint32_t _longestLineSize{0};
-    Rectangle _rect;
+    Rectangle _totalArea{};
+    Rectangle _textArea{};
+    Rectangle _toolArea{};
+    Rectangle _messageArea{};
+    FindReplaceMode _findOrReplace{eNONE};
+    bool _findCaseSensitive{false};
+    bool _findRegex{false};
+    bool _findRegexValid{false};
+    std::string _findString;
+    std::string _replaceString;
+    uint32_t _findUpdateId{0xFFFFFFFF};
+    int _findResults{0};
+    int _findCurrentResult{-1};
+    uint32_t _findCurrentOffset{0};
+    uint32_t _findCurrentLength{0};
     Vector2 _scrollPos;
     float _blinkTimer{BLINK_RATE};
     float _repeatTimer{-1};

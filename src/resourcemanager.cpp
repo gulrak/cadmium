@@ -1,6 +1,8 @@
 #include <resourcemanager.hpp>
+#include <raylib.h>
 
 #include <cassert>
+#include <cstring>
 
 extern "C" {
 extern const unsigned char g_resourceData[];
@@ -16,12 +18,26 @@ static size_t readInteger(const unsigned char* data)
     return size_t(val);
 }
 
+unsigned char *LoadFileDataFromResource(const char *fileName, unsigned int *bytesRead)
+{
+    auto resource = ResourceManager::instance().resourceForName(fileName);
+    if(bytesRead) {
+        *bytesRead = resource.size();
+    }
+    if(resource.size()) {
+        auto data = (unsigned char *)RL_MALLOC(resource.size()*sizeof(unsigned char));
+        std::memcpy(data, resource.data(), resource.size());
+        return data;
+    }
+    return nullptr;
+}
 
 //-------------------------------------------------------------------------
 
 ResourceManager::ResourceManager()
 {
     registerResources(g_resourceData, g_resourceDataSize);
+    SetLoadFileDataCallback(&LoadFileDataFromResource);
 }
 
 ResourceManager& ResourceManager::instance()
@@ -57,6 +73,9 @@ ResourceManager::Resource ResourceManager::resourceForName(const std::string& na
     size_t size = 0;
     auto iter = _resources.find(name);
     assert(iter != _resources.end());
+
+    if(iter == _resources.end())
+        return Resource(name, nullptr, 0);
 
     const auto* dataPtr = (const unsigned char*)iter->second;
     size = readInteger(dataPtr);

@@ -25,8 +25,11 @@
 //---------------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <rlguipp/rlguipp.hpp>
+#include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cmath>
+#include <regex>
 #include <editor.hpp>
 #include <emulation/utility.hpp>
 #include <emulation/octocompiler.hpp>
@@ -56,6 +59,16 @@ static int getKeySymbol(int key)
 #else
     return key >= KEY_A && key <= KEY_Z ? key - KEY_A + 'A' : key;
 #endif
+}
+
+void Editor::setFocus()
+{
+    gui::SetKeyboardFocus((void*)this);
+}
+
+bool Editor::hasFocus() const
+{
+    return gui::HasKeyboardFocus((void*)this);
 }
 
 void Editor::cursorLeft(int steps)
@@ -230,23 +243,13 @@ void Editor::update()
     bool ctrlPressed = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     bool superPressed = IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
     bool selectionChange = false;
-/*
-    if(CheckCollisionPointRec(GetMousePosition(), _rect)) {
-        auto wheel = GetMouseWheelMoveV();
-        if(std::fabs(wheel.y) >= 0.5f) {
-            int step = 0;
-            if(wheel.y >= 0.5f) step = 2;
-            else if(wheel.y <= 0.5f) step = -2;
-            _tosLine = std::clamp<int32_t>(_tosLine - step, 0u, _lines.size() > _visibleLines ? _lines.size() - _visibleLines : 0u);
-        }
-        //DrawRectangleLinesEx(GetLastWidgetRect(), 1, RED);
-    }
-*/
-    if(IsMouseButtonDown(0) && CheckCollisionPointRec(GetMousePosition(), {_rect.x + 1, _rect.y + 1, _rect.width - 6, _rect.height - 6})) {
+
+    if(IsMouseButtonDown(0) && CheckCollisionPointRec(GetMousePosition(), {_textArea.x + 1, _textArea.y + 1, _textArea.width - 6, _textArea.height - 6})) {
+        setFocus();
         if(_mouseDownInText || IsMouseButtonPressed(0)) {
             auto clickPos = GetMousePosition();
-            auto cx = (clickPos.x - _rect.x - 6 * COLUMN_WIDTH) / COLUMN_WIDTH;
-            auto cy = (clickPos.y - _rect.y - 4) / LINE_SIZE;
+            auto cx = (clickPos.x - _textArea.x - 6 * COLUMN_WIDTH) / COLUMN_WIDTH;
+            auto cy = (clickPos.y - _textArea.y - 4) / LINE_SIZE;
             if (cx > 0 && cy + _tosLine >= 0) {
                 _cursorX = cx + _losCol;
                 _cursorY = cy + _tosLine;
@@ -270,78 +273,88 @@ void Editor::update()
     }
     if(IsMouseButtonUp(0))
         _mouseDownInText = false;
-    if (isKeyActivated(KEY_UP)) {
-        selectionChange |= cursorWrapper([this]() { cursorUp(); });
+    if (ctrlPressed && isAlphaPressed('F')) {
+        _findOrReplace = _findOrReplace == eFIND ? eNONE : eFIND;
     }
-    else if(isKeyActivated(KEY_DOWN)) {
-        selectionChange |= cursorWrapper([this](){ cursorDown(); });
+    else if (ctrlPressed && isAlphaPressed('R')) {
+        _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
     }
-    else if(isKeyActivated(KEY_LEFT)) {
-        selectionChange |= cursorWrapper([this](){ cursorLeft(); });
-    }
-    else if(isKeyActivated(KEY_RIGHT)) {
-        selectionChange |= cursorWrapper([this](){ cursorRight(); });
-    }
-    else if(isKeyActivated(KEY_PAGE_UP)) {
-        selectionChange |= cursorWrapper([this](){ cursorUp(_visibleLines); });
-    }
-    else if(isKeyActivated(KEY_PAGE_DOWN)) {
-        selectionChange |= cursorWrapper([this](){ cursorDown(_visibleLines); });
-    }
-    else if(IsKeyPressed(KEY_HOME)) {
-        selectionChange |= cursorWrapper([this](){ cursorHome(); });
-    }
-    else if(IsKeyPressed(KEY_END)) {
-        selectionChange |= cursorWrapper([this](){ cursorEnd(); });
-    }
-    else if(ctrlPressed && isAlphaPressed('Z')) {
-        if(shiftPressed)
-            redo();
-        else
-            undo();
-    }
-    else if(ctrlPressed && isAlphaPressed('C')) {
-        auto [selStart, selEnd] = selection();
-        SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
-    }
-    else if(ctrlPressed && isAlphaPressed('V')) {
-        insert(GetClipboardTextX());
-    }
-    else if(ctrlPressed && isAlphaPressed('X')) {
-        auto [selStart, selEnd] = selection();
-        SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
-        deleteSelectedText();
-    }
-    else if(ctrlPressed && isAlphaPressed('A')) {
-        _selectionStart = 0;
-        _selectionEnd = _text.size();
-        selectionChange = true;
-    }
-    else if(IsKeyPressed(KEY_ESCAPE)) {
+    else if (IsKeyPressed(KEY_ESCAPE)) {
         _selectionStart = _selectionEnd = 0;
+        _findOrReplace = eNONE;
+        _toolArea = {0, 0, 0, 0};
         selectionChange = true;
     }
-    else if(isKeyActivated(KEY_BACKSPACE)) {
-        if(_selectionStart != _selectionEnd) {
+    if(hasFocus()) {
+        if (isKeyActivated(KEY_UP)) {
+            selectionChange |= cursorWrapper([this]() { cursorUp(); });
+        }
+        else if (isKeyActivated(KEY_DOWN)) {
+            selectionChange |= cursorWrapper([this]() { cursorDown(); });
+        }
+        else if (isKeyActivated(KEY_LEFT)) {
+            selectionChange |= cursorWrapper([this]() { cursorLeft(); });
+        }
+        else if (isKeyActivated(KEY_RIGHT)) {
+            selectionChange |= cursorWrapper([this]() { cursorRight(); });
+        }
+        else if (isKeyActivated(KEY_PAGE_UP)) {
+            selectionChange |= cursorWrapper([this]() { cursorUp(_visibleLines); });
+        }
+        else if (isKeyActivated(KEY_PAGE_DOWN)) {
+            selectionChange |= cursorWrapper([this]() { cursorDown(_visibleLines); });
+        }
+        else if (IsKeyPressed(KEY_HOME)) {
+            selectionChange |= cursorWrapper([this]() { cursorHome(); });
+        }
+        else if (IsKeyPressed(KEY_END)) {
+            selectionChange |= cursorWrapper([this]() { cursorEnd(); });
+        }
+        else if (ctrlPressed && isAlphaPressed('Z')) {
+            if (shiftPressed)
+                redo();
+            else
+                undo();
+        }
+        else if (ctrlPressed && isAlphaPressed('C')) {
+            auto [selStart, selEnd] = selection();
+            SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
+        }
+        else if (ctrlPressed && isAlphaPressed('V')) {
+            insert(GetClipboardTextX());
+        }
+        else if (ctrlPressed && isAlphaPressed('X')) {
+            auto [selStart, selEnd] = selection();
+            SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
             deleteSelectedText();
         }
-        else {
-            auto end = offsetFromCursor();
-            cursorLeft();
-            auto start = offsetFromCursor();
-            deleteText(start, end - start);
-            updateLineInfo(_cursorY);
+        else if (ctrlPressed && isAlphaPressed('A')) {
+            _selectionStart = 0;
+            _selectionEnd = _text.size();
+            selectionChange = true;
         }
-    }
-    else if(isKeyActivated(KEY_ENTER)) {
-        insert(std::string(1, '\n'));
-    }
-    else {
-        auto codepoint = GetCharPressed();
-        if(codepoint >= 32 && codepoint < 255) {
-            std::string s;
-            utf8::append(s, codepoint);
-            insert(s);
+        else if (isKeyActivated(KEY_BACKSPACE)) {
+            if (_selectionStart != _selectionEnd) {
+                deleteSelectedText();
+            }
+            else {
+                auto end = offsetFromCursor();
+                cursorLeft();
+                auto start = offsetFromCursor();
+                deleteText(start, end - start);
+                updateLineInfo(_cursorY);
+            }
+        }
+        else if (isKeyActivated(KEY_ENTER)) {
+            insert(std::string(1, '\n'));
+        }
+        else {
+            auto codepoint = GetCharPressed();
+            if (codepoint >= 32 && codepoint < 255) {
+                std::string s;
+                utf8::append(s, codepoint);
+                insert(s);
+            }
         }
     }
     if(_cursorChanged) {
@@ -380,21 +393,24 @@ void Editor::update()
 
 void Editor::draw(Font& font, Rectangle rect)
 {
+    using namespace gui;
     int lineNumber = int(_tosLine) - 1;
-    float ypos = rect.y - 4;
-    _visibleLines = uint32_t((rect.height - 6) / LINE_SIZE);
-    _visibleCols = uint32_t(rect.width - 6*COLUMN_WIDTH - 6) / COLUMN_WIDTH;
-    _rect = rect;
+    _totalArea = rect;
+    _toolArea = drawToolArea();
+    _textArea = {_totalArea.x, _totalArea.y + _toolArea.height, _totalArea.width, _totalArea.height - _toolArea.height - _messageArea.height};
+    float ypos = _textArea.y - 4;
+    _visibleLines = uint32_t((_textArea.height - 6) / LINE_SIZE);
+    _visibleCols = uint32_t(_textArea.width - 6*COLUMN_WIDTH - 6) / COLUMN_WIDTH;
     _scrollPos = {-(float)_losCol * COLUMN_WIDTH, -(float)_tosLine * LINE_SIZE};
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 0);
-    gui::BeginScrollPanel(-1, {0,0,std::max(rect.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_rect.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
+    gui::BeginScrollPanel(-1, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
-    DrawRectangle(5*COLUMN_WIDTH, rect.y, 1, rect.height, GetColor(0x2f7486ff));
-    while(lineNumber < int(_lines.size()) && ypos < rect.y + rect.height) {
+    DrawRectangle(5*COLUMN_WIDTH, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
+    while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
-            DrawTextEx(font, TextFormat("%4d", lineNumber + 1), {rect.x, ypos}, 8, 0, LIGHTGRAY);
-            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {rect.x + 6 * COLUMN_WIDTH, ypos}, rect.width - 6 * COLUMN_WIDTH, _losCol);
+            DrawTextEx(font, TextFormat("%4d", lineNumber + 1), {_textArea.x, ypos}, 8, 0, LIGHTGRAY);
+            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + 6 * COLUMN_WIDTH, ypos}, _textArea.width - 6 * COLUMN_WIDTH, _losCol);
         }
         ++lineNumber;
         ypos += LINE_SIZE;
@@ -402,11 +418,11 @@ void Editor::draw(Font& font, Rectangle rect)
     _blinkTimer -= GetFrameTime();
     if(_blinkTimer < 0)
         _blinkTimer = BLINK_RATE;
-    if(_blinkTimer >= BLINK_RATE/2) {
+    if(hasFocus() && _blinkTimer >= BLINK_RATE/2) {
         auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
         auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
-        if(cx >= 0 && cx < rect.width - 6*COLUMN_WIDTH - 3 && cy >= 0 && cy + 8 < rect.height)
-            DrawRectangle(rect.x + 6*COLUMN_WIDTH + cx, rect.y + cy - 2, 2, LINE_SIZE, WHITE);
+        if(cx >= 0 && cx < _textArea.width - 6*COLUMN_WIDTH - 3 && cy >= 0 && cy + 8 < _textArea.height)
+            DrawRectangle(_textArea.x + 6*COLUMN_WIDTH + cx, _textArea.y + cy - 2, 2, LINE_SIZE, WHITE);
     }
 
     auto handle = verticalScrollHandle();
@@ -424,8 +440,8 @@ void Editor::draw(Font& font, Rectangle rect)
     if(IsKeyDown(KEY_RIGHT_SUPER)) *mbp++ = 'X';
     *mbp = 0;
     if(mbp != ModBuf)
-        DrawTextEx(font, ModBuf, {rect.x, rect.y}, 8, 0, RED);
-    DrawTextEx(font, TextFormat("%d:%d", _selectionStart, _selectionEnd), {rect.x, rect.y+8}, 8, 0, RED);
+        DrawTextEx(font, ModBuf, {_textArea.x, _textArea.y}, 8, 0, RED);
+    DrawTextEx(font, TextFormat("%d:%d,%d", _selectionStart, _selectionEnd, _findResults), {_textArea.x, _textArea.y+8}, 8, 0, RED);
 #endif
     gui::EndScrollPanel();
     _tosLine = -_scrollPos.y / LINE_SIZE;
@@ -434,10 +450,10 @@ void Editor::draw(Font& font, Rectangle rect)
 
 Rectangle Editor::verticalScrollHandle()
 {
-    float scrollLength = _rect.height * _visibleLines / _lines.size();
+    float scrollLength = _textArea.height * _visibleLines / _lines.size();
     if(scrollLength < 6) scrollLength = 6;
-    float step = (_rect.height - scrollLength) / std::max(float(_lines.size()) - float(_visibleLines), 1.0f);
-    return {_rect.x + _rect.width - 5, _rect.y + step * _tosLine, 4, float(scrollLength)};
+    float step = (_textArea.height - scrollLength) / std::max(float(_lines.size()) - float(_visibleLines), 1.0f);
+    return {_textArea.x + _textArea.width - 5, _textArea.y + step * _tosLine, 4, float(scrollLength)};
 }
 
 void Editor::highlightLine(const char* text, const char* end)
@@ -622,4 +638,166 @@ void Editor::redo()
         _undoStack.top().id = _editId;
         _redoStack.pop();
     }
+}
+
+Rectangle Editor::drawToolArea()
+{
+    using namespace gui;
+    Rectangle toolArea{};
+    bool toolOpened = false;
+    switch (_findOrReplace) {
+        case eNONE:
+            toolArea = {0,0,0,0};
+            break;
+        case eFIND:
+            toolOpened = _toolArea.height == 0;
+            toolArea = {_totalArea.x, _totalArea.y, _totalArea.width, 18};
+            break;
+        case eFIND_REPLACE:
+            toolOpened = _toolArea.height == 0;
+            toolArea = {_totalArea.x, _totalArea.y, _totalArea.width, 36};
+            break;
+    }
+    if(_findOrReplace != eNONE) {
+        SetRowHeight(18);
+        BeginColumns();
+        SetSpacing(0);
+        SetNextWidth(18);
+        Button(GuiIconText(ICON_LENS_BIG,""));
+        SetNextWidth(toolArea.width - 18*5);
+        auto txt = _findString;
+        auto oldCol = GetStyle(TEXTBOX, TEXT_COLOR_PRESSED);
+        if(_findRegex && !_findRegexValid)
+            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
+        if(TextBox(_findString, 4096))
+            updateFindResults();
+        if(toolOpened)
+            SetKeyboardFocus((void*)&_findString);
+        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, oldCol);
+        if(txt != _findString)
+            updateFindResults();
+        SetNextWidth(18);
+        bool oldFlag = _findCaseSensitive;
+        _findCaseSensitive = Toggle("Aa", _findCaseSensitive);
+        if(oldFlag != _findCaseSensitive)
+            updateFindResults();
+        SetNextWidth(18);
+        oldFlag = _findRegex;
+        _findRegex = Toggle(".*", _findRegex);
+        if(oldFlag != _findRegex)
+            updateFindResults();
+        SetNextWidth(18);
+        if(!_findResults || _findCurrentResult == _findResults) GuiDisable();
+        if(Button(GuiIconText(ICON_ARROW_DOWN,"")) && _findCurrentResult < _findResults) {
+            ++_findCurrentResult;
+            updateFindResults();
+        }
+        GuiEnable();
+        SetNextWidth(18);
+        if(!_findResults || _findCurrentResult == 1) GuiDisable();
+        if(Button(GuiIconText(ICON_ARROW_UP,"")) && _findCurrentResult > 1) {
+            --_findCurrentResult;
+            updateFindResults();
+        }
+        GuiEnable();
+        EndColumns();
+        if(_findUpdateId != _editId)
+            updateFindResults();
+    }
+    if(_findOrReplace == eFIND_REPLACE) {
+        SetRowHeight(18);
+        BeginColumns();
+        SetSpacing(0);
+        SetNextWidth(18);
+        Button(GuiIconText(ICON_LENS_BIG,""));
+        SetNextWidth(toolArea.width - 96 - 18);
+        if(TextBox(_replaceString, 4096))
+            updateFindResults();
+        SetNextWidth(48);
+        if(!_findResults || _findCurrentOffset != _selectionStart || _selectionEnd - _selectionStart != _findCurrentLength)
+            GuiDisable();
+        if(Button("Replace") && _findCurrentOffset == _selectionStart && _selectionEnd - _selectionStart == _findCurrentLength) {
+            insert(_replaceString);
+            updateFindResults();
+        }
+        GuiEnable();
+        SetNextWidth(48);
+        GuiDisable();
+        Button("Rep.all");
+        GuiEnable();
+        SetNextWidth(18);
+        Button(GuiIconText(ICON_ARROW_DOWN,""));
+        EndColumns();
+    }
+    return toolArea;
+}
+
+std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)
+{
+    if(regEx) {
+        auto iter = std::sregex_iterator(from, to, *regEx);
+        if(iter ==  std::sregex_iterator())
+            return {to, 0};
+        return {from + iter->position(0), iter->length(0)};
+    }
+    else {
+        std::string::const_iterator iter;
+        if(caseSense)
+            iter = std::search(from, to, patternStart, patternEnd);
+        else
+            iter = std::search(from, to, patternStart, patternEnd, [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
+        if(iter == to)
+            return {to, 0};
+        return {iter, patternEnd - patternStart};
+    }
+
+}
+
+void Editor::updateFindResults()
+{
+    static std::regex regEx;
+    static std::string regExStr;
+    static bool caseSense{false};
+    _findResults = 0;
+    _findCurrentLength = 0;
+    _findCurrentOffset = 0;
+    _selectionStart = _selectionEnd = 0;
+    _findUpdateId = _editId;
+    if(_findString.empty())
+        return;
+    if(_findRegex) {
+        if(_findString != regExStr || caseSense != _findCaseSensitive) {
+            regExStr = _findString;
+            caseSense = _findCaseSensitive;
+            try {
+                if (_findCaseSensitive)
+                    regEx = std::regex(_findString, std::regex::icase);
+                else
+                    regEx = std::regex(_findString);
+                _findRegexValid = true;
+            }
+            catch (...)
+            {
+                _findRegexValid = false;
+            }
+        }
+    }
+    auto iter = _text.cbegin();
+    int len = 0;
+    while (true) {
+        std::tie(iter, len) = findSubstr(_findCaseSensitive, _findRegex&&_findRegexValid ? &regEx : nullptr, iter, _text.cend(), _findString.cbegin(), _findString.cend());
+        if(!len)
+            break;
+        ++_findResults;
+        if (_findCurrentResult <= 0)
+            _findCurrentResult = _findResults;
+        if (_findCurrentResult == _findResults) {
+            _selectionStart = _findCurrentOffset = iter - _text.cbegin();
+            _findCurrentLength = len;
+            _selectionEnd = _selectionStart + _findCurrentLength;
+        }
+        iter += len;
+    }
+    if(_findCurrentResult > _findResults)
+        _findCurrentResult = _findResults;
 }

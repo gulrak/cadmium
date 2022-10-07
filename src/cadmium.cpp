@@ -448,10 +448,8 @@ public:
         _chipEmu->reset();
         _screen = GenImageColor(_chipEmu->getMaxScreenWidth(), _chipEmu->getMaxScreenHeight(), BLACK);
         _screenTexture = LoadTextureFromImage(_screen);
-        auto titleRes = _resources.resourceForName("cadmium-title.png");
-        _titleImage = LoadImageFromMemory(".png", titleRes.data(), titleRes.size());
-        auto microRes = _resources.resourceForName("micro-font.png");
-        _microFont = LoadImageFromMemory(".png", microRes.data(), microRes.size());
+        _titleImage = LoadImage("cadmium-title.png");
+        _microFont = LoadImage("micro-font.png");
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
         drawMicroText(_titleImage, "Beta", 38, 53, WHITE);
         std::string buildDate = __DATE__;
@@ -1189,6 +1187,8 @@ public:
                     break;
                 }
                 case eEDITOR:
+                    if(_lastView != eEDITOR)
+                        _editor.setFocus();
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
