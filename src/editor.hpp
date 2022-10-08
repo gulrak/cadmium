@@ -119,6 +119,7 @@ public:
     void draw(Font& font, Rectangle rect);
 
 protected:
+    void ensureCursorVisibility();
     void highlightLine(const char* text, const char* end);
     void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
     Rectangle drawToolArea();

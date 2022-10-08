@@ -230,6 +230,18 @@ void Editor::updateLineInfo(uint32_t fromLine)
     }
 }
 
+void Editor::ensureCursorVisibility()
+{
+    if (_visibleLines && _cursorY >= _tosLine + _visibleLines)
+        _tosLine = _cursorY - _visibleLines + 1;
+    else if (_visibleLines && _cursorY < _tosLine)
+        _tosLine = _cursorY;
+    if (_visibleCols && _cursorX >= _losCol + _visibleCols)
+        _losCol = _cursorX - _visibleCols + 1;
+    else if (_visibleCols && _cursorX < _losCol)
+        _losCol = _cursorX;
+}
+
 void Editor::update()
 {
     auto oldRepeat = _repeatTimer;
@@ -358,14 +370,7 @@ void Editor::update()
         }
     }
     if(_cursorChanged) {
-        if (_visibleLines && _cursorY >= _tosLine + _visibleLines)
-            _tosLine = _cursorY - _visibleLines + 1;
-        else if (_visibleLines && _cursorY < _tosLine)
-            _tosLine = _cursorY;
-        if (_visibleCols && _cursorX >= _losCol + _visibleCols)
-            _losCol = _cursorX - _visibleCols + 1;
-        else if (_visibleCols && _cursorX < _losCol)
-            _losCol = _cursorX;
+        ensureCursorVisibility();
         if(!selectionChange)
             _selectionStart = _selectionEnd = 0;
     }
@@ -709,7 +714,7 @@ Rectangle Editor::drawToolArea()
         BeginColumns();
         SetSpacing(0);
         SetNextWidth(18);
-        Button(GuiIconText(ICON_LENS_BIG,""));
+        Button("R");
         SetNextWidth(toolArea.width - 96 - 18);
         if(TextBox(_replaceString, 4096))
             updateFindResults();
@@ -728,6 +733,12 @@ Rectangle Editor::drawToolArea()
         SetNextWidth(18);
         Button(GuiIconText(ICON_ARROW_DOWN,""));
         EndColumns();
+        if(IsKeyPressed(KEY_TAB)) {
+            if(HasKeyboardFocus((void*)&_findString))
+                SetKeyboardFocus((void*)&_replaceString);
+            else if(HasKeyboardFocus((void*)&_replaceString))
+                SetKeyboardFocus((void*)&_findString);
+        }
     }
     return toolArea;
 }
@@ -795,6 +806,9 @@ void Editor::updateFindResults()
             _selectionStart = _findCurrentOffset = iter - _text.cbegin();
             _findCurrentLength = len;
             _selectionEnd = _selectionStart + _findCurrentLength;
+            auto [cx, cy] = cursorFromOffset(_selectionStart);
+            _cursorX = _cursorVirtX = cx; _cursorY = cy;
+            ensureCursorVisibility();
         }
         iter += len;
     }
