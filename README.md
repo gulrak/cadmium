@@ -17,13 +17,16 @@ try to cobble an implementation together in a few hours.
 It worked quite well, and as I was using raylib for some tools and took part
 in a raylib game jam, I saw this as a good fit.
 
-![Cadmium debug view](screenshots/screenshot01.png?raw=true "A screenshot of the debug view")
+![Cadmium debug view](media/screenshot01.png?raw=true "A screenshot of the debug view")
 
 An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
 simply drag rom files (`.ch8`, `.sc8`, `.xo8`) or Octo sources (`.8o`) onto the
 window to load them.
 
 ## Features
+
+The emulation behavior used in Cadmium is based on opcode information documented
+in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
 
 * Emulation uses a number of configurable "quirks" or options, to allow a wide
   range of roms to work with it. Contrary to some other sources, Cadmium sees 

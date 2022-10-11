@@ -370,12 +370,14 @@ void Editor::update()
         }
     }
     if(_cursorChanged) {
+        _blinkTimer = BLINK_RATE;
         ensureCursorVisibility();
         if(!selectionChange)
             _selectionStart = _selectionEnd = 0;
     }
 
     if(_undoStack.empty() || _undoStack.top().id == _editId) {
+        _blinkTimer = BLINK_RATE;
         _inactiveEditTimer = 0;
         _lastEditId = _editId;
     }
