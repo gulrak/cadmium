@@ -418,13 +418,17 @@ public:
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
-    Cadmium(int screenWidth_, int screenHeight_, emu::Chip8EmulatorOptions chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP))
-        : _screenWidth(screenWidth_)
-        , _screenHeight(screenHeight_)
+    Cadmium(emu::Chip8EmulatorOptions chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP))
+        : _screenWidth(512)
+        , _screenHeight(256 + 36)
     {
 #ifndef PLATFORM_WEB
         auto dataDir = dataPath();
 #endif
+        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING);
+        InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 derivate environment");
+        SetExitKey(0);
+
         _instance = this;
         InitAudioDevice();
         SetAudioStreamBufferSizeDefault(1470);
@@ -447,7 +451,7 @@ public:
         _options = chip8options;
         updateEmulatorOptions();
         _chipEmu->reset();
-        _screen = GenImageColor(_chipEmu->getMaxScreenWidth(), _chipEmu->getMaxScreenHeight(), BLACK);
+        _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
         _screenTexture = LoadTextureFromImage(_screen);
         _titleImage = LoadImage("cadmium-title.png");
         _microFont = LoadImage("micro-font.png");
@@ -489,12 +493,12 @@ public:
         // Soul of the Sea
         // {0x01141a, 0xcfbc95, 0x93a399, 0x2f4845, 0x92503f, 0x949576, 0x425961, 0x81784d, 0x703a28, 0x7a7e67, 0x203633, 0x605f33, 0x56452b, 0x467e73, 0x403521, 0x51675a}
 
-        _colorPalette = {
+        setPalette( {
             be32(0x1a1c2cff), be32(0xf4f4f4ff), be32(0x94b0c2ff), be32(0x333c57ff),
             be32(0xb13e53ff), be32(0xa7f070ff), be32(0x3b5dc9ff), be32(0xffcd75ff),
             be32(0x5d275dff), be32(0x38b764ff), be32(0x29366fff), be32(0x566c86ff),
             be32(0xef7d57ff), be32(0x73eff7ff), be32(0x41a6f6ff), be32(0x257179ff)
-        };
+        });
     }
 
     ~Cadmium() override
@@ -509,6 +513,25 @@ public:
         CloseAudioDevice();
         UnloadImage(_screen);
         _instance = nullptr;
+        CloseWindow();
+    }
+
+    void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0)
+    {
+        for(size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
+            _colorPalette[i + offset] = colors[i];
+        }
+    }
+
+    void updateResolution()
+    {
+        if(_screenHeight != getCurrentScreenHeight()) {
+            UnloadRenderTexture(_renderTexture);
+            _screenHeight = getCurrentScreenHeight();
+            _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+            SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+            SetWindowSize(_screenWidth * (_scaleBy2 ? 2 : 1), _screenHeight * (_scaleBy2 ? 2 : 1));
+        }
     }
 
     bool isHeadless() const override { return false; }
@@ -536,25 +559,33 @@ public:
     {
         std::scoped_lock lock(_audioMutex);
         if(_chipEmu) {
-            auto st = _chipEmu->soundTimer();
-            auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
-            float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
-            if (!_options.optXOChipSound) {
-                const float step = 1400.0f / 44100;
-                for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
-                    *samples++ = (phase > 0.5f) ? 16384 : -16384;
-                    phase = std::fmod(phase + step, 1.0f);
+            if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
+                while(frames--) {
+                    *samples++ = ((int16_t)_chipEmu->getNextMCSample() - 128) * 256;
                 }
+                return;
             }
             else {
-                auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
-                for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
-                    auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
-                    *samples++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
-                    phase = std::fmod(phase + step, 1.0f);
+                auto st = _chipEmu->soundTimer();
+                auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
+                float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
+                if (!_options.optXOChipSound) {
+                    const float step = 1400.0f / 44100;
+                    for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
+                        *samples++ = (phase > 0.5f) ? 16384 : -16384;
+                        phase = std::fmod(phase + step, 1.0f);
+                    }
                 }
+                else {
+                    auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
+                    for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
+                        auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
+                        *samples++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
+                        phase = std::fmod(phase + step, 1.0f);
+                    }
+                }
+                _chipEmu->setAudioPhase(phase);
             }
-            _chipEmu->setAudioPhase(phase);
         }
         while(frames--) {
             *samples++ = 0;
@@ -670,6 +701,11 @@ public:
         }
     }
 
+    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override
+    {
+        setPalette(palette, offset);
+    }
+
     void generateFont()
     {
         _fontImage = GenImageColor(256, 256, {0, 0, 0, 0});
@@ -724,23 +760,25 @@ public:
     int getFrameBoost() const { return _frameBoost >0 ? _frameBoost : 1; }
     int getInstrPerFrame() const { return _options.instructionsPerFrame>=0 ? _options.instructionsPerFrame : 0; }
 
-    void updateScreenTexture()
+    void updateScreen() override
     {
-        if(true/*updateScreen*/) {
-            auto* pixel = (uint32_t*)_screen.data;
-            const uint8_t* planes = _chipEmu->getScreenBuffer();
-            const uint8_t* end = planes + _chipEmu->getMaxScreenWidth()* _chipEmu->getMaxScreenHeight();
-            while(planes < end) {
-                *pixel++ = _colorPalette[*planes++ & 0xF];
-            }
-            UpdateTexture(_screenTexture, _screen.data);
-            _updateScreen = false;
+        auto* pixel = (uint32_t*)_screen.data;
+        const uint8_t* planes = _chipEmu->getScreenBuffer();
+        const uint8_t* end = planes + _chipEmu->getMaxScreenWidth() * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT; //_chipEmu->getMaxScreenHeight();
+        while(planes < end) {
+            *pixel++ = _colorPalette[*planes++];
         }
+        UpdateTexture(_screenTexture, _screen.data);
     }
 
     static void updateAndDrawFrame(void* self)
     {
         static_cast<Cadmium*>(self)->updateAndDraw();
+    }
+
+    int getCurrentScreenHeight() const
+    {
+        return _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP ? 384 + 36 : 256 + 36;
     }
 
     void updateAndDraw()
@@ -749,20 +787,21 @@ public:
         if (_scaleBy2) {
             // Screen size x2
             if (GetScreenWidth() < _screenWidth * 2) {
-                SetWindowSize(_screenWidth * 2, _screenHeight * 2);
-                CenterWindow(_screenWidth * 2, _screenHeight * 2);
+                SetWindowSize(_screenWidth * 2, getCurrentScreenHeight() * 2);
+                CenterWindow(_screenWidth * 2, getCurrentScreenHeight() * 2);
                 SetMouseScale(0.5f, 0.5f);
             }
         }
         else {
             // Screen size x1
             if (_screenWidth < GetScreenWidth()) {
-                SetWindowSize(_screenWidth, _screenHeight);
-                CenterWindow(_screenWidth, _screenHeight);
+                SetWindowSize(_screenWidth, getCurrentScreenHeight());
+                CenterWindow(_screenWidth, getCurrentScreenHeight());
                 SetMouseScale(1.0f, 1.0f);
             }
         }
 #endif
+        updateResolution();
 
         _librarian.update(_options); // allows librarian to complete background tasks
 
@@ -791,7 +830,8 @@ public:
             g_soundTimer.store(_chipEmu->soundTimer());
         }
 
-        updateScreenTexture();
+        if(_chipEmu->needsScreenUpdate())
+            updateScreen();
 
         BeginTextureMode(_renderTexture);
         drawGui();
@@ -1035,8 +1075,11 @@ public:
                 auto spacePos = GetCurrentPos();
                 auto spaceWidth = avail - buttonsRight * 20;
                 Space(spaceWidth);
+                if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP)
+                    GuiDisable();
                 if (iconButton(ICON_BOX_GRID, _grid))
                     _grid = !_grid;
+                GuiEnable();
                 SetTooltip("TOGGLE GRID");
                 Space(10);
                 if (iconButton(ICON_ZOOM_ALL, _mainView == eVIDEO))
@@ -1068,7 +1111,8 @@ public:
             switch (_mainView) {
                 case eDEBUGGER: {
                     const int lineSpacing = 10;
-                    const int debugScale = 256/ _chipEmu->getCurrentScreenWidth();
+                    const int debugScale = 256 / _chipEmu->getCurrentScreenWidth();
+                    const bool megaChipVideo = _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP;
                     _lastView = _mainView;
                     gridScale = debugScale;
                     BeginColumns();
@@ -1078,8 +1122,8 @@ public:
                     SetSpacing(0);
                     BeginPanel("Video", {1, 0});
                     {
-                        video = {GetCurrentPos().x, GetCurrentPos().y, (float)256, (float)128};
-                        Space(128 + 1);
+                        video = {GetCurrentPos().x, GetCurrentPos().y, (float)256, (float)(megaChipVideo ? 192 : 128)};
+                        Space(megaChipVideo ? 192 + 1 : 128 + 1);
                     }
                     EndPanel();
                     drawScreen(video, gridScale);
@@ -1226,7 +1270,7 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;XO-CHIP", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGA-CHIP;XO-CHIP", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
@@ -1387,6 +1431,7 @@ public:
                                 _currentFileName = "";
                         }
                         selectedInfo.analyzed = false;
+                        break;
                     }
                     else if(info.type == Librarian::Info::eOCTO_SOURCE) {
                         selectedInfo = info;
@@ -1520,12 +1565,13 @@ public:
 
     const std::string& romExtension()
     {
-        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".xo8"};
+        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".mc8", ".xo8"};
         switch(_options.behaviorBase) {
             case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
             case emu::Chip8EmulatorOptions::eSCHIP10:
             case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
-            case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[3];
+            case emu::Chip8EmulatorOptions::eMEGACHIP: return extensions[3];
+            case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[4];
             default: return extensions[0];
         }
     }
@@ -1584,6 +1630,14 @@ public:
             }
             else if(endsWith(filename, ".sc8")) {
                 _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
+                updateEmulatorOptions();
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
+                    valid = true;
+                }
+            }
+            else if(endsWith(filename, ".mc8")) {
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP);
                 updateEmulatorOptions();
                 if (size < _chipEmu->memSize() - 512) {
                     _romImage = loadFile(filename);
@@ -1657,6 +1711,7 @@ public:
                 if(_editor.isEmpty()) {
                     std::stringstream os;
                     emu::Chip8Decompiler decomp;
+                    decomp.setVariant(_options.presetAsVariant());
                     decomp.decompile(filename, _romImage.data(), 0x200, _romImage.size(), 0x200, &os, false, true);
                     _editor.setText(os.str());
                 }
@@ -1712,7 +1767,7 @@ private:
     std::string _romName;
     std::vector<uint8_t> _romImage;
     std::string _romSha1Hex;
-    std::array<uint32_t, 16> _colorPalette{};
+    std::array<uint32_t, 256> _colorPalette{};
     volatile bool _grid{false};
     MainView _mainView{eDEBUGGER};
     MainView _lastView{eDEBUGGER};
@@ -1780,18 +1835,6 @@ EMSCRIPTEN_KEEPALIVE int load_file(uint8_t *buffer, size_t size) {
 
 }
 #endif
-
-static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetMap = {
-    {"chip8", emu::Chip8EmulatorOptions::eCHIP8},
-    {"chip10", emu::Chip8EmulatorOptions::eCHIP10},
-    {"chip48", emu::Chip8EmulatorOptions::eCHIP48},
-    {"schip10", emu::Chip8EmulatorOptions::eSCHIP10},
-    {"superchip10", emu::Chip8EmulatorOptions::eSCHIP10},
-    {"schip11", emu::Chip8EmulatorOptions::eSCHIP11},
-    {"superchip11", emu::Chip8EmulatorOptions::eSCHIP11},
-    {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
-    {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
-};
 
 std::string formatOpcode(emu::OpcodeType type, uint16_t opcode)
 {
@@ -1907,18 +1950,13 @@ int main(int argc, char* argv[])
         exit(0);
     }
     if(!presetName.empty()) {
-        auto presetUnified = presetName;
-        {
-            auto iter = std::remove_if(presetUnified.begin(), presetUnified.end(), [](unsigned char c) { return std::ispunct(c); });
-            presetUnified.erase(iter, presetUnified.end());
-            std::transform(presetUnified.begin(), presetUnified.end(), presetUnified.begin(), [](unsigned char c){ return std::tolower(c); });
+        try {
+            preset = emu::Chip8EmulatorOptions::presetForName(presetName);
         }
-        auto iter = presetMap.find(presetUnified);
-        if(iter == presetMap.end()) {
-            std::cerr << "ERROR: Unsupported preset '" << presetName << "', check help for supported presets." << std::endl;
+        catch(std::runtime_error e) {
+            std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
             exit(1);
         }
-        preset = iter->second;
     }
     auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
     if(execSpeed >= 0) {
@@ -1929,30 +1967,19 @@ int main(int argc, char* argv[])
     auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
     {
 #endif
-        const int screenWidth = 512;
-        const int screenHeight = 256 + 36;
 
-        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING);
-        InitWindow(screenWidth, screenHeight, "Cadmium - A CHIP-8 derivate environment");
-        SetExitKey(0);
-        {
-            Cadmium cadmium(screenWidth, screenHeight, chip8options);
+        Cadmium cadmium(chip8options);
 #ifndef PLATFORM_WEB
-            if (!romFile.empty()) {
-                cadmium.loadRom(romFile.c_str());
-            }
-#endif
-
-#if defined(PLATFORM_WEB)
-            emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);
-#else
-            SetTargetFPS(60);
-            while (!cadmium.windowShouldClose()) {
-                cadmium.updateAndDraw();
-            }
-#endif
+        if (!romFile.empty()) {
+            cadmium.loadRom(romFile.c_str());
         }
-        CloseWindow();
+        SetTargetFPS(60);
+        while (!cadmium.windowShouldClose()) {
+            cadmium.updateAndDraw();
+        }
+#else
+        emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);
+#endif
     }
 #ifndef PLATFORM_WEB
     else {

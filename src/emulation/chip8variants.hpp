@@ -148,4 +148,9 @@ using C8V = Chip8Variant;
 static constexpr Chip8Variant C8VG_BASE = static_cast<Chip8Variant>(0x3FFFFFFFFFFFFF) & ~(C8V::CHIP_8_1_2 | C8V::CHIP_8C | C8V::CHIP_8_SCROLL | C8V::MULTIPLE_NIM | C8V::CHIP_8_D6800 | C8V::CHIP_8_D6800_LOP | C8V::CHIP_8_D6800_JOY | C8V::CHIPOS_2K_D6800);
 static constexpr Chip8Variant C8VG_D6800 = C8V::CHIP_8_D6800 | C8V::CHIP_8_D6800_LOP | C8V::CHIP_8_D6800_JOY | C8V::CHIPOS_2K_D6800;
 
+inline bool contained(Chip8Variant variants, Chip8Variant subset)
+{
+    return (variants & subset) == subset;
+}
+
 } // namespace emu

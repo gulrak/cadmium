@@ -88,6 +88,8 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP10;
                 else if(ext == ".sc8")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eSCHIP11;
+                else if(ext == ".mc8")
+                    type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eMEGACHIP;
                 else if(ext == ".xo8")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eXOCHIP;
                 else if(ext == ".c8b")
@@ -141,6 +143,8 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                                 entry.variant = options.behaviorBase;
                             else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
                                 entry.variant = emu::Chip8EmulatorOptions::eXOCHIP;
+                            else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
+                                entry.variant = emu::Chip8EmulatorOptions::eMEGACHIP;
                             else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
                                 entry.variant = emu::Chip8EmulatorOptions::eSCHIP11;
                             else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))

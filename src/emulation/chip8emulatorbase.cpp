@@ -124,7 +124,11 @@ void Chip8EmulatorBase::reset()
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
     _isHires = _options.optOnlyHires ? true : false;
+    _isMegaChipMode = false;
     _planes = 1;
+    _spriteWidth = 0;
+    _spriteHeight = 0;
+    _collisionColor = 1;
     copyState();
 }
 
@@ -132,7 +136,7 @@ void Chip8EmulatorBase::copyState()
 {
     std::memcpy(_rV_b.data(), _rV.data(), sizeof(uint8_t)*16);
     std::memcpy(_stack_b.data(), _stack.data(), sizeof(uint16_t)*16);
-    std::memcpy(_memory_b.data(), _memory.data(), sizeof(uint8_t)*_memory.size());
+    std::memcpy(_memory_b.data(), _memory.data(), sizeof(uint8_t)*_memory_b.size());
     _rSP_b = _rSP;
     _rDT_b = _rDT;
     _rST_b = _rST;
@@ -161,14 +165,25 @@ std::pair<uint16_t, std::string> Chip8EmulatorBase::disassembleInstruction(const
 
     switch (opcode >> 12) {
         case 0:
+            if (opcode == 0x0010 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "megaoff"};
+            if (opcode == 0x0011 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "megaon"};
+            if ((opcode & 0xFFF0) == 0x00B0 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("scroll-up {}", opcode & 0xF)};
             if ((opcode & 0xFFF0) == 0x00C0) return {2, fmt::format("scroll-down {}", opcode & 0xF)};
-            if ((opcode & 0xFFF0) == 0x00D0) return {2, fmt::format("scroll-up {}", opcode & 0xF)};
+            if ((opcode & 0xFFF0) == 0x00D0 && _options.behaviorBase != emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("scroll-up {}", opcode & 0xF)};
             if (opcode == 0x00E0) return {2, "clear"};
             if (opcode == 0x00EE) return {2, "return"};
             if (opcode == 0x00FB) return {2, "scroll-right"};
             if (opcode == 0x00FC) return {2, "scroll-left"};
             if (opcode == 0x00FE) return {2, "lores"};
             if (opcode == 0x00FF) return {2, "hires"};
+            if ((opcode & 0xFF00) == 0x0100 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {4, fmt::format("i := long {}", _labelOrAddress(((opcode&0xFF)<<16)|next))};
+            if ((opcode & 0xFF00) == 0x0200 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("ldpal {}", opcode & 0xFF)};
+            if ((opcode & 0xFF00) == 0x0300 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("sprw {}", opcode & 0xFF)};
+            if ((opcode & 0xFF00) == 0x0400 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("sprh {}", opcode & 0xFF)};
+            if ((opcode & 0xFF00) == 0x0500 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("alpha {}", opcode & 0xFF)};
+            if ((opcode & 0xFFF0) == 0x0600 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("digisnd {}", opcode & 0xF)};
+            if (opcode == 0x0700 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "stopsnd"};
+            if ((opcode & 0xFFF0) == 0x0800 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("bmode {}", opcode & 0xF)};
             return {2, fmt::format("0x{:02X} 0x{:02X}", opcode >> 8, opcode & 0xFF)};
         case 1: return {2, fmt::format("jump {}", _labelOrAddress(opcode & 0xFFF))};
         case 2: return {2, fmt::format(":call {}", _labelOrAddress(opcode & 0xFFF))};

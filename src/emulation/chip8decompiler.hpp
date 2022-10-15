@@ -51,7 +51,7 @@ public:
         uint32_t startAddr() const { return offset; }
         uint32_t endAddr() const { return offset + size(); }
         uint32_t size() const { return uint32_t(end - start); }
-        uint16_t offset{};
+        uint32_t offset{};
         const uint8_t* start{};
         const uint8_t* end{};
         uint8_t usageType{};
@@ -73,16 +73,23 @@ public:
     Chip8Decompiler()
     {
         if(mappedOpcodeInfo.empty()) {
-            mappedOpcodeInfo.resize(65536, nullptr);
+            mappedOpcodeInfo.resize(65536);
             for(uint32_t opcode = 0; opcode < 0x10000; ++opcode) {
                 for(const auto& info : detail::opcodes) {
                     if((opcode & info.mask) == info.opcode) {
-                        mappedOpcodeInfo[opcode] = &info;
+                        mappedOpcodeInfo[opcode].push_back(&info);
                     }
                 }
+                if(mappedOpcodeInfo[opcode].empty())
+                    mappedOpcodeInfo[opcode].push_back(nullptr);
             }
         }
         possibleVariants = static_cast<Chip8Variant>(~uint64_t{0});
+    }
+
+    void setVariant(Chip8Variant variant)
+    {
+        possibleVariants = variant;
     }
 
     static std::pair<std::string,std::string> chipVariantName(Chip8Variant cv);
@@ -92,7 +99,7 @@ public:
         return (*ptr<<8) + *(ptr+1);
     }
 
-    void refLabel(uint16_t addr, UsageType type)
+    void refLabel(uint32_t addr, UsageType type)
     {
         auto i = label.find(addr);
         if(i == label.end()) {
@@ -103,7 +110,7 @@ public:
         }
     }
 
-    Chunk* findChunk(uint16_t addr)
+    Chunk* findChunk(uint32_t addr)
     {
         for(auto& [offset, chunk] : chunks) {
             if(offset <= addr && chunk.end - chunk.start + offset > addr) {
@@ -113,7 +120,7 @@ public:
         return nullptr;
     }
 
-    void splitChunk(Chunk*& chunk, const uint8_t* start, uint16_t size, UsageType type)
+    void splitChunk(Chunk*& chunk, const uint8_t* start, uint32_t size, UsageType type)
     {
         if(chunk->start < start) {
             // seperate prefix chunk
@@ -134,7 +141,7 @@ public:
         chunk->usageType = static_cast<UsageType>(chunk->usageType | type);
     }
 
-    std::string labelOrAddress(uint16_t addr) const
+    std::string labelOrAddress(uint32_t addr) const
     {
         auto i = label.find(addr);
         if(i != label.end()) {
@@ -153,13 +160,16 @@ public:
             }
             return fmt::format("data_{}", number);
         }
-        return fmt::format("0x{:03x}", addr);
+        return fmt::format("0x{:x}", addr);
     }
 
     std::tuple<uint16_t, uint16_t, std::string> opcode2Str(uint16_t opcode, int next) const
     {
         switch (opcode >> 12) {
             case 0:
+                if (opcode == 0x0010) return {2, opcode, "megaoff"};
+                if (opcode == 0x0011 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, "megaon"};
+                if ((opcode & 0xFFF0) == 0x00B0 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("scroll-up-alt {}", opcode & 0xF)};
                 if ((opcode & 0xFFF0) == 0x00C0) return {2, opcode, fmt::format("scroll-down {}", opcode & 0xF)};
                 if ((opcode & 0xFFF0) == 0x00D0) return {2, opcode, fmt::format("scroll-up {}", opcode & 0xF)};
                 if (opcode == 0x00E0) return {2, opcode, "clear"};
@@ -168,6 +178,15 @@ public:
                 if (opcode == 0x00FC) return {2, opcode, "scroll-left"};
                 if (opcode == 0x00FE) return {2, opcode, "lores"};
                 if (opcode == 0x00FF) return {2, opcode, "hires"};
+                if ((opcode & 0xFF00) == 0x0100 && contained(possibleVariants, C8V::MEGA_CHIP)) return {4, opcode, fmt::format("ldhi {}", labelOrAddress(((opcode&0xFF)<<16)|next))};
+                if ((opcode & 0xFF00) == 0x0200 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("ldpal {}", opcode & 0xFF)};
+                if ((opcode & 0xFF00) == 0x0300 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("sprw {}", opcode & 0xFF)};
+                if ((opcode & 0xFF00) == 0x0400 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("sprh {}", opcode & 0xFF)};
+                if ((opcode & 0xFF00) == 0x0500 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("alpha {}", opcode & 0xFF)};
+                if ((opcode & 0xFFF0) == 0x0600 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("digisnd {}", opcode & 0xF)};
+                if (opcode == 0x0700 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, "stopsnd"};
+                if ((opcode & 0xFFF0) == 0x0800 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("bmode {}", opcode & 0xF)};
+                if ((opcode & 0xFF00) == 0x0900 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("ccol {}", opcode & 0xFF)};
                 return {2, opcode, fmt::format("0x{:02X} 0x{:02X}", opcode >> 8, opcode & 0xFF)};
             case 1: return {2, 0x1000, fmt::format("jump {}", labelOrAddress(opcode & 0xFFF))};
             case 2: return {2, 0x2000, fmt::format(":call {}", labelOrAddress(opcode & 0xFFF))};
@@ -247,14 +266,14 @@ public:
 
     std::tuple<uint16_t, uint16_t, std::string> opcode2Str(const uint8_t* code, const uint8_t* end) const
     {
-        auto opcode = readOpcode(code++);
-        auto next = code + 1 < end ? readOpcode(code) : 0;
+        auto opcode = readOpcode(code);
+        auto next = code + 3 < end ? readOpcode(code + 2) : 0;
         return opcode2Str(opcode, next);
     }
 
     bool supportsVariant(emu::Chip8Variant variant) const
     {
-        return (possibleVariants & variant) == variant;
+        return contained(possibleVariants,  variant);
     }
 
     void disassembleChunk(Chunk& chunk, std::ostream& os)
@@ -285,7 +304,7 @@ public:
                 auto labelIter = label.find(addr);
                 if (labelIter != label.end()) {
                     os << fmt::format("\n: {}\n", labelOrAddress(addr));
-                    inSpriteMode = labelIter->second.type & eSPRITE;
+                    inSpriteMode = (labelIter->second.type & eSPRITE) && possibleVariants != C8V::MEGA_CHIP;
                 }
                 if(inSpriteMode) {
                     os << "        " << fmt::format("0b{:08b}\n", *code);
@@ -312,7 +331,14 @@ public:
         bool endsChunk = false;
         switch (opcode >> 12) {
             case 0:
-                if (opcode == 0x00E0) {  // 00E0 - CLS
+                if ((opcode & 0xFF00) == 0x0100) {
+                    if (next >= 0)
+                        ec.rI = ((opcode & 0xFF)<<8) | next;
+                    else
+                        ec.rI = -1;
+                    refLabel(nnn, eREAD);
+                }
+                else if (opcode == 0x00E0) {  // 00E0 - CLS
                 }
                 else if (opcode == 0x00EE) {  // 00EE - RET
                     endsChunk = !ec.inSkip;
@@ -581,14 +607,26 @@ public:
             if(ec.rPC & 1)
                 _oddPcAccess = true;
             auto opcode = readOpcode(code);
-            const OpcodeInfo* info = mappedOpcodeInfo[opcode];
-            if(info)
-                possibleVariants &= info->variants;
+            Chip8Variant mask = (Chip8Variant)0;
+            for(auto info : mappedOpcodeInfo[opcode])
+                if(info)
+                    mask |= info->variants;
+            //const OpcodeInfo* info = mappedOpcodeInfo[opcode].front();
+            if((uint64_t)mask) {
+                possibleVariants &= mask;
+                if (!(uint64_t)possibleVariants)
+                    std::cerr << "huuuu" << std::endl;
+            }
             //auto category = opcode >> 12;
             code += 2;
             ec.rPC += 2;
             int next = -1;
             if(opcode == 0xF000) {
+                next = readOpcode(code);
+                code += 2;
+                ec.rPC += 2;
+            }
+            else if((opcode & 0xFF00) == 0x0100 && supportsVariant(C8V::MEGA_CHIP)) {
                 next = readOpcode(code);
                 code += 2;
                 ec.rPC += 2;
@@ -707,7 +745,33 @@ public:
         }
         else if(os) {
             renumerateLabels();
-            *os << "# This is an automatically generated source, created by the Chip8rl-Decompiler\n# ROM file used: " << filename << "\n\n";
+            *os << "# This is an automatically generated source, created by the Cadmium-Decompiler\n# ROM file used: " << filename << "\n\n";
+            if(possibleVariants == C8V::MEGA_CHIP) {
+                *os << R"(#--------------------------------------------------------------
+# MegaChip support macros
+:macro megaoff { :byte 0x00  :byte 0x10 }
+:macro megaon { :byte 0x00 :byte 0x11 }
+:macro scroll_up n {
+    :calc BN { 0xB0 + ( n & 0xF ) }
+    :byte 0x00 :byte BN
+}
+:macro ldhi nnnnnn {
+    :calc B1 { nnnnnn >> 16 }
+    :calc B2 { ( nnnnnn >> 8 ) & 0xFF }
+    :calc B3 { nnnnnn & 0xFF }
+    :byte 0x01 :byte B1 :byte B2 :byte B3
+}
+:macro ldpal nn { :byte 0x02 :byte nn }
+:macro sprw nn { :byte 0x03 :byte nn }
+:macro sprh nn { :byte 0x04 :byte nn }
+:macro alpha nn { :byte 0x05 :byte nn }
+:macro digisnd n { :calc ZN { n & 0xF } :byte 0x06 :byte ZN }
+:macro stopsnd { :byte 0x07 :byte 0x00 }
+:macro bmode n { :calc ZN { n & 0xF } :byte 0x08 :byte ZN }
+:macro ccol nn { :byte 0x09 :byte nn }
+#--------------------------------------------------------------
+)";
+            }
             bool hasConsts = false;
             for(auto& [addr, info] : label) {
                 if(!findChunk(addr)) {
@@ -765,7 +829,7 @@ public:
     std::map<uint16_t, LabelInfo> label;
     std::unordered_map<uint16_t, int> stats;
     inline static std::map<uint16_t, int> totalStats;
-    inline static std::vector<const OpcodeInfo*> mappedOpcodeInfo;
+    inline static std::vector<std::vector<const OpcodeInfo*>> mappedOpcodeInfo;
 };
 
 }

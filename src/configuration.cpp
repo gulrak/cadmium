@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8options.hpp
+// src/configuration.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -23,42 +23,16 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#pragma once
 
-#include <emulation/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <configuration.hpp>
+#include <nlohmann/json.hpp>
 
-#include <cstdint>
-#include <string>
+void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
+    j = nlohmann::json{ {"workingDirectory", cc.workingDirectory}, {"emuOptions", cc.emuOptions}, {"romConfigs", cc.romConfigs} };
+}
 
-namespace emu {
-
-struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHICUEYI, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
-    uint16_t startAddress{0x200};
-    bool optJustShiftVx{false};
-    bool optDontResetVf{false};
-    bool optLoadStoreIncIByX{false};
-    bool optLoadStoreDontIncI{false};
-    bool optWrapSprites{false};
-    bool optInstantDxyn{false};
-    bool optJump0Bxnn{false};
-    bool optAllowHires{false};
-    bool optOnlyHires{false};
-    bool optAllowColors{false};
-    bool optHas16BitAddr{false};
-    bool optXOChipSound{false};
-    bool optChicueyiSound{false};
-    int instructionsPerFrame{9};
-    Chip8Variant presetAsVariant() const;
-    //static SupportedPreset variantAsPreset(Chip8Variant variant);
-    static std::string nameOfPreset(SupportedPreset preset);
-    static SupportedPreset presetForName(const std::string& name);
-    static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
-};
-
-void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
-void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
-
+void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
+    j.at("workingDirectory").get_to(cc.workingDirectory);
+    j.at("emuOptions").get_to(cc.emuOptions);
+    j.at("romConfigs").get_to(cc.romConfigs);
 }

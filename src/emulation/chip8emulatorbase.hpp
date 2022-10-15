@@ -46,22 +46,24 @@ public:
     virtual bool isHeadless() const = 0;
     virtual uint8_t getKeyPressed() = 0;
     virtual bool isKeyDown(uint8_t key) = 0;
+    virtual void updateScreen() = 0;
     virtual void updatePalette(const std::array<uint8_t,16>& palette) = 0;
+    virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
 };
 
 class Chip8EmulatorBase : public IChip8Emulator
 {
 public:
-    constexpr static int MAX_SCREEN_WIDTH = 128;
-    constexpr static int MAX_SCREEN_HEIGHT = 64;
+    constexpr static int MAX_SCREEN_WIDTH = 256;
+    constexpr static int MAX_SCREEN_HEIGHT = 192;
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
         : _host(host)
         , _options(options)
-        , _memory(options.optHas16BitAddr ? 0x10000 : 0x1000, 0)
-        , _memory_b(_memory.size(), 0)
+        , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000000 : options.optHas16BitAddr ? 0x10000 : 0x1000, 0)
+        , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
         if(other) {
             _labelOrAddress = other->_labelOrAddress;
@@ -76,6 +78,11 @@ public:
             _screenBuffer = other->_screenBuffer;
             _xoAudioPattern = other->_xoAudioPattern;
             _xoPitch.store(other->_xoPitch);
+            _sampleStep.store(other->_sampleStep);
+            _sampleStart.store(other->_sampleStart);
+            _sampleLength.store(other->_sampleLength);
+            _mcSamplePos.store(other->_mcSamplePos);
+            _sampleLoop = other->_sampleLoop;
             _xxoPalette = other->_xxoPalette;
             _rI = other->_rI;
             _rI_b = other->_rI_b;
@@ -92,21 +99,25 @@ public:
             _rV = other->_rV;
             _rV_b = other->_rV_b;
             _randomSeed = other->_randomSeed;
-            _memory = other->_memory;
-            _memory_b = other->_memory_b;
+            std::memcpy(_memory.data(), other->_memory.data(), std::min(_memory.size(), other->_memory.size()));
+            std::memcpy(_memory_b.data(), other->_memory_b.data(), std::min(_memory_b.size(), other->_memory_b.size()));
             //_memFlags = other->_memFlags;
             _systemTime = other->_systemTime;
+            _spriteWidth = other->_spriteWidth;
+            _spriteHeight = other->_spriteHeight;
+            _collisionColor = other->_collisionColor;
         }
         if(!_isHires && _options.optOnlyHires) {
             _isHires = true;
         }
+        _isMegaChipMode = (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP && other->_isMegaChipMode);
         _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
     }
     ~Chip8EmulatorBase() override = default;
 
     void clearScreen()
     {
-        std::memset(_screenBuffer.data(), 0, 128*64);
+        std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT);
     }
     std::string dumStateLine() const override
     {
@@ -168,10 +179,11 @@ public:
 
     void tick(int instructionsPerFrame) override;
 
-    uint16_t getCurrentScreenWidth() const override { return _options.optAllowHires ? 128 : 64; }
-    uint16_t getCurrentScreenHeight() const override { return _options.optAllowHires ? 64 : 32; }
-    uint16_t getMaxScreenWidth() const override { return 128; }
-    uint16_t getMaxScreenHeight() const override { return 64; }
+    bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return rc; }
+    uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }
+    uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
+    uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : 128; }
+    uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : 64; }
     const uint8_t* getScreenBuffer() const override { return _screenBuffer.data(); }
 
     float getAudioPhase() const override { return _wavePhase; }
@@ -195,6 +207,8 @@ protected:
     ExecMode _execMode{eRUNNING};
     CpuState _cpuState{eNORMAL};
     bool _isHires{false};
+    bool _isMegaChipMode{false};
+    bool _screenNeedsUpdate{false};
     uint8_t _planes{1};
     uint16_t _stepOverSP{};
     int64_t _cycleCounter{0};
@@ -211,6 +225,11 @@ protected:
     std::array<uint8_t, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT> _screenBuffer{};
     std::array<uint8_t,16> _xoAudioPattern{};
     std::atomic_uint8_t _xoPitch{};
+    std::atomic<float> _sampleStep{0};
+    std::atomic_uint32_t _sampleStart{0};
+    std::atomic_uint32_t _sampleLength{0};
+    bool _sampleLoop{true};
+    std::atomic<double> _mcSamplePos{0};
     std::array<uint8_t,16> _xxoPalette{};
     std::array<uint8_t,16> _rV{};
     std::array<uint8_t,16> _rV_b{};
@@ -218,6 +237,9 @@ protected:
     uint8_t _rDT_b{};
     uint8_t _rST_b{};
     uint16_t _rI_b{};
+    uint16_t _spriteWidth{0};
+    uint16_t _spriteHeight{0};
+    uint8_t _collisionColor{1};
 
     Chip8EmulatorHost& _host;
     Chip8EmulatorOptions& _options;
