@@ -757,8 +757,8 @@ public:
         return _updateScreen;
     }
 
-    int getFrameBoost() const { return _frameBoost >0 ? _frameBoost : 1; }
     int getInstrPerFrame() const { return _options.instructionsPerFrame>=0 ? _options.instructionsPerFrame : 0; }
+    int getFrameBoost() const { return _frameBoost > 0 && getInstrPerFrame() > 0 ? _frameBoost : 1; }
 
     void updateScreen() override
     {
@@ -1110,6 +1110,7 @@ public:
 
             switch (_mainView) {
                 case eDEBUGGER: {
+                    SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 5);
                     const int lineSpacing = 10;
                     const int debugScale = 256 / _chipEmu->getCurrentScreenWidth();
                     const bool megaChipVideo = _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP;
@@ -1175,9 +1176,19 @@ public:
                         ++i;
                         DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                         ++i;
-                        DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
-                                   _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
-                        ++i;
+                        if(_chipEmu->memSize() > 0x10000) {
+                            ++i;
+                            DrawTextEx(_font, "I:", {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            ++i;
+                            DrawTextEx(_font, TextFormat("%06X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            ++i;
+                            ++i;
+                        }
+                        else {
+                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
+                                       _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            ++i;
+                        }
                         DrawTextEx(_font, TextFormat("SP: %02X", _chipEmu->getSP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getSP() == _chipEmu->getCopySP() ? LIGHTGRAY : YELLOW);
                         ++i;
                         ++i;
@@ -1197,31 +1208,44 @@ public:
                         const auto* stack = _chipEmu->getStackElements();
                         const auto* stackCopy = _chipEmu->getCopyStackElements();
                         for (int i = 0; i < stackSize; ++i) {
-                            DrawTextEx(_font, TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
+                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
                         }
                     }
                     EndPanel();
+                    static Vector2 memScroll{0,0};
+                    static uint8_t memPage{0};
                     SetNextWidth(163);
-                    BeginPanel("Memory");
+                    BeginPanel(memPage ? TextFormat("Memory [%02X....]", memPage) : "Memory", {0,0});
                     {
                         auto pos = GetCurrentPos();
                         auto area = GetContentAvailable();
-                        pos.x += 0;
-                        Space(area.height);
-                        for (int i = 0; i < 23; ++i) {
-                            DrawTextEx(_font, TextFormat("%04X", _chipEmu->getI() + i * 8), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
-                            for(int j = 0; j < 8; ++j) {
-                                if(_chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
-                                    DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[_chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? LIGHTGRAY : GRAY);
-                                }
-                                else {
-                                    DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[_chipEmu->getI() + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j&1 ? YELLOW : BROWN);
+                        pos.x += 4;
+                        pos.y -= lineSpacing / 2;
+                        SetStyle(DEFAULT, BORDER_WIDTH, 0);
+                        if(_chipEmu->execMode() != ExecMode::ePAUSED)
+                            memScroll.y = -(float)(_chipEmu->getI() / 8) * lineSpacing;
+                        BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_chipEmu->memSize()/8 + 1) * lineSpacing}, &memScroll);
+                        auto addr = int(-memScroll.y / lineSpacing) * 8 - 8;
+                        memPage = addr < 0 ? 0 : addr >> 16;
+                        for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
+                            if(addr + i * 8 >= 0 && addr + i * 8 < _chipEmu->memSize()) {
+                                DrawTextEx(_font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                                for (int j = 0; j < 8; ++j) {
+                                    if (_chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
+                                        DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? LIGHTGRAY : GRAY);
+                                    }
+                                    else {
+                                        DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? YELLOW : BROWN);
+                                    }
                                 }
                             }
                         }
+                        EndScrollPanel();
+                        SetStyle(DEFAULT, BORDER_WIDTH, 1);
                     }
                     EndPanel();
                     EndColumns();
+                    SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
                     break;
                 }
                 case eVIDEO: {
@@ -1240,11 +1264,8 @@ public:
                     BeginPanel("Editor", {1,1});
                     {
                         auto rect = GetContentAvailable();
-                        //Space(rect.height);
 #ifdef WITH_EDITOR
-                        //BeginScissorMode(rect.x, rect.y - 1, rect.width, rect.height);
                         _editor.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
-                        //EndScissorMode();
 #endif
                     }
                     EndPanel();
@@ -1263,7 +1284,15 @@ public:
                         SetIndent(180);
                         SetRowHeight(20);
                         Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
-                        Spinner("Frame boost", &_frameBoost, 1, 100000);
+                        if (!_options.instructionsPerFrame) {
+                            static int _fb1{1};
+                            GuiDisable();
+                            Spinner("Frame boost", &_fb1, 1, 100000);
+                            GuiEnable();
+                        }
+                        else {
+                            Spinner("Frame boost", &_frameBoost, 1, 100000);
+                        }
                         g_frameBoost = getFrameBoost();
                         EndGroupBox();
                         Space(20);
@@ -1664,13 +1693,16 @@ public:
                     }
                     uint16_t codeOffset = 0;
                     uint16_t codeSize = 0;
-                    auto iter = c8b.findBestMatch({C8BFile::C8V_XO_CHIP, C8BFile::C8V_SCHIP_1_1, C8BFile::C8V_SCHIP_1_0, C8BFile::C8V_CHIP_48, C8BFile::C8V_CHIP_10, C8BFile::C8V_CHIP_8});
+                    auto iter = c8b.findBestMatch({C8BFile::C8V_XO_CHIP, C8BFile::C8V_MEGA_CHIP, C8BFile::C8V_SCHIP_1_1, C8BFile::C8V_SCHIP_1_0, C8BFile::C8V_CHIP_48, C8BFile::C8V_CHIP_10, C8BFile::C8V_CHIP_8});
                     if(iter != c8b.variantBytecode.end()) {
                         codeOffset = iter->second.first;
                         codeSize = iter->second.second;
                         switch (iter->first) {
                             case C8BFile::C8V_XO_CHIP:
                                 setEmulatorPresetsTo(emu::Chip8EmulatorOptions::eXOCHIP);
+                                break;
+                            case C8BFile::C8V_MEGA_CHIP:
+                                setEmulatorPresetsTo(emu::Chip8EmulatorOptions::eMEGACHIP);
                                 break;
                             case C8BFile::C8V_SCHIP_1_1:
                                 setEmulatorPresetsTo(emu::Chip8EmulatorOptions::eSCHIP11);

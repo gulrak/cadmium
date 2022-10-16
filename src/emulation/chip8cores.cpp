@@ -270,7 +270,7 @@ uint8_t Chip8EmulatorFP::getNextMCSample()
         _mcSamplePos.store(pos);
         return val;
     }
-    return 0;
+    return 127;
 }
 
 void Chip8EmulatorFP::on(uint16_t mask, uint16_t opcode, OpcodeHandler handler)

@@ -167,7 +167,7 @@ std::pair<uint16_t, std::string> Chip8EmulatorBase::disassembleInstruction(const
         case 0:
             if (opcode == 0x0010 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "megaoff"};
             if (opcode == 0x0011 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "megaon"};
-            if ((opcode & 0xFFF0) == 0x00B0 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("scroll-up {}", opcode & 0xF)};
+            if ((opcode & 0xFFF0) == 0x00B0 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("scroll-up-alt {}", opcode & 0xF)};
             if ((opcode & 0xFFF0) == 0x00C0) return {2, fmt::format("scroll-down {}", opcode & 0xF)};
             if ((opcode & 0xFFF0) == 0x00D0 && _options.behaviorBase != emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("scroll-up {}", opcode & 0xF)};
             if (opcode == 0x00E0) return {2, "clear"};
@@ -176,7 +176,7 @@ std::pair<uint16_t, std::string> Chip8EmulatorBase::disassembleInstruction(const
             if (opcode == 0x00FC) return {2, "scroll-left"};
             if (opcode == 0x00FE) return {2, "lores"};
             if (opcode == 0x00FF) return {2, "hires"};
-            if ((opcode & 0xFF00) == 0x0100 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {4, fmt::format("i := long {}", _labelOrAddress(((opcode&0xFF)<<16)|next))};
+            if ((opcode & 0xFF00) == 0x0100 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {4, fmt::format("ldhi {}", _labelOrAddress(((opcode&0xFF)<<16)|next))};
             if ((opcode & 0xFF00) == 0x0200 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("ldpal {}", opcode & 0xFF)};
             if ((opcode & 0xFF00) == 0x0300 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("sprw {}", opcode & 0xFF)};
             if ((opcode & 0xFF00) == 0x0400 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, fmt::format("sprh {}", opcode & 0xFF)};

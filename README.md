@@ -20,7 +20,7 @@ in a raylib game jam, I saw this as a good fit.
 ![Cadmium debug view](media/screenshot01.png?raw=true "A screenshot of the debug view")
 
 An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
-simply drag rom files (`.ch8`, `.sc8`, `.xo8`) or Octo sources (`.8o`) onto the
+simply drag rom files (`.ch8`, `.sc8`, `.mc8`, `.xo8`) or Octo sources (`.8o`) onto the
 window to load them.
 
 ## Features
@@ -50,6 +50,7 @@ in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
     * chip-48
     * superchip-1.0
     * superchip-1.1
+    * MegaChip
     * xo-chip
 * Traditional 1400Hz buzzer or XO-CHIP audio emulation
 * When multicolor support is active, 16 colors in four planes are supported
