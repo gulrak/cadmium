@@ -166,7 +166,7 @@ atomic number of 48 in the periodic table of elements, so that made me
 chose it as the name reference for this project.
 
 ### Why the pixel look?
-Cadmium is about emulating and developing for CHIP-8 and its variants,
+_Cadmium_ is about emulating and developing for CHIP-8 and its variants,
 a platform that has a resolution of traditionally 64x32 pixel, the
 "hires" mode has 128x64 pixels and even MegaChip8 only 256x192 pixels,
 so if you hate seeing pixels, this might not be the platform for you. :wink:
