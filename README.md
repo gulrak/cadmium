@@ -11,7 +11,7 @@
     * [Other Emulators used for Verification](#other-emulators-used-for-verification)
     * [Libraries](#libraries)
   * [FAQ](#faq)
-    * [Why the name "Cadmium"?](#why-the-name--cadmium--)
+    * [Why the name "_Cadmium_"?](#why-the-name--_cadmium_--)
     * [Why the pixel look?](#why-the-pixel-look)
     * [Which font is that?](#which-font-is-that)
 <!-- TOC -->
