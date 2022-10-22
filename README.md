@@ -11,7 +11,7 @@
     * [Other Emulators used for Verification](#other-emulators-used-for-verification)
     * [Libraries](#libraries)
   * [FAQ](#faq)
-    * [Why the name "Cadmium"?](#why-the-name--cadmium--)
+    * [Why the name Cadmium?](#why-the-name-cadmium)
     * [Why the pixel look?](#why-the-pixel-look)
     * [Which font is that?](#which-font-is-that)
 <!-- TOC -->
@@ -156,7 +156,7 @@ cmake --build build
 
 ## FAQ
 
-### Why the name "Cadmium"?
+### Why the name Cadmium?
 The first time I got into contact with CHIP-8 was with Super-Chip on an
 HP-48 calculator during my CS studies. The base of that was the CHIP-48
 variant, named after the calculator. I think the reliving of CHIP-8 on
