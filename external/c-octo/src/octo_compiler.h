@@ -927,7 +927,7 @@ void octo_compile_statement(octo_program*p){
   }
   else if(octo_match(p,"plane")){
     int n=octo_value_4bit(p);
-    if(n>3) p->is_error=1, snprintf(p->error,OCTO_ERR_MAX,"The plane bitmask must be [0,3], was %d.",n);
+    if(n>15) p->is_error=1, snprintf(p->error,OCTO_ERR_MAX,"The plane bitmask must be [0,15], was %d.",n);
     octo_instruction(p, 0xF0|n, 0x01);
   }
   else if(octo_match(p,"saveflags"))octo_instruction(p, 0xF0|octo_register(p), 0x75);

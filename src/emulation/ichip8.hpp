@@ -36,7 +36,7 @@ namespace emu
 class IChip8Emulator
 {
 public:
-    enum Engine { eCHIP8TS, eCHIP8HT, eCHIP8VIP };
+    enum Engine { eCHIP8TS, eCHIP8MPT, eCHIP8VIP };
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
     virtual ~IChip8Emulator() = default;
@@ -74,9 +74,11 @@ public:
     virtual void setExecMode(ExecMode mode) {}
     virtual ExecMode execMode() const { return eRUNNING; }
     virtual CpuState cpuState() const { return eNORMAL; }
+    virtual uint16_t opcode() { return (memory()[getPC()] << 8) | memory()[getPC() + 1]; }
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}
+    virtual bool needsScreenUpdate() { return true; }
     virtual uint16_t getCurrentScreenWidth() const { return 64; }
     virtual uint16_t getCurrentScreenHeight() const { return 32; }
     virtual uint16_t getMaxScreenWidth() const { return 64; }
@@ -88,6 +90,7 @@ public:
     virtual void setAudioPhase(float) { }
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
     virtual uint8_t getXOPitch() const { return 0; }
+    virtual uint8_t getNextMCSample() { return 0; }
 
     // these are used to display changes between copyState calls, the default is to show no changes
     // unit tests don't use this feature

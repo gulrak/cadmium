@@ -40,6 +40,7 @@ Currently supported CHIP-8 variants are:
   * CHIP-48
   * SUPERCHIP 1.0
   * SUPERCHIP 1.1
+  * MegaChip8
   * XO-CHIP
 
 Besides selecting a CHIP-8 variant it is possible to configure various
@@ -53,6 +54,7 @@ file type of files loaded:
   '*.ch8' - This is the generic form and the current preset is not
             changed
   '*.sc8' - SUPERCHIP 1.1
+  '*.mc8' - MegaChip8
   '*.xo8' - XO-CHIP
   '*.8o'  - This is opened as Octo source file into the editor and
             instantly assembled to a binary if possible
@@ -76,6 +78,61 @@ Changes are automatically compiled, errors are currently shown in the
 status line. So if "No errors." is shown, the code is the one executed
 when starting emulation and changing the code resets the emulator
 status.
+
+                           - - -
+
+# Special Credits
+
+Cadmium started as a "Well I guess I should at least implement CHIP-8
+once" project, after I already privately had fun writing emulators
+But the combined early reactions from the raylib Discord and the
+Emulation Development Discord gave me so much fun that I started to
+dig more into the subject. So first of all a big thank you to all
+those who pushed me with their nice comments and inspirational
+remarks, I can't name you all but it really did kick off this project.
+
+I still want to give out some explicit thanks to:
+
+* Ramon Santamaria (@raysan5) - I stumbled across raylib at the end
+  of 2021 and since 2022 I started using it for some experiments and
+  then took part in the raylib game jam and had so much fun. Without
+  raylib I wouldn't have started this, it was originally a test bed
+  for my raygui wrapper but instead became a life of its own.
+  https://raylibtech.itch.io
+
+* John Earnest (@JohnEarnest) - For his great Octo and for XO-Chip,
+  while I still would have loved for some things to be different in
+  Octo Assembly Syntax, I really appreciate that this new variant
+  got CHIP-8 development to a more modern leve, made it more
+  accessible and together with the great web based IDE at
+  https://johnearnest.github.io/Octo/
+  gave CHIP-8 a new live and the OctoJam idea sure helped pushing
+  it, thank you for that! His C-Octo implementation of the assembler
+  also is embedded in Cadmium and drives its assembling capabilities:
+  https://github.com/JohnEarnest/c-octo
+
+* Tim Franssen (@Timendus) - For his "CHIP-8 Test Suite" helped me a
+  great deal in finding issues and get a better understanding of the
+  quirks that differentiate the CHIP-8 variants:
+  https://github.com/Timendus/chip8-test-suite
+  and for his work on a binary CHIP-8 container that could carray
+  emulation parameter allowing easy set-up for roms, more info at:
+  https://github.com/Timendus/chip8-test-suite
+
+* @NinjaWeedle - For his great help and countless tests to get some
+  flesh on the very skinny original MegaChip8 specs to allow actually
+  support this exotic CHIP-8 variant ant maybe help it to be more
+  accepted. His work resulted in documentation and tests on:
+  https://github.com/NinjaWeedle/MegaChip8
+
+* @Kouzeru and for pushing me into supporting XO-Audio and the
+  creative discussions on where to go with future chip
+  https://github.com/Kouzeru/
+
+* Joshua Moss (@Bandock) - for motivating me to implement and
+  CDP1802 emulation core and getting "Support a real VIP mode"
+  onto my todo list and for the interesting HyperChip64 ideas.
+  https://github.com/Bandock/hyper_bandchip
 
                            - - -
 

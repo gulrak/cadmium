@@ -26,6 +26,7 @@
 #pragma once
 
 #include <emulation/chip8variants.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <cstdint>
 #include <string>
@@ -33,7 +34,7 @@
 namespace emu {
 
 struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eXOCHIP, eCHICUEYI, eNUM_PRESETS };
+    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHICUEYI, eNUM_PRESETS };
     SupportedPreset behaviorBase{eCHIP8};
     uint16_t startAddress{0x200};
     bool optJustShiftVx{false};
@@ -53,7 +54,11 @@ struct Chip8EmulatorOptions {
     Chip8Variant presetAsVariant() const;
     //static SupportedPreset variantAsPreset(Chip8Variant variant);
     static std::string nameOfPreset(SupportedPreset preset);
+    static SupportedPreset presetForName(const std::string& name);
     static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
 };
+
+void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
+void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
 
 }

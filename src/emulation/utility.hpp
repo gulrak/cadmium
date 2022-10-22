@@ -82,6 +82,11 @@ inline bool writeFile(const std::string& filename, const char* data, size_t size
     return false;
 }
 
+inline bool writeFile(const std::string& filename, const uint8_t* data, size_t size)
+{
+    return writeFile(filename, (const char*)data, size);
+}
+
 inline std::string loadTextFile(const std::string& file)
 {
     std::ifstream is(file, std::ios::binary | std::ios::ate);

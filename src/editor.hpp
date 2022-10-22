@@ -109,7 +109,7 @@ public:
     void undo();
     void redo();
 
-    const Chip8Compiler& compiler() const { return _compiler; }
+    const emu::Chip8Compiler& compiler() const { return _compiler; }
 
     std::pair<uint32_t, uint32_t> selection() const
     {
@@ -200,7 +200,7 @@ protected:
     bool _isRepeat{false};
     bool _cursorChanged{false};
     bool _mouseDownInText{false};
-    Chip8Compiler _compiler;
+    emu::Chip8Compiler _compiler;
     uint32_t _lastEditId{~0u};
     std::string _editedTextSha1Hex;
     std::string _compiledSourceSha1Hex;

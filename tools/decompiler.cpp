@@ -26,6 +26,7 @@
 #include <ghc/cli.hpp>
 #include <sha1/sha1.hpp>
 #include <emulation/chip8decompiler.hpp>
+#include <emulation/chip8compiler.hpp>
 #include <emulation/utility.hpp>
 
 #include <chrono>
@@ -42,6 +43,8 @@ static std::vector<std::string> opcodesToFind;
 static bool fullPath = false;
 static bool withUsage = false;
 static int foundFiles = 0;
+static bool roundTrip = false;
+static int errors = 0;
 
 std::string fileOrPath(const std::string& file)
 {
@@ -57,13 +60,39 @@ void workFile(WorkMode mode, const std::string& file, const std::vector<uint8_t>
     emu::Chip8Decompiler dec;
     switch(mode) {
         case eDISASSEMBLE:
-            dec.decompile(file, data.data(), startAddress, data.size(), startAddress, &std::cout);
+            if(roundTrip) {
+                std::stringstream os;
+                emu::Chip8Compiler comp;
+                dec.decompile(file, data.data(), startAddress, data.size(), startAddress, &os, false, true);
+                if(comp.compile(os.str())) {
+                    if(comp.codeSize() != data.size()) {
+                        std::cerr << "    " << fileOrPath(file) << ": Compiled size doesn't match! (" << data.size() << " bytes)" << std::endl;
+                        workFile(eANALYSE, file, data);
+                        writeFile(fs::path(file).filename().string().c_str(), comp.code(), comp.codeSize());
+                        ++errors;
+                    }
+                    else if(comp.sha1Hex() != calculateSha1Hex(data.data(), data.size())) {
+                        std::cerr << "    " << fileOrPath(file) << ": Compiled code doesn't match! (" << data.size() << " bytes)" << std::endl;
+                        workFile(eANALYSE, file, data);
+                        writeFile(fs::path(file).filename().string().c_str(), comp.code(), comp.codeSize());
+                        ++errors;
+                    }
+                }
+                else {
+                    std::cerr << "    " << fileOrPath(file) << ": Source doesn't compile: " << comp.errorMessage() << std::endl;
+                    workFile(eANALYSE, file, data);
+                    ++errors;
+                }
+            }
+            else {
+                dec.decompile(file, data.data(), startAddress, data.size(), startAddress, &std::cout);
+            }
             break;
         case eANALYSE:
             std::cout << fileOrPath(file);
             dec.decompile(file, data.data(), startAddress, data.size(), startAddress, &std::cout, true);
             if((uint64_t)dec.possibleVariants) {
-                auto mask = static_cast<uint64_t>(dec.possibleVariants);
+                auto mask = static_cast<uint64_t>(dec.possibleVariants & (emu::C8V::CHIP_8|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP));
                 bool first = true;
                 while(mask) {
                     auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
@@ -145,6 +174,7 @@ int main(int argc, char* argv[])
     cli.option({"-u", "--opcode-use"}, withUsage, "show usage of found opcodes");
     cli.option({"-p", "--full-path"}, fullPath, "print file names with path");
     cli.option({"--list-duplicates"}, dumpDoubles, "show found duplicates while scanning directories");
+    cli.option({"--round-trip"}, roundTrip, "decompile and assemble and compare the result");
     cli.positional(inputList, "Files or directories to work on");
     cli.parse();
 
@@ -198,6 +228,8 @@ int main(int argc, char* argv[])
         std::clog << ", not counting " << doubles << " redundant copies";
     if(foundFiles)
         std::clog << ", found opcodes in " << foundFiles << " files";
+    if(errors)
+        std::clog << ", round trip errors: " << errors;
     std::clog << " (" << duration << "ms)" <<std::endl;
     return 0;
 }

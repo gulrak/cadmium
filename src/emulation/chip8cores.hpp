@@ -543,7 +543,7 @@ public:
                 }
             }
         }
-        //updateScreen = true;
+        _screenNeedsUpdate = true;
         return collision;
     }
 };
@@ -574,28 +574,51 @@ public:
     void executeInstruction() override;
     void executeInstructions(int numInstructions) override;
 
+    uint8_t getNextMCSample() override;
+
     void on(uint16_t mask, uint16_t opcode, OpcodeHandler handler);
 
     void setHandler();
 
     void opNop(uint16_t opcode);
     void opInvalid(uint16_t opcode);
+    void op0010(uint16_t opcode);
+    void op0011(uint16_t opcode);
+    void op00Bn(uint16_t opcode);
     void op00Cn(uint16_t opcode);
     void op00Dn(uint16_t opcode);
     void op00E0(uint16_t opcode);
+    void op00E0_megachip(uint16_t opcode);
     void op00EE(uint16_t opcode);
     void op00FB(uint16_t opcode);
     void op00FC(uint16_t opcode);
     void op00FD(uint16_t opcode);
     void op00FE(uint16_t opcode);
     void op00FE_withClear(uint16_t opcode);
+    void op00FE_megachip(uint16_t opcode);
     void op00FF(uint16_t opcode);
     void op00FF_withClear(uint16_t opcode);
+    void op00FF_megachip(uint16_t opcode);
+    void op01nn(uint16_t opcode);
+    void op02nn(uint16_t opcode);
+    void op03nn(uint16_t opcode);
+    void op04nn(uint16_t opcode);
+    void op05nn(uint16_t opcode);
+    void op060n(uint16_t opcode);
+    void op0700(uint16_t opcode);
+    void op080n(uint16_t opcode);
+    void op09nn(uint16_t opcode);
     void op1nnn(uint16_t opcode);
     void op2nnn(uint16_t opcode);
     void op3xnn(uint16_t opcode);
+    void op3xnn_with_F000(uint16_t opcode);
+    void op3xnn_with_01nn(uint16_t opcode);
     void op4xnn(uint16_t opcode);
+    void op4xnn_with_F000(uint16_t opcode);
+    void op4xnn_with_01nn(uint16_t opcode);
     void op5xy0(uint16_t opcode);
+    void op5xy0_with_F000(uint16_t opcode);
+    void op5xy0_with_01nn(uint16_t opcode);
     void op5xy2(uint16_t opcode);
     void op5xy3(uint16_t opcode);
     void op5xy4(uint16_t opcode);
@@ -616,13 +639,20 @@ public:
     void op8xyE(uint16_t opcode);
     void op8xyE_justShiftVx(uint16_t opcode);
     void op9xy0(uint16_t opcode);
+    void op9xy0_with_F000(uint16_t opcode);
+    void op9xy0_with_01nn(uint16_t opcode);
     void opAnnn(uint16_t opcode);
     void opBnnn(uint16_t opcode);
     void opBxnn(uint16_t opcode);
     void opBxyn(uint16_t opcode);
     void opCxnn(uint16_t opcode);
+    void opDxyn_megaChip(uint16_t opcode);
     void opEx9E(uint16_t opcode);
+    void opEx9E_with_F000(uint16_t opcode);
+    void opEx9E_with_01nn(uint16_t opcode);
     void opExA1(uint16_t opcode);
+    void opExA1_with_F000(uint16_t opcode);
+    void opExA1_with_01nn(uint16_t opcode);
     void opF000(uint16_t opcode);
     void opF002(uint16_t opcode);
     void opFx01(uint16_t opcode);
@@ -668,6 +698,7 @@ public:
             int lines = opcode & 0xF;
             _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
         }
+        _screenNeedsUpdate = true;
     }
 
     template<uint16_t quirks>
@@ -710,7 +741,9 @@ public:
         x %= scrWidth;
         y %= scrHeight;
         if(height == 0) {
-            width = height = 16;
+            height = 16;
+            // Thanks @NinjaWeedle: if not hires, draw 16x16 in XO-CHIP, 8x16 in SCHIP1.0/1.1 and nothing on the rest of the variants
+            width = hires ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eXOCHIP ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP10 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 ? 8 : 0));
         }
         uint8_t planes;
         if constexpr ((quirks&MultiColor) != 0) planes = _planes; else planes = 1;
@@ -747,6 +780,7 @@ public:
         }
         return collision;
     }
+
 private:
     std::vector<OpcodeHandler> _opcodeHandler;
 };
@@ -760,7 +794,9 @@ public:
     bool isHeadless() const override { return true; }
     uint8_t getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
+    void updateScreen() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
+    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
     Chip8EmulatorOptions options;
 };
 

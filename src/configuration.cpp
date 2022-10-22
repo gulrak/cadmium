@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8decompiler.hpp
+// src/configuration.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -23,35 +23,16 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-// NOTE: This is currently only a wrapper over the c-octo octo-compiler.h implementation
-//       by John Earnest
-//---------------------------------------------------------------------------------------
-#pragma once
 
-#include <string>
-#include <memory>
+#include <configuration.hpp>
+#include <nlohmann/json.hpp>
 
-namespace emu {
+void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
+    j = nlohmann::json{ {"workingDirectory", cc.workingDirectory}, {"emuOptions", cc.emuOptions}, {"romConfigs", cc.romConfigs} };
+}
 
-class Chip8Compiler
-{
-public:
-    Chip8Compiler();
-    ~Chip8Compiler();
-
-    bool compile(std::string text);
-    bool isError() const;
-    const std::string& errorMessage() const;
-    uint16_t codeSize() const;
-    const uint8_t* code() const;
-    const std::string& sha1Hex() const;
-    std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
-    uint32_t lineForAddr(uint32_t addr) const;
-
-private:
-    void updateLineCoverage();
-    class Private;
-    std::unique_ptr<Private> _impl;
-};
-
+void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
+    j.at("workingDirectory").get_to(cc.workingDirectory);
+    j.at("emuOptions").get_to(cc.emuOptions);
+    j.at("romConfigs").get_to(cc.romConfigs);
 }
