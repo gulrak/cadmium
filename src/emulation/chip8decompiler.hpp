@@ -176,6 +176,7 @@ public:
                 if (opcode == 0x00EE) return {2, opcode, "return"};
                 if (opcode == 0x00FB) return {2, opcode, "scroll-right"};
                 if (opcode == 0x00FC) return {2, opcode, "scroll-left"};
+                if (opcode == 0x00FD) return {2, opcode, "exit"};
                 if (opcode == 0x00FE) return {2, opcode, "lores"};
                 if (opcode == 0x00FF) return {2, opcode, "hires"};
                 if ((opcode & 0xFF00) == 0x0100 && contained(possibleVariants, C8V::MEGA_CHIP)) return {4, opcode, fmt::format("ldhi {}", labelOrAddress(((opcode&0xFF)<<16)|next))};
@@ -235,7 +236,9 @@ public:
                 break;
             case 0xF:
                 switch (opcode & 0xFF) {
-                    case 0x00: return {4, 0xF000, fmt::format("i := long {}", labelOrAddress(next))};
+                    case 0x00:
+                        if(opcode == 0xF000) return {4, 0xF000, fmt::format("i := long {}", labelOrAddress(next))};
+                        return {2, opcode, fmt::format("0x{:02X} 0x{:02X}", opcode >> 8, opcode & 0xFF)};
                     case 0x01: return {2, opcode & 0xF0FF, fmt::format("plane {}", (opcode >> 8) & 0xF)};
                     case 0x02:
                         if(opcode == 0xF002)
@@ -248,7 +251,7 @@ public:
                     case 0x18: return {2, opcode & 0xF0FF, fmt::format("buzzer := v{:X}", (opcode >> 8) & 0xF)};
                     case 0x1E: return {2, opcode & 0xF0FF, fmt::format("i += v{:X}", (opcode >> 8) & 0xF)};
                     case 0x29: return {2, opcode & 0xF0FF, fmt::format("i := hex v{:X}", (opcode >> 8) & 0xF)};
-                    case 0x30: return {2, opcode & 0xF0FF, fmt::format("i := hex v{:X} 10", (opcode >> 8) & 0xF)};
+                    case 0x30: return {2, opcode & 0xF0FF, fmt::format("i := bighex v{:X}", (opcode >> 8) & 0xF)};
                     case 0x33: return {2, opcode & 0xF0FF, fmt::format("bcd v{:X}", (opcode >> 8) & 0xF)};
                     case 0x3A: return {2, opcode & 0xF0FF, fmt::format("pitch := v{:X}", (opcode >> 8) & 0xF)};
                     case 0x55: return {2, opcode & 0xF0FF, fmt::format("save v{:X}", (opcode >> 8) & 0xF)};
@@ -287,6 +290,10 @@ public:
                 auto labelIter = label.find(addr);
                 if (labelIter != label.end()) {
                     os << fmt::format(": {}", labelOrAddress(addr)) << std::endl;
+                }
+                labelIter = label.find(addr+1);
+                if (labelIter != label.end()) {
+                    os << fmt::format(":next {}", labelOrAddress(addr+1)) << std::endl;
                 }
                 // std::cout << fmt::format("{:04x}:  {:04x}  {}", addr, readOpcode(code), instruction) << std::endl;
                 if(inIf)
@@ -341,6 +348,9 @@ public:
                 else if (opcode == 0x00E0) {  // 00E0 - CLS
                 }
                 else if (opcode == 0x00EE) {  // 00EE - RET
+                    endsChunk = !ec.inSkip;
+                }
+                else if (opcode == 0x00FD) { // 00FD - EXIT
                     endsChunk = !ec.inSkip;
                 }
                 break;
@@ -609,13 +619,15 @@ public:
             auto opcode = readOpcode(code);
             Chip8Variant mask = (Chip8Variant)0;
             for(auto info : mappedOpcodeInfo[opcode])
-                if(info)
-                    mask |= info->variants;
+                if(info) {
+                    if(info->variants != Chip8Variant::MEGA_CHIP || opcode == 0x0011)
+                        mask |= info->variants;
+                }
             //const OpcodeInfo* info = mappedOpcodeInfo[opcode].front();
             if((uint64_t)mask) {
                 possibleVariants &= mask;
-                if (!(uint64_t)possibleVariants)
-                    std::cerr << "huuuu" << std::endl;
+                //if (!(uint64_t)possibleVariants)
+                //    std::cerr << "huuuu" << std::endl;
             }
             //auto category = opcode >> 12;
             code += 2;
@@ -631,6 +643,8 @@ public:
                 code += 2;
                 ec.rPC += 2;
             }
+            else if(opcode == 0x0011 && supportsVariant(C8V::MEGA_CHIP))
+                _megaChipEnabled = true;
             if(preCallback)
                 preCallback(ec, opcode, next);
             if(executeSpeculative(ec, opcode, next)) {
@@ -678,6 +692,7 @@ public:
             else {
                 info.index = dataLabel++;
             }
+            //std::clog << "Label: " << fmt::format("{:4X} ", addr) << (int)info.type << " " << labelOrAddress(addr) << std::endl;
         }
     }
 
@@ -734,6 +749,8 @@ public:
             }
         } while(iterate);
 
+        if(!_megaChipEnabled)
+            possibleVariants &= ~C8V::MEGA_CHIP;
         if(analyzeOnly) {
             for (auto& [chunkOffset, chunk] : chunks) {
                 // std::cout << fmt::format(":org {:04X} # size: {:04X}", chunkOffset, uint32_t(chunk.end - chunk.start)) << std::endl;
@@ -770,6 +787,7 @@ public:
 :macro bmode n { :calc ZN { n & 0xF } :byte 0x08 :byte ZN }
 :macro ccol nn { :byte 0x09 :byte nn }
 #--------------------------------------------------------------
+
 )";
             }
             bool hasConsts = false;
@@ -824,6 +842,7 @@ public:
     const uint8_t* _start{};
     uint32_t _size{};
     bool _oddPcAccess{false};
+    bool _megaChipEnabled{false};
     Chip8Variant possibleVariants{};
     std::map<uint16_t, Chunk> chunks;
     std::map<uint16_t, LabelInfo> label;

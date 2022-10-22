@@ -140,6 +140,8 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
             on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
+            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_megachip);
+            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_megachip);
             on(0xFF00, 0x0100, &Chip8EmulatorFP::op01nn);
             on(0xFF00, 0x0200, &Chip8EmulatorFP::op02nn);
             on(0xFF00, 0x0300, &Chip8EmulatorFP::op03nn);
@@ -392,6 +394,15 @@ void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
     }
 }
 
+void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
+{
+    if(_isHires && !_isMegaChipMode) {
+        _isHires = false;
+        clearScreen();
+        ++_clearCounter;
+    }
+}
+
 void Chip8EmulatorFP::op00FF(uint16_t opcode)
 {
     _isHires = true;
@@ -400,6 +411,15 @@ void Chip8EmulatorFP::op00FF(uint16_t opcode)
 void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 {
     if(!_isHires) {
+        _isHires = true;
+        clearScreen();
+        ++_clearCounter;
+    }
+}
+
+void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
+{
+    if(!_isHires && !_isMegaChipMode) {
         _isHires = true;
         clearScreen();
         ++_clearCounter;
@@ -449,9 +469,9 @@ void Chip8EmulatorFP::op05nn(uint16_t opcode)
 
 void Chip8EmulatorFP::op060n(uint16_t opcode)
 {
-    uint32_t frequency = (_memory[_rI & ADDRESS_MASK] << 8) | _memory[(_rI+1) & ADDRESS_MASK];
-    uint32_t length = (_memory[(_rI+2) & ADDRESS_MASK] << 16) | (_memory[(_rI+3) & ADDRESS_MASK] << 8) | _memory[(_rI+4) & ADDRESS_MASK];
-    _sampleStart.store(_rI);
+    uint32_t frequency = (_memory[_rI & ADDRESS_MASK] << 8) | _memory[(_rI + 1) & ADDRESS_MASK];
+    uint32_t length = (_memory[(_rI + 2) & ADDRESS_MASK] << 16) | (_memory[(_rI + 3) & ADDRESS_MASK] << 8) | _memory[(_rI + 4) & ADDRESS_MASK];
+    _sampleStart.store(_rI + 6);
     _sampleStep.store(frequency / 44100.0f);
     _sampleLength.store(length);
     _mcSamplePos.store(0);
@@ -827,6 +847,8 @@ void Chip8EmulatorFP::opFx0A(uint16_t opcode)
         // keep waiting...
         _rPC -= 2;
         --_cycleCounter;
+        if(_isMegaChipMode && _cpuState != eWAITING)
+            _host.updateScreen();
         _cpuState = eWAITING;
     }
 }

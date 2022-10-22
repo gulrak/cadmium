@@ -7,8 +7,8 @@ endif()
 
 add_executable(soundfreq soundfreq.cpp)
 
-add_executable(decompile decompiler.cpp ../src/emulation/chip8decompiler.cpp)
-target_link_libraries(decompile fmt::fmt)
+add_executable(decompile decompiler.cpp)
+target_link_libraries(decompile emulation)
 
 add_executable(fontgenerator fontgenerator.cpp)
 

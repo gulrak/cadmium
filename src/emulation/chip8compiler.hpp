@@ -31,6 +31,8 @@
 #include <string>
 #include <memory>
 
+namespace emu {
+
 class Chip8Compiler
 {
 public:
@@ -43,7 +45,7 @@ public:
     uint16_t codeSize() const;
     const uint8_t* code() const;
     const std::string& sha1Hex() const;
-    std::pair<uint32_t,uint32_t> addrForLine(uint32_t line) const;
+    std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
     uint32_t lineForAddr(uint32_t addr) const;
 
 private:
@@ -51,3 +53,5 @@ private:
     class Private;
     std::unique_ptr<Private> _impl;
 };
+
+}

@@ -882,6 +882,26 @@ public:
         return result;
     }
 
+    const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwards(uint32_t addr, int n)
+    {
+        static std::vector<std::pair<uint32_t,std::string>> disassembly;
+        n *= 4;
+        uint32_t start = n > addr ? 0 : addr - n;
+        disassembly.clear();
+        bool inIf = false;
+        while(start < addr) {
+            uint16_t opcode = (_chipEmu->memory()[start] << 8) | _chipEmu->memory()[start + 1];
+            auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + start, _chipEmu->memory() + _chipEmu->memSize());
+            if (bytes == 2)
+                disassembly.push_back({start, TextFormat("%04X: %04X       %s%s", start, opcode, (inIf ? "  " : ""), instruction.c_str())});
+            else
+                disassembly.push_back({start, TextFormat("%04X: %04X %04X  %s%s", start, opcode, ((_chipEmu->memory()[start + 2] << 8) | _chipEmu->memory()[start + 3]), (inIf ? "  " : ""), instruction.c_str())});
+            inIf = instruction.rfind("if ", 0) == 0;
+            start += bytes;
+        }
+        return disassembly;
+    }
+
     void drawGui()
     {
         using namespace gui;
@@ -903,6 +923,11 @@ public:
                 StatusBar({{0.75f, _editor.compiler().errorMessage().c_str()},
                     {0.25f, fmt::format("Cursor: {}:{}", _editor.line(), _editor.column()).c_str()}});
 #endif
+            }
+            else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
+                StatusBar({{0.5f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
+                           {0.25f, formatUnit(ips, "IPS").c_str()},
+                           {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()}});
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
@@ -1128,7 +1153,7 @@ public:
                     }
                     EndPanel();
                     drawScreen(video, gridScale);
-                    BeginPanel("Instructions", {5, 2});
+                    BeginPanel("Instructions", {5, 0});
                     {
                         auto area = GetContentAvailable();
                         Space(area.height);
@@ -1144,21 +1169,29 @@ public:
                                 _instructionOffset = std::clamp(_instructionOffset - step, 0, 4096 - 9*2);
                             }
                         }
-                        auto insOff = _chipEmu->execMode() == ExecMode::ePAUSED && _instructionOffset >= 0 ? _instructionOffset : (_chipEmu->getPC() > 8 ? _chipEmu->getPC() - 8 : 0);
-                        bool inIf = false;
-                        for (int i = -1; i < 9; ++i) {
-                            if(insOff + i * 2 + 1 < _chipEmu->memSize()) {
-                                uint16_t opcode = (_chipEmu->memory()[insOff + i * 2] << 8) | _chipEmu->memory()[insOff + i * 2 + 1];
-                                auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + insOff + i * 2, _chipEmu->memory() + _chipEmu->memSize());
-                                if (i >= 0) {
-                                    if (inIf)
-                                        DrawTextEx(_font, TextFormat("%04X: %04X         %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, _chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
-                                    else
-                                        DrawTextEx(_font, TextFormat("%04X: %04X       %s", insOff + i * 2, opcode, instruction.c_str()), {area.x, area.y + i * lineSpacing + 1}, 8, 0, _chipEmu->getPC() == insOff + i * 2 ? YELLOW : LIGHTGRAY);
-                                }
-                                inIf = instruction.rfind("if ", 0) == 0;
-                            }
+                        auto visibleInstructions = int(area.height / lineSpacing);
+                        auto extraLines = visibleInstructions / 2 + 1;
+                        auto insOff = _chipEmu->execMode() == ExecMode::ePAUSED && _instructionOffset >= 0 ? _instructionOffset : _chipEmu->getPC();
+                        auto yposPC = area.y + int(area.height / 2) - 4;
+                        const auto& prefix = disassembleNLinesBackwards(insOff, extraLines);
+                        BeginScissorMode(area.x, area.y, area.width, area.height);
+                        auto pcColor = _chipEmu->cpuState() == emu::IChip8Emulator::eERROR ? RED : YELLOW;
+                        for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
+                            DrawTextEx(_font, prefix[prefix.size() - 1 - i].second.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, _chipEmu->getPC() == prefix[prefix.size() - 1 - i].first ? pcColor : LIGHTGRAY);
                         }
+                        bool inIf = !prefix.empty() && prefix.back().second.find("if ") != std::string::npos;
+                        uint32_t addr = insOff;
+                        for (int i = 0; i <= extraLines && addr < _chipEmu->memSize(); ++i) {
+                            uint16_t opcode = (_chipEmu->memory()[addr] << 8) | _chipEmu->memory()[addr + 1];
+                            auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + addr, _chipEmu->memory() + _chipEmu->memSize());
+                            if (bytes == 2)
+                                DrawTextEx(_font, TextFormat("%04X: %04X       %s%s", addr, opcode, (inIf ? "  " : ""), instruction.c_str()), {area.x, yposPC + i * lineSpacing}, 8, 0, _chipEmu->getPC() == addr ? pcColor : LIGHTGRAY);
+                            else
+                                DrawTextEx(_font, TextFormat("%04X: %04X %04X  %s%s", addr, opcode, ((_chipEmu->memory()[addr + 2] << 8) | _chipEmu->memory()[addr + 3]), (inIf ? "  " : ""), instruction.c_str()), {area.x, yposPC + i * lineSpacing}, 8, 0, _chipEmu->getPC() == addr ? pcColor : LIGHTGRAY);
+                            inIf = instruction.rfind("if ", 0) == 0;
+                            addr += bytes;
+                        }
+                        EndScissorMode();
                     }
                     EndPanel();
                     End();
@@ -1615,7 +1648,7 @@ public:
     void updateEmulatorOptions()
     {
         std::scoped_lock lock(_audioMutex);
-        _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8HT, _options, _chipEmu.get());
+        _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
         _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
     }
 
@@ -1632,7 +1665,7 @@ public:
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
                 std::string source = loadTextFile(filename);
-                Chip8Compiler c8c;
+                emu::Chip8Compiler c8c;
                 if(c8c.compile(source))
                 {
                     _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
@@ -1758,9 +1791,11 @@ public:
         if(!_romImage.empty()) {
             unsigned int size = 0;
             _chipEmu->reset();
+            updateScreen();
             _instructionOffset = -1;
-            std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
+            std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
         }
+        _chipEmu->copyState();
     }
 
     bool windowShouldClose() const
@@ -1978,7 +2013,7 @@ int main(int argc, char* argv[])
         exit(0);
     }
     if(opcodeTable) {
-        dumpOpcodeTable(std::cout, emu::Chip8Variant::CHIP_8|emu::Chip8Variant::CHIP_10|emu::Chip8Variant::CHIP_48|emu::Chip8Variant::SCHIP_1_0|emu::Chip8Variant::SCHIP_1_1|emu::Chip8Variant::XO_CHIP);
+        dumpOpcodeTable(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
     }
     if(!presetName.empty()) {
@@ -2023,7 +2058,7 @@ int main(int argc, char* argv[])
         //chip8options.optLoadStoreDontIncI = false;
         chip8options.optDontResetVf = true;
         chip8options.optInstantDxyn = true;
-        auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8HT, chip8options);
+        auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, chip8options);
         std::clog << "Engine1: " << chip8->name() << std::endl;
         octo_emulator octo;
         octo_options oopt{};

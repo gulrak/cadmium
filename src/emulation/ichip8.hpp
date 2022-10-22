@@ -36,7 +36,7 @@ namespace emu
 class IChip8Emulator
 {
 public:
-    enum Engine { eCHIP8TS, eCHIP8HT, eCHIP8VIP };
+    enum Engine { eCHIP8TS, eCHIP8MPT, eCHIP8VIP };
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
     virtual ~IChip8Emulator() = default;
@@ -74,6 +74,7 @@ public:
     virtual void setExecMode(ExecMode mode) {}
     virtual ExecMode execMode() const { return eRUNNING; }
     virtual CpuState cpuState() const { return eNORMAL; }
+    virtual uint16_t opcode() { return (memory()[getPC()] << 8) | memory()[getPC() + 1]; }
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}

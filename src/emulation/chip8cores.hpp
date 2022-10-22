@@ -595,8 +595,10 @@ public:
     void op00FD(uint16_t opcode);
     void op00FE(uint16_t opcode);
     void op00FE_withClear(uint16_t opcode);
+    void op00FE_megachip(uint16_t opcode);
     void op00FF(uint16_t opcode);
     void op00FF_withClear(uint16_t opcode);
+    void op00FF_megachip(uint16_t opcode);
     void op01nn(uint16_t opcode);
     void op02nn(uint16_t opcode);
     void op03nn(uint16_t opcode);
@@ -739,7 +741,9 @@ public:
         x %= scrWidth;
         y %= scrHeight;
         if(height == 0) {
-            width = height = 16;
+            height = 16;
+            // Thanks @NinjaWeedle: if not hires, draw 16x16 in XO-CHIP, 8x16 in SCHIP1.0/1.1 and nothing on the rest of the variants
+            width = hires ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eXOCHIP ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP10 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 ? 8 : 0));
         }
         uint8_t planes;
         if constexpr ((quirks&MultiColor) != 0) planes = _planes; else planes = 1;

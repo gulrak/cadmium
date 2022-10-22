@@ -93,7 +93,7 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
             }
         }
     }
-    else if(engine == eCHIP8HT) {
+    else if(engine == eCHIP8MPT) {
         return std::make_unique<Chip8EmulatorFP>(host, options, other);
     }
     return std::make_unique<Chip8EmulatorVIP>(host, options, other);
@@ -174,6 +174,7 @@ std::pair<uint16_t, std::string> Chip8EmulatorBase::disassembleInstruction(const
             if (opcode == 0x00EE) return {2, "return"};
             if (opcode == 0x00FB) return {2, "scroll-right"};
             if (opcode == 0x00FC) return {2, "scroll-left"};
+            if (opcode == 0x00FD) return {2, "exit"};
             if (opcode == 0x00FE) return {2, "lores"};
             if (opcode == 0x00FF) return {2, "hires"};
             if ((opcode & 0xFF00) == 0x0100 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {4, fmt::format("ldhi {}", _labelOrAddress(((opcode&0xFF)<<16)|next))};
@@ -245,7 +246,7 @@ std::pair<uint16_t, std::string> Chip8EmulatorBase::disassembleInstruction(const
                 case 0x18: return {2, fmt::format("sound := v{:X}", (opcode >> 8) & 0xF)};
                 case 0x1E: return {2, fmt::format("i += v{:X}", (opcode >> 8) & 0xF)};
                 case 0x29: return {2, fmt::format("i := hex v{:X}", (opcode >> 8) & 0xF)};
-                case 0x30: return {2, fmt::format("i := hex v{:X} 10", (opcode >> 8) & 0xF)};
+                case 0x30: return {2, fmt::format("i := bighex v{:X}", (opcode >> 8) & 0xF)};
                 case 0x33: return {2, fmt::format("bcd v{:X}", (opcode >> 8) & 0xF)};
                 case 0x3A: return {2, fmt::format("pitch := v{:X}", (opcode >> 8) & 0xF)};
                 case 0x55: return {2, fmt::format("save v{:X}", (opcode >> 8) & 0xF)};
