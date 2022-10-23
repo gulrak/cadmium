@@ -26,6 +26,7 @@
 
 #include <configuration.hpp>
 #include <nlohmann/json.hpp>
+#include <fstream>
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
     j = nlohmann::json{ {"workingDirectory", cc.workingDirectory}, {"emuOptions", cc.emuOptions}, {"romConfigs", cc.romConfigs} };
@@ -35,4 +36,34 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     j.at("workingDirectory").get_to(cc.workingDirectory);
     j.at("emuOptions").get_to(cc.emuOptions);
     j.at("romConfigs").get_to(cc.romConfigs);
+}
+
+bool CadmiumConfiguration::load(const std::string& filepath)
+{
+    std::ifstream ifs(filepath);
+    if(ifs.fail())
+        return false;
+    try {
+        auto cfg = nlohmann::json::parse(ifs);
+        cfg.get_to(*this);
+    }
+    catch(...) {
+        return false;
+    }
+    return true;
+}
+
+bool CadmiumConfiguration::save(const std::string& filepath)
+{
+    std::ofstream ofs(filepath);
+    if(ofs.fail())
+        return false;
+    try {
+        nlohmann::json j = *this;
+        ofs << j.dump(4);
+    }
+    catch(...) {
+        return false;
+    }
+    return true;
 }

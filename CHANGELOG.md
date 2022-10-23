@@ -14,6 +14,11 @@
 * The Editor now supports find and replace with `CTRL+F`/`CTRL+R`
 * Various bugfixes in the speculative executing disassembler
 * The embedded Octo assembler now allows using planes with values up to 15 to allow up to four planes.
+* The config is now stored to allow to remember the emulation settings and the file
+  browser location. It is written to a JSON config file placed at:
+    * Windows: `%localappdata%\net.gulrak.cadmium\config.json`
+    * macOS: `~/Library/Application Support/net.gulrak.cadmium/config.json`
+    * Linux: `~/.local/share/net.gulrak.cadmium/config.json`
 * Bugfix: `F000 nnnn` (`i := long nnnn`) was not skipped correctly in skip opcodes
 * Bugfix: two-word opcodes where messing with disassembly, new implementation is better
   in handling backwards disassembly upwards from the PC

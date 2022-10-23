@@ -27,7 +27,9 @@
 #define RLGUIPP_IMPLEMENTATION
 #define RAYGUI_CUSTOM_ICONS  // Custom icons set required
 #include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
+
 #include <rlguipp/rlguipp.hpp>
+#include "configuration.hpp"
 
 extern "C" {
 #include <raymath.h>
@@ -418,12 +420,16 @@ public:
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
-    Cadmium(emu::Chip8EmulatorOptions chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP))
+    Cadmium(const emu::Chip8EmulatorOptions* chip8options = nullptr)
         : _screenWidth(512)
         , _screenHeight(256 + 36)
     {
 #ifndef PLATFORM_WEB
-        auto dataDir = dataPath();
+        _cfgPath = (fs::path(dataPath())/"config.json").string();
+        if(_cfg.load(_cfgPath)) {
+            _options = _cfg.emuOptions;
+            _currentDirectory = _cfg.workingDirectory;
+        }
 #endif
         SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING);
         InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 derivate environment");
@@ -448,7 +454,8 @@ public:
             GuiSetStyle(chip8StyleProp.controlId, chip8StyleProp.propertyId, chip8StyleProp.propertyValue);
         }
         generateFont();
-        _options = chip8options;
+        if(chip8options)
+            _options = *chip8options;
         updateEmulatorOptions();
         _chipEmu->reset();
         _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
@@ -470,7 +477,10 @@ public:
         ImageDraw(&icon, _titleImage, {34,2,60,60}, {2,2,60,60}, WHITE);
         SetWindowIcon(icon);
         _titleTexture = LoadTextureFromImage(_titleImage);
-        _currentDirectory = _librarian.currentDirectory();
+        if(_currentDirectory.empty())
+            _currentDirectory = _librarian.currentDirectory();
+        else
+            _librarian.fetchDir(_currentDirectory);
 
         // SWEETIE-16:
         // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57, 0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75, 0xb13e53, 0x38b764, 0x29366f, 0x566c86, 0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
@@ -514,6 +524,10 @@ public:
         UnloadImage(_screen);
         _instance = nullptr;
         CloseWindow();
+        if(!_cfgPath.empty()) {
+            _cfg.workingDirectory = _currentDirectory;
+            safeConfig();
+        }
     }
 
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0)
@@ -1645,6 +1659,16 @@ public:
         updateEmulatorOptions();
     }
 
+    void safeConfig()
+    {
+        if(!_cfgPath.empty()) {
+            _cfg.emuOptions = _options;
+            if(!_cfg.save(_cfgPath)) {
+                TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
+            }
+        }
+    }
+
     void updateEmulatorOptions()
     {
         std::scoped_lock lock(_audioMutex);
@@ -1806,6 +1830,8 @@ public:
 private:
     std::mutex _audioMutex;
     ResourceManager _resources;
+    std::string _cfgPath;
+    CadmiumConfiguration _cfg;
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
@@ -1997,7 +2023,7 @@ int main(int argc, char* argv[])
     bool opcodeTable = false;
     int64_t execSpeed = -1;
     std::string romFile;
-    std::string presetName = "xo-chip";
+    std::string presetName = "";
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
@@ -2035,7 +2061,7 @@ int main(int argc, char* argv[])
     {
 #endif
 
-        Cadmium cadmium(chip8options);
+        Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
 #ifndef PLATFORM_WEB
         if (!romFile.empty()) {
             cadmium.loadRom(romFile.c_str());

@@ -10,6 +10,8 @@ set(CADMIUM_SOURCE
     systemtools.hpp
     resourcemanager.cpp
     resourcemanager.hpp
+    configuration.cpp
+    configuration.hpp
 )
 
 if(WIN32)

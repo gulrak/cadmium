@@ -80,7 +80,7 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const 
 {
     auto presetUnified = name;
     {
-        auto iter = std::remove_if(presetUnified.begin(), presetUnified.end(), [](unsigned char c) { return std::ispunct(c); });
+        auto iter = std::remove_if(presetUnified.begin(), presetUnified.end(), [](unsigned char c) { return std::ispunct(c) || std::isspace(c); });
         presetUnified.erase(iter, presetUnified.end());
         std::transform(presetUnified.begin(), presetUnified.end(), presetUnified.begin(), [](unsigned char c){ return std::tolower(c); });
     }
@@ -130,7 +130,22 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
 
 void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
 {
-    //oj.at("behaviorBase").get_to()
+    auto variantName = j.at("behaviorBase").get<std::string>();
+    o.behaviorBase = Chip8EmulatorOptions::presetForName(variantName);
+    j.at("startAddress").get_to(o.startAddress);
+    j.at("optJustShiftVx").get_to(o.optJustShiftVx);
+    j.at("optDontResetVf").get_to(o.optDontResetVf);
+    j.at("optLoadStoreIncIByX").get_to(o.optLoadStoreIncIByX);
+    j.at("optLoadStoreDontIncI").get_to(o.optLoadStoreDontIncI);
+    j.at("optWrapSprites").get_to(o.optWrapSprites);
+    j.at("optInstantDxyn").get_to(o.optInstantDxyn);
+    j.at("optJump0Bxnn").get_to(o.optJump0Bxnn);
+    j.at("optAllowHires").get_to(o.optAllowHires);
+    j.at("optOnlyHires").get_to(o.optOnlyHires);
+    j.at("optAllowColors").get_to(o.optAllowColors);
+    j.at("optHas16BitAddr").get_to(o.optHas16BitAddr);
+    j.at("optXOChipSound").get_to(o.optXOChipSound);
+    j.at("instructionsPerFrame").get_to(o.instructionsPerFrame);
 }
 
 }

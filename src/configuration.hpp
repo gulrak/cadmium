@@ -36,6 +36,8 @@ struct CadmiumConfiguration
     std::string workingDirectory;
     emu::Chip8EmulatorOptions emuOptions;
     std::map<std::string,emu::Chip8EmulatorOptions> romConfigs;
+    bool load(const std::string& filepath);
+    bool save(const std::string& filepath);
 };
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc);
