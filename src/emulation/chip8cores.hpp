@@ -69,13 +69,18 @@ public:
         return "Chip-8-TS";
     }
 
+    inline uint16_t readWord(uint32_t addr) const
+    {
+        return (_memory[addr] << 8) | _memory[addr + 1];
+    }
+
     void executeInstruction() override
     {
         if (_execMode == ePAUSED || _cpuState == eERROR)
             return;
-        uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
-        ++_cycleCounter;
+        uint16_t opcode = readWord(_rPC);
         _rPC = (_rPC + 2) & ADDRESS_MASK;
+        ++_cycleCounter;
         addCycles(68);
         switch (opcode >> 12) {
             case 0:
@@ -165,8 +170,11 @@ public:
                     case 2: {  // 5xy2  - save vx - vy
                         auto x = (opcode >> 8) & 0xF;
                         auto y = (opcode >> 4) & 0xF;
-                        for(int i=0; i <= std::abs(x-y); ++i)
+                        auto l = std::abs(x-y);
+                        for(int i=0; i <= l; ++i)
                             _memory[(_rI + i) & ADDRESS_MASK] = _rV[x < y ? x + i : x - i];
+                        if(_rI + l >= ADDRESS_MASK)
+                            fixupSafetyPad();
                         break;
                     }
                     case 3: {  // 5xy3 - load vx - vy
@@ -420,6 +428,8 @@ public:
                             _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
                             addCycles(14);
                         }
+                        if(_rI + upto > ADDRESS_MASK)
+                            fixupSafetyPad();
                         if (_options.optLoadStoreIncIByX) {
                             _rI = (_rI + upto) & ADDRESS_MASK;
                         }
@@ -782,6 +792,10 @@ public:
     }
 
 private:
+    inline uint16_t readWord(uint32_t addr) const
+    {
+        return (_memory[addr] << 8) | (addr == ADDRESS_MASK ? _memory[0] : _memory[addr + 1]);
+    }
     std::vector<OpcodeHandler> _opcodeHandler;
 };
 

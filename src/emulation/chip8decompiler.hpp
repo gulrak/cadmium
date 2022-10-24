@@ -167,7 +167,7 @@ public:
     {
         switch (opcode >> 12) {
             case 0:
-                if (opcode == 0x0010) return {2, opcode, "megaoff"};
+                if (opcode == 0x0010 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, "megaoff"};
                 if (opcode == 0x0011 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, "megaon"};
                 if ((opcode & 0xFFF0) == 0x00B0 && contained(possibleVariants, C8V::MEGA_CHIP)) return {2, opcode, fmt::format("scroll-up-alt {}", opcode & 0xF)};
                 if ((opcode & 0xFFF0) == 0x00C0) return {2, opcode, fmt::format("scroll-down {}", opcode & 0xF)};
@@ -294,6 +294,12 @@ public:
                 labelIter = label.find(addr+1);
                 if (labelIter != label.end()) {
                     os << fmt::format(":next {}", labelOrAddress(addr+1)) << std::endl;
+                }
+                if(size == 4) {
+                    labelIter = label.find(addr + 2);
+                    if(labelIter != label.end()) {
+                        instruction = "i_long_labeled " + labelOrAddress(addr + 2);
+                    }
                 }
                 // std::cout << fmt::format("{:04x}:  {:04x}  {}", addr, readOpcode(code), instruction) << std::endl;
                 if(inIf)
@@ -763,6 +769,7 @@ public:
         else if(os) {
             renumerateLabels();
             *os << "# This is an automatically generated source, created by the Cadmium-Decompiler\n# ROM file used: " << filename << "\n\n";
+            *os << ":macro i_long_labeled LABEL { 0xF0 0x00 : LABEL 0x00 0x00 } # i := long NNNN \n";
             if(possibleVariants == C8V::MEGA_CHIP) {
                 *os << R"(#--------------------------------------------------------------
 # MegaChip support macros

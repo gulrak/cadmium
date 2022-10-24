@@ -62,7 +62,7 @@ public:
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
         : _host(host)
         , _options(options)
-        , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000000 : options.optHas16BitAddr ? 0x10000 : 0x1000, 0)
+        , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
         , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
         if(other) {
@@ -99,7 +99,7 @@ public:
             _rV = other->_rV;
             _rV_b = other->_rV_b;
             _randomSeed = other->_randomSeed;
-            std::memcpy(_memory.data(), other->_memory.data(), std::min(_memory.size(), other->_memory.size()));
+            std::memcpy(_memory.data(), other->_memory.data(), std::min(_memory.size(), (size_t)other->memSize()));
             std::memcpy(_memory_b.data(), other->_memory_b.data(), std::min(_memory_b.size(), other->_memory_b.size()));
             //_memFlags = other->_memFlags;
             _systemTime = other->_systemTime;
@@ -140,7 +140,7 @@ public:
     uint8_t soundTimer() const override { return _rST; }
     uint8_t* memory() override { return _memory.data(); }
     uint8_t* memoryCopy() override { return _memory_b.data(); }
-    int memSize() const override { return _memory.size(); }
+    int memSize() const override { return _memory.size() - 1; }
     void reset() override;
     int64_t cycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
@@ -203,6 +203,7 @@ public:
     static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, const IChip8Emulator* other = nullptr);
 
 protected:
+    void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     SymbolResolver _labelOrAddress;
     ExecMode _execMode{eRUNNING};
     CpuState _cpuState{eNORMAL};
