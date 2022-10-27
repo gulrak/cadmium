@@ -407,6 +407,22 @@ void CenterWindow(int width, int height)
     SetWindowPosition((GetMonitorWidth(monitor) - width) / 2, (GetMonitorHeight(monitor) - height) / 2);
 }
 
+void LogHandler(int msgType, const char *text, va_list args)
+{
+    static std::ofstream ofs((fs::path(dataPath())/"logfile.txt").string().c_str());
+    static char buffer[4096];
+    ofs << date::format("[%FT%TZ]", std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+    switch (msgType)
+    {
+        case LOG_INFO: ofs << "[INFO] : "; break;
+        case LOG_ERROR: ofs << "[ERROR]: "; break;
+        case LOG_WARNING: ofs << "[WARN] : "; break;
+        case LOG_DEBUG: ofs << "[DEBUG]: "; break;
+        default: break;
+    }
+    vsnprintf(buffer, 4095, text, args);
+    ofs << buffer << std::endl;
+}
 
 std::atomic_uint8_t g_soundTimer{0};
 std::atomic_int g_frameBoost{1};
@@ -430,6 +446,7 @@ public:
             _options = _cfg.emuOptions;
             _currentDirectory = _cfg.workingDirectory;
         }
+        SetTraceLogCallback(LogHandler);
 #endif
         SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING);
         InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 derivate environment");
@@ -481,6 +498,8 @@ public:
             _currentDirectory = _librarian.currentDirectory();
         else
             _librarian.fetchDir(_currentDirectory);
+
+        updateResolution();
 
         // SWEETIE-16:
         // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57, 0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75, 0xb13e53, 0x38b764, 0x29366f, 0x566c86, 0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
@@ -778,9 +797,18 @@ public:
     {
         auto* pixel = (uint32_t*)_screen.data;
         const uint8_t* planes = _chipEmu->getScreenBuffer();
-        const uint8_t* end = planes + _chipEmu->getMaxScreenWidth() * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT; //_chipEmu->getMaxScreenHeight();
-        while(planes < end) {
-            *pixel++ = _colorPalette[*planes++];
+        if(planes) {
+            const uint8_t* end = planes + _chipEmu->getMaxScreenWidth() * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
+            while (planes < end) {
+                *pixel++ = _colorPalette[*planes++];
+            }
+        }
+        else {
+            const auto* srcPixel = _chipEmu->getScreenBuffer32();
+            const uint32_t* end = srcPixel + 256 * 192;
+            while (srcPixel < end) {
+                *pixel++ = *srcPixel++;
+            }
         }
         UpdateTexture(_screenTexture, _screen.data);
     }
@@ -1278,7 +1306,7 @@ public:
                             if(addr + i * 8 >= 0 && addr + i * 8 < _chipEmu->memSize()) {
                                 DrawTextEx(_font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                                 for (int j = 0; j < 8; ++j) {
-                                    if (_chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
+                                    if (_chipEmu->getI() + i * 8 + j > 65535 || _chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
                                         DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? LIGHTGRAY : GRAY);
                                     }
                                     else {
@@ -1797,7 +1825,7 @@ public:
                 _romName = filename;
                 std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
 #ifdef WITH_EDITOR
-                if(_editor.isEmpty()) {
+                if(_editor.isEmpty() && _romImage.size() < 65536) {
                     std::stringstream os;
                     emu::Chip8Decompiler decomp;
                     decomp.setVariant(_options.presetAsVariant());

@@ -36,6 +36,7 @@
 #include <cstdint>
 
 #include <fmt/format.h>
+#include <stdendian/stdendian.h>
 
 
 namespace emu {
@@ -54,6 +55,7 @@ public:
 class Chip8EmulatorBase : public IChip8Emulator
 {
 public:
+    enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
     constexpr static int MAX_SCREEN_WIDTH = 256;
     constexpr static int MAX_SCREEN_HEIGHT = 192;
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
@@ -65,6 +67,8 @@ public:
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
         , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
+        _mcPalette[0] = be32(0x000000FF);
+        _mcPalette[1] = be32(0xFFFFFFFF);
         if(other) {
             _labelOrAddress = other->_labelOrAddress;
             _execMode = ExecMode::ePAUSED;
@@ -76,6 +80,7 @@ public:
             _frameCounter = other->_frameCounter;
             _clearCounter = other->_clearCounter;
             _screenBuffer = other->_screenBuffer;
+            _screenBuffer32 = other->_screenBuffer32;
             _xoAudioPattern = other->_xoAudioPattern;
             _xoPitch.store(other->_xoPitch);
             _sampleStep.store(other->_sampleStep);
@@ -84,6 +89,7 @@ public:
             _mcSamplePos.store(other->_mcSamplePos);
             _sampleLoop = other->_sampleLoop;
             _xxoPalette = other->_xxoPalette;
+            _mcPalette = other->_mcPalette;
             _rI = other->_rI;
             _rI_b = other->_rI_b;
             _rPC = other->_rPC;
@@ -106,6 +112,7 @@ public:
             _spriteWidth = other->_spriteWidth;
             _spriteHeight = other->_spriteHeight;
             _collisionColor = other->_collisionColor;
+            _blendMode = other->_blendMode;
         }
         if(!_isHires && _options.optOnlyHires) {
             _isHires = true;
@@ -118,6 +125,11 @@ public:
     void clearScreen()
     {
         std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT);
+        if(_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP) {
+            const auto black = be32(0x000000FF);
+            for (auto& c : _screenBuffer32)
+                c = black;
+        }
     }
     std::string dumStateLine() const override
     {
@@ -184,7 +196,8 @@ public:
     uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
     uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : 128; }
     uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : 64; }
-    const uint8_t* getScreenBuffer() const override { return _screenBuffer.data(); }
+    const uint8_t* getScreenBuffer() const override { return _isMegaChipMode ? nullptr : _screenBuffer.data(); }
+    const uint32_t* getScreenBuffer32() const override { return _isMegaChipMode ? _screenBuffer32.data() : nullptr; }
 
     float getAudioPhase() const override { return _wavePhase; }
     void setAudioPhase(float phase) override { _wavePhase = phase; }
@@ -224,6 +237,7 @@ protected:
     std::atomic_uint8_t _rST{};
     std::atomic<float> _wavePhase{0};
     std::array<uint8_t, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT> _screenBuffer{};
+    std::array<uint32_t, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT> _screenBuffer32{};
     std::array<uint8_t,16> _xoAudioPattern{};
     std::atomic_uint8_t _xoPitch{};
     std::atomic<float> _sampleStep{0};
@@ -232,6 +246,7 @@ protected:
     bool _sampleLoop{true};
     std::atomic<double> _mcSamplePos{0};
     std::array<uint8_t,16> _xxoPalette{};
+    std::array<uint32_t,256> _mcPalette{};
     std::array<uint8_t,16> _rV{};
     std::array<uint8_t,16> _rV_b{};
     uint8_t _rSP_b{};
@@ -241,6 +256,7 @@ protected:
     uint16_t _spriteWidth{0};
     uint16_t _spriteHeight{0};
     uint8_t _collisionColor{1};
+    MegaChipBlendMode _blendMode{eBLEND_NORMAL};
 
     Chip8EmulatorHost& _host;
     Chip8EmulatorOptions& _options;

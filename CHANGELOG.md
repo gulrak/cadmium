@@ -2,9 +2,10 @@
 ## v1.0.1 (wip)
 
 * MegaChip8 support (Shoutout to @NinjaWeedle to his help on figuring out details of MegaChip8!)
-    * Able to run `*.mc8` roms
+    * able to run `*.mc8` roms
     * show the additional opcodes in instruction
     * 256 color 256x192 pixel video mode
+    * blend modes for sprites (normal, 25%, 50%, 76%, add, multiply)
     * play digisound
     * disassemble MegaChip8 to Octo source with macros prepended the result to allow using 
       MegaChip opcodes

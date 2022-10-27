@@ -229,7 +229,7 @@ std::string dataPath()
         dir = (fs::path(localAppData) / appName()).string();
     }
     else {
-        throw std::runtime_error("Need %localappdata% to create configuration directory!");
+        throw std::runtime_error("Need %LOCALAPPDATA% to create configuration directory!");
     }
 #else
     auto home = ::getenv("HOME");

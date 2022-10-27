@@ -779,11 +779,8 @@ public:
     :calc BN { 0xB0 + ( n & 0xF ) }
     :byte 0x00 :byte BN
 }
-:macro ldhi nnnnnn {
-    :calc B1 { nnnnnn >> 16 }
-    :calc B2 { ( nnnnnn >> 8 ) & 0xFF }
-    :calc B3 { nnnnnn & 0xFF }
-    :byte 0x01 :byte B1 :byte B2 :byte B3
+:macro ldhi nnnn {
+    :byte 0x01 :byte 0x00 :pointer nnnn
 }
 :macro ldpal nn { :byte 0x02 :byte nn }
 :macro sprw nn { :byte 0x03 :byte nn }

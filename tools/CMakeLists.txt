@@ -14,3 +14,6 @@ add_executable(fontgenerator fontgenerator.cpp)
 
 add_executable(colorsort colorsort.cpp)
 target_link_libraries(colorsort PUBLIC raylib)
+
+add_executable(imageconv imageconv.cpp)
+target_link_libraries(imageconv PUBLIC raylib fmt::fmt)

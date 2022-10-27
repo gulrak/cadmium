@@ -84,6 +84,7 @@ public:
     virtual uint16_t getMaxScreenWidth() const { return 64; }
     virtual uint16_t getMaxScreenHeight() const { return 32; }
     virtual const uint8_t* getScreenBuffer() const { return nullptr; }
+    virtual const uint32_t* getScreenBuffer32() const { return nullptr; }
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties
     virtual float getAudioPhase() const { return 0.0f; }

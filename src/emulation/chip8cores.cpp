@@ -25,7 +25,6 @@
 //---------------------------------------------------------------------------------------
 
 #include <emulation/chip8cores.hpp>
-#include <stdendian/stdendian.h>
 
 #include <iostream>
 
@@ -134,7 +133,7 @@ void Chip8EmulatorFP::setHandler()
         case Chip8EmulatorOptions::eMEGACHIP:
             on(0xFFFF, 0x0010, &Chip8EmulatorFP::op0010);
             on(0xFFFF, 0x0011, &Chip8EmulatorFP::op0011);
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Bn);
+            on(0xFFF0, 0x00B0, &Chip8EmulatorFP::op00Bn);
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
             on(0xFFFF, 0x00E0, &Chip8EmulatorFP::op00E0_megachip);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
@@ -322,15 +321,36 @@ void Chip8EmulatorFP::op0011(uint16_t opcode)
 void Chip8EmulatorFP::op00Bn(uint16_t opcode)
 {
     auto n = (opcode & 0xf);
-    std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-    std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+    if(_isMegaChipMode) {
+        std::memmove(_screenBuffer32.data(), _screenBuffer32.data() + n * MAX_SCREEN_WIDTH, (_screenBuffer32.size() - n * MAX_SCREEN_WIDTH) * sizeof(uint32_t));
+        const auto black = be32(0x000000FF);
+        for(size_t i = 0; i < n * MAX_SCREEN_WIDTH; ++i) {
+            _screenBuffer32[_screenBuffer32.size() - n * MAX_SCREEN_WIDTH + i] = black;
+        }
+        _host.updateScreen();
+    }
+    else {
+        std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
+        std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+    }
+
 }
 
 void Chip8EmulatorFP::op00Cn(uint16_t opcode)
 {
     auto n = (opcode & 0xf);
-    std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-    std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+    if(_isMegaChipMode) {
+        std::memmove(_screenBuffer32.data() + n * MAX_SCREEN_WIDTH, _screenBuffer32.data(), (_screenBuffer32.size() - n * MAX_SCREEN_WIDTH) * sizeof(uint32_t));
+        const auto black = be32(0x000000FF);
+        for(size_t i = 0; i < n * MAX_SCREEN_WIDTH; ++i) {
+            _screenBuffer32[i] = black;
+        }
+        _host.updateScreen();
+    }
+    else {
+        std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
+        std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+    }
 }
 
 void Chip8EmulatorFP::op00Dn(uint16_t opcode)
@@ -362,17 +382,39 @@ void Chip8EmulatorFP::op00EE(uint16_t opcode)
 
 void Chip8EmulatorFP::op00FB(uint16_t opcode)
 {
-    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
-        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
+    if(_isMegaChipMode) {
+        const auto black = be32(0x000000FF);
+        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+            std::memmove(_screenBuffer32.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer32.data() + y * MAX_SCREEN_WIDTH, (MAX_SCREEN_WIDTH - 4) * sizeof(uint32_t));
+            for(size_t i = 0; i < 4; ++i)
+                _screenBuffer32[y * MAX_SCREEN_WIDTH + i] = black;
+        }
+        _host.updateScreen();
+    }
+    else {
+        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+            std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
+            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
+        }
     }
 }
 
 void Chip8EmulatorFP::op00FC(uint16_t opcode)
 {
-    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
-        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4, 0, 4);
+    if(_isMegaChipMode) {
+        const auto black = be32(0x000000FF);
+        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+            std::memmove(_screenBuffer32.data() + y * MAX_SCREEN_WIDTH, _screenBuffer32.data() + y * MAX_SCREEN_WIDTH + 4, (MAX_SCREEN_WIDTH - 4) * sizeof(uint32_t));
+            for(size_t i = 0; i < 4; ++i)
+                _screenBuffer32[y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4 + i] = black;
+        }
+        _host.updateScreen();
+    }
+    else {
+        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
+            std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
+            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4, 0, 4);
+        }
     }
 }
 void Chip8EmulatorFP::op00FD(uint16_t opcode)
@@ -439,10 +481,11 @@ void Chip8EmulatorFP::op02nn(uint16_t opcode)
     cols.reserve(255);
     size_t address = _rI;
     for(size_t i = 0; i < numCols; ++i) {
-        auto a = _memory[_rI++ & ADDRESS_MASK];
-        auto r = _memory[_rI++ & ADDRESS_MASK];
-        auto g = _memory[_rI++ & ADDRESS_MASK];
-        auto b = _memory[_rI++ & ADDRESS_MASK];
+        auto a = _memory[address++ & ADDRESS_MASK];
+        auto r = _memory[address++ & ADDRESS_MASK];
+        auto g = _memory[address++ & ADDRESS_MASK];
+        auto b = _memory[address++ & ADDRESS_MASK];
+        _mcPalette[i + 1] = be32((r << 24) | (g << 16) | (b << 8) | a);
         cols.push_back(be32((r << 24) | (g << 16) | (b << 8) | a));
     }
     _host.updatePalette(cols, 1);
@@ -485,7 +528,8 @@ void Chip8EmulatorFP::op0700(uint16_t opcode)
 
 void Chip8EmulatorFP::op080n(uint16_t opcode)
 {
-
+    auto bm = opcode & 0xF;
+    _blendMode = bm < 6 ? MegaChipBlendMode(bm) : eBLEND_NORMAL;
 }
 
 void Chip8EmulatorFP::op09nn(uint16_t opcode)
@@ -750,9 +794,63 @@ void Chip8EmulatorFP::opCxnn(uint16_t opcode)
     _rV[(opcode >> 8) & 0xF] = result; // GetRandomValue(0, 255) & (opcode & 0xFF);
 }
 
+inline uint8_t getR(uint32_t* col) { return *col; }
+inline uint8_t getG(uint32_t* col) { return *(col+1); }
+inline uint8_t getB(uint32_t* col) { return *(col+2); }
+inline uint8_t getA(uint32_t* col) { return *col; }
+
+inline uint8_t blendAlpha(uint8_t c1, uint8_t c2, uint8_t alpha)
+{
+    float a = alpha / 255.0f;
+    float r = (c1 * (1.0f - a) + c2 * a); //   + 62.01
+    return r > 255.0f ? 255 : r < 0 ? 0 : (uint8_t)r;
+}
+
+static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
+{
+    int a = alpha;
+    auto* dst = (uint8_t*)dest;
+    const auto* c1 = dst;
+    const auto* c2 = (const uint8_t*)col;
+    *dst++ = blendAlpha(*c1++, *c2++, alpha);
+    *dst++ = blendAlpha(*c1++, *c2++, alpha);
+    *dst++ = blendAlpha(*c1++, *c2++, alpha);
+    /*
+    *dst++ = *c2 + a * ( ( int(*c2) - *c1++ ) + 127 ) / 255; ++c2;
+    *dst++ = *c2 + a * ( ( int(*c2) - *c1++ ) + 127 ) / 255; ++c2;
+    *dst++ = *c2 + a * ( ( int(*c2) - *c1 ) + 127 ) / 255;
+     * */
+//    *dst++ = (a * *c1++ + (255 - a) * *c2++) >> 8;
+//    *dst++ = (a * *c1++ + (255 - a) * *c2++) >> 8;
+//    *dst++ = (a * *c1 + (255 - a) * *c2) >> 8;
+    *dst = 255;
+}
+
+static void blendColorsAdd(uint32_t* dest, const uint32_t* col)
+{
+    auto* dst = (uint8_t*)dest;
+    const auto* c1 = dst;
+    const auto* c2 = (const uint8_t*)col;
+    *dst++ = std::min((int)*c1++ + *c2++, 255);
+    *dst++ = std::min((int)*c1++ + *c2++, 255);
+    *dst++ = std::min((int)*c1 + *c2, 255);
+    *dst = 255;
+}
+
+static void blendColorsMul(uint32_t* dest, const uint32_t* col)
+{
+    auto* dst = (uint8_t*)dest;
+    const auto* c1 = dst;
+    const auto* c2 = (const uint8_t*)col;
+    *dst++ = (int)*c1++ * *c2++ / 255;
+    *dst++ = (int)*c1++ * *c2++ / 255;
+    *dst++ = (int)*c1 * *c2 / 255;
+    *dst = 255;
+}
+
 void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
 {
-    if(!_isMegaChipMode || _rI < 256)
+    if(!_isMegaChipMode)
         opDxyn<HiresSupport>(opcode);
     else {
         int xpos = _rV[(opcode >> 8) & 0xF];
@@ -762,12 +860,35 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
             return;
         for(int y = 0; y < _spriteHeight && ypos + y < 192; ++y) {
             uint8_t* pixelBuffer = _screenBuffer.data() + (ypos + y) * 256 + xpos;
-            for(int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer) {
+            uint32_t* pixelBuffer32 = _screenBuffer32.data() + (ypos + y) * 256 + xpos;
+            for(int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer, ++pixelBuffer32) {
                 auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
                 if(col) {
                     if(*pixelBuffer == _collisionColor)
                         _rV[0xF] = 1;
                     *pixelBuffer = col;
+                    switch (_blendMode) {
+                        case Chip8EmulatorBase::eBLEND_ALPHA_25:
+                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 63);
+                            break;
+                        case Chip8EmulatorBase::eBLEND_ALPHA_50:
+                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 127);
+                            break;
+                        case Chip8EmulatorBase::eBLEND_ALPHA_75:
+                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 191);
+                            break;
+                        case Chip8EmulatorBase::eBLEND_ADD:
+                            blendColorsAdd(pixelBuffer32, &_mcPalette[col]);
+                            break;
+                        case Chip8EmulatorBase::eBLEND_MUL:
+                            blendColorsMul(pixelBuffer32, &_mcPalette[col]);
+                            break;
+
+                        case Chip8EmulatorBase::eBLEND_NORMAL:
+                        default:
+                            *pixelBuffer32 = _mcPalette[col];
+                            break;
+                    }
                 }
             }
         }
