@@ -783,27 +783,20 @@ void Chip8EmulatorFP::opBxyn(uint16_t opcode)
 
 void Chip8EmulatorFP::opCxnn(uint16_t opcode)
 {
-    ++_randomSeed;
-    uint16_t val = _randomSeed>>8;
-    val += _chip8_cosmac_vip[0x100 + (_randomSeed&0xFF)];
-    uint8_t result = val;
-    val >>= 1;
-    val += result;
-    _randomSeed = (_randomSeed & 0xFF) | (val << 8);
-    result = val & (opcode & 0xFF);
-    _rV[(opcode >> 8) & 0xF] = result; // GetRandomValue(0, 255) & (opcode & 0xFF);
-}
-
-inline uint8_t getR(uint32_t* col) { return *col; }
-inline uint8_t getG(uint32_t* col) { return *(col+1); }
-inline uint8_t getB(uint32_t* col) { return *(col+2); }
-inline uint8_t getA(uint32_t* col) { return *col; }
-
-inline uint8_t blendAlpha(uint8_t c1, uint8_t c2, uint8_t alpha)
-{
-    float a = alpha / 255.0f;
-    float r = (c1 * (1.0f - a) + c2 * a); //   + 62.01
-    return r > 255.0f ? 255 : r < 0 ? 0 : (uint8_t)r;
+    if(_options.behaviorBase < emu::Chip8EmulatorOptions::eSCHIP10) {
+        ++_randomSeed;
+        uint16_t val = _randomSeed >> 8;
+        val += _chip8_cosmac_vip[0x100 + (_randomSeed & 0xFF)];
+        uint8_t result = val;
+        val >>= 1;
+        val += result;
+        _randomSeed = (_randomSeed & 0xFF) | (val << 8);
+        result = val & (opcode & 0xFF);
+        _rV[(opcode >> 8) & 0xF] = result;
+    }
+    else {
+        _rV[(opcode >> 8) & 0xF] = (rand() >> 4) & (opcode & 0xFF);
+    }
 }
 
 static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
@@ -812,17 +805,9 @@ static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
     auto* dst = (uint8_t*)dest;
     const auto* c1 = dst;
     const auto* c2 = (const uint8_t*)col;
-    *dst++ = blendAlpha(*c1++, *c2++, alpha);
-    *dst++ = blendAlpha(*c1++, *c2++, alpha);
-    *dst++ = blendAlpha(*c1++, *c2++, alpha);
-    /*
-    *dst++ = *c2 + a * ( ( int(*c2) - *c1++ ) + 127 ) / 255; ++c2;
-    *dst++ = *c2 + a * ( ( int(*c2) - *c1++ ) + 127 ) / 255; ++c2;
-    *dst++ = *c2 + a * ( ( int(*c2) - *c1 ) + 127 ) / 255;
-     * */
-//    *dst++ = (a * *c1++ + (255 - a) * *c2++) >> 8;
-//    *dst++ = (a * *c1++ + (255 - a) * *c2++) >> 8;
-//    *dst++ = (a * *c1 + (255 - a) * *c2) >> 8;
+    *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
+    *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
+    *dst++ = (a * *c2 + (255 - a) * *c1) >> 8;
     *dst = 255;
 }
 

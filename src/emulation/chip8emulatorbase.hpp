@@ -117,7 +117,7 @@ public:
         if(!_isHires && _options.optOnlyHires) {
             _isHires = true;
         }
-        _isMegaChipMode = (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP && other->_isMegaChipMode);
+        _isMegaChipMode = (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP && other && other->_isMegaChipMode);
         _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
     }
     ~Chip8EmulatorBase() override = default;

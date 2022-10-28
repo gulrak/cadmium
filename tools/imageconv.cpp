@@ -27,6 +27,7 @@
 #include <fmt/format.h>
 #include <raylib.h>
 #include <iostream>
+#include <fstream>
 #include <set>
 
 static bool CheckContactRects(Rectangle rec1, Rectangle rec2)
@@ -46,10 +47,24 @@ int main(int argc, char* argv[])
     ghc::CLI cli(argc, argv);
     std::vector<std::string> files;
     std::string output;
-    cli.option({"-o", "--output"}, files, "output file");
+    std::ofstream outputStream;
+    cli.option({"-o", "--output"}, output, "output file");
     cli.positional(files, "files to convert");
     cli.parse();
 
+    if(!output.empty() && output != "-") {
+        outputStream.open(output);
+        if(outputStream.fail()) {
+            std::cerr << "ERROR: Couldn't open output file '" << output << "'" << std::endl;
+            exit(1);
+        }
+    }
+    if(files.size() > 1) {
+        std::cerr << "ERROR: Multiple source images are not supported yet!" << std::endl;
+        exit(1);
+    }
+
+    std::ostream& out = output.empty() ? std::cout : outputStream;
     std::set<Color> colors;
     std::vector<Rectangle> images;
     int maxPaletteSize = 255;
@@ -58,10 +73,10 @@ int main(int argc, char* argv[])
         int colorCount = 0;
         auto img = LoadImage(file.c_str());
         auto* palette = LoadImagePalette(img, maxPaletteSize, &colorCount);
-        std::cout << ": mc_palette # " << colorCount << std::endl;
+        out << ": mc_palette # " << colorCount << " colors" << std::endl;
         for(int i = 0; i < colorCount; ++i) {
             auto col = palette[i];
-            std::cout << fmt::format("    0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x}", col.a, col.r, col.g, col.b) << std::endl;
+            out << fmt::format("    0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x}", col.a, col.r, col.g, col.b) << std::endl;
         }
         for(int y = 0; y < img.height; ++y) {
             for(int x = 0; x < img.width; ++x) {
@@ -104,26 +119,26 @@ int main(int argc, char* argv[])
             }
         }
         for(auto& rect : result) {
-            std::cout << fmt::format(": mc_sprite_{}_{} # size {}x{}", rect.x, rect.y, rect.width, rect.height) << std::endl;
+            out << fmt::format("\n: mc_sprite_{}_{} # size {}x{}", rect.x, rect.y, rect.width, rect.height) << std::endl;
             for(int y = rect.y; y < rect.y + rect.height; ++y) {
-                std::cout << "   ";
+                out << "   ";
                 for(int x = rect.x; x < rect.x + rect.width; ++x) {
                     auto col = GetImageColor(img, x, y);
                     if(col.a <= 200)
-                        std::cout << " 0x00";
+                        out << " 0x00";
                     else {
                         for (int i = 0; i < colorCount; ++i) {
                             if(COLOR_EQUAL(palette[i],col)) {
-                                std::cout << fmt::format(" 0x{:02x}", i + 1);
+                                out << fmt::format(" 0x{:02x}", i + 1);
                                 break;
                             }
                         }
                     }
                 }
-                std::cout << std::endl;
+                out << std::endl;
             }
         }
-        ExportImage(img, "image.png");
+        // ExportImage(img, "image.png");
         std::clog << "found " << result.size() << " rectangles after merge" << std::endl;
         UnloadImagePalette(palette);
         UnloadImage(img);

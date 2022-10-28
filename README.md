@@ -75,6 +75,14 @@ in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
 * Traditional 1400Hz buzzer, MegaChip8 sample playback and XO-CHIP audio emulation
 * When multicolor support is active, 16 colors in four planes are supported
 
+## Versioning
+
+Cadmium uses version numbers to communicate the difference between releases and
+work-in-progress builds. Only even patch versions will be used for releases
+and odd patch version will only be used for commits while working on  the next
+version. So a version like `v1.0.1` can vary in features and behavior as it is
+the changing `main` branch head between `v1.0.0` and `v1.0.2`.
+
 ## Compiling from Source
 
 _Cadmium_ is written in C++17 and uses CMake as a build solution. To build it,

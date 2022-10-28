@@ -64,7 +64,7 @@ inline std::string trim(std::string s)
 inline std::vector<uint8_t> loadFile(const std::string& file)
 {
     std::ifstream is(file, std::ios::binary | std::ios::ate);
-    std::streamsize size = is.tellg();
+    auto size = is.tellg();
     is.seekg(0, std::ios::beg);
 
     std::vector<uint8_t> buffer(size);

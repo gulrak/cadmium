@@ -358,7 +358,7 @@ void Editor::update()
             }
         }
         else if (isKeyActivated(KEY_ENTER)) {
-            insert(std::string(1, '\n'));
+            insert("\n    ");
         }
         else {
             auto codepoint = GetCharPressed();
