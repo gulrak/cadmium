@@ -1374,7 +1374,7 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGA-CHIP;XO-CHIP", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGACHIP8;XO-CHIP", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
@@ -1704,7 +1704,7 @@ public:
         _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
     }
 
-    void loadRom(const char* filename)
+    void loadRom(const char* filename, bool andRun = false)
     {
         if (strlen(filename) < 4095) {
             unsigned int size = 0;
@@ -1833,6 +1833,10 @@ public:
                     _editor.setText(os.str());
                 }
 #endif
+                if(andRun) {
+                    _chipEmu->setExecMode(ExecMode::eRUNNING);
+                    _mainView = eVIDEO;
+                }
             }
             //memory[0x1FF] = 3;
         }
@@ -2049,17 +2053,19 @@ int main(int argc, char* argv[])
     bool benchmark = false;
     bool showHelp = false;
     bool opcodeTable = false;
+    bool startRom = false;
     int64_t execSpeed = -1;
-    std::string romFile;
+    std::vector<std::string> romFile;
     std::string presetName = "";
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
-    cli.option({"-r", "--rom"}, romFile, "ROM file to load");
+    cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     cli.option({"-b", "--benchmark"}, benchmark, "Run benchmark against octo-c");
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, xo-chip");
+    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
     cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
+    cli.positional(romFile, "ROM file or source to load");
     cli.parse();
 
     if(showHelp) {
@@ -2069,6 +2075,14 @@ int main(int argc, char* argv[])
     if(opcodeTable) {
         dumpOpcodeTable(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
+    }
+    if(romFile.size() > 1) {
+        std::cerr << "ERROR: only one ROM/source file supported" << std::endl;
+        exit(1);
+    }
+    if(romFile.empty() && startRom) {
+        std::cerr << "ERROR: can't start amything without a ROM/source file" << std::endl;
+        exit(1);
     }
     if(!presetName.empty()) {
         try {
@@ -2092,7 +2106,7 @@ int main(int argc, char* argv[])
         Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
 #ifndef PLATFORM_WEB
         if (!romFile.empty()) {
-            cadmium.loadRom(romFile.c_str());
+            cadmium.loadRom(romFile.front().c_str(), startRom);
         }
         SetTargetFPS(60);
         while (!cadmium.windowShouldClose()) {
@@ -2122,7 +2136,7 @@ int main(int argc, char* argv[])
         chip8->reset();
         if(!romFile.empty()) {
             unsigned int size = 0;
-            uint8_t* data = LoadFileData(romFile.c_str(), &size);
+            uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
             if (size < 4096 - 512) {
                 std::memcpy(chip8->memory() + 512, data, size);
             }
