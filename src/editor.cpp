@@ -232,8 +232,8 @@ void Editor::updateLineInfo(uint32_t fromLine)
 
 void Editor::ensureCursorVisibility()
 {
-    if (_visibleLines && _cursorY >= _tosLine + _visibleLines)
-        _tosLine = _cursorY - _visibleLines + 1;
+    if (_visibleLines && _cursorY >= _tosLine + _visibleLines - 1)
+        _tosLine = _cursorY - _visibleLines + 2;
     else if (_visibleLines && _cursorY < _tosLine)
         _tosLine = _cursorY;
     if (_visibleCols && _cursorX >= _losCol + _visibleCols)
@@ -291,6 +291,11 @@ void Editor::update()
     else if (ctrlPressed && isAlphaPressed('R')) {
         _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
     }
+    else if (ctrlPressed && isAlphaPressed('S')) {
+        if(!_filename.empty()) {
+            writeFile(_filename, _text.data(), _text.size());
+        }
+    }
     else if (IsKeyPressed(KEY_ESCAPE)) {
         _selectionStart = _selectionEnd = 0;
         _findOrReplace = eNONE;
@@ -345,6 +350,10 @@ void Editor::update()
             _selectionEnd = _text.size();
             selectionChange = true;
         }
+        else if(isKeyActivated(KEY_TAB)) {
+            auto numSpace = ((_cursorX / 4) + 1) * 4 - _cursorX;
+            insert(std::string(numSpace, ' '));
+        }
         else if (isKeyActivated(KEY_BACKSPACE)) {
             if (_selectionStart != _selectionEnd) {
                 deleteSelectedText();
@@ -358,7 +367,7 @@ void Editor::update()
             }
         }
         else if (isKeyActivated(KEY_ENTER)) {
-            insert("\n    ");
+            insert("\n");
         }
         else {
             auto codepoint = GetCharPressed();

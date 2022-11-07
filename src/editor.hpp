@@ -51,6 +51,7 @@ public:
     inline static Color selected{100, 100, 120, 255};
     Editor() : _alphabetKeys(26,0) { updateLineInfo(); }
 
+    void setFilename(std::string filename) { _filename = filename; }
     bool isEmpty() const { return _text.empty(); }
     const std::string& getText() const { return _text; }
     void setText(std::string text)
@@ -162,6 +163,7 @@ protected:
     const float BLINK_RATE = 0.8f;
     const float REPEAT_DELAY = 0.5f;
     const float REPEAT_RATE = 0.05f;
+    std::string _filename;
     std::string _text;
     std::vector<uint32_t> _lines;
     std::vector<ColorPair> _highlighting;

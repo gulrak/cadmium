@@ -357,7 +357,7 @@ void Chip8EmulatorFP::op00Dn(uint16_t opcode)
 {
     auto n = (opcode & 0xf);
     std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-    std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+    std::memset(_screenBuffer.data() + (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH, 0, _screenBuffer.size() - (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH);
 }
 
 void Chip8EmulatorFP::op00E0(uint16_t opcode)
@@ -413,7 +413,7 @@ void Chip8EmulatorFP::op00FC(uint16_t opcode)
     else {
         for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
             std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
-            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4, 0, 4);
+            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + Chip8EmulatorBase::getCurrentScreenWidth() - 4, 0, MAX_SCREEN_WIDTH - Chip8EmulatorBase::getCurrentScreenWidth() + 4);
         }
     }
 }

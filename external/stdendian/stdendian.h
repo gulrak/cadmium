@@ -257,15 +257,15 @@ static inline uint64_t le64(uint64_t x)
  * This method relies on the compiler lifting byte swaps.
  */
 #if _BYTE_ORDER == _BIG_ENDIAN
-uint16_t bswap16(uint16_t x) { return le16(x); }
-uint32_t bswap32(uint32_t x) { return le32(x); }
-uint64_t bswap64(uint64_t x) { return le64(x); }
+static inline uint16_t bswap16(uint16_t x) { return le16(x); }
+static inline uint32_t bswap32(uint32_t x) { return le32(x); }
+static inline uint64_t bswap64(uint64_t x) { return le64(x); }
 #endif
 
 #if _BYTE_ORDER == _LITTLE_ENDIAN
-uint16_t bswap16(uint16_t x) { return be16(x); }
-uint32_t bswap32(uint32_t x) { return be32(x); }
-uint64_t bswap64(uint64_t x) { return be64(x); }
+static inline uint16_t bswap16(uint16_t x) { return be16(x); }
+static inline uint32_t bswap32(uint32_t x) { return be32(x); }
+static inline uint64_t bswap64(uint64_t x) { return be64(x); }
 #endif
 #endif
 

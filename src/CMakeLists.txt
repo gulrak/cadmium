@@ -12,6 +12,8 @@ set(CADMIUM_SOURCE
     resourcemanager.hpp
     configuration.cpp
     configuration.hpp
+    circularbuffer.cpp
+    circularbuffer.hpp
 )
 
 if(WIN32)

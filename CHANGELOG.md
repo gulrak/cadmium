@@ -13,6 +13,7 @@
 * _Frame boost_ now disabled when _instructions per frame_ is set to 0 (unlimited)
 * Memory view is now scrollable when debugger is paused
 * The Editor now supports find and replace with `CTRL+F`/`CTRL+R`
+* In non-web targets `CTRL+S` in the editor saves the current source, if a name is set.
 * Various bugfixes in the speculative executing disassembler
 * The embedded Octo assembler now allows using planes with values up to 15 to allow up to four planes.
 * The config is now stored to allow to remember the emulation settings and the file
@@ -20,6 +21,12 @@
     * Windows: `%localappdata%\net.gulrak.cadmium\config.json`
     * macOS: `~/Library/Application Support/net.gulrak.cadmium/config.json`
     * Linux: `~/.local/share/net.gulrak.cadmium/config.json`
+* The option `-r`/`--run` is now starting a rom/source that is given as positional
+  parameter
+* Bugfix: Fixed scrolling in non-megachip8 modes after introducing issues through
+  mc8 support.
+* Bugfix: The XO-CHIP sound emulation was not frame driven but buffer driven, leading
+  to it missing some faster updates, it now operates frame driven. 
 * Bugfix: `F000 nnnn` (`i := long nnnn`) was not skipped correctly in skip opcodes
 * Bugfix: two-word opcodes where messing with disassembly, new implementation is better
   in handling backwards disassembly upwards from the PC

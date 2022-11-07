@@ -191,7 +191,7 @@ public:
 
     void tick(int instructionsPerFrame) override;
 
-    bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return rc; }
+    bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
     uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }
     uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
     uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : 128; }
