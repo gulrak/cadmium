@@ -69,7 +69,7 @@ bool Chip8Compiler::compile(std::string str)
         //std::cerr << _impl->_errorMessage << std::endl;
     }
     else {
-        _impl->_sha1hex = calculateSha1Hex(code(), codeSize());
+        updateHash(); //calculateSha1Hex(code(), codeSize());
         _impl->_errorMessage = "No errors.";
         //std::clog << "compiled successfully." << std::endl;
     }
@@ -109,6 +109,31 @@ std::pair<uint32_t, uint32_t> Chip8Compiler::addrForLine(uint32_t line) const
 uint32_t Chip8Compiler::lineForAddr(uint32_t addr) const
 {
     return addr < OCTO_RAM_MAX && !isError() ? _impl->_program->romLineMap[addr] : 0xFFFFFFFF;
+}
+
+const char* Chip8Compiler::breakpointForAddr(uint32_t addr) const
+{
+    if(addr < OCTO_RAM_MAX && _impl->_program->breakpoints[addr]) {
+        return _impl->_program->breakpoints[addr];
+    }
+    return nullptr;
+}
+
+void Chip8Compiler::updateHash()
+{
+    char hex[SHA1_HEX_SIZE];
+    char bpName[1024];
+    sha1 sum;
+    sum.add(code(), codeSize());
+    for(uint32_t addr = 0; addr < OCTO_RAM_MAX; ++addr) {
+        if(_impl->_program->breakpoints[addr]) {
+            auto l = std::snprintf(bpName, 1023, "%04x:%s", addr, _impl->_program->breakpoints[addr]);
+            sum.add(bpName, l);
+        }
+    }
+    sum.finalize();
+    sum.print_hex(hex);
+    _impl->_sha1hex = hex;
 }
 
 void Chip8Compiler::updateLineCoverage()

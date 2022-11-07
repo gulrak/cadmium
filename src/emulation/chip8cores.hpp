@@ -582,6 +582,7 @@ public:
     }
 
     void executeInstruction() override;
+    void executeInstructionNoBreakpoints();
     void executeInstructions(int numInstructions) override;
 
     uint8_t getNextMCSample() override;

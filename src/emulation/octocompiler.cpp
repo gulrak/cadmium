@@ -30,6 +30,10 @@
 
 namespace emu {
 
+static std::unordered_set<std::string> _preprocessor = {
+    "#include", "#data", "#code", "#if", "#elif", "#else", "#endif"
+};
+
 static std::unordered_set<std::string> _directives = {
     ":", ":alias", ":assert", ":breakpoint", ":byte", ":calc", ":call", ":const", ":macro", ":monitor", ":next", ":org", ":pointer", ":proto", ":stringmode", ":unpack"
 };
@@ -46,6 +50,11 @@ void OctoCompiler::compile(const char* source, const char* end)
     _lex.setRange(source, end);
 }
 
+std::string OctoCompiler::preprocess(const std::string& includePath)
+{
+    return std::string();
+}
+
 void OctoCompiler::Lexer::setRange(const char* source, const char* end)
 {
     _srcPtr = source;
@@ -54,9 +63,22 @@ void OctoCompiler::Lexer::setRange(const char* source, const char* end)
     _column = 0;
 }
 
+bool OctoCompiler::Lexer::isPreprocessor() const
+{
+    if(peek() == '#') {
+        auto src = _srcPtr + 1;
+        while(src < _srcEnd && std::isalpha(*src))
+            ++src;
+        if(_preprocessor.count(std::string(_srcPtr, src - _srcPtr))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void OctoCompiler::Lexer::skipWhitespace()
 {
-    while (std::isspace(peek()) || peek() == '#')  {
+    while (_srcPtr < _srcEnd && std::isspace(peek()) || (peek() == '#' && !isPreprocessor()))  {
         char c = get();
         if(c == '#') {
             while (c && c != '\n')
@@ -78,8 +100,7 @@ OctoCompiler::Token OctoCompiler::Lexer::nextToken()
     }
     else {
         const char* start = _srcPtr;
-        while (peek() && !std::isspace(peek())) get();
-
+        //while (peek() && !std::isspace(peek())) get();
         if (!peek())
             return {Token::eEOF, 0, {}, _line, _column, 0};
 
@@ -110,6 +131,9 @@ OctoCompiler::Token OctoCompiler::Lexer::nextToken()
                 return {Token::eDIRECTIVE, 0, text, _line, _column, len};
             else
                 return {Token::eERROR, 0, "Unknown directive: " + text, _line, _column, len};
+        }
+        if(peek() == '#') {
+            return {Token::ePREPROCESSOR, 0, text, _line, _column, len};
         }
         if(_reserved.count(text)) {
             Token::Type type = len > 1 && std::isalpha(*(start + 1)) ? Token::eKEYWORD : Token::eOPERATOR;

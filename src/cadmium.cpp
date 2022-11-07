@@ -890,6 +890,7 @@ public:
             if(!_editor.compiler().isError() && _editor.compiler().sha1Hex() != _romSha1Hex) {
                 _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
                 _romSha1Hex = _editor.compiler().sha1Hex();
+                updateOctoBreakpoints(_editor.compiler());
                 reloadRom();
             }
         }
@@ -981,6 +982,32 @@ public:
         return disassembly;
     }
 
+    void toggleBreakpoint(uint32_t address)
+    {
+        auto* bpi = _chipEmu->findBreakpoint(address);
+        if(bpi) {
+            if(bpi->type != emu::IChip8Emulator::BreakpointInfo::eCODED)
+                _chipEmu->removeBreakpoint(address);
+        }
+        else {
+            _chipEmu->setBreakpoint(address, {fmt::format("BP@{:x}", address), emu::IChip8Emulator::BreakpointInfo::eTRANSIENT, true});
+        }
+    }
+
+    void updateOctoBreakpoints(const emu::Chip8Compiler& c8c)
+    {
+        for(uint32_t addr = 0; addr < std::min(_chipEmu->memSize(), 65536); ++addr) {
+            const auto* bpn = c8c.breakpointForAddr(addr);
+            if(bpn)
+                _chipEmu->setBreakpoint(addr, {bpn, emu::IChip8Emulator::BreakpointInfo::eCODED, true});
+            else {
+                auto* bpi = _chipEmu->findBreakpoint(addr);
+                if(bpi && bpi->type == emu::IChip8Emulator::BreakpointInfo::eCODED)
+                    _chipEmu->removeBreakpoint(addr);
+            }
+        }
+    }
+
     void drawGui()
     {
         using namespace gui;
@@ -1047,6 +1074,7 @@ public:
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
+                        _chipEmu->removeAllBreakpoints();
                     }
                     if(LabelButton(" Open...")) {
 #ifdef PLATFORM_WEB
@@ -1237,8 +1265,10 @@ public:
                     {
                         auto area = GetContentAvailable();
                         Space(area.height);
-                        if(CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
+                        bool mouseInPanel = false;
+                        if(!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
                             auto wheel = GetMouseWheelMoveV();
+                            mouseInPanel = true;
                             if(std::fabs(wheel.y) >= 0.5f) {
                                 if(_instructionOffset < 0) {
                                     _instructionOffset = _chipEmu->getPC();
@@ -1257,17 +1287,27 @@ public:
                         BeginScissorMode(area.x, area.y, area.width, area.height);
                         auto pcColor = _chipEmu->cpuState() == emu::IChip8Emulator::eERROR ? RED : YELLOW;
                         for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
+                            if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC - (i+1)*lineSpacing, area.width, 8}))
+                                toggleBreakpoint(prefix[prefix.size() - 1 - i].first);
+                            const auto* bpi = _chipEmu->findBreakpoint(prefix[prefix.size() - 1 - i].first);
                             DrawTextEx(_font, prefix[prefix.size() - 1 - i].second.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, _chipEmu->getPC() == prefix[prefix.size() - 1 - i].first ? pcColor : LIGHTGRAY);
+                            if(bpi)
+                                GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
                         }
                         bool inIf = !prefix.empty() && prefix.back().second.find("if ") != std::string::npos;
                         uint32_t addr = insOff;
                         for (int i = 0; i <= extraLines && addr < _chipEmu->memSize(); ++i) {
                             uint16_t opcode = (_chipEmu->memory()[addr] << 8) | _chipEmu->memory()[addr + 1];
+                            if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC + i * lineSpacing, area.width, 8}))
+                                toggleBreakpoint(addr);
+                            const auto* bpi = _chipEmu->findBreakpoint(addr);
                             auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + addr, _chipEmu->memory() + _chipEmu->memSize());
                             if (bytes == 2)
                                 DrawTextEx(_font, TextFormat("%04X: %04X       %s%s", addr, opcode, (inIf ? "  " : ""), instruction.c_str()), {area.x, yposPC + i * lineSpacing}, 8, 0, _chipEmu->getPC() == addr ? pcColor : LIGHTGRAY);
                             else
                                 DrawTextEx(_font, TextFormat("%04X: %04X %04X  %s%s", addr, opcode, ((_chipEmu->memory()[addr + 2] << 8) | _chipEmu->memory()[addr + 3]), (inIf ? "  " : ""), instruction.c_str()), {area.x, yposPC + i * lineSpacing}, 8, 0, _chipEmu->getPC() == addr ? pcColor : LIGHTGRAY);
+                            if(bpi)
+                                GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC + i * lineSpacing - 5, 1, RED);
                             inIf = instruction.rfind("if ", 0) == 0;
                             addr += bytes;
                         }
@@ -1754,6 +1794,7 @@ public:
             _editor.setText("");
             _editor.setFilename("");
 #endif
+            _romSha1Hex.clear();
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
                 std::string source = loadTextFile(filename);
@@ -1761,6 +1802,8 @@ public:
                 if(c8c.compile(source))
                 {
                     _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
+                    _romSha1Hex = c8c.sha1Hex();
+                    updateOctoBreakpoints(c8c);
 #ifdef WITH_EDITOR
                     _editor.setText(source);
                     _editor.setFilename(filename);
@@ -1862,9 +1905,11 @@ public:
                 }
             }
             if (valid) {
-                _romSha1Hex = calculateSha1Hex(_romImage.data(), _romImage.size());
+                if(_romSha1Hex.empty())
+                    _romSha1Hex = calculateSha1Hex(_romImage.data(), _romImage.size());
                 _romName = filename;
                 std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
+                _chipEmu->removeAllBreakpoints();
 #ifdef WITH_EDITOR
                 if(_editor.isEmpty() && _romImage.size() < 65536) {
                     std::stringstream os;

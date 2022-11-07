@@ -47,8 +47,10 @@ public:
     const std::string& sha1Hex() const;
     std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
     uint32_t lineForAddr(uint32_t addr) const;
+    const char* breakpointForAddr(uint32_t addr) const;
 
 private:
+    void updateHash();
     void updateLineCoverage();
     class Private;
     std::unique_ptr<Private> _impl;

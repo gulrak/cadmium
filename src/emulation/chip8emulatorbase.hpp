@@ -107,12 +107,17 @@ public:
             _randomSeed = other->_randomSeed;
             std::memcpy(_memory.data(), other->_memory.data(), std::min(_memory.size(), (size_t)other->memSize()));
             std::memcpy(_memory_b.data(), other->_memory_b.data(), std::min(_memory_b.size(), other->_memory_b.size()));
+            std::memcpy(_breakMap.data(), other->_breakMap.data(), 4096);
+            _breakpoints = other->_breakpoints;
             //_memFlags = other->_memFlags;
             _systemTime = other->_systemTime;
             _spriteWidth = other->_spriteWidth;
             _spriteHeight = other->_spriteHeight;
             _collisionColor = other->_collisionColor;
             _blendMode = other->_blendMode;
+        }
+        else {
+            removeAllBreakpoints();
         }
         if(!_isHires && _options.optOnlyHires) {
             _isHires = true;
@@ -213,6 +218,14 @@ public:
 
     std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override;
 
+    void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) override;
+    void removeBreakpoint(uint32_t address) override;
+    BreakpointInfo* findBreakpoint(uint32_t address) override;
+    size_t numBreakpoints() const override;
+    std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index) override;
+    void removeAllBreakpoints() override;
+    inline bool hasBreakPoint(uint32_t address) const { return _breakMap[address&0xfff] != 0; }
+
     static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, const IChip8Emulator* other = nullptr);
 
 protected:
@@ -263,6 +276,8 @@ protected:
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
     std::vector<uint8_t> _memory_b{};
+    std::array<uint8_t,4096> _breakMap;
+    std::map<uint32_t,BreakpointInfo> _breakpoints;
     Time _systemTime{};
     inline static uint8_t _chip8font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0,  // 0

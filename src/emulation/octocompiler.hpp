@@ -33,7 +33,7 @@ class OctoCompiler
 {
 public:
     struct Token {
-        enum Type { eNONE, eNUMBER, eSTRING, eDIRECTIVE, eIDENTIFIER, eOPERATOR, eKEYWORD, eEOF, eERROR };
+        enum Type { eNONE, eNUMBER, eSTRING, eDIRECTIVE, eIDENTIFIER, eOPERATOR, eKEYWORD, ePREPROCESSOR, eEOF, eERROR };
         Type type;
         double number;
         std::string text;
@@ -48,7 +48,9 @@ public:
         Token nextToken();
     private:
         char peek() const { return _srcPtr < _srcEnd ? *_srcPtr : 0; }
+        bool checkFor(const std::string& key) const { return _srcPtr + key.size() <= _srcEnd && std::strncmp(_srcPtr, key.data(), key.size()) == 0; }
         char get() { return _srcPtr < _srcEnd ? *_srcPtr++ : 0; }
+        bool isPreprocessor() const;
         void skipWhitespace();
         const char* _srcPtr{nullptr};
         const char* _srcEnd{nullptr};
@@ -57,6 +59,7 @@ public:
     };
     OctoCompiler() = default;
     void compile(const char* source, const char* end);
+    std::string preprocess(const std::string& includePath);
 
 
 private:

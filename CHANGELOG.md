@@ -23,6 +23,9 @@
     * Linux: `~/.local/share/net.gulrak.cadmium/config.json`
 * The option `-r`/`--run` is now starting a rom/source that is given as positional
   parameter
+* Breakpoint-Support allows now to set/remove breakpoints by clicking into the
+  instructions panel of the debugger, and also the Octo `:breakpoint <name>`
+  directive allows to set breakpoints.
 * Bugfix: Fixed scrolling in non-megachip8 modes after introducing issues through
   mc8 support.
 * Bugfix: The XO-CHIP sound emulation was not frame driven but buffer driven, leading

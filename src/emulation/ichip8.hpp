@@ -36,6 +36,12 @@ namespace emu
 class IChip8Emulator
 {
 public:
+    struct BreakpointInfo {
+        enum Type { eTRANSIENT, eCODED };
+        std::string label;
+        Type type{eTRANSIENT};
+        bool isEnabled{true};
+    };
     enum Engine { eCHIP8TS, eCHIP8MPT, eCHIP8VIP };
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
@@ -75,6 +81,12 @@ public:
     virtual ExecMode execMode() const { return eRUNNING; }
     virtual CpuState cpuState() const { return eNORMAL; }
     virtual uint16_t opcode() { return (memory()[getPC()] << 8) | memory()[getPC() + 1]; }
+    virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) {}
+    virtual void removeBreakpoint(uint32_t address) {}
+    virtual BreakpointInfo* findBreakpoint(uint32_t address) { return nullptr; }
+    virtual size_t numBreakpoints() const { return 0; }
+    virtual std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index) { return {0,nullptr}; }
+    virtual void removeAllBreakpoints() {}
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}

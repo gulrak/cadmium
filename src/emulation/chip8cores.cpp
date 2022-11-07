@@ -224,23 +224,57 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
         for (int i = 0; i < numInstructions; ++i) {
             if (i && ((_memory[_rPC] << 8) | _memory[_rPC + 1]) == 0x00E0)
                 return;
-            Chip8EmulatorFP::executeInstruction();
+            if(_breakpoints.empty())
+                Chip8EmulatorFP::executeInstructionNoBreakpoints();
+            else
+                Chip8EmulatorFP::executeInstruction();
         }
     }
     else if(_options.optInstantDxyn) {
         for (int i = 0; i < numInstructions; ++i)
-            Chip8EmulatorFP::executeInstruction();
+            if(_breakpoints.empty())
+                Chip8EmulatorFP::executeInstructionNoBreakpoints();
+            else
+                Chip8EmulatorFP::executeInstruction();
     }
     else {
         for (int i = 0; i < numInstructions; ++i) {
             if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000)
                 return;
-            Chip8EmulatorFP::executeInstruction();
+            if(_breakpoints.empty())
+                Chip8EmulatorFP::executeInstructionNoBreakpoints();
+            else
+                Chip8EmulatorFP::executeInstruction();
         }
     }
 }
 
 inline void Chip8EmulatorFP::executeInstruction()
+{
+    if(_execMode == eRUNNING) {
+        uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
+        ++_cycleCounter;
+        _rPC = (_rPC + 2) & ADDRESS_MASK;
+        (this->*_opcodeHandler[opcode])(opcode);
+    }
+    else {
+        if (_execMode == ePAUSED || _cpuState == eERROR)
+            return;
+        uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
+        ++_cycleCounter;
+        _rPC = (_rPC + 2) & ADDRESS_MASK;
+        (this->*_opcodeHandler[opcode])(opcode);
+        if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP <= _stepOverSP)) {
+            _execMode = ePAUSED;
+        }
+    }
+    if(hasBreakPoint(_rPC)) {
+        if(Chip8EmulatorBase::findBreakpoint(_rPC))
+            _execMode = ePAUSED;
+    }
+}
+
+void Chip8EmulatorFP::executeInstructionNoBreakpoints()
 {
     if(_execMode == eRUNNING) {
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
