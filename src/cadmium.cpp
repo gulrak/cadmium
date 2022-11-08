@@ -64,7 +64,7 @@ extern "C" {
 #include <mutex>
 #include <new>
 
-#if defined(PLATFORM_WEB)
+#ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
 extern "C" void openFileCallbackC(const char* str) __attribute__((used));
 static std::function<void(const std::string&)> openFileCallback;
@@ -73,6 +73,7 @@ void openFileCallbackC(const char* str)
     if (openFileCallback)
         openFileCallback(str);
 }
+#define RESIZABLE_GUI
 #else
 
 #ifdef __GNUC__
@@ -452,8 +453,21 @@ public:
         }
         SetTraceLogCallback(LogHandler);
 #endif
+#ifdef RESIZABLE_GUI
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
+#else
         SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING);
+#endif
+
         InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 variant environment");
+#ifdef RESIZABLE_GUI
+        if(GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f) {
+            SetWindowSize(_screenWidth * 2, _screenHeight * 2);
+            CenterWindow(_screenWidth * 2, _screenHeight * 2);
+        }
+#else
+        _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
+#endif
         SetExitKey(0);
 
         _instance = this;
@@ -463,11 +477,7 @@ public:
         SetAudioStreamCallback(_audioStream, Cadmium::audioInputCallback);
         PlayAudioStream(_audioStream);
         SetTargetFPS(60);
-#ifdef PLATFORM_WEB
-        _scaleBy2 = false;
-#else
-        _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
-#endif
+
         _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
         SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
@@ -562,6 +572,12 @@ public:
 
     void updateResolution()
     {
+#ifdef RESIZABLE_GUI
+        auto width = std::max(GetScreenWidth(), _screenWidth);
+        auto height = std::max(GetScreenHeight(), _screenHeight);
+        if(GetScreenWidth() < width || GetScreenHeight() < height)
+            SetWindowSize(width, height);
+#else
         if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH) {
             UnloadRenderTexture(_renderTexture);
             _screenWidth = MIN_SCREEN_WIDTH;
@@ -570,6 +586,7 @@ public:
             SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
             SetWindowSize(_screenWidth * (_scaleBy2 ? 2 : 1), _screenHeight * (_scaleBy2 ? 2 : 1));
         }
+#endif
     }
 
     bool isHeadless() const override { return false; }
@@ -854,7 +871,10 @@ public:
 
     void updateAndDraw()
     {
-#ifndef PLATFORM_WEB
+#ifdef RESIZABLE_GUI
+        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
+        SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
+#else
         if (_scaleBy2) {
             // Screen size x2
             if (GetScreenWidth() < _screenWidth * 2) {
@@ -872,6 +892,7 @@ public:
             }
         }
 #endif
+
         updateResolution();
 
         _librarian.update(_options); // allows librarian to complete background tasks
@@ -912,6 +933,14 @@ public:
 
         BeginDrawing();
         {
+            ClearBackground(BLACK);
+#ifdef RESIZABLE_GUI
+            Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
+            if(guiOffset.x < 0) guiOffset.x = 0;
+            if(guiOffset.y < 0) guiOffset.y = 0;
+            DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
+                           (Vector2){0, 0}, 0.0f, WHITE);
+#else
             if (_scaleBy2) {
                 DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * 2, (float)_renderTexture.texture.height * 2},
                                (Vector2){0, 0}, 0.0f, WHITE);
@@ -919,6 +948,7 @@ public:
             else {
                 DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
+#endif
             // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
             // DrawFPS(10,10);
         }
@@ -1016,7 +1046,15 @@ public:
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
 
-        BeginGui({}, &_renderTexture);
+#ifdef RESIZABLE_GUI
+        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
+        Vector2 mouseOffset = {-(GetScreenWidth() - _screenWidth*screenScale)/2.0f, -(GetScreenHeight() - _screenHeight*screenScale)/2.0f};
+        if(mouseOffset.x > 0) mouseOffset.x = 0;
+        if(mouseOffset.y > 0) mouseOffset.y = 0;
+        BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
+#else
+        BeginGui({}, &_renderTexture, {0,0}, {_scaleBy2?2:1, _scaleBy2?2:1});
+#endif
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
             SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
@@ -1201,7 +1239,7 @@ public:
                 ++buttonsRight;
 #endif
                 int avail = 202;
-#ifdef PLATFORM_WEB
+#ifdef RESIZABLE_GUI
                 --buttonsRight;
                 avail += 10;
 #endif
@@ -1232,7 +1270,7 @@ public:
 
                 static Vector2 versionSize = MeasureTextEx(guiFont, "v" CADMIUM_VERSION, 8, 0);
                 DrawTextEx(guiFont, "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
-#ifndef PLATFORM_WEB
+#ifndef RESIZABLE_GUI
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleBy2))
                     _scaleBy2 = !_scaleBy2;
@@ -1971,7 +2009,9 @@ private:
     int _screenHeight{};
     RenderTexture _renderTexture{};
     AudioStream _audioStream{};
+#ifndef RESIZABLE_GUI
     bool _scaleBy2{false};
+#endif
     bool _customPalette{false};
     std::unique_ptr<emu::IChip8Emulator> _chipEmu;
     emu::Chip8EmulatorOptions _options;

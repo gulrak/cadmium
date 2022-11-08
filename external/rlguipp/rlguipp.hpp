@@ -94,7 +94,7 @@ inline const auto DEFAULT_ROW_HEIGHT = 26.0f;
 
 enum WindowBoxFlags { WBF_NONE = 0, WBF_CLOSABLE = 1, WBF_MOVABLE = 2, WBF_MODAL = 4 };
 
-RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr);                                   // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
+RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr, Vector2 mouseOffset = {}, Vector2 guiScale = {1.0f, 1.0f}); // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
 RLGUIPP_API void EndGui();                                                                                                // ends the GUI description
 RLGUIPP_API void UnloadGui();                                                                                             // unload any stuff cached by the gui handling
 RLGUIPP_API void Begin();                                                                                                 // start of a hierarchical group of elements, must be closed with End()
@@ -620,7 +620,7 @@ bool HasKeyboardFocus(void* key)
     return GuiContext::editFocusId == key;
 }
 
-void BeginGui(Rectangle area, RenderTexture* renderTexture)
+void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset, Vector2 guiScale)
 {
     if (area.width <= 0) {
         area.width = renderTexture ? renderTexture->texture.width : GetScreenWidth();
@@ -632,6 +632,9 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture)
         throw std::runtime_error("Nesting of gui::BeginGui/gui::EndGui not allowed!");
     }
     g_contextStack.push({GuiContext::ctROOT, {area.x, area.y}, {area.x, area.y}, area, area});
+    g_contextStack.top().mouseOffset = mouseOffset;
+    SetMouseOffset(mouseOffset.x, mouseOffset.y);
+
     detail::updatePopupUnderMouse();
     if (!g_popupMap.empty()) {
         if (renderTexture)
@@ -651,12 +654,15 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture)
     g_contextStack.top().contextData = renderTexture;
     GuiContext::tooltipText.clear();
     ++GuiContext::frameId;
+    GuiContext::guiScale = guiScale;
+    /*
     if (renderTexture) {
         GuiContext::guiScale = {(float)GetScreenWidth() / renderTexture->texture.width, (float)GetScreenHeight() / renderTexture->texture.height};
     }
     else {
         GuiContext::guiScale = {1.0f, 1.0f};
     }
+     */
     // DrawRectangleRec(area, GREEN);
     GuiContext::rootContext = &g_contextStack.top();
 }
@@ -954,7 +960,7 @@ void BeginPopup(Rectangle area, bool* isOpen)
     if (!popup) {
         popup = &g_popupMap.emplace(isOpen, PopupContext{area, isOpen}).first->second;
     }
-    ctx.mouseOffset = {-popup->position().x * GuiContext::guiScale.x, -popup->position().y * GuiContext::guiScale.y};
+    ctx.mouseOffset = {ctxParent.mouseOffset.x - popup->position().x * GuiContext::guiScale.x, ctxParent.mouseOffset.y - popup->position().y * GuiContext::guiScale.y};
     ctx.contextData = &popup->texture();
     BeginTextureMode(popup->texture());
     GuiDrawRectangle({0, 0, area.width, area.height}, 1, GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)), GetColor(GetStyle(DEFAULT, BACKGROUND_COLOR)));
@@ -983,6 +989,7 @@ void EndPopup()
 bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags)
 {
     static bool inDrag{false};
+    auto mouseParent = detail::context().mouseOffset;
     BeginPopup(area, isOpen);
     auto popup = PopupContext::find(isOpen);
     if(popup)
@@ -996,7 +1003,7 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
         auto delta = GetMouseDelta();
         if (popup) {
             popup->move(delta.x / GuiContext::guiScale.x, delta.y / GuiContext::guiScale.y);
-            ctx.mouseOffset = {-popup->position().x * GuiContext::guiScale.x, -popup->position().y * GuiContext::guiScale.y};
+            ctx.mouseOffset = {mouseParent.x - popup->position().x * GuiContext::guiScale.x, mouseParent.y - popup->position().y * GuiContext::guiScale.y};
             SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
         }
         else {
