@@ -34,23 +34,22 @@
     * {
       margin: 0;
       padding: 0;
-      border:0 none
+      border:0 none;
     }
     body {
       background-color: #000;
       width: 100vw;
       height: 100vh;
-      overflow:hidden
+      overflow:hidden;
     }
     canvas.emscripten {
-      border: 0px none; background-color: black;
+      border: 0 none; background-color: black;
       display: block;
-      object-position: right top;
-      object-fit: fill;
+      object-fit: contain;
       width: 100vw;
       height: 100vh;
       image-rendering: pixelated;
-      z-index: 1000
+      z-index: 1000;
     }
   </style>
   <script type='text/javascript' src="FileSaver.min.js"> </script>

@@ -75,7 +75,6 @@ void openFileCallbackC(const char* str)
 }
 #define RESIZABLE_GUI
 #else
-
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
@@ -575,8 +574,9 @@ public:
 #ifdef RESIZABLE_GUI
         auto width = std::max(GetScreenWidth(), _screenWidth);
         auto height = std::max(GetScreenHeight(), _screenHeight);
-        if(GetScreenWidth() < width || GetScreenHeight() < height)
-            SetWindowSize(width, height);
+
+//        if(GetScreenWidth() < width || GetScreenHeight() < height)
+//            SetWindowSize(width, height);
 #else
         if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH) {
             UnloadRenderTexture(_renderTexture);
@@ -873,6 +873,21 @@ public:
     void updateAndDraw()
     {
 #ifdef RESIZABLE_GUI
+#if 0
+        static int resizeCount = 0;
+        if (IsWindowResized()) {
+            int width{0}, height{0};
+            resizeCount++;
+#if defined(PLATFORM_WEB)
+            double devicePixelRatio = emscripten_get_device_pixel_ratio();
+            width = GetScreenWidth() * devicePixelRatio;
+            height = GetScreenHeight() * devicePixelRatio;
+#else
+            glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+#endif
+            TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
+        }
+#endif
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
         SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
 #else
@@ -950,11 +965,24 @@ public:
                 DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
 #endif
+#if 0
+            int width{0}, height{0};
+#if defined(PLATFORM_WEB)
+            double devicePixelRatio = emscripten_get_device_pixel_ratio();
+            width = GetScreenWidth() * devicePixelRatio;
+            height = GetScreenHeight() * devicePixelRatio;
+#else
+            glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+#endif
+            //TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
+            DrawText(TextFormat("Window resized: %dx%d, fb: %dx%d, rzc: %d", GetScreenWidth(), GetScreenHeight(), width, height, resizeCount), 10,30,10,GREEN);
+#endif
             // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
             // DrawFPS(10,10);
         }
         EndDrawing();
     }
+
 
     void drawScreen(Rectangle dest, int gridScale)
     {
@@ -1869,15 +1897,17 @@ public:
                 emu::Chip8Compiler c8c;
                 if(c8c.compile(source))
                 {
-                    _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
-                    _romSha1Hex = c8c.sha1Hex();
-                    updateOctoBreakpoints(c8c);
+                    if(c8c.codeSize() < _chipEmu->memSize() - 512) {
+                        _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
+                        _romSha1Hex = c8c.sha1Hex();
+                        updateOctoBreakpoints(c8c);
 #ifdef WITH_EDITOR
-                    _editor.setText(source);
-                    _editor.setFilename(filename);
-                    _mainView = eEDITOR;
+                        _editor.setText(source);
+                        _editor.setFilename(filename);
+                        _mainView = eEDITOR;
 #endif
-                    valid = true;
+                        valid = true;
+                    }
                 }
             }
             else if(endsWith(filename, ".ch8")) {
@@ -1963,8 +1993,10 @@ public:
                         if(c8b.executionSpeed > 0) {
                             _options.instructionsPerFrame = c8b.executionSpeed;
                         }
-                        _romImage.assign(c8b.rawData.data() + codeOffset, c8b.rawData.data() + codeOffset + codeSize);
-                        valid = true;
+                        if(codeSize < _chipEmu->memSize() - 512) {
+                            _romImage.assign(c8b.rawData.data() + codeOffset, c8b.rawData.data() + codeOffset + codeSize);
+                            valid = true;
+                        }
                     }
                     else {
                         _customPalette = false;
@@ -1976,7 +2008,7 @@ public:
                 if(_romSha1Hex.empty())
                     _romSha1Hex = calculateSha1Hex(_romImage.data(), _romImage.size());
                 _romName = filename;
-                std::memcpy(_chipEmu->memory() + 512, _romImage.data(), _romImage.size());
+                std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
                 _chipEmu->removeAllBreakpoints();
 #ifdef WITH_EDITOR
                 if(_editor.isEmpty() && _romImage.size() < 65536) {
