@@ -54,6 +54,7 @@ struct Chip8EmulatorOptions {
     Chip8Variant presetAsVariant() const;
     //static SupportedPreset variantAsPreset(Chip8Variant variant);
     static std::string nameOfPreset(SupportedPreset preset);
+    static const char* shortNameOfPreset(SupportedPreset preset);
     static SupportedPreset presetForName(const std::string& name);
     static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
 };

@@ -28,10 +28,12 @@
 #include <emulation/ichip8.hpp>
 #include <memory>
 
-#define TEST_CHIP8EMULATOR_FP
+//#define TEST_CHIP8EMULATOR_FP
 //#define TEST_CHIP8EMULATOR_TS
 //#define TEST_C_OCTO
 //#define TEST_JAMES_GRIFFIN_CHIP_8
 //#define TEXT_WERNSEY_CHIP_8
 
-extern std::unique_ptr<emu::IChip8Emulator> createChip8Instance();
+enum Chip8TestVariant { C8TV_GENERIC, C8TV_C8, C8TV_C10, C8TV_C48, C8TV_SC10, C8TV_SC11, C8TV_MC8, C8TV_XO };
+using EmuCore = std::unique_ptr<emu::IChip8Emulator>;
+extern EmuCore createChip8Instance(Chip8TestVariant variant = C8TV_GENERIC);

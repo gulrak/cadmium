@@ -26,83 +26,19 @@
 
 #include <doctest/doctest.h>
 
-#include <emulation/ichip8.hpp>
 #include "chip8adapter.hpp"
+#include "chip8testhelper.hpp"
 
-struct Chip8State
-{
-    int i{};
-    int pc{};
-    int sp{};
-    int dt{};
-    int st{};
-    std::array<int,16> v{};
-    std::array<int,16> stack{};
-    inline static int stepCount = 0;
-    inline static std::string pre;
-    inline static std::string post;
-};
-
-void CheckState(const std::unique_ptr<emu::IChip8Emulator>& chip8, const Chip8State& expected, std::string comment = "")
-{
-    std::string message = (comment.empty()?"":"\nAfter step #" + std::to_string(Chip8State::stepCount) + "\nCOMMENT: " + comment) + "\nPRE:  " + Chip8State::pre + "\nPOST: " + Chip8State::post;
-    INFO(message);
-    if(expected.i >= 0) CHECK(expected.i == chip8->getI());
-    if(expected.pc >= 0) CHECK(expected.pc == chip8->getPC());
-    if(expected.sp >= 0) CHECK(expected.sp == chip8->getSP());
-    if(expected.dt >= 0) CHECK(expected.dt == chip8->delayTimer());
-    if(expected.st >= 0) CHECK(expected.st == chip8->soundTimer());
-
-    if(expected.v[0] >= 0) CHECK(expected.v[0] == chip8->getV(0));
-    if(expected.v[1] >= 0) CHECK(expected.v[1] == chip8->getV(1));
-    if(expected.v[2] >= 0) CHECK(expected.v[2] == chip8->getV(2));
-    if(expected.v[3] >= 0) CHECK(expected.v[3] == chip8->getV(3));
-    if(expected.v[4] >= 0) CHECK(expected.v[4] == chip8->getV(4));
-    if(expected.v[5] >= 0) CHECK(expected.v[5] == chip8->getV(5));
-    if(expected.v[6] >= 0) CHECK(expected.v[6] == chip8->getV(6));
-    if(expected.v[7] >= 0) CHECK(expected.v[7] == chip8->getV(7));
-    if(expected.v[8] >= 0) CHECK(expected.v[8] == chip8->getV(8));
-    if(expected.v[9] >= 0) CHECK(expected.v[9] == chip8->getV(9));
-    if(expected.v[10] >= 0) CHECK(expected.v[0xA] == chip8->getV(0xA));
-    if(expected.v[11] >= 0) CHECK(expected.v[0xB] == chip8->getV(0xB));
-    if(expected.v[12] >= 0) CHECK(expected.v[0xC] == chip8->getV(0xC));
-    if(expected.v[13] >= 0) CHECK(expected.v[0xD] == chip8->getV(0xD));
-    if(expected.v[14] >= 0) CHECK(expected.v[0xE] == chip8->getV(0xE));
-    if(expected.v[15] >= 0) CHECK(expected.v[0xF] == chip8->getV(0xF));
-
-    for (int i = 0; i <= expected.sp; ++i) {
-        if(expected.stack[i] >= 0) CHECK(expected.stack[i] == chip8->getStackElements()[i]);
-    }
-}
-
-void write(const std::unique_ptr<emu::IChip8Emulator>& chip8, uint32_t address, std::initializer_list<uint16_t> values)
-{
-    size_t offset = 0;
-    for(auto val : values) {
-        chip8->memory()[address + offset++] = val>>8;
-        chip8->memory()[address + offset++] = val & 0xFF;
-    }
-    Chip8State::stepCount = 0;
-}
-
-void step(const std::unique_ptr<emu::IChip8Emulator>& chip8)
-{
-    Chip8State::pre = chip8->dumStateLine();
-    chip8->executeInstruction();
-    Chip8State::stepCount++;
-    Chip8State::post = chip8->dumStateLine();
-}
-
-TEST_CASE("reset()")
+TEST_CASE(C8CORE "reset()")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
     CheckState(chip8, {.i = 0, .pc= 0x200, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}}, "state after reset");
 }
 
-TEST_SUITE_BEGIN("BasicOpcodes");
+TEST_SUITE_BEGIN(C8CORE "BasicOpcodes");
 
-TEST_CASE("1nnn - jump nnn")
+TEST_CASE(C8CORE "1nnn - jump nnn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -111,7 +47,7 @@ TEST_CASE("1nnn - jump nnn")
     CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}}, "jump 0x204");
 }
 
-TEST_CASE("2nnn - call nnn")
+TEST_CASE(C8CORE "2nnn - call nnn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -120,7 +56,7 @@ TEST_CASE("2nnn - call nnn")
     CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 1, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {0x202,0}}, "call 0x204");
 }
 
-TEST_CASE("00EE - return")
+TEST_CASE(C8CORE "00EE - return")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -131,7 +67,7 @@ TEST_CASE("00EE - return")
     CheckState(chip8, {.i = 0, .pc= 0x202, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {-1,0}}, "return");
 }
 
-TEST_CASE("6xnn - vx := nn")
+TEST_CASE(C8CORE "6xnn - vx := nn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -144,7 +80,7 @@ TEST_CASE("6xnn - vx := nn")
     CheckState(chip8, {.i = 0, .pc= 0x206, .sp = 0, .dt = 0, .st = 0, .v = {0x32,0,0,0x14, 0,0,0,0, 0,0,0,0xff, 0,0,0,0}, .stack = {}}, "vB := 0xff");
 }
 
-TEST_CASE("3xnn - skip if vx == nn")
+TEST_CASE(C8CORE "3xnn - skip if vx == nn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -157,7 +93,7 @@ TEST_CASE("3xnn - skip if vx == nn")
     CheckState(chip8, {.i = 0, .pc= 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 == 0x42, should skip");
 }
 
-TEST_CASE("4xnn - skip if vx != nn")
+TEST_CASE(C8CORE "4xnn - skip if vx != nn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -172,7 +108,7 @@ TEST_CASE("4xnn - skip if vx != nn")
     CheckState(chip8, {.i = 0, .pc= 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 != 0x40, should skip");
 }
 
-TEST_CASE("5xy0 - skip if vx == vy")
+TEST_CASE(C8CORE "5xy0 - skip if vx == vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -187,7 +123,7 @@ TEST_CASE("5xy0 - skip if vx == vy")
     CheckState(chip8, {.i = 0, .pc= 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0x12, 0,0x12,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 == v5, should skip");
 }
 
-TEST_CASE("7xnn - vx += nn")
+TEST_CASE(C8CORE "7xnn - vx += nn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -200,7 +136,7 @@ TEST_CASE("7xnn - vx += nn")
     CheckState(chip8, {.i = 0, .pc= 0x206, .sp = 0, .dt = 0, .st = 0, .v = {0,0x05,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v1 += 0x7f");
 }
 
-TEST_CASE("8xy0 - vx := vy")
+TEST_CASE(C8CORE "8xy0 - vx := vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -213,7 +149,7 @@ TEST_CASE("8xy0 - vx := vy")
     CheckState(chip8, {.i = 0, .pc= 0x206, .sp = 0, .dt = 0, .st = 0, .v = {0,0x32,0x32,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v2 := v2");
 }
 
-TEST_CASE("8xy1 - vx |= vy")
+TEST_CASE(C8CORE "8xy1 - vx |= vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -228,7 +164,7 @@ TEST_CASE("8xy1 - vx |= vy")
     CheckState(chip8, {.i = 0, .pc= 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0,0x33,0,0xb3, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 |= v3");
 }
 
-TEST_CASE("8xy2 - vx &= vy")
+TEST_CASE(C8CORE "8xy2 - vx &= vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -243,7 +179,7 @@ TEST_CASE("8xy2 - vx &= vy")
     CheckState(chip8, {.i = 0, .pc= 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0,0x33,0,1, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 &= v3");
 }
 
-TEST_CASE("8xy3 - vx ^= vy")
+TEST_CASE(C8CORE "8xy3 - vx ^= vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -258,7 +194,7 @@ TEST_CASE("8xy3 - vx ^= vy")
     CheckState(chip8, {.i = 0, .pc= 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0,0x33,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 ^= v3");
 }
 
-TEST_CASE("8xy4 - vx += vy, set vF to 1 on overflow, 0 if not")
+TEST_CASE(C8CORE "8xy4 - vx += vy, set vF to 1 on overflow, 0 if not")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -281,7 +217,7 @@ TEST_CASE("8xy4 - vx += vy, set vF to 1 on overflow, 0 if not")
     CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = 0, .st = 0, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF += v3, vF is also carry flag, should be set");
 }
 
-TEST_CASE("8xy5 - vx -= vy, set vF to 0 if underflow, 1 if not")
+TEST_CASE(C8CORE "8xy5 - vx -= vy, set vF to 0 if underflow, 1 if not")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -304,7 +240,7 @@ TEST_CASE("8xy5 - vx -= vy, set vF to 0 if underflow, 1 if not")
     CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = 0, .st = 0, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF -= v1, vF is also carry flag, should be set to 0, as there is underflow");
 }
 
-TEST_CASE("8xx6 - vx >>= vx, lost bit in vF, basic shift test is quirk agnostic")
+TEST_CASE(C8CORE "8xx6 - vx >>= vx, lost bit in vF, basic shift test is quirk agnostic")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -325,7 +261,7 @@ TEST_CASE("8xx6 - vx >>= vx, lost bit in vF, basic shift test is quirk agnostic"
     CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = 0, .st = 0, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF >>= vF, vF set to 1");
 }
 
-TEST_CASE("8xy7 - vx = vy-vx, set vF to 0 if underflow, 1 if not")
+TEST_CASE(C8CORE "8xy7 - vx = vy-vx, set vF to 0 if underflow, 1 if not")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -348,7 +284,7 @@ TEST_CASE("8xy7 - vx = vy-vx, set vF to 0 if underflow, 1 if not")
     CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = 0, .st = 0, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF = v1-vF, vF is also carry flag, should be set to 0, as there is underflow");
 }
 
-TEST_CASE("8xxE - vx <<= vx, lost bit in vF, basic shift test is quirk agnostic")
+TEST_CASE(C8CORE "8xxE - vx <<= vx, lost bit in vF, basic shift test is quirk agnostic")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -369,7 +305,7 @@ TEST_CASE("8xxE - vx <<= vx, lost bit in vF, basic shift test is quirk agnostic"
     CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF <<= vF, vF set to 0");
 }
 
-TEST_CASE("9xy0 - skip if vx != vy")
+TEST_CASE(C8CORE "9xy0 - skip if vx != vy")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -386,7 +322,7 @@ TEST_CASE("9xy0 - skip if vx != vy")
     CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = 0, .st = 0, .v = {0,0x12,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 != v5, should skip");
 }
 
-TEST_CASE("Annn - i := nnn")
+TEST_CASE(C8CORE "Annn - i := nnn")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -399,7 +335,7 @@ TEST_CASE("Annn - i := nnn")
     CheckState(chip8, {.i = 0xBFF, .pc= 0x206, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "i := 0xBFF");
 }
 
-TEST_CASE("Bnnn - jump nnn+v0")
+TEST_CASE(C8CORE "Bnnn - jump nnn+v0")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -410,7 +346,7 @@ TEST_CASE("Bnnn - jump nnn+v0")
     CheckState(chip8, {.i = 0, .pc= 0x1FE, .sp = 0, .dt = 0, .st = 0, .v = {0xFF,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "jump0 0x0FF + v0");
 }
 
-TEST_CASE("Fx15 - DT = vx")
+TEST_CASE(C8CORE "Fx15 - DT = vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -422,7 +358,7 @@ TEST_CASE("Fx15 - DT = vx")
 }
 
 
-TEST_CASE("Fx18 - ST = vx")
+TEST_CASE(C8CORE "Fx18 - ST = vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -433,7 +369,7 @@ TEST_CASE("Fx18 - ST = vx")
     CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 0, .dt = 0, .st = 0x25, .v = {0,0x25,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "st := v1");
 }
 
-TEST_CASE("Fx07 - vx = DT")
+TEST_CASE(C8CORE "Fx07 - vx = DT")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -447,7 +383,7 @@ TEST_CASE("Fx07 - vx = DT")
 }
 
 
-TEST_CASE("Fx1E - i += vx")
+TEST_CASE(C8CORE "Fx1E - i += vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -462,7 +398,7 @@ TEST_CASE("Fx1E - i += vx")
     CheckState(chip8, {.i = 0x108, .pc= 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0,0x89,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "i += v1");
 }
 
-TEST_CASE("Fx29 - i := hex vx")
+TEST_CASE(C8CORE "Fx29 - i := hex vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -473,7 +409,7 @@ TEST_CASE("Fx29 - i := hex vx")
     CHECK(chip8->getI() != 0);
 }
 
-TEST_CASE("Fx33 - bcd vx")
+TEST_CASE(C8CORE "Fx33 - bcd vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -489,7 +425,7 @@ TEST_CASE("Fx33 - bcd vx")
     CHECK(chip8->memory()[0x402] == 7);
 }
 
-TEST_CASE("Fx55 - save vx")
+TEST_CASE(C8CORE "Fx55 - save vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
@@ -507,7 +443,7 @@ TEST_CASE("Fx55 - save vx")
     CHECK(chip8->memory()[0x402] == 0);
 }
 
-TEST_CASE("Fx65 - load vx")
+TEST_CASE(C8CORE "Fx65 - load vx")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();

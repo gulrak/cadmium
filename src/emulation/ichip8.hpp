@@ -42,7 +42,11 @@ public:
         Type type{eTRANSIENT};
         bool isEnabled{true};
     };
-    enum Engine { eCHIP8TS, eCHIP8MPT, eCHIP8VIP };
+    enum Engine {
+        eCHIP8TS,       // templated core based on nested switch - this is the fastest (ch8,ch10,ch48,sc10,sc11,xo)
+        eCHIP8MPT,      // method table based core - this is the most capable one (ch8,ch10,ch48,sc10,sc11,mc8,xo)
+        eCHIP8VIP       // cdp1802 based vip core running original emulator (not implemented yet, will only support <ch48 cores, but should run hybrids)
+    };
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
     virtual ~IChip8Emulator() = default;

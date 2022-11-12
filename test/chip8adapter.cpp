@@ -29,21 +29,96 @@
 #include <fmt/format.h>
 
 #ifdef TEST_CHIP8EMULATOR_TS
-#include <emulation/chip8.hpp>
+#include <emulation/chip8cores.hpp>
 
-std::unique_ptr<emu::IChip8Emulator> createChip8Instance()
+std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
-    static auto options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+    using namespace emu;
+    static Chip8EmulatorOptions options;
+    switch(variant) {
+        case C8TV_GENERIC:
+        case C8TV_C8:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
+            break;
+        case C8TV_C10:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10);
+            break;
+        case C8TV_C48:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP48);
+            break;
+        case C8TV_SC10:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10);
+            break;
+        case C8TV_SC11:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
+            break;
+        case C8TV_XO:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eXOCHIP);
+            break;
+        default:
+            return nullptr;
+    }
     static emu::Chip8HeadlessHost host(options);
-    return std::make_unique<emu::Chip8Emulator<12, 0>>(host, options);
+    if (options.optHas16BitAddr) {
+        if (options.optAllowColors) {
+            if (options.optWrapSprites)
+                return std::make_unique<emu::Chip8Emulator<16, MultiColor | WrapSprite>>(host, options);
+            else
+                return std::make_unique<Chip8Emulator<16, MultiColor>>(host, options);
+        }
+        else {
+            if (options.optWrapSprites)
+                return std::make_unique<Chip8Emulator<16, WrapSprite>>(host, options);
+            else
+                return std::make_unique<Chip8Emulator<16, 0>>(host, options);
+        }
+    }
+    else {
+        if (options.optAllowColors) {
+            if (options.optWrapSprites)
+                return std::make_unique<Chip8Emulator<12, MultiColor | WrapSprite>>(host, options);
+            else
+                return std::make_unique<Chip8Emulator<12, MultiColor>>(host, options);
+        }
+        else {
+            if (options.optWrapSprites)
+                return std::make_unique<Chip8Emulator<12, WrapSprite>>(host, options);
+            else
+                return std::make_unique<Chip8Emulator<12, 0>>(host, options);
+        }
+    }
 }
 
 #elif defined(TEST_CHIP8EMULATOR_FP)
 #include <emulation/chip8cores.hpp>
 
-std::unique_ptr<emu::IChip8Emulator> createChip8Instance()
+std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
-    static auto options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+    static emu::Chip8EmulatorOptions options;
+    switch(variant) {
+        case C8TV_GENERIC:
+        case C8TV_C8:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            break;
+        case C8TV_C10:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP10);
+            break;
+        case C8TV_C48:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP48);
+            break;
+        case C8TV_SC10:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP10);
+            break;
+        case C8TV_SC11:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
+            break;
+        case C8TV_MC8:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP);
+            break;
+        case C8TV_XO:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP);
+            break;
+    }
     static emu::Chip8HeadlessHost host(options);
     return std::make_unique<emu::Chip8EmulatorFP>(host, options);
 }

@@ -677,12 +677,13 @@ public:
 
     uint8_t getKeyPressed() override
     {
-        static int64_t instruction = 0;
+        static uint32_t instruction = 0;
         static int waitKeyUp = 0;
         static int keyId = 0;
-        if(waitKeyUp && instruction == _chipEmu->cycles()) {
+        if(waitKeyUp && instruction == _chipEmu->getPC()) {
             if(IsKeyUp(waitKeyUp)) {
                 waitKeyUp = 0;
+                instruction = 0;
                 return keyId;
             }
             return 0;
@@ -692,7 +693,7 @@ public:
         if (key) {
             for (int i = 0; i < 16; ++i) {
                 if (key == _keyMapping[i]) {
-                    instruction = _chipEmu->cycles();
+                    instruction = _chipEmu->getPC();
                     waitKeyUp = key;
                     keyId = i + 1;
                     return 0;
@@ -1053,7 +1054,7 @@ public:
         if(mouseOffset.y > 0) mouseOffset.y = 0;
         BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
 #else
-        BeginGui({}, &_renderTexture, {0,0}, {_scaleBy2?2:1, _scaleBy2?2:1});
+        BeginGui({}, &_renderTexture, {0,0}, {_scaleBy2?2.0f:1.0f, _scaleBy2?2.0f:1.0f});
 #endif
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
@@ -1069,19 +1070,22 @@ public:
 #endif
             }
             else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
-                StatusBar({{0.5f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
-                           {0.25f, formatUnit(ips, "IPS").c_str()},
-                           {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()}});
+                StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
+                           {0.15f, formatUnit(ips, "IPS").c_str()},
+                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
-                           {0.25f, formatUnit(ips, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
-                           {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/}});
+                           {0.2f, formatUnit(ips, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
+                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/},
+                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else {
-                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
-                           {0.25f, formatUnit(ips, "IPS").c_str()},
-                           {0.25f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()}});
+                StatusBar({{0.55f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
+                           {0.15f, formatUnit(ips, "IPS").c_str()},
+                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             lastInstructionCount = _chipEmu->cycles();
             BeginColumns();
@@ -1140,7 +1144,7 @@ public:
                         menuOpen = false;
                 }
                 if(aboutOpen) {
-                    aboutOpen = !BeginWindowBox({-1,-1,450,200}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
+                    aboutOpen = !BeginWindowBox({-1,-1,450,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
                     static size_t newlines = std::count_if( aboutText.begin(), aboutText.end(), [](char c){ return c =='\n'; });
                     BeginScrollPanel(-1, {0,0,440,newlines*10.0f + 100}, &aboutScroll);
@@ -1749,6 +1753,32 @@ public:
 #ifdef PLATFORM_WEB
     void loadFileWeb()
     {
+        //-------------------------------------------------------------------------------
+        // This file upload dialog is heavily inspired by MIT licensed code from
+        // https://github.com/daid/SeriousProton2 - specifically:
+        //
+        // https://github.com/daid/SeriousProton2/blob/f13f32336360230788054822183049a0153c0c07/src/io/fileSelectionDialog.cpp#L67-L102
+        //
+        // All Rights Reserved.
+        //
+        // Permission is hereby granted, free of charge, to any person obtaining a copy
+        // of this software and associated documentation files (the "Software"), to deal
+        // in the Software without restriction, including without limitation the rights
+        // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        // copies of the Software, and to permit persons to whom the Software is
+        // furnished to do so, subject to the following conditions:
+        //
+        // The above copyright notice and this permission notice shall be included in
+        // all copies or substantial portions of the Software.
+        //
+        // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+        // THE SOFTWARE.
+        //-------------------------------------------------------------------------------
         openFileCallback = [&](const std::string& filename)
         {
             loadRom(filename.c_str());
