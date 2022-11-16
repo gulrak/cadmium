@@ -96,6 +96,9 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
     else if(engine == eCHIP8MPT) {
         return std::make_unique<Chip8EmulatorFP>(host, options, other);
     }
+    else if(engine == eCHIP8VIP) {
+        return std::make_unique<Chip8VIP>(host);
+    }
     return std::make_unique<Chip8EmulatorVIP>(host, options, other);
 }
 

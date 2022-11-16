@@ -675,7 +675,7 @@ void EndGui()
     g_contextStack = std::stack<GuiContext>();
     GuiContext::handleDeferredDropBoxes();
     PopupContext::renderPopups();
-#if !defined(PLATFORM_WEB) && !defined(NDEBUG)
+#if !defined(PLATFORM_WEB) && !defined(NDEBUG) && defined(RLGUIPP_DEBUG_CURSOR)
     auto pos = GetMousePosition();
     GuiDrawIcon(20, pos.x - 1, pos.y, 1, ::WHITE);
     GuiDrawIcon(20, pos.x + 1, pos.y, 1, ::WHITE);

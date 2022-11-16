@@ -123,6 +123,25 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     return std::make_unique<emu::Chip8EmulatorFP>(host, options);
 }
 
+#elif defined(TEST_CHIP8VIP)
+#include <emulation/chip8cores.hpp>
+#include <emulation/chip8vip.hpp>
+
+std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
+{
+    static emu::Chip8EmulatorOptions options;
+    switch(variant) {
+        case C8TV_GENERIC:
+        case C8TV_C8:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            break;
+        default:
+            return nullptr;
+    }
+    static emu::Chip8HeadlessHost host(options);
+    return std::make_unique<emu::Chip8VIP>(host);
+}
+
 
 #elif defined(TEST_C_OCTO)
 

@@ -31,6 +31,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
+#include <iostream>
 
 #define CASE_7(base) case base: case base+1: case base+2: case base+3: case base+4: case base+5: case base+6
 #define CASE_15(base) case base: case base+1: case base+2: case base+3: case base+4: case base+5: case base+6: case base+7:\
@@ -39,6 +41,14 @@
                      case base+8: case base+9: case base+10: case base+11: case base+12: case base+13: case base+14: case base+15
 
 namespace emu {
+
+class Cdp1802Bus
+{
+public:
+    virtual ~Cdp1802Bus() = default;
+    virtual uint8_t readByte(uint16_t addr) const = 0;
+    virtual void writeByte(uint16_t addr, uint8_t val) = 0;
+};
 
 class Cdp1802
 {
@@ -50,23 +60,50 @@ public:
     };
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
-    Cdp1802(Time::ticks_t clockFreq = 1760900) : _clockSpeed(clockFreq) {}
+    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 1760900)
+        : _bus(bus)
+        , _clockSpeed(clockFreq)
+    {
+        reset();
+    }
     ~Cdp1802() {}
+
+    void reset()
+    {
+        rI = 0;
+        rN = 0;
+        rP = 0;
+        rQ = false;
+        rX = 0;
+        rR[0] = 0;
+        rR[1] = 0xfff;
+        rIE = true;
+        _cycles = 0;
+        _systemTime = Time::zero;
+    }
 
     void setOutputHandler(OutputHandler handler)
     {
-        _output = handler;
+        _output = std::move(handler);
     }
+
     void setInputHandler(InputHandler handler)
     {
-        _input = handler;
+        _input = std::move(handler);
     }
-    inline uint16_t& PC() { return rR[rP]; }
-    inline uint16_t& RN() { return rR[rN]; }
-    inline uint16_t& RX() { return rR[rX]; }
-    inline uint8_t readByte(uint16_t addr) { return _memory[addr & 0xFFF]; }
-    inline void writeByte(uint16_t addr, uint8_t val) { _memory[addr & 0xFFF] = val; }
-    inline void branchShort(bool condition)
+
+    void triggerIrq() { _irq = true; }
+    void setEF(int idx, bool value) { ioEF[idx&3] = value; }
+    bool getEF(int idx, bool value) const { return ioEF[idx&3]; }
+    uint16_t getR(uint8_t index) const { return rR[index & 0xf]; }
+    bool getIE() const { return rIE; }
+    int64_t getCycles() const { return _cycles; }
+    uint16_t& PC() { return rR[rP]; }
+    uint16_t& RN() { return rR[rN]; }
+    uint16_t& RX() { return rR[rX]; }
+    uint8_t readByte(uint16_t addr) { return _bus.readByte(addr); /*_memory[addr & 0xFFF];*/ }
+    void writeByte(uint16_t addr, uint8_t val) { _bus.writeByte(addr, val); /*_memory[addr & 0xFFF] = val;*/ }
+    void branchShort(bool condition)
     {
         if(condition) {
             PC() = (PC() & 0xFF00) | readByte(PC());
@@ -75,12 +112,12 @@ public:
             ++PC();
         }
     }
-    inline void addCycles(cycles_t cycles)
+    void addCycles(cycles_t cycles)
     {
         _cycles += cycles;
         _systemTime.addCycles(cycles, _clockSpeed);
     }
-    inline void branchLong(bool condition)
+    void branchLong(bool condition)
     {
         if(condition) {
             PC() = (readByte(PC()) << 8) | readByte(PC()+1);
@@ -90,13 +127,30 @@ public:
         }
         addCycles(8);
     }
-    inline void skipLong(bool condition)
+    void skipLong(bool condition)
     {
         if(condition) {
             PC() += 2;
         }
         addCycles(8);
     }
+
+    std::string disassembleCurrentStatement() const
+    {
+       uint8_t data[3];
+       data[0] = _bus.readByte(rR[rP]);
+       data[1] = _bus.readByte(rR[rP]+1);
+       data[2] = _bus.readByte(rR[rP]+2);
+       auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
+       return fmt::format("{:04x}:  {:02x}    {}", rR[rP], data[0], text);
+    }
+
+    std::string dumpStateLine() const
+    {
+        return fmt::format("R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} D:{:02x} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} PC:{:04x} O:{:02x}", getR(0), getR(1), getR(2),
+                           getR(3), getR(4), getR(5), getR(6), getR(7), getR(8), getR(9), getR(10), getR(11), getR(12), getR(13), getR(14), getR(15), rD, rP, rX, rN, rI, rT, rR[rP], _bus.readByte(rR[rP]));
+    }
+
     static Disassembled disassembleInstruction(const uint8_t* code, const uint8_t* end)
     {
         auto opcode = *code++;
@@ -126,7 +180,7 @@ public:
             CASE_16(0x50): return {1, fmt::format("STR R{:X}", n)};
             case 0x60: return {1, "IRX"};
             CASE_7(0x61): return {1, fmt::format("OUT {:X}", n)};
-            CASE_7(0x69): return {1, fmt::format("INP {:X}", n)};
+            CASE_7(0x69): return {1, fmt::format("INP {:X}", n&7)};
             case 0x70: return {1, "RET"};
             case 0x71: return {1, "DIS"};
             case 0x72: return {1, "LDXA"};
@@ -181,11 +235,29 @@ public:
             case 0xFD: return {2, fmt::format("SDI #0x{:02X}", *code)};
             case 0xFE: return {1, "SHL"};
             case 0xFF: return {2, fmt::format("SMI #0x{:02X}", *code)};
+            default:
+                return {1, "ILLEGAL"};
         }
-        return {1, "ILLEGAL"};
     }
+
+    void handleInterrupt()
+    {
+        //std::clog << "CDP1802: --- IRQ ---" << std::endl;
+        rIE = false;
+        rT = (rX<<4)|rP;
+        rP = 1;
+        rX = 2;
+    }
+
     void executeInstruction()
     {
+        if(_irq) {
+            if(rIE)
+                handleInterrupt();
+            _irq = false;
+        }
+        //if(!rIE)
+        //    std::clog << "CDP1802: " << disassembleCurrentStatement() << std::endl;
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
         rN = opcode & 0xF;
@@ -286,7 +358,7 @@ public:
                     default:
                         break;
                 }*/
-                rD = _input(rN);
+                rD = _input(rN&7);
                 writeByte(RX(), rD);
                 break;
             }
@@ -380,10 +452,10 @@ public:
                 rD = RN() >> 8;
                 break;
             CASE_16(0xA0): // PLO Rn
-                writeByte(RN(), (readByte(RN()) & 0xff00) | rD);
+                RN() = (RN() & 0xff00) | rD;
                 break;
             CASE_16(0xB0): // PHI Rn ; D → R(N).1
-                writeByte(RN(), (readByte(RN()) & 0xFF) | (rD << 8));
+                RN() = (RN() & 0xFF) | (rD << 8);
                 break;
             case 0xC0: // LBR ; M(R(P)) → R(P). 1, M(R(P) + 1) → R(P).0
                 branchLong(true);
@@ -508,8 +580,11 @@ public:
                 break;
             }
         }
+        //if(!rIE)
+        //    std::clog << "CDP1802: " << dumpStateLine() << std::endl;
     }
 private:
+    Cdp1802Bus& _bus;
     OutputHandler _output;
     InputHandler _input;
     ExecMode _execMode{eNORMAL};
@@ -522,10 +597,10 @@ private:
     uint16_t rN:4;
     uint16_t rI:4;
     uint8_t rT{};
-    bool rIE{};
-    bool rQ{};
+    bool rIE{false};
+    bool rQ{false};
     bool ioEF[4]{};
-    uint8_t _memory[4096];
+    bool _irq{false};
     int64_t _cycles;
     Time::ticks_t _clockSpeed{};
     Time _systemTime;

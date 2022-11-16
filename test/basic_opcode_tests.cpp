@@ -29,14 +29,14 @@
 #include "chip8adapter.hpp"
 #include "chip8testhelper.hpp"
 
+TEST_SUITE_BEGIN(C8CORE "BasicOpcodes");
+
 TEST_CASE(C8CORE "reset()")
 {
     auto chip8 = createChip8Instance();
     chip8->reset();
     CheckState(chip8, {.i = 0, .pc= 0x200, .sp = 0, .dt = 0, .st = 0, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}}, "state after reset");
 }
-
-TEST_SUITE_BEGIN(C8CORE "BasicOpcodes");
 
 TEST_CASE(C8CORE "1nnn - jump nnn")
 {

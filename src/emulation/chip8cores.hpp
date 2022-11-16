@@ -578,7 +578,7 @@ public:
 
     std::string name() const override
     {
-        return "Chip-8-HT";
+        return "Chip-8-MPT";
     }
 
     void executeInstruction() override;

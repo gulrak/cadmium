@@ -29,6 +29,8 @@
 #include "chip8adapter.hpp"
 #include "chip8testhelper.hpp"
 
+TEST_SUITE_BEGIN(C8CORE "VariantOpcodes");
+
 TEST_CASE(C8CORE "8xy6 - vx >>= vy, lost bit in vF, this shift test expects vy to be used")
 {
     EmuCore chip8;
@@ -146,3 +148,5 @@ TEST_CASE(C8CORE "8xye - vx <<= vx, lost bit in vF, this shift test expects vy t
         CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x02, 0x31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF <<= v2, v2 ignored, vF set to 1");
     }
 }
+
+TEST_SUITE_END();

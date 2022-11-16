@@ -1,5 +1,6 @@
 
 set(CHIP8_EMU_SOURCE
+    time.cpp
     time.hpp
     math.hpp
     chip8cores.hpp
@@ -12,6 +13,8 @@ set(CHIP8_EMU_SOURCE
     chip8decompiler.cpp
     octocompiler.cpp
     cdp1802.hpp
+    chip8vip.cpp
+    chip8vip.hpp
 )
 
 add_library(emulation ${CHIP8_EMU_SOURCE})

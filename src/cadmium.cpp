@@ -1874,7 +1874,10 @@ public:
     void updateEmulatorOptions()
     {
         std::scoped_lock lock(_audioMutex);
-        _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
+        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8)
+            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
+        else
+            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
         _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
     }
 

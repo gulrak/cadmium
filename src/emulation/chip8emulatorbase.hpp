@@ -25,8 +25,10 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
+#include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
+#include <emulation/chip8vip.hpp>
+#include <emulation/ichip8.hpp>
 #include <emulation/time.hpp>
 
 #include <array>
@@ -40,17 +42,6 @@
 
 
 namespace emu {
-
-class Chip8EmulatorHost {
-public:
-    virtual ~Chip8EmulatorHost() = default;
-    virtual bool isHeadless() const = 0;
-    virtual uint8_t getKeyPressed() = 0;
-    virtual bool isKeyDown(uint8_t key) = 0;
-    virtual void updateScreen() = 0;
-    virtual void updatePalette(const std::array<uint8_t,16>& palette) = 0;
-    virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
-};
 
 class Chip8EmulatorBase : public IChip8Emulator
 {

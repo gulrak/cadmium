@@ -84,7 +84,9 @@ public:
     virtual void setExecMode(ExecMode mode) {}
     virtual ExecMode execMode() const { return eRUNNING; }
     virtual CpuState cpuState() const { return eNORMAL; }
-    virtual uint16_t opcode() { return (memory()[getPC()] << 8) | memory()[getPC() + 1]; }
+    virtual uint16_t opcode() {
+        return (memory()[getPC()] << 8) | memory()[getPC() + 1];
+    }
     virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) {}
     virtual void removeBreakpoint(uint32_t address) {}
     virtual BreakpointInfo* findBreakpoint(uint32_t address) { return nullptr; }
