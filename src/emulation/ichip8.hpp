@@ -80,6 +80,8 @@ public:
     virtual std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) = 0;
     virtual std::string dumStateLine() const = 0;
 
+    virtual bool isGenericEmulation() const { return true; }
+
     // defaults for unused debugger support
     virtual void setExecMode(ExecMode mode) {}
     virtual ExecMode execMode() const { return eRUNNING; }

@@ -28,7 +28,7 @@
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
 #include <emulation/chip8vip.hpp>
-#include <emulation/ichip8.hpp>
+#include <emulation/chip8opcodedisass.hpp>
 #include <emulation/time.hpp>
 
 #include <array>
@@ -43,7 +43,7 @@
 
 namespace emu {
 
-class Chip8EmulatorBase : public IChip8Emulator
+class Chip8EmulatorBase : public Chip8OpcodeDisassembler
 {
 public:
     enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
@@ -53,8 +53,8 @@ public:
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
-        : _host(host)
-        , _options(options)
+        : Chip8OpcodeDisassembler(options)
+        , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
         , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
@@ -207,8 +207,6 @@ public:
     uint8_t getCopySP() const override { return _rSP_b; }
     const uint16_t* getCopyStackElements() const override { return _stack_b.data(); }
 
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override;
-
     void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) override;
     void removeBreakpoint(uint32_t address) override;
     BreakpointInfo* findBreakpoint(uint32_t address) override;
@@ -221,7 +219,6 @@ public:
 
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
-    SymbolResolver _labelOrAddress;
     ExecMode _execMode{eRUNNING};
     CpuState _cpuState{eNORMAL};
     bool _isHires{false};
@@ -263,7 +260,6 @@ protected:
     MegaChipBlendMode _blendMode{eBLEND_NORMAL};
 
     Chip8EmulatorHost& _host;
-    Chip8EmulatorOptions& _options;
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
     std::vector<uint8_t> _memory_b{};

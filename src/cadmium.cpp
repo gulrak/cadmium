@@ -1506,7 +1506,11 @@ public:
                         Space(5);
                         SetIndent(180);
                         SetRowHeight(20);
+                        if(!_chipEmu->isGenericEmulation())
+                            GuiDisable();
                         Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                        if(!_chipEmu->isGenericEmulation())
+                            GuiEnable();
                         if (!_options.instructionsPerFrame) {
                             static int _fb1{1};
                             GuiDisable();
@@ -1522,13 +1526,17 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGACHIP8;XO-CHIP", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGACHIP8;XO-CHIP;VIP-CHIP-8", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
+                        if(!_chipEmu->isGenericEmulation())
+                            Label("   [CDP1802 based]");
                         End();
                         EndColumns();
                         Space(16);
+                        if(!_chipEmu->isGenericEmulation())
+                            GuiDisable();
                         BeginGroupBox("Quirks");
                         Space(5);
                         BeginColumns();
@@ -1571,6 +1579,8 @@ public:
                         End();
                         EndColumns();
                         EndGroupBox();
+                        if(!_chipEmu->isGenericEmulation())
+                            GuiEnable();
                         Space(30);
                         if(std::memcmp(&oldOptions, &_options, sizeof(emu::Chip8EmulatorOptions)) != 0) {
                             updateEmulatorOptions();
@@ -1874,7 +1884,7 @@ public:
     void updateEmulatorOptions()
     {
         std::scoped_lock lock(_audioMutex);
-        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8)
+        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
         else
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());

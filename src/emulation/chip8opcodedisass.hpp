@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8options.hpp
+// src/emulation/chip8opcodedisass.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,41 +25,25 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <emulation/ichip8.hpp>
+#include <emulation/chip8options.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <utility>
 
 namespace emu {
 
-struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHICUEYI, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
-    uint16_t startAddress{0x200};
-    bool optJustShiftVx{false};
-    bool optDontResetVf{false};
-    bool optLoadStoreIncIByX{false};
-    bool optLoadStoreDontIncI{false};
-    bool optWrapSprites{false};
-    bool optInstantDxyn{false};
-    bool optJump0Bxnn{false};
-    bool optAllowHires{false};
-    bool optOnlyHires{false};
-    bool optAllowColors{false};
-    bool optHas16BitAddr{false};
-    bool optXOChipSound{false};
-    bool optChicueyiSound{false};
-    int instructionsPerFrame{9};
-    Chip8Variant presetAsVariant() const;
-    //static SupportedPreset variantAsPreset(Chip8Variant variant);
-    static std::string nameOfPreset(SupportedPreset preset);
-    static const char* shortNameOfPreset(SupportedPreset preset);
-    static SupportedPreset presetForName(const std::string& name);
-    static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
+class Chip8OpcodeDisassembler : public emu::IChip8Emulator
+{
+public:
+    using SymbolResolver = std::function<std::string(uint16_t)>;
+    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
+    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override;
+protected:
+    Chip8EmulatorOptions& _options;
+    SymbolResolver _labelOrAddress;
 };
-
-void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
-void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
 
 }

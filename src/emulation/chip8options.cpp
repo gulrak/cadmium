@@ -56,6 +56,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eSCHIP11: return "SUPER-CHIP 1.1";
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
+        case eCHIP8VIP: return "VIP-CHIP-8";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -71,6 +72,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eSCHIP11: return "SCHIP11";
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
+        case eCHIP8VIP: return "VIPCHIP8";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -90,6 +92,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"mega8", emu::Chip8EmulatorOptions::eMEGACHIP},
     {"xo", emu::Chip8EmulatorOptions::eXOCHIP},
     {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
+    {"vipchip8", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
 };
 

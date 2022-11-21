@@ -5,6 +5,8 @@ set(CHIP8_EMU_SOURCE
     math.hpp
     chip8cores.hpp
     chip8cores.cpp
+    chip8opcodedisass.cpp
+    chip8opcodedisass.hpp
     chip8emulatorbase.cpp
     chip8emulatorbase.hpp
     chip8options.cpp

@@ -6,7 +6,8 @@ namespace emu {
 
 class Chip8VIP::Private {
 public:
-    explicit Private(Cdp1802Bus& bus) : _cpu(bus) {}
+    explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus) : _host(host), _cpu(bus) {}
+    Chip8EmulatorHost& _host;
     Cdp1802 _cpu;
     int64_t _cycles{0};
     int64_t _frames{0};
@@ -14,6 +15,9 @@ public:
     ExecMode _execMode{ePAUSED};
     CpuState _cpuState{eNORMAL};
     uint16_t _stepOverSP{};
+    uint8_t _keyLatch{0};
+    std::atomic<float> _wavePhase{0};
+    bool _displayEnabled{false};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram_b{};
     std::array<uint8_t,512> _rom{};
@@ -51,12 +55,41 @@ static const uint8_t _rom_cvip[0x200] = {
     0x86, 0x73, 0x96, 0x52, 0xf8, 0x06, 0xae, 0xf8, 0xd8, 0xad, 0x02, 0xf6, 0xf6, 0xf6, 0xf6, 0xd5, 0x42, 0xfa, 0x0f, 0xd5, 0x8e, 0xf6, 0xae, 0x32, 0xdc, 0x3b, 0xea, 0x1d, 0x1d, 0x30, 0xea, 0x01
 };
 
-Chip8VIP::Chip8VIP(Chip8EmulatorHost& host)
-: _impl(new Private(*this))
+Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options)
+    : Chip8OpcodeDisassembler(options)
+    , _impl(new Private(host, *this))
 {
     std::memcpy(_impl->_rom.data(), _rom_cvip, sizeof(_rom_cvip));
-    _impl->_cpu.setInputHandler([this](uint8_t port) { return 0; });
-    _impl->_cpu.setOutputHandler([this](uint8_t port, uint8_t val){});
+    _impl->_cpu.setInputHandler([this](uint8_t port) {
+        if(port == 1)
+            _impl->_displayEnabled = true;
+        return 0;
+    });
+    _impl->_cpu.setOutputHandler([this](uint8_t port, uint8_t val) {
+        switch (port) {
+        case 1:
+            _impl->_displayEnabled = false;
+            break;
+        case 2:
+            _impl->_keyLatch = val & 0xf;
+            break;
+        default:
+            break;
+        }
+    });
+    _impl->_cpu.setNEFInputHandler([this](uint8_t idx) {
+       switch(idx) {
+           case 0: { // EF1 is set from four machine cycles before the video line to four before the end
+               auto frameCycle = (_impl->_cpu.getCycles() >> 3) - (_impl->_nextFrame - 3668 * 8);
+               return frameCycle < 24 || frameCycle >= 24 + 128 * 14;
+           }
+           case 2: {
+               return _impl->_host.isKeyDown(_impl->_keyLatch);
+           }
+           default:
+               return true;
+       }
+    });
     Chip8VIP::reset();
 }
 
@@ -69,10 +102,6 @@ void Chip8VIP::reset()
 {
     std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
     std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
-    _impl->_cpu.setEF(0,true);
-    _impl->_cpu.setEF(1,true);
-    _impl->_cpu.setEF(2,true);
-    _impl->_cpu.setEF(3,true);
     _impl->_cpu.reset();
     _impl->_cycles = 0;
     _impl->_frames = 0;
@@ -99,10 +128,12 @@ void Chip8VIP::executeInstruction()
     do {
         _impl->_cpu.executeInstruction();
     }
-    while(_impl->_cpu.PC() != 0x1B);
-    _impl->_cycles++;
-    if (_impl->_execMode == eSTEP || (_impl->_execMode == eSTEPOVER && getSP() <= _impl->_stepOverSP)) {
-        _impl->_execMode = ePAUSED;
+    while(_impl->_cpu.PC() != 0x1B && _impl->_cpu.getCycles() < _impl->_nextFrame);
+    if(_impl->_cpu.PC() == 0x1B) {
+        _impl->_cycles++;
+        if (_impl->_execMode == eSTEP || (_impl->_execMode == eSTEPOVER && getSP() <= _impl->_stepOverSP)) {
+            _impl->_execMode = ePAUSED;
+        }
     }
 }
 
@@ -124,7 +155,6 @@ void Chip8VIP::tick(int instructionsPerFrame)
     auto irqStart = _impl->_cpu.getCycles() >> 3;
     do {
         auto frameCycle = (_impl->_cpu.getCycles() >> 3) - irqStart;
-        _impl->_cpu.setEF(0, frameCycle < 24 || frameCycle >= 24+128*14);
         _impl->_cpu.executeInstruction();
     }
     while(!_impl->_cpu.getIE());
@@ -204,9 +234,14 @@ uint8_t Chip8VIP::soundTimer() const
     return _impl->_cpu.getR(8) & 0xff;
 }
 
-std::pair<uint16_t, std::string> Chip8VIP::disassembleInstruction(const uint8_t* code, const uint8_t* end)
+float Chip8VIP::getAudioPhase() const
 {
-    return {2,"Not implemented"};
+    return _impl->_wavePhase;
+}
+
+void Chip8VIP::setAudioPhase(float phase)
+{
+    _impl->_wavePhase = phase;
 }
 
 std::string Chip8VIP::dumStateLine() const
@@ -231,6 +266,26 @@ IChip8Emulator::ExecMode Chip8VIP::execMode() const
 IChip8Emulator::CpuState Chip8VIP::cpuState() const
 {
     return _impl->_cpuState;
+}
+
+uint16_t Chip8VIP::getCurrentScreenWidth() const
+{
+    return 64;
+}
+
+uint16_t Chip8VIP::getCurrentScreenHeight() const
+{
+    return 32;
+}
+
+uint16_t Chip8VIP::getMaxScreenWidth() const
+{
+    return 64;
+}
+
+uint16_t Chip8VIP::getMaxScreenHeight() const
+{
+    return 32;
 }
 
 const uint8_t* Chip8VIP::getScreenBuffer() const

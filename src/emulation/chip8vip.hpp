@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
+#include <emulation/chip8opcodedisass.hpp>
 #include <emulation/cdp1802.hpp>
 #include <emulation/chip8emulatorhost.hpp>
 
@@ -33,13 +33,13 @@
 
 namespace emu {
 
-class Chip8VIP : public IChip8Emulator, public Cdp1802Bus
+class Chip8VIP : public Chip8OpcodeDisassembler, public Cdp1802Bus
 {
 public:
     constexpr static uint32_t MAX_ADDRESS_MASK = 5095;
     constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
 
-    Chip8VIP(Chip8EmulatorHost& host);
+    Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options);
     ~Chip8VIP() override;
 
     void reset() override;
@@ -65,14 +65,22 @@ public:
     uint8_t delayTimer() const override;
     uint8_t soundTimer() const override;
 
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override;
     std::string dumStateLine() const override;
+
+    bool isGenericEmulation() const override { return false; }
 
     void setExecMode(ExecMode mode) override;
     ExecMode execMode() const override;
     CpuState cpuState() const override;
 
+    uint16_t getCurrentScreenWidth() const override;
+    uint16_t getCurrentScreenHeight() const override;
+    uint16_t getMaxScreenWidth() const override;
+    uint16_t getMaxScreenHeight() const override;
     const uint8_t* getScreenBuffer() const override;
+
+    float getAudioPhase() const override;
+    void setAudioPhase(float phase) override;
 
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;
