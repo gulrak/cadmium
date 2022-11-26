@@ -2,6 +2,7 @@
 * [Cadmium](#cadmium)
   * [Introduction](#introduction)
   * [Features](#features)
+  * [Command-line](#command-line)
   * [Compiling from Source](#compiling-from-source)
     * [Linux / macOS](#linux--macos)
     * [Windows](#windows)
@@ -72,8 +73,44 @@ in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
     * superchip-1.1
     * megachip8
     * xo-chip
+    * vip-chip-8
 * Traditional 1400Hz buzzer, MegaChip8 sample playback and XO-CHIP audio emulation
 * When multicolor support is active, 16 colors in four planes are supported
+
+## Command-line
+
+```
+USAGE: cmake-build-debug/bin/cadmium [options] [file]
+
+OPTIONS:
+
+--opcode-table
+Dump an opcode table to stdout
+
+-b, --benchmark
+Run benchmark against octo-c
+
+-c, --compare
+Run and compare with reference engine, trace until diff
+
+-h, --help
+Show this help text
+
+-p <arg>, --preset <arg>
+Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip, vip-chip-8
+
+-r, --run
+if a ROM is given (positional) start it
+
+-s <arg>, --exec-speed <arg>
+Set execution speed in instructions per frame (0-500000, 0: unlimited)
+
+-t <arg>, --trace <arg>
+Run headless and dump given number of trace lines
+
+file
+ROM file or source to load
+```
 
 ## Versioning
 

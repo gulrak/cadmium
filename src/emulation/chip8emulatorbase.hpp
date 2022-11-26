@@ -215,7 +215,7 @@ public:
     void removeAllBreakpoints() override;
     inline bool hasBreakPoint(uint32_t address) const { return _breakMap[address&0xfff] != 0; }
 
-    static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, const IChip8Emulator* other = nullptr);
+    static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
 
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }

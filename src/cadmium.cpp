@@ -1032,11 +1032,53 @@ public:
             uint16_t opcode = (_chipEmu->memory()[start] << 8) | _chipEmu->memory()[start + 1];
             auto [bytes, instruction] = _chipEmu->disassembleInstruction(_chipEmu->memory() + start, _chipEmu->memory() + _chipEmu->memSize());
             if (bytes == 2)
-                disassembly.push_back({start, TextFormat("%04X: %04X       %s%s", start, opcode, (inIf ? "  " : ""), instruction.c_str())});
+                disassembly.emplace_back(start, TextFormat("%04X: %04X       %s%s", start, opcode, (inIf ? "  " : ""), instruction.c_str()));
             else
-                disassembly.push_back({start, TextFormat("%04X: %04X %04X  %s%s", start, opcode, ((_chipEmu->memory()[start + 2] << 8) | _chipEmu->memory()[start + 3]), (inIf ? "  " : ""), instruction.c_str())});
+                disassembly.emplace_back(start, TextFormat("%04X: %04X %04X  %s%s", start, opcode, ((_chipEmu->memory()[start + 2] << 8) | _chipEmu->memory()[start + 3]), (inIf ? "  " : ""), instruction.c_str()));
             inIf = instruction.rfind("if ", 0) == 0;
             start += bytes;
+        }
+        return disassembly;
+    }
+
+    emu::Cdp1802::Disassembled disassembleCDP1802(emu::Chip8VIP* cdp, uint32_t addr)
+    {
+        uint8_t code[4];
+        for(int i = 0; i < 3; ++i)
+            code[i] = cdp->readByte(addr + i);
+        auto [bytes, instruction] = emu::Cdp1802::disassembleInstruction(code, code + 3);
+        std::string result;
+        switch(bytes) {
+            case 1:
+                result = TextFormat("%04X: %02X        %s", addr, code[0], instruction.c_str());
+                break;
+            case 2:
+                result = TextFormat("%04X: %02X %02X     %s", addr, code[0], code[1], instruction.c_str());
+                break;
+            case 3:
+                result = TextFormat("%04X: %02X %02X %02X  %s", addr, code[0], code[1], code[2], instruction.c_str());
+                break;
+            default:
+                result = TextFormat("%04X: ???", addr);
+                break;
+        }
+        return {bytes, result};
+    }
+
+    const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsCDP1802(uint32_t addr, int n)
+    {
+        static std::vector<std::pair<uint32_t,std::string>> disassembly;
+        auto* cdp = dynamic_cast<emu::Chip8VIP*>(_chipEmu.get());
+        if(cdp) {
+            n *= 4;
+            uint32_t start = n > addr ? 0 : addr - n;
+            disassembly.clear();
+            bool inIf = false;
+            while (start < addr) {
+                auto [bytes, instruction] = disassembleCDP1802(cdp, start);
+                disassembly.emplace_back(start, instruction);
+                start += bytes;
+            }
         }
         return disassembly;
     }
@@ -1317,6 +1359,7 @@ public:
                     const int lineSpacing = 10;
                     const int debugScale = 256 / _chipEmu->getCurrentScreenWidth();
                     const bool megaChipVideo = _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP;
+                    bool showChipCPU = true;
                     _lastView = _mainView;
                     gridScale = debugScale;
                     BeginColumns();
@@ -1331,8 +1374,15 @@ public:
                     }
                     EndPanel();
                     drawScreen(video, gridScale);
-                    BeginPanel("Instructions", {5, 0});
-                    {
+                    static int activeTab = 0;
+                    bool useTabs = !_chipEmu->isGenericEmulation();
+                    if(useTabs) {
+                        BeginTabView(&activeTab);
+                    }
+                    else {
+                        BeginPanel("Instructions", {5, 0});
+                    }
+                    if(!useTabs || BeginTab("Instructions", {5, 0})) {
                         auto area = GetContentAvailable();
                         Space(area.height);
                         bool mouseInPanel = false;
@@ -1382,8 +1432,43 @@ public:
                             addr += bytes;
                         }
                         EndScissorMode();
+                        if(useTabs)
+                            EndTab();
                     }
-                    EndPanel();
+                    if(useTabs) {
+                        if(BeginTab("CDP1802", {5,0})) {
+                            auto area = GetContentAvailable();
+                            showChipCPU = false;
+                            Space(area.height);
+                            auto* cdp = dynamic_cast<emu::Chip8VIP*>(_chipEmu.get());
+                            auto visibleInstructions = int(area.height / lineSpacing);
+                            auto extraLines = visibleInstructions / 2 + 1;
+                            auto yposPC = area.y + int(area.height / 2) - 4;
+                            const auto& prefix = disassembleNLinesBackwardsCDP1802(cdp->backendCPU().PC(), extraLines);
+                            BeginScissorMode(area.x, area.y, area.width, area.height);
+                            auto pcColor = _chipEmu->cpuState() == emu::IChip8Emulator::eERROR ? RED : YELLOW;
+                            for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
+                                //if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC - (i+1)*lineSpacing, area.width, 8}))
+                                //    toggleBreakpoint(prefix[prefix.size() - 1 - i].first);
+                                //const auto* bpi = _chipEmu->findBreakpoint(prefix[prefix.size() - 1 - i].first);
+                                DrawTextEx(_font, prefix[prefix.size() - 1 - i].second.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, cdp->backendCPU().PC() == prefix[prefix.size() - 1 - i].first ? pcColor : LIGHTGRAY);
+                                //if(bpi)
+                                //    GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
+                            }
+                            uint32_t addr = cdp->backendCPU().PC();
+                            for (int i = 0; i <= extraLines && addr < 0x10000; ++i) {
+                                auto [bytes, line] = disassembleCDP1802(cdp, addr);
+                                DrawTextEx(_font, line.c_str(), {area.x, yposPC + i * lineSpacing}, 8, 0, cdp->backendCPU().PC() == addr ? pcColor : LIGHTGRAY);
+                                addr += bytes;
+                            }
+                            EndScissorMode();
+                            EndTab();
+                        }
+                        EndTabView();
+                    }
+                    else {
+                        EndPanel();
+                    }
                     End();
                     SetNextWidth(50);
                     BeginPanel("Regs");
@@ -1392,32 +1477,57 @@ public:
                         auto area = GetContentAvailable();
                         pos.x += 0;
                         Space(area.height);
-                        int i;
-                        for (i = 0; i < 16; ++i) {
-                            DrawTextEx(_font, TextFormat("V%X: %02X", i, _chipEmu->getV(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getV(i) == _chipEmu->getCopyV(i) ? LIGHTGRAY : YELLOW);
-                        }
-                        ++i;
-                        DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
-                        ++i;
-                        if(_chipEmu->memSize() > 0x10000) {
+                        if(showChipCPU) {
+                            int i;
+                            for (i = 0; i < 16; ++i) {
+                                DrawTextEx(_font, TextFormat("V%X: %02X", i, _chipEmu->getV(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getV(i) == _chipEmu->getCopyV(i) ? LIGHTGRAY : YELLOW);
+                            }
                             ++i;
-                            DrawTextEx(_font, "I:", {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                             ++i;
-                            DrawTextEx(_font, TextFormat("%06X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            if (_chipEmu->memSize() > 0x10000) {
+                                ++i;
+                                DrawTextEx(_font, "I:", {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                                ++i;
+                                DrawTextEx(_font, TextFormat("%06X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                                ++i;
+                                ++i;
+                            }
+                            else {
+                                DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
+                                           _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                                ++i;
+                            }
+                            DrawTextEx(_font, TextFormat("SP: %02X", _chipEmu->getSP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getSP() == _chipEmu->getCopySP() ? LIGHTGRAY : YELLOW);
                             ++i;
                             ++i;
+                            DrawTextEx(_font, TextFormat("DT: %02X", _chipEmu->delayTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->delayTimer() == _chipEmu->getCopyDT() ? LIGHTGRAY : YELLOW);
+                            ++i;
+                            DrawTextEx(_font, TextFormat("ST: %02X", _chipEmu->soundTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->soundTimer() == _chipEmu->getCopyST() ? LIGHTGRAY : YELLOW);
                         }
                         else {
-                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
-                                       _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
+                            auto* vip = dynamic_cast<emu::Chip8VIP*>(_chipEmu.get());
+                            auto& cdp = vip->backendCPU();
+                            int i;
+                            for (i = 0; i < 16; ++i) {
+                                DrawTextEx(_font, TextFormat("R%X:%04X", i, cdp.getR(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, true ? LIGHTGRAY : YELLOW);
+                            }
+                            ++i;
+                            DrawTextEx(_font, TextFormat(" N: %X", cdp.getN()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            DrawTextEx(_font, TextFormat(" P: %X", cdp.getP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            DrawTextEx(_font, TextFormat(" X: %X", cdp.getX()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            ++i;
+                            DrawTextEx(_font, TextFormat(" D: %02X", cdp.getD()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            DrawTextEx(_font, TextFormat("DF:  %X", cdp.getDF()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            ++i;
+                            DrawTextEx(_font, TextFormat(" T: %02X", cdp.getT()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                             ++i;
                         }
-                        DrawTextEx(_font, TextFormat("SP: %02X", _chipEmu->getSP()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getSP() == _chipEmu->getCopySP() ? LIGHTGRAY : YELLOW);
-                        ++i;
-                        ++i;
-                        DrawTextEx(_font, TextFormat("DT: %02X", _chipEmu->delayTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->delayTimer() == _chipEmu->getCopyDT() ? LIGHTGRAY : YELLOW);
-                        ++i;
-                        DrawTextEx(_font, TextFormat("ST: %02X", _chipEmu->soundTimer()), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->soundTimer() == _chipEmu->getCopyST() ? LIGHTGRAY : YELLOW);
                     }
                     EndPanel();
                     SetNextWidth(44);
@@ -1430,8 +1540,9 @@ public:
                         auto stackSize = _chipEmu->stackSize();
                         const auto* stack = _chipEmu->getStackElements();
                         const auto* stackCopy = _chipEmu->getCopyStackElements();
+                        bool fourDigitStack = !_chipEmu->isGenericEmulation() || _chipEmu->memSize() > 4096;
                         for (int i = 0; i < stackSize; ++i) {
-                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
+                            DrawTextEx(_font, fourDigitStack  ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == stackCopy[i] ? LIGHTGRAY : YELLOW);
                         }
                     }
                     EndPanel();
@@ -1454,7 +1565,7 @@ public:
                             if(addr + i * 8 >= 0 && addr + i * 8 < _chipEmu->memSize()) {
                                 DrawTextEx(_font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                                 for (int j = 0; j < 8; ++j) {
-                                    if (_chipEmu->getI() + i * 8 + j > 65535 || _chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
+                                    if (!showChipCPU || _chipEmu->getI() + i * 8 + j > 65535 || _chipEmu->memory()[_chipEmu->getI() + i * 8 + j] == _chipEmu->memoryCopy()[_chipEmu->getI() + i * 8 + j]) {
                                         DrawTextEx(_font, TextFormat("%02X", _chipEmu->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? LIGHTGRAY : GRAY);
                                     }
                                     else {
@@ -1500,6 +1611,7 @@ public:
                     Begin();
                     BeginPanel("Settings");
                     {
+                        emu::Chip8EmulatorOptions oldOptions = _options;
                         BeginColumns();
                         SetNextWidth(320);
                         BeginGroupBox("Emulation Speed");
@@ -1542,7 +1654,6 @@ public:
                         BeginColumns();
                         SetNextWidth(GetContentAvailable().width/2);
                         Begin();
-                        emu::Chip8EmulatorOptions oldOptions = _options;
                         _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
                         _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
                         bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
@@ -1584,6 +1695,7 @@ public:
                         Space(30);
                         if(std::memcmp(&oldOptions, &_options, sizeof(emu::Chip8EmulatorOptions)) != 0) {
                             updateEmulatorOptions();
+                            safeConfig();
                         }
                         auto pos = GetCurrentPos();
                         Space(_screenHeight - pos.y - 20 - 16);
@@ -1875,6 +1987,9 @@ public:
     {
         if(!_cfgPath.empty()) {
             _cfg.emuOptions = _options;
+            if(!endsWith(_romName, ".8o") && !endsWith(_romName, ".8op")) {
+                _cfg.romConfigs[_romSha1Hex] = _options;
+            }
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }

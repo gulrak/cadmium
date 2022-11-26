@@ -39,7 +39,7 @@ public:
     constexpr static uint32_t MAX_ADDRESS_MASK = 5095;
     constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
 
-    Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options);
+    Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8VIP() override;
 
     void reset() override;
@@ -85,6 +85,8 @@ public:
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
+
+    Cdp1802& backendCPU();
 
 private:
     class Private;

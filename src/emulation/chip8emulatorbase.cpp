@@ -28,7 +28,7 @@
 
 namespace emu {
 
-std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, const IChip8Emulator* iother)
+std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* iother)
 {
     const auto* other = dynamic_cast<const Chip8EmulatorBase*>(iother);
     if(engine == eCHIP8TS) {
@@ -97,7 +97,7 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
         return std::make_unique<Chip8EmulatorFP>(host, options, other);
     }
     else if(engine == eCHIP8VIP) {
-        return std::make_unique<Chip8VIP>(host, options);
+        return std::make_unique<Chip8VIP>(host, options, iother);
     }
     return std::make_unique<Chip8EmulatorVIP>(host, options, other);
 }

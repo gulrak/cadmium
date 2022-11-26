@@ -103,6 +103,10 @@ RLGUIPP_API void BeginColumns();                                                
 RLGUIPP_API void EndColumns();                                                                                            // end the column grouping
 RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5});                                        // start a panel (a group with a kind of title bar, if title is given), must be closed with EndPanel()
 RLGUIPP_API void EndPanel();                                                                                              // end the description of a panel group
+RLGUIPP_API void BeginTabView(int *activeTab);                                                                            // start a tab view (a stack of groups with labeled tabs on top), must be closed with EndTabView()
+RLGUIPP_API void EndTabView();                                                                                            // end the description of a tab view
+RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                                    // start a tab in a tab view (a page with the given text as label top), must be closed with EndTab()
+RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
 RLGUIPP_API void BeginTableView(float height, int numColumns);                                                            //
@@ -242,6 +246,14 @@ struct PopupContext
     bool* _isOpen;
 };
 
+struct TabViewContext
+{
+    int *activeTab{nullptr};
+    int currentTab{0};
+    float tabOffset{0.0f};
+    static TabViewContext& getContext(int* activeTab);
+};
+
 struct ScrollPanelContext
 {
     Rectangle area{};
@@ -284,8 +296,8 @@ struct TableContext
 
 struct GuiContext
 {
-    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctPOPUP, ctSCROLLPANEL, ctMENUBAR, ctMENU };
-    using ContextData = std::variant<ScrollPanelContext*, RenderTexture*, MenuBar*, MenuContext*, TableContext*>;
+    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctTABVIEW, ctTAB, ctPOPUP, ctSCROLLPANEL, ctMENUBAR, ctMENU };
+    using ContextData = std::variant<ScrollPanelContext*, RenderTexture*, MenuBar*, MenuContext*, TableContext*, TabViewContext*>;
     Type type;
     Vector2 initialPos{};
     Vector2 currentPos{};
@@ -438,6 +450,7 @@ inline static PopupContext* g_popupUnderMouse{nullptr};
 inline static std::unordered_map<void*, MenuBar> g_menuBars;
 inline static std::unordered_map<uint64_t, MenuContext> g_menuContextMap;
 inline static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
+inline static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
 
 PopupContext::PopupContext(Rectangle rect, bool* isOpen)
     : _level((int)g_contextStack.size())
@@ -516,6 +529,15 @@ TableContext& TableContext::getContext(Vector2* scroll)
     auto iter = g_tableContextMap.find(scroll);
     if (iter == g_tableContextMap.end()) {
         iter = g_tableContextMap.emplace(std::make_pair(scroll, TableContext())).first;
+    }
+    return iter->second;
+}
+
+TabViewContext& TabViewContext::getContext(int* activeTab)
+{
+    auto iter = g_tabviewContextMap.find(activeTab);
+    if(iter == g_tabviewContextMap.end()) {
+        iter = g_tabviewContextMap.emplace(std::make_pair(activeTab, TabViewContext())).first;
     }
     return iter->second;
 }
@@ -785,6 +807,94 @@ void EndPanel()
     //ctx.increment({1,2});
     ctx.maxSize = ctx.area.width;
     End();
+}
+
+void BeginTabView(int *activeTab)
+{
+    auto& tvc = TabViewContext::getContext(activeTab);
+    auto& ctxParent = detail::context();
+    g_contextStack.push(ctxParent);
+    auto& ctx = detail::context();
+    auto size = ctx.standardSize();
+    ctx.type = GuiContext::ctTABVIEW;
+    tvc.activeTab = activeTab;
+    tvc.currentTab = 0;
+    tvc.tabOffset = 2.0f;
+    ctx.contextData = &tvc;
+    GuiStatusBar({ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctx.rowHeight}, " ");
+}
+
+void EndTabView()
+{
+    auto& ctx = detail::context();
+    if (ctx.level > 1) {
+        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+    }
+    else {
+        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+    }
+    // ctx.increment({0, ctx.currentPos.y - ctx.area.y + (ctx.groupName.empty() ? 10 : RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 10)});
+    //ctx.increment({1,2});
+    ctx.maxSize = ctx.area.width;
+    End();
+}
+
+bool BeginTab(const char* text, Vector2 padding)
+{
+    auto& ctxParent = detail::context();
+    auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
+    auto labelSize = MeasureTextEx(GuiGetFont(), text, 8, 0);
+    bool isActive = *tvc.activeTab == tvc.currentTab;
+    bool hoversOverTab = CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
+    auto textcol = Fade(GetColor(gui::GetStyle(TEXTBOX, isActive || hoversOverTab ? TEXT + (guiState * 3) : TEXT_COLOR_DISABLED)), guiAlpha);
+    auto linecol = Fade(GetColor(gui::GetStyle(DEFAULT, BORDER_COLOR_NORMAL)), guiAlpha);
+    if(!isActive && IsMouseButtonPressed(0) && hoversOverTab) {
+        *tvc.activeTab = tvc.currentTab;
+    }
+    DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4, Fade(GetColor(GuiGetStyle(STATUSBAR, isActive ? BASE_COLOR_NORMAL : BASE_COLOR_DISABLED)), guiAlpha));
+    GuiDrawText(text, {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 2, labelSize.x + 4, ctxParent.rowHeight - 3}, TEXT_ALIGN_CENTER, textcol);
+    DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset, ctxParent.currentPos.y + 3, 1, ctxParent.rowHeight - 3, linecol);
+    DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 2, labelSize.x + 4, 1, linecol);
+    DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset + labelSize.x + 5, ctxParent.currentPos.y + 3, 1, ctxParent.rowHeight - 3, linecol);
+    if(isActive) {
+        DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + ctxParent.rowHeight - 1, labelSize.x + 4, 1, Fade(GetColor(GuiGetStyle(TEXTBOX, BASE_COLOR_NORMAL)), guiAlpha));
+    }
+    else {
+        DrawRectangle(ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + ctxParent.rowHeight - 1, labelSize.x + 4, 1, linecol);
+    }
+    tvc.tabOffset += labelSize.x + 7;
+    tvc.currentTab++;
+    if(!isActive) {
+        return false;
+    }
+    g_contextStack.push(ctxParent);
+    auto& ctx = detail::context();
+    auto size = ctx.standardSize();
+    ctx.type = GuiContext::ctTAB;
+    ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
+    ctx.content = {ctx.area.x + padding.x, ctx.area.y + ctx.rowHeight + padding.y, ctx.area.width - 2 * padding.x, ctx.area.height - ctx.rowHeight - 2 * padding.y};
+    ctx.initialPos = {ctx.content.x, ctx.content.y};
+    ctx.currentPos = ctx.initialPos;
+    ctx.horizontal = false;
+    ctx.bordered = true;
+    ctx.level++;
+    ctx.groupName = text ? text : "";
+    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.maxSize = 0;
+    ctx.padding = padding;
+    return true;
+}
+
+void EndTab()
+{
+    auto& ctx = detail::context();
+    if (ctx.level > 1) {
+        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+    }
+    else {
+        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+    }
+    g_contextStack.pop();
 }
 
 void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)

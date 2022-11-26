@@ -8,7 +8,7 @@ endif()
 add_executable(soundfreq soundfreq.cpp)
 
 add_executable(decompile decompiler.cpp)
-target_link_libraries(decompile emulation)
+target_link_libraries(decompile PUBLIC emulation)
 
 add_executable(fontgenerator fontgenerator.cpp)
 

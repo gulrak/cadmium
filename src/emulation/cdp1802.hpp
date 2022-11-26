@@ -106,6 +106,12 @@ public:
     bool getIE() const { return _rIE; }
     int64_t getCycles() const { return _cycles; }
     uint16_t& PC() { return _rR[_rP]; }
+    uint8_t getN() const { return _rN; }
+    uint8_t getP() const { return _rP; }
+    uint8_t getX() const { return _rX; }
+    uint8_t getD() const { return _rD; }
+    uint8_t getDF() const { return _rDF ? 1 : 0; }
+    uint8_t getT() const { return _rT; }
     uint16_t& RN() { return _rR[_rN]; }
     uint16_t& RX() { return _rR[_rX]; }
     uint8_t readByte(uint16_t addr) { return _bus.readByte(addr); }

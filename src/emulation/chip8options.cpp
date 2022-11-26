@@ -93,6 +93,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"xo", emu::Chip8EmulatorOptions::eXOCHIP},
     {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
     {"vipchip8", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"chip8vip", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
 };
 
