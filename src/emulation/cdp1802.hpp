@@ -60,7 +60,7 @@ public:
     };
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
-    using NEFInputHandler = std::function<bool (uint8_t idx)>;
+    using NEFInputHandler = std::function<bool (uint8_t)>;
     Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 1760900)
         : _bus(bus)
         , _clockSpeed(clockFreq)
@@ -260,6 +260,18 @@ public:
         _rT = (_rX<<4)|_rP;
         _rP = 1;
         _rX = 2;
+    }
+
+    void executeDMAIn(uint8_t data)
+    {
+        addCycles(8);
+        writeByte(_rR[0]++, data);
+    }
+
+    uint8_t executeDMAOut()
+    {
+        addCycles(8);
+        return readByte(_rR[0]++);
     }
 
     void executeInstruction()
