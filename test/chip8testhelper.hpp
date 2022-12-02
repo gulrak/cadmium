@@ -84,9 +84,9 @@ inline void write(const std::unique_ptr<emu::IChip8Emulator>& chip8, uint32_t ad
 
 inline void step(const std::unique_ptr<emu::IChip8Emulator>& chip8)
 {
-    Chip8State::pre = chip8->dumStateLine();
+    Chip8State::pre = chip8->dumpStateLine();
     chip8->executeInstruction();
     Chip8State::stepCount++;
-    Chip8State::post = chip8->dumStateLine();
+    Chip8State::post = chip8->dumpStateLine();
 }
 

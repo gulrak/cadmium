@@ -990,13 +990,14 @@ public:
         int scrWidth = _chipEmu->getCurrentScreenWidth();
         int scrHeight = _chipEmu->getCurrentScreenHeight();
         auto videoScale = dest.width / scrWidth;
+        auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScale : videoScale/4;
         auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
-        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScale) / 2 + dest.y;
+        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
         DrawRectangleRec(dest, {0,12,24,255});
-        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScale}, {0, 0}, 0, WHITE);
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
         if (_grid) {
             for (short x = 0; x < scrWidth; ++x) {
-                DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScale, gridLineCol);
+                DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScaleY, gridLineCol);
             }
             for (short y = 0; y < scrHeight; ++y) {
                 DrawRectangle(videoX, videoY + y * gridScale, scrWidth * videoScale, 1, gridLineCol);
@@ -1483,7 +1484,7 @@ public:
                                 DrawTextEx(_font, TextFormat("V%X: %02X", i, _chipEmu->getV(i)), {pos.x, pos.y + i * lineSpacing}, 8, 0, _chipEmu->getV(i) == _chipEmu->getCopyV(i) ? LIGHTGRAY : YELLOW);
                             }
                             ++i;
-                            DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            DrawTextEx(_font, _chipEmu->memSize() > 4096 || !_chipEmu->isGenericEmulation() ? TextFormat("PC:%04X", _chipEmu->getPC()) : TextFormat("PC: %03X", _chipEmu->getPC()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                             ++i;
                             if (_chipEmu->memSize() > 0x10000) {
                                 ++i;
@@ -1494,7 +1495,7 @@ public:
                                 ++i;
                             }
                             else {
-                                DrawTextEx(_font, _chipEmu->memSize() > 4096 ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
+                                DrawTextEx(_font, _chipEmu->memSize() > 4096 || !_chipEmu->isGenericEmulation() ? TextFormat(" I:%04X", _chipEmu->getI()) : TextFormat(" I: %03X", _chipEmu->getI()), {pos.x, pos.y + i * lineSpacing}, 8, 0,
                                            _chipEmu->getI() == _chipEmu->getCopyI() ? LIGHTGRAY : YELLOW);
                                 ++i;
                             }
@@ -1527,6 +1528,8 @@ public:
                             ++i;
                             DrawTextEx(_font, TextFormat(" T: %02X", cdp.getT()), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                             ++i;
+                            ++i;
+                            DrawTextEx(_font, TextFormat("IE:  %X", cdp.getIE() ? 1 : 0), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                         }
                     }
                     EndPanel();
@@ -2485,15 +2488,15 @@ int main(int argc, char* argv[])
                 chip8->executeInstruction();
                 octo_emulator_instruction(&octo);
                 if (!(i % 500000)) {
-                    std::clog << i << ": " << chip8->dumStateLine() << std::endl;
+                    std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
                     std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
                 }
                 if(!(i % 500000)) {
                     std::cout << chip8EmuScreen(*chip8);
                 }
                 ++i;
-            } while ((i & 0xfff) || (chip8->dumStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(*chip8) == octoScreen(octo)));
-            std::clog << i << ": " << chip8->dumStateLine() << std::endl;
+            } while ((i & 0xfff) || (chip8->dumpStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(*chip8) == octoScreen(octo)));
+            std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
             std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
             std::cerr << chip8EmuScreen(*chip8);
             std::cerr << "---" << std::endl;
@@ -2531,7 +2534,7 @@ int main(int argc, char* argv[])
         }
         else if(traceLines >= 0) {
             do {
-                std::cout << i << "/" << chip8->cycles() << ": " << chip8->dumStateLine() << std::endl;
+                std::cout << i << "/" << chip8->cycles() << ": " << chip8->dumpStateLine() << std::endl;
                 if ((i % chip8options.instructionsPerFrame) == 0) {
                     chip8->handleTimer();
                 }

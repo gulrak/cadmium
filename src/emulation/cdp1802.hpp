@@ -101,7 +101,7 @@ public:
         _inputNEF = handler;
     }
 
-    void triggerIrq() { _irq = true; }
+    //void triggerIrq() { _irq = true; }
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     bool getIE() const { return _rIE; }
     int64_t getCycles() const { return _cycles; }
@@ -253,9 +253,10 @@ public:
         }
     }
 
-    void handleInterrupt()
+    void triggerInterrupt()
     {
-        //std::clog << "CDP1802: --- IRQ ---" << std::endl;
+        std::clog << fmt::format("CDP1802: [{:9}]  ", _cycles) << "--- IRQ ---" << std::endl;
+        addCycles(8);
         _rIE = false;
         _rT = (_rX<<4)|_rP;
         _rP = 1;
@@ -276,13 +277,8 @@ public:
 
     void executeInstruction()
     {
-        if(_irq) {
-            if(_rIE)
-                handleInterrupt();
-            _irq = false;
-        }
-        //if(!_rIE)
-        //    std::clog << "CDP1802: " << disassembleCurrentStatement() << std::endl;
+        if(!_rIE)
+            std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
         _rN = opcode & 0xF;

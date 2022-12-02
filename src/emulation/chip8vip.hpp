@@ -65,7 +65,7 @@ public:
     uint8_t delayTimer() const override;
     uint8_t soundTimer() const override;
 
-    std::string dumStateLine() const override;
+    std::string dumpStateLine() const override;
 
     bool isGenericEmulation() const override { return false; }
 
@@ -88,7 +88,25 @@ public:
 
     Cdp1802& backendCPU();
 
+    void copyState() override;
+    uint8_t getCopyV(uint8_t index) const override;
+    uint32_t getCopyI() const override;
+    uint8_t getCopyDT() const override;
+    uint8_t getCopyST() const override;
+    uint8_t getCopySP() const override;
+    const uint16_t* getCopyStackElements() const override;
+
+    void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) override;
+    void removeBreakpoint(uint32_t address) override;
+    BreakpointInfo* findBreakpoint(uint32_t address) override;
+    size_t numBreakpoints() const override;
+    std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index) override;
+    void removeAllBreakpoints() override;
+    bool hasBreakPoint(uint32_t address) const;
+
 private:
+    int frameCycle() const;
+    int videoLine() const;
     class Private;
     std::unique_ptr<Private> _impl;
 };

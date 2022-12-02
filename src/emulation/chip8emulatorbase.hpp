@@ -127,7 +127,7 @@ public:
                 c = black;
         }
     }
-    std::string dumStateLine() const override
+    std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
                            _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);

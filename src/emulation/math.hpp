@@ -27,6 +27,8 @@
 
 #include <emulation/config.hpp>
 
+#include <type_traits>
+
 namespace emu {
 namespace math {
 
@@ -85,6 +87,66 @@ inline uint64_t combineToUint64(uint32_t hi, uint32_t lo)
 {
     return (uint64_t(hi) << 32) | lo;
 }
+
+#if __GNUC__ >= 5 //|| (defined(__has_builtin) && __has_builtin(__builtin_add_overflow))
+template<typename T>
+inline bool addOverflows(T a, T b, T* out)
+{
+    return __builtin_add_overflow(a, b, out);
+}
+template<typename T>
+inline bool subOverflows(T a, T b, T* out)
+{
+    return __builtin_sub_overflow(a, b, out);
+}
+template<typename T>
+inline bool mulOverflows(T a, T b, T* out)
+{
+    return __builtin_mul_overflow(a, b, out);
+}
+#else
+template<typename T>
+inline T asUnsigned(T v)
+{
+    return static_cast<std::make_unsigned<T>>(a);
+}
+template<typename T>
+inline bool addOverflows(T a, T b, T* out)
+{
+    if constexpr (std::is_unsigned<T>::value) {
+        *out = a + b;
+        return *out < a;
+    }
+    else {
+        *out = static_cast<T>(asUnsigned(a) + asUnsigned(b));
+        return (a < 0 && b < 0 && *out > 0) || (a > 0 && b > 0 && *out < 0);
+    }
+}
+template<typename T>
+inline bool subOverflows(T a, T b, T* out)
+{
+    if constexpr (std::is_unsigned<T>::value) {
+        *out = a - b;
+        return *out > a;
+    }
+    else {
+        *out = static_cast<T>(asUnsigned(a) - asUnsigned(b));
+        return (b < 0 && a > std::numeric_limits<T>::max() + b) || (b > 0 && a < std::numeric_limits<T>::min() + b);
+    }
+}
+template<typename T>
+inline bool mulOverflows(T a, T b, T* out)
+{
+    if constexpr (std::is_unsigned<T>::value) {
+        *out = a * b;
+        return (b != 0 && a > std::numeric_limits<T>::max() / b);
+    }
+    else {
+        *out = static_cast<T>(asUnsigned(a) * asUnsigned(b));
+        return (a == -1 && b == std::numeric_limits<T>::min()) || (b == -1 && a == std::numeric_limits<T>::min()) || (b != 0 && a > std::numeric_limits<T>::max() / b) || (b != 0 && a < std::numeric_limits<T>::min() / b);
+    }
+}
+#endif
 
 }  // namespace math
 }  // namespace emu
