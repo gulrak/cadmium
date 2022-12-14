@@ -47,6 +47,7 @@ class Cdp1802Bus
 public:
     virtual ~Cdp1802Bus() = default;
     virtual uint8_t readByte(uint16_t addr) const = 0;
+    virtual uint8_t readByteDMA(uint16_t addr) const = 0;
     virtual void writeByte(uint16_t addr, uint8_t val) = 0;
 };
 
@@ -115,6 +116,7 @@ public:
     uint16_t& RN() { return _rR[_rN]; }
     uint16_t& RX() { return _rR[_rX]; }
     uint8_t readByte(uint16_t addr) { return _bus.readByte(addr); }
+    uint8_t readByteDMA(uint16_t addr) { return _bus.readByteDMA(addr); }
     void writeByte(uint16_t addr, uint8_t val) { _bus.writeByte(addr, val); }
     void branchShort(bool condition)
     {
@@ -155,7 +157,11 @@ public:
        data[1] = _bus.readByte(_rR[_rP]+1);
        data[2] = _bus.readByte(_rR[_rP]+2);
        auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
-       return fmt::format("{:04x}:  {:02x}    {}", _rR[_rP], data[0], text);
+       switch(size) {
+           case 2:  return fmt::format("{:04x}:  {:02x} {:02x}  {}", _rR[_rP], data[0], data[1], text);
+           case 3:  return fmt::format("{:04x}:  {:02x} {:02x} {:02x}  {}", _rR[_rP], data[0], data[1], data[2], text);
+           default: return fmt::format("{:04x}:  {:02x}     {}", _rR[_rP], data[0], text);
+       }
     }
 
     std::string dumpStateLine() const
@@ -255,12 +261,14 @@ public:
 
     void triggerInterrupt()
     {
-        std::clog << fmt::format("CDP1802: [{:9}]  ", _cycles) << "--- IRQ ---" << std::endl;
-        addCycles(8);
-        _rIE = false;
-        _rT = (_rX<<4)|_rP;
-        _rP = 1;
-        _rX = 2;
+        if(_rIE) {
+            //std::clog << fmt::format("CDP1802: [{:9}]  ", _cycles) << "--- IRQ ---" << std::endl;
+            addCycles(8);
+            _rIE = false;
+            _rT = (_rX << 4) | _rP;
+            _rP = 1;
+            _rX = 2;
+        }
     }
 
     void executeDMAIn(uint8_t data)
@@ -272,13 +280,13 @@ public:
     uint8_t executeDMAOut()
     {
         addCycles(8);
-        return readByte(_rR[0]++);
+        return readByteDMA(_rR[0]++);
     }
 
     void executeInstruction()
     {
-        if(!_rIE)
-            std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
+        //if(!_rIE)
+        //    std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
         _rN = opcode & 0xF;

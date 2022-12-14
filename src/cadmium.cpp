@@ -50,6 +50,7 @@ extern "C" {
 #include <systemtools.hpp>
 #include <resourcemanager.hpp>
 #include <circularbuffer.hpp>
+#include <logview.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -423,6 +424,7 @@ void LogHandler(int msgType, const char *text, va_list args)
     }
     vsnprintf(buffer, 4095, text, args);
     ofs << buffer << std::endl;
+    emu::Logger::log(LogView::eHOST, 0, 0, buffer);
 }
 
 std::atomic_uint8_t g_soundTimer{0};
@@ -434,7 +436,7 @@ public:
     using ExecMode = emu::IChip8Emulator::ExecMode;
     using CpuState = emu::IChip8Emulator::CpuState;
     enum MemFlags { eNONE = 0, eBREAKPOINT = 1, eWATCHPOINT = 2 };
-    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
+    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     static constexpr int MIN_SCREEN_WIDTH = 512;
@@ -849,7 +851,7 @@ public:
         auto* pixel = (uint32_t*)_screen.data;
         const uint8_t* planes = _chipEmu->getScreenBuffer();
         if(planes) {
-            const uint8_t* end = planes + _chipEmu->getMaxScreenWidth() * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
+            const uint8_t* end = planes + 256 /*_chipEmu->getMaxScreenWidth()*/ * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
             while (planes < end) {
                 *pixel++ = _colorPalette[*planes++];
             }
@@ -988,13 +990,14 @@ public:
     {
         const Color gridLineCol{40,40,40,255};
         int scrWidth = _chipEmu->getCurrentScreenWidth();
-        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        int scrHeight = _chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128;
         auto videoScale = dest.width / scrWidth;
         auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScale : videoScale/4;
         auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
         auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
         DrawRectangleRec(dest, {0,12,24,255});
         DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+//        DrawRectangleLines(videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY, RED);
         if (_grid) {
             for (short x = 0; x < scrWidth; ++x) {
                 DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScaleY, gridLineCol);
@@ -1309,7 +1312,7 @@ public:
                     }
                 }
                 SetTooltip("RESTART");
-                int buttonsRight = 5;
+                int buttonsRight = 6;
 #ifdef WITH_EDITOR
                 ++buttonsRight;
 #endif
@@ -1337,8 +1340,11 @@ public:
 #ifdef WITH_EDITOR
                 if (iconButton(ICON_FILETYPE_TEXT, _mainView == eEDITOR))
                     _mainView = eEDITOR, _chipEmu->setExecMode(ExecMode::ePAUSED);
-                SetTooltip("Editor");
+                SetTooltip("EDITOR");
 #endif
+                if (iconButton(ICON_PRINTER, _mainView == eTRACELOG))
+                    _mainView = eTRACELOG;
+                SetTooltip("TRACE-LOG");
                 if (iconButton(ICON_GEAR, _mainView == eSETTINGS))
                     _mainView = eSETTINGS;
                 SetTooltip("SETTINGS");
@@ -1530,6 +1536,9 @@ public:
                             ++i;
                             ++i;
                             DrawTextEx(_font, TextFormat("IE:  %X", cdp.getIE() ? 1 : 0), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                            ++i;
+                            ++i;
+                            DrawTextEx(_font, TextFormat("Dis: %s", vip->isDisplayEnabled() ? "ON" : "OFF"), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
                         }
                     }
                     EndPanel();
@@ -1608,6 +1617,19 @@ public:
                     EndPanel();
                     End();
                     break;
+                case eTRACELOG: {
+                    _lastView = _mainView;
+                    SetSpacing(0);
+                    Begin();
+                    BeginPanel("Trace-Log", {1,1});
+                    {
+                        auto rect = GetContentAvailable();
+                        _logView.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
+                    }
+                    EndPanel();
+                    End();
+                    break;
+                }
                 case eSETTINGS: {
                     _lastView = _mainView;
                     SetSpacing(0);
@@ -1647,6 +1669,7 @@ public:
                         }
                         if(!_chipEmu->isGenericEmulation())
                             Label("   [CDP1802 based]");
+                        _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
                         End();
                         EndColumns();
                         Space(16);
@@ -2225,6 +2248,7 @@ private:
     MainView _mainView{eDEBUGGER};
     MainView _lastView{eDEBUGGER};
     Librarian _librarian;
+    LogView _logView;
 #ifdef WITH_EDITOR
     Editor _editor;
 #endif

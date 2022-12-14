@@ -4,6 +4,8 @@ set(CADMIUM_SOURCE
     cadmium.cpp
     editor.cpp
     editor.hpp
+    logview.cpp
+    logview.hpp
     librarian.cpp
     librarian.hpp
     systemtools.cpp

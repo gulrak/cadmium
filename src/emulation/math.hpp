@@ -88,7 +88,12 @@ inline uint64_t combineToUint64(uint32_t hi, uint32_t lo)
     return (uint64_t(hi) << 32) | lo;
 }
 
-#if __GNUC__ >= 5 //|| (defined(__has_builtin) && __has_builtin(__builtin_add_overflow))
+#ifdef __has_builtin
+#if __has_builtin(__builtin_add_overflow)
+#define HAS_BUILTIN_ADD_OVERFLOW
+#endif
+#endif
+#if __GNUC__ >= 5 || defined(HAS_BUILTIN_ADD_OVERFLOW)
 template<typename T>
 inline bool addOverflows(T a, T b, T* out)
 {
@@ -108,7 +113,7 @@ inline bool mulOverflows(T a, T b, T* out)
 template<typename T>
 inline T asUnsigned(T v)
 {
-    return static_cast<std::make_unsigned<T>>(a);
+    return static_cast<std::make_unsigned<T>>(v);
 }
 template<typename T>
 inline bool addOverflows(T a, T b, T* out)

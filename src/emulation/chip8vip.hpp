@@ -84,7 +84,10 @@ public:
 
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;
+    uint8_t readByteDMA(uint16_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
+
+    bool isDisplayEnabled() const;
 
     Cdp1802& backendCPU();
 
@@ -107,6 +110,7 @@ public:
 private:
     int frameCycle() const;
     int videoLine() const;
+    bool executeCdp1802();
     class Private;
     std::unique_ptr<Private> _impl;
 };
