@@ -25,8 +25,10 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
+#include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
+#include <emulation/chip8vip.hpp>
+#include <emulation/chip8opcodedisass.hpp>
 #include <emulation/time.hpp>
 
 #include <array>
@@ -41,18 +43,7 @@
 
 namespace emu {
 
-class Chip8EmulatorHost {
-public:
-    virtual ~Chip8EmulatorHost() = default;
-    virtual bool isHeadless() const = 0;
-    virtual uint8_t getKeyPressed() = 0;
-    virtual bool isKeyDown(uint8_t key) = 0;
-    virtual void updateScreen() = 0;
-    virtual void updatePalette(const std::array<uint8_t,16>& palette) = 0;
-    virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
-};
-
-class Chip8EmulatorBase : public IChip8Emulator
+class Chip8EmulatorBase : public Chip8OpcodeDisassembler
 {
 public:
     enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
@@ -62,8 +53,8 @@ public:
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
-        : _host(host)
-        , _options(options)
+        : Chip8OpcodeDisassembler(options)
+        , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
         , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
@@ -136,7 +127,7 @@ public:
                 c = black;
         }
     }
-    std::string dumStateLine() const override
+    std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
                            _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);
@@ -216,8 +207,6 @@ public:
     uint8_t getCopySP() const override { return _rSP_b; }
     const uint16_t* getCopyStackElements() const override { return _stack_b.data(); }
 
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override;
-
     void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) override;
     void removeBreakpoint(uint32_t address) override;
     BreakpointInfo* findBreakpoint(uint32_t address) override;
@@ -226,11 +215,10 @@ public:
     void removeAllBreakpoints() override;
     inline bool hasBreakPoint(uint32_t address) const { return _breakMap[address&0xfff] != 0; }
 
-    static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, const IChip8Emulator* other = nullptr);
+    static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
 
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
-    SymbolResolver _labelOrAddress;
     ExecMode _execMode{eRUNNING};
     CpuState _cpuState{eNORMAL};
     bool _isHires{false};
@@ -272,7 +260,6 @@ protected:
     MegaChipBlendMode _blendMode{eBLEND_NORMAL};
 
     Chip8EmulatorHost& _host;
-    Chip8EmulatorOptions& _options;
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
     std::vector<uint8_t> _memory_b{};

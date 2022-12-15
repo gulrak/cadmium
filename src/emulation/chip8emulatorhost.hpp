@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8options.hpp
+// src/emulation/chip8emulatorhost.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,42 +25,22 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
-
+#include <array>
 #include <cstdint>
-#include <string>
+#include <vector>
 
 namespace emu {
 
-struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHICUEYI, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
-    uint16_t startAddress{0x200};
-    bool optJustShiftVx{false};
-    bool optDontResetVf{false};
-    bool optLoadStoreIncIByX{false};
-    bool optLoadStoreDontIncI{false};
-    bool optWrapSprites{false};
-    bool optInstantDxyn{false};
-    bool optJump0Bxnn{false};
-    bool optAllowHires{false};
-    bool optOnlyHires{false};
-    bool optAllowColors{false};
-    bool optHas16BitAddr{false};
-    bool optXOChipSound{false};
-    bool optChicueyiSound{false};
-    bool optTraceLog{false};
-    int instructionsPerFrame{9};
-    Chip8Variant presetAsVariant() const;
-    //static SupportedPreset variantAsPreset(Chip8Variant variant);
-    static std::string nameOfPreset(SupportedPreset preset);
-    static const char* shortNameOfPreset(SupportedPreset preset);
-    static SupportedPreset presetForName(const std::string& name);
-    static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
+class Chip8EmulatorHost
+{
+public:
+    virtual ~Chip8EmulatorHost() = default;
+    virtual bool isHeadless() const = 0;
+    virtual uint8_t getKeyPressed() = 0;
+    virtual bool isKeyDown(uint8_t key) = 0;
+    virtual void updateScreen() = 0;
+    virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
+    virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
 };
-
-void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
-void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
 
 }

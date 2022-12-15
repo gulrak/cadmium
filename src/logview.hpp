@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8options.hpp
+// src/logview.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,42 +25,50 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <emulation/config.hpp>
+#include <emulation/logger.hpp>
 
-#include <cstdint>
-#include <string>
+#include <raylib.h>
 
-namespace emu {
+class LogView : public emu::Logger
+{
+public:
+    static constexpr size_t HISTORY_SIZE = 1024;
+    static constexpr int LINE_SIZE = 12;
+    static constexpr int COLUMN_WIDTH = 6;
+    LogView();
+    ~LogView();
 
-struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHICUEYI, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
-    uint16_t startAddress{0x200};
-    bool optJustShiftVx{false};
-    bool optDontResetVf{false};
-    bool optLoadStoreIncIByX{false};
-    bool optLoadStoreDontIncI{false};
-    bool optWrapSprites{false};
-    bool optInstantDxyn{false};
-    bool optJump0Bxnn{false};
-    bool optAllowHires{false};
-    bool optOnlyHires{false};
-    bool optAllowColors{false};
-    bool optHas16BitAddr{false};
-    bool optXOChipSound{false};
-    bool optChicueyiSound{false};
-    bool optTraceLog{false};
-    int instructionsPerFrame{9};
-    Chip8Variant presetAsVariant() const;
-    //static SupportedPreset variantAsPreset(Chip8Variant variant);
-    static std::string nameOfPreset(SupportedPreset preset);
-    static const char* shortNameOfPreset(SupportedPreset preset);
-    static SupportedPreset presetForName(const std::string& name);
-    static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
+    void clear();
+
+    void doLog(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg) override;
+    void draw(Font& font, Rectangle rect);
+
+    static LogView* instance();
+
+private:
+    Rectangle drawToolArea();
+    void drawTextLine(Font& font, int logLine, Vector2 position, float width, int columnOffset);
+    struct LogEntry {
+        emu::cycles_t _cycle{0};
+        emu::cycles_t _frameCycle{0};
+        uint64_t _hash{0};
+        Source _source{eHOST};
+        std::string _line;
+    };
+    std::vector<LogEntry> _logBuffer;
+    std::string _filter;
+    bool _invertedFilter{false};
+    Rectangle _totalArea{};
+    Rectangle _textArea{};
+    Rectangle _toolArea{};
+    size_t _writeIndex;
+    size_t _usedSlots;
+    int _tosLine{0};
+    int _losCol{0};
+    uint32_t _visibleLines{0};
+    uint32_t _visibleCols{0};
+    uint32_t _longestLineSize{256};
+    Vector2 _scrollPos;
 };
 
-void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
-void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
-
-}

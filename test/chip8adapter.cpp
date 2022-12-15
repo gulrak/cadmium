@@ -123,6 +123,25 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     return std::make_unique<emu::Chip8EmulatorFP>(host, options);
 }
 
+#elif defined(TEST_CHIP8VIP)
+#include <emulation/chip8cores.hpp>
+#include <emulation/chip8vip.hpp>
+
+std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
+{
+    static emu::Chip8EmulatorOptions options;
+    switch(variant) {
+        case C8TV_GENERIC:
+        case C8TV_C8:
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            break;
+        default:
+            return nullptr;
+    }
+    static emu::Chip8HeadlessHost host(options);
+    return std::make_unique<emu::Chip8VIP>(host);
+}
+
 
 #elif defined(TEST_C_OCTO)
 
@@ -161,7 +180,7 @@ public:
     void executeInstructions(int numInstructions) override {}
     void tick(int instructionsPerFrame) override { octo_emulator_instruction(&octo); }
     std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override { return {0,""}; }
-    std::string dumStateLine() const override
+    std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}",
                            octo.v[0], octo.v[1], octo.v[2], octo.v[3], octo.v[4], octo.v[5], octo.v[6], octo.v[7],
@@ -230,7 +249,7 @@ public:
     void executeInstructions(int numInstructions) override {}
     void tick(int instructionsPerFrame) override { _emu.emulate_cycle(); }
     std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override { return {0,""}; }
-    std::string dumStateLine() const override
+    std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _emu.V[0], _emu.V[1], _emu.V[2],
                            _emu.V[3], _emu.V[4], _emu.V[5], _emu.V[6], _emu.V[7], _emu.V[8], _emu.V[9], _emu.V[10], _emu.V[11], _emu.V[12], _emu.V[13], _emu.V[14], _emu.V[15], _emu.I, _emu.sp, _emu.pc, (_emu.memory[_emu.pc & (memSize()-1)]<<8)|_emu.memory[(_emu.pc + 1) & (memSize()-1)]);
@@ -290,7 +309,7 @@ public:
     void executeInstructions(int numInstructions) override {}
     void tick(int instructionsPerFrame) override { c8_60hz_tick(); c8_step(); }
     std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) override { return {0, ""}; }
-    std::string dumStateLine() const override
+    std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", c8_get_reg(0), c8_get_reg(1),
                            c8_get_reg(2), c8_get_reg(3), c8_get_reg(4), c8_get_reg(5), c8_get_reg(6), c8_get_reg(7), c8_get_reg(8), c8_get_reg(9), c8_get_reg(10), c8_get_reg(11), c8_get_reg(12), c8_get_reg(13), c8_get_reg(14), c8_get_reg(15), I, SP, c8_get_pc(),

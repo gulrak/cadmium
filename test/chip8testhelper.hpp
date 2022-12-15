@@ -66,8 +66,9 @@ inline void CheckState(const std::unique_ptr<emu::IChip8Emulator>& chip8, const 
     if(expected.v[14] >= 0) CHECK(expected.v[0xE] == chip8->getV(0xE));
     if(expected.v[15] >= 0) CHECK(expected.v[0xF] == chip8->getV(0xF));
 
-    for (int i = 0; i <= expected.sp; ++i) {
-        if(expected.stack[i] >= 0) CHECK(expected.stack[i] == chip8->getStackElements()[i]);
+    for (int i = 0; i < expected.sp; ++i) {
+        if(expected.stack[i] >= 0)
+            CHECK(expected.stack[i] == chip8->getStackElements()[i]);
     }
 }
 
@@ -83,9 +84,9 @@ inline void write(const std::unique_ptr<emu::IChip8Emulator>& chip8, uint32_t ad
 
 inline void step(const std::unique_ptr<emu::IChip8Emulator>& chip8)
 {
-    Chip8State::pre = chip8->dumStateLine();
+    Chip8State::pre = chip8->dumpStateLine();
     chip8->executeInstruction();
     Chip8State::stepCount++;
-    Chip8State::post = chip8->dumStateLine();
+    Chip8State::post = chip8->dumpStateLine();
 }
 

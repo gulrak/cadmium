@@ -2,6 +2,7 @@
 * [Cadmium](#cadmium)
   * [Introduction](#introduction)
   * [Features](#features)
+  * [Command-line](#command-line)
   * [Compiling from Source](#compiling-from-source)
     * [Linux / macOS](#linux--macos)
     * [Windows](#windows)
@@ -38,7 +39,7 @@ in a raylib game jam, I saw this as a good fit.
 ![Cadmium debug view](media/screenshot01.png?raw=true "A screenshot of the debug view")
 
 An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
-simply drag rom files (`.ch8`, `.sc8`, `.mc8`, `.xo8`) or Octo sources (`.8o`) onto the
+simply drag rom files (`.ch8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or Octo sources (`.8o`) onto the
 window to load them.
 
 ## Features
@@ -46,34 +47,86 @@ window to load them.
 The emulation behavior used in Cadmium is based on opcode information documented
 in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
 
-* Emulation uses a number of configurable "quirks" or options, to allow a wide
-  range of roms to work with it. Contrary to some other sources, _Cadmium_ sees 
-  the initial original VIP behavior as the reference, so disabling all
-  following options gives a basic VIP CHIP-8:
-    * `8xy6`/`8xyE` just shift Vx
-    * `8xy1`/`8xy2`/`8xy3` don't reset VF
-    * `Fx55`/`Fx65` increment I only by x
-    * `Fx55`/`Fx65` don't increment I
-    * `Bxnn`/`jump0` uses Vx
-    * wrap sprite pixels
-    * `Dxyn` doesn't wait for vsync
-    * 128x64 hires support
-    * only 128x64 mode
-    * multicolor support
-    * xo-chip sound engine
-* Presets allow easy selection of quirks sets. Currently, the emulator supports
-  the following presets that can be used in any case-insensitive form, also
-  with removed dashes, with the commandline option `-p` to preselect the active
-  CHIP-8 variant:
-    * chip-8
-    * chip-10
-    * chip-48
-    * superchip-1.0
-    * superchip-1.1
-    * megachip8
-    * xo-chip
-* Traditional 1400Hz buzzer, MegaChip8 sample playback and XO-CHIP audio emulation
-* When multicolor support is active, 16 colors in four planes are supported
+### Supported CHIP-8 variants
+
+The emulation is based on different emulation cores and, depending on the core,
+on a set of "quirks" named options that go along with the core. To lessen the
+burden to remember the combinations, Cadmium uses "Behavior Presets" to combine
+a core, some settings and set of quirks to easily switch between CHIP-8 variants.
+The naming conventions adapted are based on the list put together by
+_Tobias V. Langhoff_ at https://chip-8.github.io/extensions/ and for the
+classic COSMAC VIP based variants it is mainly based on the VIPER magazine where
+those  interpreter variants where published.
+
+The Supported presets are:
+
+* CHIP-8
+* CHIP-10
+* CHIP-48
+* SUPER-CHIP 1.0
+* SUPER-CHIP 1.1
+* MegaChip 8
+* XO-CHIP
+* VIP-CHIP-8 (experimental)
+
+The additional and still experimental `VIP-CHIP-8` preset activates a  core that
+is emulating a COSMAC VIP driven by a CDP1802 CPU, to execute original CHIP-8
+interpreter variants to allow more accurate emulation of classic CHIP-8 and even
+allow  hybrid roms that contain CDP1802 parts  to execute on Cadmium.
+
+### Quirks
+
+Emulation uses a number of configurable "quirks" or options, to allow a wide
+range of roms to work with it. Contrary to some other sources, _Cadmium_ sees 
+the initial original VIP behavior as the reference, so disabling all
+following options gives a basic VIP CHIP-8:
+* `8xy6`/`8xyE` just shift Vx
+* `8xy1`/`8xy2`/`8xy3` don't reset VF
+* `Fx55`/`Fx65` increment I only by x
+* `Fx55`/`Fx65` don't increment I
+* `Bxnn`/`jump0` uses Vx
+* wrap sprite pixels
+* `Dxyn` doesn't wait for vsync
+* 128x64 hires support
+* only 128x64 mode
+* multicolor support
+* xo-chip sound engine
+
+
+## Command-line
+
+```
+USAGE: cmake-build-debug/bin/cadmium [options] [file]
+
+OPTIONS:
+
+--opcode-table
+Dump an opcode table to stdout
+
+-b, --benchmark
+Run benchmark against octo-c
+
+-c, --compare
+Run and compare with reference engine, trace until diff
+
+-h, --help
+Show this help text
+
+-p <arg>, --preset <arg>
+Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip, vip-chip-8
+
+-r, --run
+if a ROM is given (positional) start it
+
+-s <arg>, --exec-speed <arg>
+Set execution speed in instructions per frame (0-500000, 0: unlimited)
+
+-t <arg>, --trace <arg>
+Run headless and dump given number of trace lines
+
+file
+ROM file ('.ch8', '.ch10', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
+```
 
 ## Versioning
 

@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8options.hpp
+// src/logger.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,42 +25,24 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
-
-#include <cstdint>
-#include <string>
-
 namespace emu {
 
-struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHICUEYI, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
-    uint16_t startAddress{0x200};
-    bool optJustShiftVx{false};
-    bool optDontResetVf{false};
-    bool optLoadStoreIncIByX{false};
-    bool optLoadStoreDontIncI{false};
-    bool optWrapSprites{false};
-    bool optInstantDxyn{false};
-    bool optJump0Bxnn{false};
-    bool optAllowHires{false};
-    bool optOnlyHires{false};
-    bool optAllowColors{false};
-    bool optHas16BitAddr{false};
-    bool optXOChipSound{false};
-    bool optChicueyiSound{false};
-    bool optTraceLog{false};
-    int instructionsPerFrame{9};
-    Chip8Variant presetAsVariant() const;
-    //static SupportedPreset variantAsPreset(Chip8Variant variant);
-    static std::string nameOfPreset(SupportedPreset preset);
-    static const char* shortNameOfPreset(SupportedPreset preset);
-    static SupportedPreset presetForName(const std::string& name);
-    static Chip8EmulatorOptions optionsOfPreset(SupportedPreset preset);
-};
+class Logger
+{
+public:
+    enum Source { eHOST, eCHIP8, eBACKEND_EMU };
+    static void setLogger(Logger* logger) { _logger = logger; }
+    static void log(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg)
+    {
+        if(_logger) {
+            _logger->doLog(source, cycle, frameCycle, msg);
+        }
+    }
 
-void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o);
-void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o);
+    virtual void doLog(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg) = 0;
+
+private:
+    static inline Logger* _logger{nullptr};
+};
 
 }

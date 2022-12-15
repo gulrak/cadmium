@@ -578,7 +578,7 @@ public:
 
     std::string name() const override
     {
-        return "Chip-8-HT";
+        return "Chip-8-MPT";
     }
 
     void executeInstruction() override;
@@ -741,12 +741,12 @@ public:
         return collision;
     }
 
-    template<uint16_t quirks>
+    template<uint16_t quirks, int MAX_WIDTH = 128, int MAX_HEIGHT = 64>
     bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
     {
         bool collision = false;
-        constexpr int scrWidth = quirks&HiresSupport ? MAX_SCREEN_WIDTH : MAX_SCREEN_WIDTH/2;
-        constexpr int scrHeight = quirks&HiresSupport ? MAX_SCREEN_HEIGHT : MAX_SCREEN_HEIGHT/2;
+        constexpr int scrWidth = quirks&HiresSupport ? MAX_WIDTH : MAX_WIDTH/2;
+        constexpr int scrHeight = quirks&HiresSupport ? MAX_HEIGHT : MAX_HEIGHT/2;
         int scale = quirks&HiresSupport ? (hires ? 1 : 2) : 1;
         int width = 8;
         x %= scrWidth;

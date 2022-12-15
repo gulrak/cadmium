@@ -56,6 +56,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eSCHIP11: return "SUPER-CHIP 1.1";
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
+        case eCHIP8VIP: return "VIP-CHIP-8";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -71,6 +72,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eSCHIP11: return "SCHIP11";
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
+        case eCHIP8VIP: return "VIPCHIP8";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -90,6 +92,8 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"mega8", emu::Chip8EmulatorOptions::eMEGACHIP},
     {"xo", emu::Chip8EmulatorOptions::eXOCHIP},
     {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
+    {"vipchip8", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"chip8vip", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
 };
 
@@ -111,15 +115,16 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const 
 Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
 {
     switch(preset) {
-        case eCHIP10: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = true, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 9};
-        case eCHIP48: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 15};
-        case eSCHIP10: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 15};
-        case eSCHIP11: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = true, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 30};
-        case eMEGACHIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = true, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = true, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 3000};
-        case eXOCHIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = true, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .optChicueyiSound = false, .instructionsPerFrame = 1000};
-        case eCHICUEYI: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = false, .optChicueyiSound = true, .instructionsPerFrame = 1000};
+        case eCHIP10: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = true, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 9};
+        case eCHIP48: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 15};
+        case eSCHIP10: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 15};
+        case eSCHIP11: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = true, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = true, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 30};
+        case eMEGACHIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = true, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = true, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 3000};
+        case eXOCHIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = true, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 1000};
+        case eCHICUEYI: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = false, .optChicueyiSound = true, .optTraceLog = false, .instructionsPerFrame = 1000};
+        case eCHIP8VIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 9};
         case eCHIP8:
-        default: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .instructionsPerFrame = 9};
+        default: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 9};
     }
 }
 
@@ -141,6 +146,7 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
         {"optAllowColors", o.optAllowColors},
         {"optHas16BitAddr", o.optHas16BitAddr},
         {"optXOChipSound", o.optXOChipSound},
+        {"optTraceLog", o.optTraceLog},
         {"instructionsPerFrame", o.instructionsPerFrame}
     };
 }
@@ -162,6 +168,7 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     j.at("optAllowColors").get_to(o.optAllowColors);
     j.at("optHas16BitAddr").get_to(o.optHas16BitAddr);
     j.at("optXOChipSound").get_to(o.optXOChipSound);
+    o.optTraceLog = j.value("optTraceLog", false);
     j.at("instructionsPerFrame").get_to(o.instructionsPerFrame);
 }
 
