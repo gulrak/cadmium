@@ -62,7 +62,7 @@ void LogView::doLog(LogView::Source source, emu::cycles_t cycle, emu::cycles_t f
         ++_usedSlots;
     if (_writeIndex >= _logBuffer.size())
         _writeIndex = 0;
-    _tosLine = _visibleLines < _usedSlots ? 0 : _usedSlots - _visibleLines;
+    _tosLine = _visibleLines >= _usedSlots ? 0 : _usedSlots - _visibleLines + 1;
 }
 
 void LogView::draw(Font& font, Rectangle rect)
