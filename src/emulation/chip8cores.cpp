@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include <emulation/chip8cores.hpp>
+#include <emulation/logger.hpp>
 
 #include <iostream>
 
@@ -232,14 +233,14 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
         for (int i = 0; i < numInstructions; ++i) {
             if (i && ((_memory[_rPC] << 8) | _memory[_rPC + 1]) == 0x00E0)
                 return;
-            if(_execMode == eRUNNING && _breakpoints.empty())
+            if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
                 Chip8EmulatorFP::executeInstructionNoBreakpoints();
             else
                 Chip8EmulatorFP::executeInstruction();
         }
     }
     else if(_options.optInstantDxyn) {
-        if(_execMode ==  eRUNNING && _breakpoints.empty()) {
+        if(_execMode ==  eRUNNING && _breakpoints.empty() && !_options.optTraceLog) {
             for (int i = 0; i < numInstructions; ++i) {
                 uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
                 _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -257,7 +258,7 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
         for (int i = 0; i < numInstructions; ++i) {
             if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000)
                 return;
-            if(_execMode == eRUNNING && _breakpoints.empty())
+            if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
                 Chip8EmulatorFP::executeInstructionNoBreakpoints();
             else
                 Chip8EmulatorFP::executeInstruction();
@@ -268,6 +269,8 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
 inline void Chip8EmulatorFP::executeInstruction()
 {
     if(_execMode == eRUNNING) {
+        if(_options.optTraceLog)
+            Logger::log(Logger::eCHIP8, _cycleCounter, _cycleCounter % 9999, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         ++_cycleCounter;
         _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -276,6 +279,8 @@ inline void Chip8EmulatorFP::executeInstruction()
     else {
         if (_execMode == ePAUSED || _cpuState == eERROR)
             return;
+        if(_options.optTraceLog)
+            Logger::log(Logger::eCHIP8, _cycleCounter, _cycleCounter % 9999, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         ++_cycleCounter;
         _rPC = (_rPC + 2) & ADDRESS_MASK;
