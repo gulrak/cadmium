@@ -1,3 +1,12 @@
+## v1.0.3 (wip)
+
+* Real-VIP support, this is a CHIP-8 mode that runs the actual CHIP-8 interpreter from
+  Joseph Weisbecker on an emulated CDP1802 driven 4k RAM equipped COSMAC VIP. It is
+  able to execute hybrid roms that use CDP1802 code mixed with CHIP-8.
+* A new Trace-log view allows to see the last 1024 lines of log output and if "Trace-Log"
+  is activated at the settings panel, the CHIP-8 emulation dumps state lines for every
+  instruction there. The emulation needs significant more resources in that mode, so it
+  is off by default but useful for debugging roms.
 
 ## v1.0.1 (wip)
 

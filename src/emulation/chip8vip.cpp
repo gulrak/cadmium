@@ -108,8 +108,6 @@ static const uint8_t _chip8_cvip[0x200] = {
 };
 
 static std::map<std::string,PatchSet> g_patchSets = {
-    // CHIP-8I:
-    // 01A4 86 FA 01 3A AC E5 63 D4 E7 45 FA  01 3A F2 63 D4 3F F2 6B 3F F5 D4
     {
         "CHIP-8I",
         {{
@@ -320,7 +318,7 @@ void Chip8VIP::tick(int)
         executeCdp1802();
     auto line = videoLine();
     if(line < 80+128) {
-        while (line < 80+128) {
+        while (line < 80+128 && _impl->_execMode != ePAUSED) {
             //std::clog << "line: " << line << std::endl;
             if (_impl->_displayEnabled && _impl->_cpu.getIE() && cdp1861::interruptRequest(_impl->_cpu.getCycles())) {
                 if(_options.optTraceLog)

@@ -24,7 +24,10 @@ A CHIP-8 emulation environment written in C++ with a raylib backend.
 ## Introduction
 
 CHIP-8 is maybe the first breed of what is today called a "fantasy console".
-The first opcode interpreter  was written for the RCA COSMAC VIP in 1977.
+The first opcode interpreter was written by Joseph Weisbecker for the
+"COSMAC" CDP1802 cpu that he developed at RCA and was used in machines like 
+e.g. the COSMAC VIP and the Telmac 1800. 
+
 CHIP-8 is today seen as the "Hello world" of emulators, so the  first
 suggestion if someone wants to get into emulator coding is to write a CHIP-8
 the get the feeling for it. I already had done some work on emulators and
@@ -67,12 +70,12 @@ The Supported presets are:
 * SUPER-CHIP 1.1
 * MegaChip 8
 * XO-CHIP
-* VIP-CHIP-8 (experimental)
+* VIP-CHIP-8
 
-The additional and still experimental `VIP-CHIP-8` preset activates a  core that
-is emulating a COSMAC VIP driven by a CDP1802 CPU, to execute original CHIP-8
+The additional `VIP-CHIP-8` preset activates a  core that is emulating a COSMAC
+VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
-allow  hybrid roms that contain CDP1802 parts  to execute on Cadmium.
+allow hybrid roms that contain CDP1802 parts  to execute on Cadmium.
 
 ### Quirks
 

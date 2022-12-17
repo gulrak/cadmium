@@ -268,18 +268,24 @@ public:
             _rT = (_rX << 4) | _rP;
             _rP = 1;
             _rX = 2;
+            if(_execMode == eIDLE)
+                _execMode = eNORMAL;
         }
     }
 
     void executeDMAIn(uint8_t data)
     {
         addCycles(8);
+        if(_execMode == eIDLE)
+            _execMode = eNORMAL;
         writeByte(_rR[0]++, data);
     }
 
     uint8_t executeDMAOut()
     {
         addCycles(8);
+        if(_execMode == eIDLE)
+            _execMode = eNORMAL;
         return readByteDMA(_rR[0]++);
     }
 
@@ -287,6 +293,10 @@ public:
     {
         //if(!_rIE)
         //    std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
+        if(_execMode == eIDLE) {
+            addCycles(8);
+            return;
+        }
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
         _rN = opcode & 0xF;
