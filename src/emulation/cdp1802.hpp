@@ -85,6 +85,7 @@ public:
         _rIE = true;
         _cycles = 0;
         _systemTime = Time::zero;
+        _execMode = eNORMAL;
     }
 
     void setOutputHandler(OutputHandler handler)

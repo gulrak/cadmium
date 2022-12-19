@@ -1983,7 +1983,7 @@ public:
                 FS.mkdir("/upload");
             }
             open_file_element.value = "";
-            open_file_element.accept = '.ch8,.ch10,.sc8,.xo8,.c8b,.8o';
+            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o';
             open_file_element.click();
         });
     }
@@ -2072,6 +2072,14 @@ public:
             }
             else if(endsWith(filename, ".ch10")) {
                 _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP10);
+                updateEmulatorOptions();
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
+                    valid = true;
+                }
+            }
+            else if(endsWith(filename, ".hc8")) {
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8VIP);
                 updateEmulatorOptions();
                 if (size < _chipEmu->memSize() - 512) {
                     _romImage = loadFile(filename);
@@ -2414,7 +2422,7 @@ int main(int argc, char* argv[])
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     cli.option({"-b", "--benchmark"}, benchmark, "Run benchmark against octo-c");
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip");
+    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
     cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.positional(romFile, "ROM file or source to load");

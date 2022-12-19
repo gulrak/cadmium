@@ -60,7 +60,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> g_known
     //{"066e7a84efde433e4d937d8aa41518666955086c", emu::Chip8EmulatorOptions::eHIRESCHIP8},
     //{"1ebcb2ec0be2ec9fa209d5c73be19b2d408399bf", emu::Chip8EmulatorOptions::eHIRESCHIP8},
     //{"200b313e4d4c1970641142cc7ff578d7956b93da", emu::Chip8EmulatorOptions::eHIRESCHIP8},
-    //{"4a89a66cfe78f788f45598d69f975d470229df0b", emu::Chip8EmulatorOptions::eHIRESCHIP8},
+    //{"4a89a66cfe78f788f45598d69f975d470229df0b", emu::Chip8EmulatorOptions::eHIRESCHIP8}, - Might be Hybrid Hires Chip-8
     //{"70aa0e7f25f0f0fd6ec7c59e427bf1d03ee95617", emu::Chip8EmulatorOptions::eHIRESCHIP8},
     //{"71d06da9e605804d2099b808c02548ab2b3511b2", emu::Chip8EmulatorOptions::eHIRESCHIP8},
     //{"8d56a781bf16acccb307177b80ff326f62aabbdc", emu::Chip8EmulatorOptions::eHIRESCHIP8},
@@ -286,6 +286,8 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE;
                 else if(ext == ".ch10")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP10;
+                else if(ext == ".hc8")
+                    type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP;
                 else if(ext == ".sc8")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eSCHIP11;
                 else if(ext == ".mc8")

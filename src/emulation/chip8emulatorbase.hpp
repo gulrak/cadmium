@@ -47,6 +47,8 @@ class Chip8EmulatorBase : public Chip8OpcodeDisassembler
 {
 public:
     enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
+    enum Chip8Font { C8F5_COSMAC, C8F5_ETI, C8F5_DREAM, C8F5_CHIP48 };
+    enum Chip8BigFont { C8F10_SCHIP10, C8F10_SCHIP11, C8F10_XOCHIP };
     constexpr static int MAX_SCREEN_WIDTH = 256;
     constexpr static int MAX_SCREEN_HEIGHT = 192;
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
@@ -215,7 +217,13 @@ public:
     void removeAllBreakpoints() override;
     inline bool hasBreakPoint(uint32_t address) const { return _breakMap[address&0xfff] != 0; }
 
+    std::pair<const uint8_t*, size_t> getSmallFontData() const;
+    std::pair<const uint8_t*, size_t> getBigFontData() const;
+
     static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
+
+    static std::pair<const uint8_t*, size_t> smallFontData(Chip8Font font = Chip8Font::C8F5_COSMAC);
+    static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font = Chip8BigFont::C8F10_SCHIP11);
 
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
@@ -266,6 +274,7 @@ protected:
     std::array<uint8_t,4096> _breakMap;
     std::map<uint32_t,BreakpointInfo> _breakpoints;
     Time _systemTime{};
+    /*
     inline static uint8_t _chip8font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0,  // 0
         0x20, 0x60, 0x20, 0x20, 0x70,  // 1
@@ -294,7 +303,7 @@ protected:
         0x3C, 0x7E, 0xC3, 0xC3, 0x7E, 0x7E, 0xC3, 0xC3, 0x7E, 0x3C, // big 8
         0x3C, 0x7E, 0xC3, 0xC3, 0x7F, 0x3F, 0x03, 0x03, 0x3E, 0x7C  // big 9
     };
-
+    */
     inline static const uint8_t _chip8_cosmac_vip[0x200] = {
         0x91, 0xbb, 0xff, 0x01, 0xb2, 0xb6, 0xf8, 0xcf, 0xa2, 0xf8, 0x81, 0xb1, 0xf8, 0x46, 0xa1, 0x90, 0xb4, 0xf8, 0x1b, 0xa4, 0xf8, 0x01, 0xb5, 0xf8, 0xfc, 0xa5, 0xd4, 0x96, 0xb7, 0xe2, 0x94, 0xbc, 0x45, 0xaf, 0xf6, 0xf6, 0xf6, 0xf6, 0x32, 0x44,
         0xf9, 0x50, 0xac, 0x8f, 0xfa, 0x0f, 0xf9, 0xf0, 0xa6, 0x05, 0xf6, 0xf6, 0xf6, 0xf6, 0xf9, 0xf0, 0xa7, 0x4c, 0xb3, 0x8c, 0xfc, 0x0f, 0xac, 0x0c, 0xa3, 0xd3, 0x30, 0x1b, 0x8f, 0xfa, 0x0f, 0xb3, 0x45, 0x30, 0x40, 0x22, 0x69, 0x12, 0xd4, 0x00,
