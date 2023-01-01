@@ -42,8 +42,8 @@ in a raylib game jam, I saw this as a good fit.
 ![Cadmium debug view](media/screenshot01.png?raw=true "A screenshot of the debug view")
 
 An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
-simply drag rom files (`.ch8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or Octo sources (`.8o`) onto the
-window to load them.
+simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or
+Octo sources (`.8o`) onto the  window to load them.
 
 ## Features
 
@@ -75,7 +75,7 @@ The Supported presets are:
 The additional `VIP-CHIP-8` preset activates a  core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
-allow hybrid roms that contain CDP1802 parts  to execute on Cadmium.
+allow hybrid roms (`.hc8`) that contain CDP1802 parts  to execute on Cadmium.
 
 ### Quirks
 
@@ -128,7 +128,7 @@ Set execution speed in instructions per frame (0-500000, 0: unlimited)
 Run headless and dump given number of trace lines
 
 file
-ROM file ('.ch8', '.ch10', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
+ROM file ('.ch8', '.ch10', '.hc8', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
 ```
 
 ## Versioning

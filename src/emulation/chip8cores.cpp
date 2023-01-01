@@ -270,7 +270,7 @@ inline void Chip8EmulatorFP::executeInstruction()
 {
     if(_execMode == eRUNNING) {
         if(_options.optTraceLog)
-            Logger::log(Logger::eCHIP8, _cycleCounter, _cycleCounter % 9999, dumpStateLine().c_str());
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         ++_cycleCounter;
         _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -280,7 +280,7 @@ inline void Chip8EmulatorFP::executeInstruction()
         if (_execMode == ePAUSED || _cpuState == eERROR)
             return;
         if(_options.optTraceLog)
-            Logger::log(Logger::eCHIP8, _cycleCounter, _cycleCounter % 9999, dumpStateLine().c_str());
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         ++_cycleCounter;
         _rPC = (_rPC + 2) & ADDRESS_MASK;

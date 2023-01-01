@@ -177,14 +177,16 @@ public:
 
     void handleTimer() override
     {
-        ++_frameCounter;
-        ++_randomSeed;
-        if(_rDT > 0)
-            --_rDT;
-        if(_rST > 0)
-            --_rST;
-        if(!_rST)
-            _wavePhase = 0;
+        if(_execMode != ePAUSED) {
+            ++_frameCounter;
+            ++_randomSeed;
+            if (_rDT > 0)
+                --_rDT;
+            if (_rST > 0)
+                --_rST;
+            if (!_rST)
+                _wavePhase = 0;
+        }
     }
 
     void tick(int instructionsPerFrame) override;

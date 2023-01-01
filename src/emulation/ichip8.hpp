@@ -25,6 +25,8 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <emulation/config.hpp>
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -32,6 +34,18 @@
 
 namespace emu
 {
+
+struct Chip8State
+{
+    cycles_t cycles{};
+    int frameCycle{};
+    std::array<uint8_t,16> v{};
+    int i{};
+    int pc{};
+    int sp{};
+    int dt{};
+    int st{};
+};
 
 class IChip8Emulator
 {

@@ -25,24 +25,66 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <emulation/config.hpp>
+
 namespace emu {
 
 class Logger
 {
 public:
     enum Source { eHOST, eCHIP8, eBACKEND_EMU };
+    struct FrameTime {
+        FrameTime(int f, int c) : frame(f & 0xff), cycle(c) {}
+        uint32_t frame:16;
+        uint32_t cycle:16;
+    };
+    virtual ~Logger() = default;
     static void setLogger(Logger* logger) { _logger = logger; }
-    static void log(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg)
+    static void log(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
     {
         if(_logger) {
-            _logger->doLog(source, cycle, frameCycle, msg);
+            _logger->doLog(source, cycle, frameTime, msg);
         }
     }
 
-    virtual void doLog(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg) = 0;
+    virtual void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) = 0;
 
 private:
     static inline Logger* _logger{nullptr};
 };
 
 }
+
+#ifdef ENABLE_CONSOLE_LOGGER
+#include <iostream>
+#include <fmt/format.h>
+
+namespace emu {
+
+class ConsoleLogger : public Logger
+{
+public:
+    ConsoleLogger(std::ostream& outStream)
+    : _outStream(outStream)
+    {
+        setLogger(this);
+    }
+
+    ~ConsoleLogger() override
+    {
+        setLogger(nullptr);
+    }
+
+    void doLog(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg) override
+    {
+        auto content = source != eHOST ? fmt::format("[{:04d}] {}", frameCycle, msg) : fmt::format("[    ] {}", msg);
+        _outStream << content << std::endl;
+    }
+
+private:
+    std::ostream& _outStream;
+};
+
+}
+
+#endif

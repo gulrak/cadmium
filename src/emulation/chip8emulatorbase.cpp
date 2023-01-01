@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #include <emulation/chip8cores.hpp>
 #include <emulation/chip8emulatorbase.hpp>
+#include <emulation/logger.hpp>
 
 namespace emu {
 
@@ -288,6 +289,8 @@ void Chip8EmulatorBase::reset()
     _cycleCounter = 0;
     _frameCounter = 0;
     _clearCounter = 0;
+    if(_options.optTraceLog)
+        Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
     _rI = 0;
     _rPC = _options.startAddress;
     std::memset(_stack.data(), 0, 16 * 2);

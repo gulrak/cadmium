@@ -424,7 +424,7 @@ void LogHandler(int msgType, const char *text, va_list args)
     }
     vsnprintf(buffer, 4095, text, args);
     ofs << buffer << std::endl;
-    emu::Logger::log(LogView::eHOST, 0, 0, buffer);
+    emu::Logger::log(LogView::eHOST, 0, {0,0}, buffer);
 }
 
 std::atomic_uint8_t g_soundTimer{0};
@@ -1155,11 +1155,21 @@ public:
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
-            else {
-                StatusBar({{0.55f, fmt::format("Instruction cycles: {}", _chipEmu->cycles()).c_str()},
+            else if(_chipEmu->isGenericEmulation()) {
+                StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->cycles(), _chipEmu->frames()).c_str()},
                            {0.15f, formatUnit(ips, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+            }
+            else {
+                auto* vip = dynamic_cast<emu::Chip8VIP*>(_chipEmu.get());
+                if(vip) {
+                    const auto& cdp = vip->backendCPU();
+                    StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->cycles(), cdp.getCycles(), _chipEmu->frames()).c_str()},
+                               {0.15f, formatUnit(ips, "IPS").c_str()},
+                               {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                               {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+                }
             }
             lastInstructionCount = _chipEmu->cycles();
             BeginColumns();

@@ -55,9 +55,9 @@ void LogView::clear()
     _losCol = 0;
 }
 
-void LogView::doLog(LogView::Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg)
+void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
 {
-    _logBuffer[_writeIndex++] = {cycle, frameCycle, 0, source, msg};
+    _logBuffer[_writeIndex++] = {cycle, frameTime, 0, source, msg};
     if (_usedSlots < _logBuffer.size())
         ++_usedSlots;
     if (_writeIndex >= _logBuffer.size())
@@ -109,7 +109,7 @@ void LogView::drawTextLine(Font& font, int logLine, Vector2 position, float widt
         float textOffsetX = 0.0f;
         size_t index = 0;
         auto& logEntry = _logBuffer[logLine];
-        auto content = logEntry._source != eHOST ? fmt::format("[{:04d}] {}", logEntry._frameCycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
         const char* text = content.data();
         const char* end = text + content.size();
         while(text < end && textOffsetX < width && *text != '\n') {

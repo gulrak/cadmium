@@ -1,4 +1,5 @@
 #include <emulation/chip8vip.hpp>
+#include <emulation/cdp186x.hpp>
 #include <emulation/logger.hpp>
 
 #include <fmt/format.h>
@@ -12,23 +13,22 @@ namespace emu {
 
 class Chip8VIP::Private {
 public:
-    explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus) : _host(host), _cpu(bus) {}
+    explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus, const Chip8EmulatorOptions& options) : _host(host), _cpu(bus), _video(Cdp186x::eCDP1861, _cpu, options) {}
     Chip8EmulatorHost& _host;
     Cdp1802 _cpu;
+    Cdp186x _video;
     int64_t _cycles{0};
-    int64_t _frames{0};
     int64_t _irqStart{0};
     int64_t _nextFrame{0};
+    int _frames{0};
     ExecMode _execMode{ePAUSED};
     CpuState _cpuState{eNORMAL};
     uint16_t _stepOverSP{};
     uint8_t _keyLatch{0};
     std::atomic<float> _wavePhase{0};
-    bool _displayEnabled{false};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram_b{};
     std::array<uint8_t,512> _rom{};
-    uint16_t _rC8PC{};
     uint16_t _rSP_b{};
     uint8_t _rDT_b{};
     uint8_t _rST_b{};
@@ -40,47 +40,6 @@ public:
     std::map<uint32_t,BreakpointInfo> _breakpoints;
 };
 
-namespace cdp1861 {
-
-inline int64_t machineCycle(int64_t cycles)
-{
-    return cycles >> 3;
-}
-
-inline int frameCycle(int64_t cycles)
-{
-    return machineCycle(cycles) % 3668;
-}
-
-inline int videoLine(int64_t cycles)
-{
-    return frameCycle(cycles) / 14;
-}
-
-inline int preIrqCycles(int64_t cycles)
-{
-    auto fc = frameCycle(cycles);
-    return fc < 78*14 ? 78*14 - fc : 0;
-}
-
-inline bool getNEFX(int64_t cycles)
-{
-    auto fc = frameCycle(cycles);
-    return !((fc >= 76*14 && fc < 80*14) || (fc > 204*14 && fc < 208*14));
-}
-
-inline bool interruptRequest(int64_t cycles)
-{
-    auto fc = frameCycle(cycles);
-    return fc >= 78*14 && fc < 80*14;
-}
-
-inline int64_t nextFrame(int64_t cycles)
-{
-    return (cycles + 8*3668) % (8*3668);
-}
-
-};
 
 struct Patch {
     uint16_t offset;
@@ -165,18 +124,18 @@ static const uint8_t _rom_cvip[0x200] = {
 
 Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
     : Chip8OpcodeDisassembler(options)
-    , _impl(new Private(host, *this))
+    , _impl(new Private(host, *this, options))
 {
     std::memcpy(_impl->_rom.data(), _rom_cvip, sizeof(_rom_cvip));
     _impl->_cpu.setInputHandler([this](uint8_t port) {
         if(port == 1)
-            _impl->_displayEnabled = true;
+            _impl->_video.enableDisplay();
         return 0;
     });
     _impl->_cpu.setOutputHandler([this](uint8_t port, uint8_t val) {
         switch (port) {
         case 1:
-            _impl->_displayEnabled = false;
+            _impl->_video.disableDisplay();
             break;
         case 2:
             _impl->_keyLatch = val & 0xf;
@@ -188,8 +147,7 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
     _impl->_cpu.setNEFInputHandler([this](uint8_t idx) {
        switch(idx) {
            case 0: { // EF1 is set from four machine cycles before the video line to four before the end
-               auto line = videoLine();
-               return line < VIDEO_FIRST_VISIBLE_LINE - 4 || line >= VIDEO_FIRST_INVISIBLE_LINE - 4;
+               return _impl->_video.getNEFX();
            }
            case 2: {
                return _impl->_host.isKeyDown(_impl->_keyLatch);
@@ -211,28 +169,22 @@ Chip8VIP::~Chip8VIP()
 
 void Chip8VIP::reset()
 {
+    if(_options.optTraceLog)
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_impl->_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
     std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
     std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
     std::memset(_impl->_screenBuffer.data(), 0, 256*192);
+    _impl->_video.reset();
     _impl->_cpu.reset();
     _impl->_cycles = 0;
     _impl->_frames = 0;
     _impl->_nextFrame = 0;
-    _impl->_displayEnabled = false;
-    //_impl->_nextFrame = _impl->_cpu.getCycles() + 3668 * 8;
-    while(!executeCdp1802()); // fast-forward to fetch/decode loop
+    _impl->_execMode = ePAUSED;
+    _impl->_cpuState = eNORMAL;
+    while(!executeCdp1802() || getPC() != 0x200); // fast-forward to fetch/decode loop
+    if(_options.optTraceLog)
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_impl->_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.getCycles(), frameCycle()).c_str());
     copyState();
-#if 0
-    do {
-        _impl->_cpu.executeInstruction();
-        if(_impl->_cpu.getCycles() >= _impl->_nextFrame)
-            _impl->_nextFrame += 3668 * 8;
-        /*if(_impl->_cpu.PC() == 0x1B)
-            std::clog << "CHIP8: " << dumpStateLine() << std::endl;*/
-    }
-    while(_impl->_cpu.PC() != 0x1B || getPC() != 0x200);
-#endif
-    //_impl->_nextFrame = _impl->_cpu.getCycles();
 }
 
 std::string Chip8VIP::name() const
@@ -240,24 +192,34 @@ std::string Chip8VIP::name() const
     return "Chip-8-RVIP";
 }
 
+void Chip8VIP::fetchState()
+{
+    _state.cycles = _impl->_cycles;
+    _state.frameCycle = frameCycle();
+    std::memcpy(_state.v.data(), &_impl->_ram[0xEF0], 16);
+    _state.i = _impl->_cpu.getR(0xA);
+    _state.pc = _impl->_cpu.getR(0x5);
+    _state.sp = (0xECF - _impl->_cpu.getR(2)) >> 1;
+    _state.dt = _impl->_cpu.getR(8) >> 8;
+    _state.st = _impl->_cpu.getR(8) & 0xff;
+}
+
 bool Chip8VIP::executeCdp1802()
 {
-    auto fc = frameCycle();
-    if(_options.optTraceLog)
-        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), frameCycle(), fmt::format("{:24} ; {}", _impl->_cpu.disassembleCurrentStatement(), _impl->_cpu.dumpStateLine()).c_str());
+    auto fc = _impl->_video.executeStep();
+    if(_options.optTraceLog  && _impl->_cpu.getExecMode() != Cdp1802::eIDLE)
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_impl->_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleCurrentStatement(), _impl->_cpu.dumpStateLine()).c_str());
     _impl->_cpu.executeInstruction();
-    if(frameCycle() < fc)
-        _impl->_frames++;
     if(_impl->_cpu.PC() == 0x1B) {
-        _impl->_rC8PC = _impl->_cpu.getR(5);
+        fetchState();
         if(_options.optTraceLog)
-            Logger::log(Logger::eCHIP8, _impl->_cycles, frameCycle(), fmt::format("CHIP8: {}", dumpStateLine()).c_str());
+            Logger::log(Logger::eCHIP8, _impl->_cycles, {_impl->_frames, fc}, fmt::format("CHIP8: {}", dumpStateLine()).c_str());
         _impl->_cycles++;
         if (_impl->_execMode == eSTEP || (_impl->_execMode == eSTEPOVER && getSP() <= _impl->_stepOverSP)) {
             _impl->_execMode = ePAUSED;
         }
         auto nextOp = opcode();
-        if((nextOp & 0xF000) == 0x1000 && (opcode() & 0xFFF) == getPC())
+        if(!fc && (nextOp & 0xF000) == 0x1000 && (opcode() & 0xFFF) == getPC())
             _impl->_execMode = ePAUSED;
         if(hasBreakPoint(getPC())) {
             if(Chip8VIP::findBreakpoint(getPC()))
@@ -274,24 +236,7 @@ void Chip8VIP::executeInstruction()
         return;
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
     auto start = _impl->_cpu.getCycles();
-    while(!executeCdp1802() || _impl->_cpu.getCycles() - start >= 3668*14);
-#if 0
-    do {
-        _impl->_cpu.executeInstruction();
-    }
-    while(_impl->_cpu.PC() != 0x1B && _impl->_cpu.getCycles() < _impl->_nextFrame);
-    if(_impl->_cpu.PC() == 0x1B) {
-        _impl->_rC8PC = getPC();
-        _impl->_cycles++;
-        if (_impl->_execMode == eSTEP || (_impl->_execMode == eSTEPOVER && getSP() <= _impl->_stepOverSP)) {
-            _impl->_execMode = ePAUSED;
-        }
-    }
-    if(hasBreakPoint(_impl->_cpu.PC())) {
-        if(Chip8VIP::findBreakpoint(_impl->_cpu.PC()))
-            _impl->_execMode = ePAUSED;
-    }
-#endif
+    while(!executeCdp1802() && _impl->_cpu.getCycles() - start < 3668*14);
 }
 
 void Chip8VIP::executeInstructions(int numInstructions)
@@ -307,96 +252,48 @@ void Chip8VIP::executeInstructions(int numInstructions)
 
 inline int Chip8VIP::frameCycle() const
 {
-    return cdp1861::frameCycle(_impl->_cpu.getCycles()); // _impl->_irqStart ? ((_impl->_cpu.getCycles() >> 3) - _impl->_irqStart) : 0;
+    return Cdp186x::frameCycle(_impl->_cpu.getCycles()); // _impl->_irqStart ? ((_impl->_cpu.getCycles() >> 3) - _impl->_irqStart) : 0;
 }
 
 inline int Chip8VIP::videoLine() const
 {
-    return cdp1861::videoLine(_impl->_cpu.getCycles()); // (frameCycle() + (78*14)) % 3668) / 14;
+    return Cdp186x::videoLine(_impl->_cpu.getCycles()); // (frameCycle() + (78*14)) % 3668) / 14;
 }
 
 void Chip8VIP::tick(int)
 {
     if (_impl->_execMode == ePAUSED || _impl->_cpuState == eERROR)
         return;
-    // execute 1 frame, 3668 machine cycles, or the rest of an incomplete frame if there is one
-    //std::clog << "tick at line: " << videoLine() << ", fc: " << frameCycle() << ", cycle: " << _impl->_cpu.getCycles() << std::endl;
-    auto nextFrame = cdp1861::nextFrame(_impl->_cpu.getCycles());
-    auto pic = cdp1861::preIrqCycles(_impl->_cpu.getCycles());
-    //if(pic)
-    //    std::clog << "executing " << pic << " pre irq cycles" << std::endl;
-    for(int64_t i = _impl->_cpu.getCycles() + pic*8; _impl->_cpu.getCycles() < i;)
+
+    auto nextFrame = Cdp186x::nextFrame(_impl->_cpu.getCycles());
+    while(_impl->_execMode != ePAUSED && _impl->_cpu.getCycles() < nextFrame) {
         executeCdp1802();
-    auto line = videoLine();
-    if(line < 80+128) {
-        while (line < 80+128 && _impl->_execMode != ePAUSED) {
-            //std::clog << "line: " << line << std::endl;
-            if (_impl->_displayEnabled && _impl->_cpu.getIE() && cdp1861::interruptRequest(_impl->_cpu.getCycles())) {
-                if(_options.optTraceLog)
-                    Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), frameCycle(), fmt::format("{:24} ; {}", "--- IRQ ---", _impl->_cpu.dumpStateLine()).c_str());
-                _impl->_cpu.triggerInterrupt();
-            }
-            else {
-                if (line >= VIDEO_FIRST_VISIBLE_LINE && line < VIDEO_FIRST_INVISIBLE_LINE) {
-                    executeCdp1802();
-                    auto dmaStart = _impl->_cpu.getR(0);
-                    for (int i = 0; i < 8; ++i) {
-                        uint8_t* dest = &_impl->_screenBuffer[(line - VIDEO_FIRST_VISIBLE_LINE) * 256 + i * 8];
-                        auto data = _impl->_displayEnabled ? _impl->_cpu.executeDMAOut() : 0;
-                        for (int j = 0; j < 8; ++j) {
-                            dest[j] = (data >> (7 - j)) & 1;
-                        }
-                    }
-                    if (_impl->_displayEnabled) {
-                        if(_options.optTraceLog)
-                            Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), frameCycle(), fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _impl->_cpu.getR(0) - 1).c_str());
-                    }
-                    else {
-                        executeCdp1802();
-                        executeCdp1802();
-                        executeCdp1802();
-                        executeCdp1802();
-                    }
-                    executeCdp1802();
-                    executeCdp1802();
-                }
-                else {
-                    executeCdp1802();
-                }
-            }
-            line = videoLine();
-        }
-    }
-    else {
-        while (videoLine()) {
-            executeCdp1802();
-        }
     }
 }
 
 bool Chip8VIP::isDisplayEnabled() const
 {
-    return _impl->_displayEnabled;
+    return _impl->_video.isDisplayEnabled();
 }
 
 uint8_t Chip8VIP::getV(uint8_t index) const
 {
-    return _impl->_ram[0xef0 + (index&0xf)];
+    return _state.v[index&0xF];
 }
 
 uint32_t Chip8VIP::getPC() const
 {
-    return _impl->_rC8PC;
+    return _state.pc;
 }
 
 uint32_t Chip8VIP::getI() const
 {
-    return _impl->_cpu.getR(0xa);
+    return _state.i;
 }
 
 uint8_t Chip8VIP::getSP() const
 {
-    return (0xecf - _impl->_cpu.getR(2)) >> 1;
+    return _state.sp;
 }
 
 uint8_t Chip8VIP::stackSize() const
@@ -476,7 +373,7 @@ int64_t Chip8VIP::cycles() const
 
 int64_t Chip8VIP::frames() const
 {
-    return _impl->_frames;
+    return _impl->_video.frames();
 }
 
 uint8_t Chip8VIP::delayTimer() const
@@ -545,14 +442,7 @@ uint16_t Chip8VIP::getMaxScreenHeight() const
 
 const uint8_t* Chip8VIP::getScreenBuffer() const
 {
-    /*static uint8_t screenBuffer[256*192];
-    for(int i = 0; i < 8*32; ++i) {
-        auto data = _impl->_ram[0xf00 + i];
-        for(int j = 0; j < 8; ++j) {
-            screenBuffer[(i>>3)*256 + (i&7)*8 + j] = (data >> (7-j)) & 1;
-        }
-    }*/
-    return _impl->_screenBuffer.data();
+    return _impl->_video.getScreenBuffer();
 }
 
 Cdp1802& Chip8VIP::backendCPU()

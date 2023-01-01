@@ -76,7 +76,7 @@ public:
             mappedOpcodeInfo.resize(65536);
             for(uint32_t opcode = 0; opcode < 0x10000; ++opcode) {
                 for(const auto& info : detail::opcodes) {
-                    if((opcode & info.mask) == info.opcode) {
+                    if((opcode & detail::opcodeMasks[info.type]) == info.opcode) {
                         mappedOpcodeInfo[opcode].push_back(&info);
                     }
                 }

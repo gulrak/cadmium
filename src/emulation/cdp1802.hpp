@@ -107,6 +107,7 @@ public:
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     bool getIE() const { return _rIE; }
     int64_t getCycles() const { return _cycles; }
+    ExecMode getExecMode() const { return _execMode; }
     uint16_t& PC() { return _rR[_rP]; }
     uint8_t getN() const { return _rN; }
     uint8_t getP() const { return _rP; }

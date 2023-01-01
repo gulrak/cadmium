@@ -111,8 +111,10 @@ private:
     int frameCycle() const;
     int videoLine() const;
     bool executeCdp1802();
+    void fetchState();
     class Private;
     std::unique_ptr<Private> _impl;
+    Chip8State _state;
 };
 
 }

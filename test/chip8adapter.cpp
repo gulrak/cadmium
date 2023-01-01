@@ -138,8 +138,9 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         default:
             return nullptr;
     }
+    options.optTraceLog = true;
     static emu::Chip8HeadlessHost host(options);
-    return std::make_unique<emu::Chip8VIP>(host);
+    return std::make_unique<emu::Chip8VIP>(host, options);
 }
 
 

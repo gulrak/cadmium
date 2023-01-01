@@ -15,6 +15,8 @@ set(CHIP8_EMU_SOURCE
     chip8decompiler.cpp
     octocompiler.cpp
     cdp1802.hpp
+    cdp186x.cpp
+    cdp186x.hpp
     chip8vip.cpp
     chip8vip.hpp
 )

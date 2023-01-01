@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/logview.hpp
+// src/emulation/cdp186x.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -26,49 +26,59 @@
 #pragma once
 
 #include <emulation/config.hpp>
-#include <emulation/logger.hpp>
+#include <emulation/chip8options.hpp>
 
-#include <raylib.h>
+#include <array>
 
-class LogView : public emu::Logger
+namespace emu {
+
+#define VIDEO_FIRST_VISIBLE_LINE 80
+#define VIDEO_FIRST_INVISIBLE_LINE  208
+
+class Cdp1802;
+
+class Cdp186x
 {
 public:
-    static constexpr size_t HISTORY_SIZE = 16384;
-    static constexpr int LINE_SIZE = 12;
-    static constexpr int COLUMN_WIDTH = 6;
-    LogView();
-    ~LogView();
+    enum Type { eCDP1861, eCDP1861_C10, eCDP1861_62, eCDP1864 };
+    Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
+    void reset();
+    bool getNEFX() const;
+    int executeStep();
+    void enableDisplay();
+    void disableDisplay();
+    bool isDisplayEnabled() const { return _displayEnabled; }
+    int frames() const { return _frameCounter; }
+    const uint8_t* getScreenBuffer() const;
 
-    void clear();
+    static int64_t machineCycle(cycles_t cycles)
+    {
+        return cycles >> 3;
+    }
 
-    void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) override;
-    void draw(Font& font, Rectangle rect);
+    static int frameCycle(cycles_t cycles)
+    {
+        return machineCycle(cycles) % 3668;
+    }
 
-    static LogView* instance();
+    static int videoLine(cycles_t cycles)
+    {
+        return frameCycle(cycles) / 14;
+    }
+
+    static cycles_t nextFrame(cycles_t cycles)
+    {
+        return ((cycles + 8*3668) / (8*3668)) * (8*3668);
+    }
 
 private:
-    Rectangle drawToolArea();
-    void drawTextLine(Font& font, int logLine, Vector2 position, float width, int columnOffset);
-    struct LogEntry {
-        emu::cycles_t _cycle{0};
-        FrameTime _frameTime{0,0};
-        uint64_t _hash{0};
-        Source _source{eHOST};
-        std::string _line;
-    };
-    std::vector<LogEntry> _logBuffer;
-    std::string _filter;
-    bool _invertedFilter{false};
-    Rectangle _totalArea{};
-    Rectangle _textArea{};
-    Rectangle _toolArea{};
-    size_t _writeIndex;
-    size_t _usedSlots;
-    int _tosLine{0};
-    int _losCol{0};
-    uint32_t _visibleLines{0};
-    uint32_t _visibleCols{0};
-    uint32_t _longestLineSize{256};
-    Vector2 _scrollPos;
+    Cdp1802& _cpu;
+    Type _type{eCDP1861};
+    const Chip8EmulatorOptions& _options;
+    std::array<uint8_t,256*192> _screenBuffer;
+    int _frameCycle{0};
+    int _frameCounter{0};
+    bool _displayEnabled{false};
 };
 
+}
