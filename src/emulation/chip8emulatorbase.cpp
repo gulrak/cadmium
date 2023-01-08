@@ -209,35 +209,34 @@ std::pair<const uint8_t*, size_t> Chip8EmulatorBase::getBigFontData() const
 
 std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* iother)
 {
-    const auto* other = dynamic_cast<const Chip8EmulatorBase*>(iother);
     if(engine == eCHIP8TS) {
         if (options.optAllowHires) {
             if (options.optHas16BitAddr) {
                 if (options.optAllowColors) {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor>>(host, options, iother);
                 }
                 else {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<16, HiresSupport>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, HiresSupport>>(host, options, iother);
                 }
             }
             else {
                 if (options.optAllowColors) {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor>>(host, options, iother);
                 }
                 else {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<12, HiresSupport>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, HiresSupport>>(host, options, iother);
                 }
             }
         }
@@ -245,40 +244,40 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
             if (options.optHas16BitAddr) {
                 if (options.optAllowColors) {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, MultiColor | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, MultiColor | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<16, MultiColor>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, MultiColor>>(host, options, iother);
                 }
                 else {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<16, 0>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<16, 0>>(host, options, iother);
                 }
             }
             else {
                 if (options.optAllowColors) {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, MultiColor | WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, MultiColor | WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<12, MultiColor>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, MultiColor>>(host, options, iother);
                 }
                 else {
                     if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, WrapSprite>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, WrapSprite>>(host, options, iother);
                     else
-                        return std::make_unique<Chip8Emulator<12, 0>>(host, options, other);
+                        return std::make_unique<Chip8Emulator<12, 0>>(host, options, iother);
                 }
             }
         }
     }
     else if(engine == eCHIP8MPT) {
-        return std::make_unique<Chip8EmulatorFP>(host, options, other);
+        return std::make_unique<Chip8EmulatorFP>(host, options, iother);
     }
     else if(engine == eCHIP8VIP) {
         return std::make_unique<Chip8VIP>(host, options, iother);
     }
-    return std::make_unique<Chip8EmulatorVIP>(host, options, other);
+    return std::make_unique<Chip8EmulatorVIP>(host, options, iother);
 }
 
 void Chip8EmulatorBase::reset()

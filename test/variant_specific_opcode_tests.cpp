@@ -57,6 +57,9 @@ TEST_CASE(C8CORE "8xy6 - vx >>= vy, lost bit in vF, this shift test expects vy t
         step(chip8);  // #5
         CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x18, 0x31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF >>= v2, vF set to 1");
     }
+    else {
+        MESSAGE("feature not supported");
+    }
 }
 
 TEST_CASE(C8CORE "8xye - vx <<= vy, lost bit in vF, this shift test expects vy to be used")
@@ -84,6 +87,9 @@ TEST_CASE(C8CORE "8xye - vx <<= vy, lost bit in vF, this shift test expects vy t
         CheckState(chip8, {.i = 0, .pc = 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x02, 0x81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x84}, .stack = {}}, "vF := 0x84");
         step(chip8);  // #5
         CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x02, 0x81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF <<= v1, vF set to 0");
+    }
+    else {
+        MESSAGE("feature not supported");
     }
 }
 
@@ -116,6 +122,9 @@ TEST_CASE(C8CORE "8xy6 - vx >>= vx, lost bit in vF, this shift test expects vy t
         step(chip8);  // #5
         CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x20, 0x31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF >>= v2, v2 ignored, vF set to 0");
     }
+    else {
+        MESSAGE("feature not supported");
+    }
 }
 
 TEST_CASE(C8CORE "8xye - vx <<= vx, lost bit in vF, this shift test expects vy to be ignored")
@@ -146,6 +155,9 @@ TEST_CASE(C8CORE "8xye - vx <<= vx, lost bit in vF, this shift test expects vy t
         CheckState(chip8, {.i = 0, .pc = 0x208, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x02, 0x31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x82}, .stack = {}}, "vF := 0x82");
         step(chip8);  // #5
         CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = 0, .st = 0, .v = {0, 0x02, 0x31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF <<= v2, v2 ignored, vF set to 1");
+    }
+    else {
+        MESSAGE("feature not supported");
     }
 }
 

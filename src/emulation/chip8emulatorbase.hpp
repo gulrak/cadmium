@@ -54,7 +54,7 @@ public:
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
+    Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother = nullptr)
         : Chip8OpcodeDisassembler(options)
         , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
@@ -62,10 +62,30 @@ public:
     {
         _mcPalette[0] = be32(0x000000FF);
         _mcPalette[1] = be32(0xFFFFFFFF);
+        _execMode = ExecMode::ePAUSED;
+        if(iother) {
+            _cpuState = iother->cpuState();
+            _rI = iother->getI();
+            _rI_b = iother->getCopyI();
+            _rPC = iother->getPC();
+            std::memcpy(_stack.data(), iother->getStackElements(), sizeof(uint16_t) * iother->stackSize());
+            std::memcpy(_stack_b.data(), iother->getCopyStackElements(), sizeof(uint16_t) * iother->stackSize());
+            _rSP = iother->getSP();
+            _rSP_b = iother->getCopySP();
+            _rDT = iother->delayTimer();
+            _rDT_b = iother->getCopyDT();
+            _rST.store(iother->soundTimer());
+            _wavePhase.store(iother->getAudioPhase());
+            for (int i = 0; i < 16; ++i) {
+                _rV[i] = iother->getV(i);
+                _rV_b[i] = iother->getCopyV(i);
+            }
+            std::memcpy(_memory.data(), iother->memory(), std::min(_memory.size(), (size_t)iother->memSize()));
+            std::memcpy(_memory_b.data(), iother->memoryCopy(), std::min(_memory_b.size(), (size_t)iother->memSize()));
+        }
+        const auto* other = dynamic_cast<const Chip8EmulatorBase*>(iother);
         if(other) {
             _labelOrAddress = other->_labelOrAddress;
-            _execMode = ExecMode::ePAUSED;
-            _cpuState = other->_cpuState;
             _isHires = options.optAllowHires && other->_isHires;
             _planes = other->_planes;
             _stepOverSP = other->_stepOverSP;
@@ -83,26 +103,9 @@ public:
             _sampleLoop = other->_sampleLoop;
             _xxoPalette = other->_xxoPalette;
             _mcPalette = other->_mcPalette;
-            _rI = other->_rI;
-            _rI_b = other->_rI_b;
-            _rPC = other->_rPC;
-            _stack = other->_stack;
-            _stack_b = other->_stack_b;
-            _rSP = other->_rSP;
-            _rSP_b = other->_rSP_b;
-            _rDT = other->_rDT;
-            _rDT_b = other->_rDT_b;
-            _rST.store(other->_rST);
-            _wavePhase.store(other->_wavePhase);
-            _rSP_b = other->_rSP_b;
-            _rV = other->_rV;
-            _rV_b = other->_rV_b;
             _randomSeed = other->_randomSeed;
-            std::memcpy(_memory.data(), other->_memory.data(), std::min(_memory.size(), (size_t)other->memSize()));
-            std::memcpy(_memory_b.data(), other->_memory_b.data(), std::min(_memory_b.size(), other->_memory_b.size()));
             std::memcpy(_breakMap.data(), other->_breakMap.data(), 4096);
             _breakpoints = other->_breakpoints;
-            //_memFlags = other->_memFlags;
             _systemTime = other->_systemTime;
             _spriteWidth = other->_spriteWidth;
             _spriteHeight = other->_spriteHeight;
@@ -110,6 +113,8 @@ public:
             _blendMode = other->_blendMode;
         }
         else {
+            _isHires = false;
+            _planes = 1;
             removeAllBreakpoints();
         }
         if(!_isHires && _options.optOnlyHires) {

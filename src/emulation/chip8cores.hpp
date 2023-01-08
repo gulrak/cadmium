@@ -56,7 +56,7 @@ public:
     constexpr static int SCREEN_WIDTH = quirks&HiresSupport ? 128 : 64;
     constexpr static int SCREEN_HEIGHT = quirks&HiresSupport ? 64 : 32;
 
-    Chip8Emulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr)
+    Chip8Emulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
     : Chip8EmulatorBase(host, options, other)
     {
         _memory.resize(MEMORY_SIZE, 0);
@@ -573,7 +573,7 @@ public:
     const int SCREEN_WIDTH;
     const int SCREEN_HEIGHT;
     
-    Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other = nullptr);
+    Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8EmulatorFP() override;
 
     std::string name() const override

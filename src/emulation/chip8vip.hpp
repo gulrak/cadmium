@@ -112,9 +112,11 @@ private:
     int videoLine() const;
     bool executeCdp1802();
     void fetchState();
+    void forceState();
     class Private;
     std::unique_ptr<Private> _impl;
     Chip8State _state;
+    Chip8State _stateCopy;
 };
 
 }

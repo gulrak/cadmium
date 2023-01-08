@@ -105,6 +105,7 @@ public:
 
     //void triggerIrq() { _irq = true; }
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
+    void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
     int64_t getCycles() const { return _cycles; }
     ExecMode getExecMode() const { return _execMode; }

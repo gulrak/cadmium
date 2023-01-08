@@ -159,6 +159,18 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
     Chip8VIP::reset();
     if(other) {
         std::memcpy(_impl->_ram.data() + 0x200, other->memory() + 0x200, std::min(_impl->_ram.size() - 0x200 - 0x170, (size_t)other->memSize()));
+        std::memcpy(_impl->_ram_b.data() + 0x200, other->memoryCopy() + 0x200, std::min(_impl->_ram.size() - 0x200 - 0x170, (size_t)other->memSize()));
+        for(size_t i = 0; i < 16; ++i) {
+            _state.v[i] = other->getV(i);
+        }
+        _state.i = other->getI();
+        _state.pc = other->getPC();
+        _state.sp = other->getSP();
+        _state.dt = other->delayTimer();
+        _state.st = other->soundTimer();
+        std::memcpy(_state.s.data(), other->getStackElements(), stackSize() * sizeof(uint16_t));
+        forceState();
+        copyState();
     }
 }
 
@@ -179,7 +191,7 @@ void Chip8VIP::reset()
     _impl->_cycles = 0;
     _impl->_frames = 0;
     _impl->_nextFrame = 0;
-    _impl->_execMode = ePAUSED;
+    _impl->_execMode = _impl->_host.isHeadless() ? eRUNNING : ePAUSED;
     _impl->_cpuState = eNORMAL;
     while(!executeCdp1802() || getPC() != 0x200); // fast-forward to fetch/decode loop
     if(_options.optTraceLog)
@@ -202,6 +214,24 @@ void Chip8VIP::fetchState()
     _state.sp = (0xECF - _impl->_cpu.getR(2)) >> 1;
     _state.dt = _impl->_cpu.getR(8) >> 8;
     _state.st = _impl->_cpu.getR(8) & 0xff;
+    for(int i = 0; i < stackSize() && i < _state.sp; ++i) {
+        _state.s[i] = (_impl->_ram[0xECD - i*2] << 8) | _impl->_ram[0xECF - i*2 - 1];
+    }
+}
+
+void Chip8VIP::forceState()
+{
+    _state.cycles = _impl->_cycles;
+    _state.frameCycle = frameCycle();
+    std::memcpy(&_impl->_ram[0xEF0], _state.v.data(), 16);
+    _impl->_cpu.setR(0xA, (uint16_t)_state.i);
+    _impl->_cpu.setR(0x5, (uint16_t)_state.pc);
+    _impl->_cpu.setR(0x8, (uint16_t)(_state.dt << 8 | _state.st));
+    _impl->_cpu.setR(0x2, (uint16_t)(0xECF - _state.sp * 2));
+    for(int i = 0; i < stackSize() && i < _state.sp; ++i) {
+        _impl->_ram[0xECD - i*2] = _state.s[i] >> 8;
+        _impl->_ram[0xECD - i*2 + 1] = _state.s[i] & 0xFF;
+    }
 }
 
 bool Chip8VIP::executeCdp1802()
@@ -303,11 +333,7 @@ uint8_t Chip8VIP::stackSize() const
 
 const uint16_t* Chip8VIP::getStackElements() const
 {
-    static uint16_t dummy[16];
-    for(int i = 0; i < stackSize(); ++i) {
-        dummy[i] = (_impl->_ram[0xecd - i*2] << 8) | _impl->_ram[0xecf - i*2 - 1];
-    }
-    return dummy;
+    return _state.s.data();
 }
 
 uint8_t* Chip8VIP::memory()
@@ -327,43 +353,38 @@ int Chip8VIP::memSize() const
 
 void Chip8VIP::copyState()
 {
-    std::memcpy(_impl->_rV_b.data(), _impl->_ram.data() + 0xef0, sizeof(uint8_t)*16);
-    std::memcpy(_impl->_stack_b.data(), getStackElements(), sizeof(uint16_t)*stackSize());
+    _stateCopy = _state;
     std::memcpy(_impl->_ram_b.data(), _impl->_ram.data(), _impl->_ram_b.size());
-    _impl->_rSP_b = getSP();
-    _impl->_rDT_b = delayTimer();
-    _impl->_rST_b = soundTimer();
-    _impl->_rI_b = getI();
 }
 
 uint8_t Chip8VIP::getCopyV(uint8_t index) const
 {
-    return _impl->_rV_b[index];
+    return _stateCopy.v[index];
 }
 
 uint32_t Chip8VIP::getCopyI() const
 {
-    return _impl->_rI_b;
+    return _stateCopy.i;
 }
 
 uint8_t Chip8VIP::getCopyDT() const
 {
-    return _impl->_rDT_b;
+    return _stateCopy.dt;
 }
 
 uint8_t Chip8VIP::getCopyST() const
 {
-    return _impl->_rST_b;
+    return _stateCopy.st;
 }
 
 uint8_t Chip8VIP::getCopySP() const
 {
-    return _impl->_rSP_b;
+    return _stateCopy.sp;
 }
 
 const uint16_t* Chip8VIP::getCopyStackElements() const
 {
-    return _impl->_stack_b.data();
+    return _stateCopy.s.data();
 }
 
 int64_t Chip8VIP::cycles() const
@@ -378,12 +399,12 @@ int64_t Chip8VIP::frames() const
 
 uint8_t Chip8VIP::delayTimer() const
 {
-    return _impl->_cpu.getR(8) >> 8;
+    return _state.dt;
 }
 
 uint8_t Chip8VIP::soundTimer() const
 {
-    return _impl->_cpu.getR(8) & 0xff;
+    return _state.st;
 }
 
 float Chip8VIP::getAudioPhase() const

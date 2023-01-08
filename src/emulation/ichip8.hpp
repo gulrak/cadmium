@@ -40,6 +40,7 @@ struct Chip8State
     cycles_t cycles{};
     int frameCycle{};
     std::array<uint8_t,16> v{};
+    std::array<uint16_t,16> s{};
     int i{};
     int pc{};
     int sp{};

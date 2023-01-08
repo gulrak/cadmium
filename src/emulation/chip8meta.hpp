@@ -91,7 +91,7 @@ inline static std::vector<OpcodeInfo> opcodes{
     { OT_FxyF, 0x8005, 2, "sub vX,vY", "vX -= vY", C8VG_BASE, "subtract vY from vX, vF is set to 0 if an underflow happened, to 1 if not, even if X=F!" },
     { OT_FxyF, 0x8006, 2, "shr vX{,vY}", "vX >>= vY", C8VG_BASE, "set vX to vY and shift vX one bit to the right, set vF to the bit shifted out, even if X=F! [Q: CHIP-48/SCHIP dont set vX to vY, so only shift vX]" },
     { OT_FxyF, 0x8007, 2, "subn vX,vY", "vX =- vY", C8VG_BASE, "set vX to the result of subtracting vX from vY, vF is set to 0 if an underflow happened, to 1 if not, even if X=F!" },
-    { OT_FxFF, 0x800e, 2, "shl vX{,vY}", "vX <<= vY", C8VG_BASE, "set vX to vY and shift vX one bit to the left, set vF to the bit shifted out, even if X=F! [Q: CHIP-48/SCHIP dont set vX to vY, so only shift vX]" },
+    { OT_FxyF, 0x800e, 2, "shl vX{,vY}", "vX <<= vY", C8VG_BASE, "set vX to vY and shift vX one bit to the left, set vF to the bit shifted out, even if X=F! [Q: CHIP-48/SCHIP dont set vX to vY, so only shift vX]" },
     { OT_FxyF, 0x9000, 2, "sne vX,vY", "if vX == vY then", C8VG_BASE, "skip next opcode if vX != vY" },
     { OT_Fnnn, 0xA000, 2, "ld i,NNN", "i := NNN", C8VG_BASE, "set I to NNN" },
     { OT_Fnnn, 0xB000, 2, "jp v0,NNN", "jump0 NNN", C8VG_BASE & ~(C8V::CHIP_8X|C8V::CHIP_8X_TPD|C8V::HI_RES_CHIP_8X|C8V::CHIP_48|C8V::SCHIP_1_0|C8V::SCHIP_1_1|C8V::SCHIP_1_1_SCRUP), "jump to address NNN + v0" },

@@ -75,9 +75,9 @@ public:
         setLogger(nullptr);
     }
 
-    void doLog(Source source, emu::cycles_t cycle, emu::cycles_t frameCycle, const char* msg) override
+    void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) override
     {
-        auto content = source != eHOST ? fmt::format("[{:04d}] {}", frameCycle, msg) : fmt::format("[    ] {}", msg);
+        auto content = source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)frameTime.frame, (int)frameTime.cycle, msg) : fmt::format("[      ] {}", msg);
         _outStream << content << std::endl;
     }
 

@@ -32,7 +32,7 @@
 namespace emu
 {
 
-Chip8EmulatorFP::Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, const Chip8EmulatorBase* other)
+Chip8EmulatorFP::Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
 : Chip8EmulatorBase(host, options, other)
 , ADDRESS_MASK(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0xFFFFFF : options.optHas16BitAddr ? 0xFFFF : 0xFFF)
 , SCREEN_WIDTH(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : options.optAllowHires ? 128 : 64)
@@ -365,6 +365,7 @@ void Chip8EmulatorFP::op00Bn(uint16_t opcode)
     else {
         std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
         std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+        _screenNeedsUpdate = true;
     }
 
 }
@@ -383,6 +384,7 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
     else {
         std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
         std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+        _screenNeedsUpdate = true;
     }
 }
 
@@ -391,11 +393,13 @@ void Chip8EmulatorFP::op00Dn(uint16_t opcode)
     auto n = (opcode & 0xf);
     std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
     std::memset(_screenBuffer.data() + (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH, 0, _screenBuffer.size() - (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH);
+    _screenNeedsUpdate = true;
 }
 
 void Chip8EmulatorFP::op00E0(uint16_t opcode)
 {
     clearScreen();
+    _screenNeedsUpdate = true;
     ++_clearCounter;
 }
 
@@ -408,7 +412,7 @@ void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
 
 void Chip8EmulatorFP::op00EE(uint16_t opcode)
 {
-    _rPC = _stack[--_rSP];
+        _rPC = _stack[--_rSP];
     if (_execMode == eSTEPOUT)
         _execMode = ePAUSED;
 }
@@ -429,6 +433,7 @@ void Chip8EmulatorFP::op00FB(uint16_t opcode)
             std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
             std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
         }
+        _screenNeedsUpdate = true;
     }
 }
 
@@ -465,6 +470,7 @@ void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
     if(_isHires) {
         _isHires = false;
         clearScreen();
+        _screenNeedsUpdate = true;
         ++_clearCounter;
     }
 }
@@ -474,6 +480,7 @@ void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
     if(_isHires && !_isMegaChipMode) {
         _isHires = false;
         clearScreen();
+        _screenNeedsUpdate = true;
         ++_clearCounter;
     }
 }
@@ -488,6 +495,7 @@ void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
     if(!_isHires) {
         _isHires = true;
         clearScreen();
+        _screenNeedsUpdate = true;
         ++_clearCounter;
     }
 }
@@ -497,6 +505,7 @@ void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
     if(!_isHires && !_isMegaChipMode) {
         _isHires = true;
         clearScreen();
+        _screenNeedsUpdate = true;
         ++_clearCounter;
     }
 }

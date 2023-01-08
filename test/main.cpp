@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
 
     int res = 0;
     {
-        emu::ConsoleLogger log(std::clog);
+        //emu::ConsoleLogger log(std::clog);
         res = context.run(); // run
     }
     return res;
