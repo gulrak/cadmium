@@ -494,6 +494,7 @@ public:
         _screenTexture = LoadTextureFromImage(_screen);
         _titleImage = LoadImage("cadmium-title.png");
         _microFont = LoadImage("micro-font.png");
+        _keyboardOverlay = LoadRenderTexture(40,40);
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
         drawMicroText(_titleImage, "Beta", 38, 53, WHITE);
         std::string buildDate = __DATE__;
@@ -550,6 +551,7 @@ public:
         gui::UnloadGui();
         UnloadFont(_font);
         UnloadRenderTexture(_renderTexture);
+        UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
         UnloadTexture(_screenTexture);
@@ -682,6 +684,9 @@ public:
         static uint32_t instruction = 0;
         static int waitKeyUp = 0;
         static int keyId = 0;
+        auto now = GetTime();
+        for(int i = 0; i < 16; ++i)
+            _keyScanTime[i] = now;
         if(waitKeyUp && instruction == _chipEmu->getPC()) {
             if(IsKeyUp(waitKeyUp)) {
                 waitKeyUp = 0;
@@ -707,7 +712,23 @@ public:
 
     bool isKeyDown(uint8_t key) override
     {
+        _keyScanTime[key & 0xF] = GetTime();
         return IsKeyDown(_keyMapping[key & 0xF]);
+    }
+
+    void updateKeyboardOverlay()
+    {
+        static const char* keys = "1\0" "2\0" "3\0" "C\0" "4\0" "5\0" "6\0" "D\0" "7\0" "8\0" "9\0" "E\0" "A\0" "0\0" "B\0" "F\0";
+        BeginTextureMode(_keyboardOverlay);
+        ClearBackground({0,0,0,0});
+        auto now = GetTime();
+        for(int i = 0; i < 4; ++i) {
+            for(int j = 0; j < 4; ++j) {
+                DrawRectangleRec({j*10.0f, i*10.0f, 9.0f, 9.0f}, now - _keyScanTime[_keyPosition[i*4+j]] < 0.2 ? WHITE : GRAY);
+                DrawTextEx(_font, &keys[i*8+j*2], {j*10.0f + 2.0f, i*10.0f + 1.0f}, 8.0f, 0, BLACK);
+            }
+        }
+        EndTextureMode();
     }
 
     static Vector3 rgbToXyz(Color c)
@@ -944,6 +965,8 @@ public:
 
         if(_chipEmu->needsScreenUpdate())
             updateScreen();
+        if(_showKeyMap)
+            updateKeyboardOverlay();
 
         BeginTextureMode(_renderTexture);
         drawGui();
@@ -1005,6 +1028,9 @@ public:
             for (short y = 0; y < scrHeight; ++y) {
                 DrawRectangle(videoX, videoY + y * gridScale, scrWidth * videoScale, 1, gridLineCol);
             }
+        }
+        if(_showKeyMap) {
+            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * videoScale - 40.0f, videoY + scrHeight * videoScaleY - 40.0f, 40.0f, 40.0f}, {0, 0}, 0.0f, {255, 255, 255, 128});
         }
         if(GetTime() < 5 && _romImage.empty()) {
             auto scale = dest.width / 128;
@@ -1184,9 +1210,9 @@ public:
                     menuOpen = true;
                 if(menuOpen) {
 #ifndef PLATFORM_WEB
-                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 72};
+                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 84};
 #else
-                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 57};
+                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 69};
 #endif
                     BeginPopup(menuRect, &menuOpen);
                     SetRowHeight(12);
@@ -1216,6 +1242,10 @@ public:
 #ifndef PLATFORM_WEB
                         _librarian.fetchDir(_currentDirectory);
 #endif
+                        menuOpen = false;
+                    }
+                    if(LabelButton(" Key Map")) {
+                        _showKeyMap = !_showKeyMap;
                         menuOpen = false;
                     }
 #ifndef PLATFORM_WEB
@@ -2237,8 +2267,10 @@ private:
     Image _screen{};
     Texture2D _titleTexture{};
     Texture2D _screenTexture{};
+    RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
     bool _shouldClose{false};
+    bool _showKeyMap{false};
     int _screenWidth{};
     int _screenHeight{};
     RenderTexture _renderTexture{};
@@ -2262,6 +2294,7 @@ private:
     std::vector<uint8_t> _romImage;
     std::string _romSha1Hex;
     std::array<uint32_t, 256> _colorPalette{};
+    std::array<double,16> _keyScanTime{};
     volatile bool _grid{false};
     MainView _mainView{eDEBUGGER};
     MainView _lastView{eDEBUGGER};
@@ -2272,6 +2305,7 @@ private:
 #endif
 
     inline static KeyboardKey _keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
+    inline static int _keyPosition[16] = {1,2,3,12, 4,5,6,13, 7,8,9,14, 10,0,11,15};
     inline static Cadmium* _instance{};
 };
 

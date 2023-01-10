@@ -114,6 +114,10 @@ public:
 private:
     bool handleOption(std::vector<std::string>::iterator& iter)
     {
+        if(*iter == "-?" || *iter == "-h" || *iter == "--help") {
+            usage();
+            exit(1);
+        }
         for(const auto& [names, info] : handler) {
             for(const auto& name : names) {
                 if(name == *iter) {

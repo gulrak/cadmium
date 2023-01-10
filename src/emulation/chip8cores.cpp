@@ -945,21 +945,21 @@ void Chip8EmulatorFP::opEx9E_with_01nn(uint16_t opcode)
 
 void Chip8EmulatorFP::opExA1(uint16_t opcode)
 {
-    if (!_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+    if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC += 2;
     }
 }
 
 void Chip8EmulatorFP::opExA1_with_F000(uint16_t opcode)
 {
-    if (!_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+    if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
 void Chip8EmulatorFP::opExA1_with_01nn(uint16_t opcode)
 {
-    if (!_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+    if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }

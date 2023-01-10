@@ -346,7 +346,7 @@ public:
                     }
                 }
                 else if ((opcode & 0xff) == 0xA1) {  // ExA1 - SKNP Vx
-                    if (!_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
+                    if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
                         _rPC += 2;
                         addCycles(18);
                     }
