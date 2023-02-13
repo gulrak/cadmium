@@ -71,11 +71,18 @@ The Supported presets are:
 * MegaChip 8
 * XO-CHIP
 * VIP-CHIP-8
+* CHIP-8-DREAM
 
-The additional `VIP-CHIP-8` preset activates a  core that is emulating a COSMAC
+The `VIP-CHIP-8` preset activates a core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
 allow hybrid roms (`.hc8`) that contain CDP1802 parts  to execute on Cadmium.
+
+The `CHIP-8-DREAM` preset activates a core that is emulating a DREAM6800
+driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS
+kernel and run an accurate emulation of DREAM6800 CHIP-8. This core also
+allows hybrid roms that use machine code parts.
+
 
 ### Quirks
 

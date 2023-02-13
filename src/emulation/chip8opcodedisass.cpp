@@ -15,7 +15,7 @@ Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(Chip8EmulatorOptions& options)
     _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
 }
 
-std::pair<uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end)
+std::pair<uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end) const
 {
     auto opcode = (*code << 8) | *(code + 1);
     auto next = code + 3 < end ? (*(code + 2) << 8) | *(code + 3) : 0;

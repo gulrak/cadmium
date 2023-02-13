@@ -112,7 +112,7 @@ void workFile(WorkMode mode, const std::string& file, const std::vector<uint8_t>
             dec.decompile(file, data.data(), startAddress, data.size(), startAddress, &std::cout, true, true);
             bool found = false;
             for (const auto& pattern : opcodesToFind) {
-                for (const auto& [opcode, count] : dec.stats) {
+                for (const auto& [opcode, count] : dec.fullStats) {
                     std::string hex = fmt::format("{:04X}", opcode);
                     if (comparePattern(pattern, hex)) {
                         if(withUsage) {

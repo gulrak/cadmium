@@ -2,6 +2,8 @@ add_subdirectory(emulation)
 
 set(CADMIUM_SOURCE
     cadmium.cpp
+    debugger.cpp
+    debugger.hpp
     editor.cpp
     editor.hpp
     logview.cpp
@@ -49,7 +51,7 @@ if(WEB_WITH_CLIPBOARD)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_CLIPBOARD)
 endif()
 set_source_files_properties(src/editor.cpp PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
-target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata)
+target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata jsct)
 if (${PLATFORM} MATCHES "Web")
     if(WEB_WITH_CLIPBOARD)
         if(USE_WEBGL)

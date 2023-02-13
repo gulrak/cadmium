@@ -27,6 +27,7 @@
 
 #include <emulation/config.hpp>
 
+#include <stack>
 namespace emu {
 
 class OctoCompiler
@@ -44,7 +45,7 @@ public:
     class Lexer {
     public:
         Lexer() = default;
-        void setRange(const char* source, const char* end);
+        void setRange(const std::string& filename, const char* source, const char* end);
         Token nextToken();
     private:
         char peek() const { return _srcPtr < _srcEnd ? *_srcPtr : 0; }
@@ -52,6 +53,7 @@ public:
         char get() { return _srcPtr < _srcEnd ? *_srcPtr++ : 0; }
         bool isPreprocessor() const;
         void skipWhitespace();
+        std::string _filename;
         const char* _srcPtr{nullptr};
         const char* _srcEnd{nullptr};
         uint32_t _line;
@@ -63,7 +65,8 @@ public:
 
 
 private:
-    Lexer _lex;
+    std::stack<Lexer> _lexStack;
+
 };
 
 } // namespace emu

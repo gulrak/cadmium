@@ -1,3 +1,18 @@
+## v1.0.5 (wip)
+
+* Real-Dream support, this is a CHIP-8 mode that runs the CHIPOS CHIP-8 interpreter from
+  Michael J Bauer on an emulated M6800 driven 2k RAM equipped DREAM 6800 computer. It is
+  is able to execute hybrid roms that use M6800 code mixed with CHIP-8.
+* Clipboard now should work on the Emscripten version in the expected way.
+* On macOS instead of CTRL, the CMD key is now used for hotkeys and editor control.
+* All CHIP-8 cores, the hardware emulating ones and the generic ones, are now based on a
+  CPU interface that they also share with the real CPU cores (CDP1802 and M6800) and it
+  allowed to move the debug ui out of the main source and handle all cores, backend or
+  CHIP-8 generically, including debug controls.
+* Breakpoints, and stepping now also works for the backend CPUs of the COSMAC VIP and
+  the DREAM6800 emulations. The debugger controls are controlling the CPU that is selected
+  in the disassembly panel.
+
 ## v1.0.3 (wip)
 
 * Real-VIP support, this is a CHIP-8 mode that runs the actual CHIP-8 interpreter from

@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8opcodedisass.hpp
+// src/emulation/cdp186x.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,25 +25,60 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
-#include <emulation/chip8options.hpp>
+#include "emulation/chip8options.hpp"
+#include "emulation/config.hpp"
 
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <utility>
+#include <array>
 
 namespace emu {
 
-class Chip8OpcodeDisassembler : public emu::IChip8Emulator
+#define VIDEO_FIRST_VISIBLE_LINE 80
+#define VIDEO_FIRST_INVISIBLE_LINE  208
+
+class Cdp1802;
+
+class Cdp186x
 {
 public:
-    using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
-protected:
-    Chip8EmulatorOptions& _options;
-    SymbolResolver _labelOrAddress;
+    enum Type { eCDP1861, eCDP1861_C10, eCDP1861_62, eCDP1864 };
+    Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
+    void reset();
+    bool getNEFX() const;
+    int executeStep();
+    void enableDisplay();
+    void disableDisplay();
+    bool isDisplayEnabled() const { return _displayEnabled; }
+    int frames() const { return _frameCounter; }
+    const uint8_t* getScreenBuffer() const;
+
+    static int64_t machineCycle(cycles_t cycles)
+    {
+        return cycles >> 3;
+    }
+
+    static int frameCycle(cycles_t cycles)
+    {
+        return machineCycle(cycles) % 3668;
+    }
+
+    static int videoLine(cycles_t cycles)
+    {
+        return frameCycle(cycles) / 14;
+    }
+
+    static cycles_t nextFrame(cycles_t cycles)
+    {
+        return ((cycles + 8*3668) / (8*3668)) * (8*3668);
+    }
+
+private:
+    Cdp1802& _cpu;
+    Type _type{eCDP1861};
+    const Chip8EmulatorOptions& _options;
+    std::array<uint8_t,256*192> _screenBuffer;
+    int _frameCycle{0};
+    int _frameCounter{0};
+    bool _displayEnabled{false};
 };
 
 }

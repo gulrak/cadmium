@@ -769,10 +769,15 @@ void Chip8EmulatorFP::op8xy7(uint16_t opcode)
 }
 
 void Chip8EmulatorFP::op8xyE(uint16_t opcode)
-{   
+{
+#if 1
     uint8_t carry = _rV[(opcode >> 4) & 0xF] >> 7;
     _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF] << 1;
     _rV[0xF] = carry;
+#else
+    _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF] << 1;
+    _rV[0xF] = _rV[(opcode >> 4) & 0xF] >> 7;
+#endif
 }
 
 void Chip8EmulatorFP::op8xyE_justShiftVx(uint16_t opcode)

@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8vip.hpp
+// src/emulation/chip8dream.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -27,20 +27,19 @@
 
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8realcorebase.hpp>
-#include <emulation/hardware/cdp1802.hpp>
-
-#include <memory>
+#include <emulation/hardware/m6800.hpp>
 
 namespace emu {
 
-class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
+class Chip8Dream : public Chip8RealCoreBase, public M6800Bus<>
 {
+public:
 public:
     constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
     constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
 
-    Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
-    ~Chip8VIP() override;
+    Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
+    ~Chip8Dream() override;
 
     void reset() override;
     std::string name() const override;
@@ -51,8 +50,6 @@ public:
     uint8_t* memory() override;
     int memSize() const override;
 
-    int64_t frames() const override;
-
     bool isGenericEmulation() const override { return false; }
 
     uint16_t getCurrentScreenWidth() const override;
@@ -61,27 +58,31 @@ public:
     uint16_t getMaxScreenHeight() const override;
     const uint8_t* getScreenBuffer() const override;
 
-    bool isDisplayEnabled() const override;
-
+    uint8_t soundTimer() const override;
     float getAudioPhase() const override;
     void setAudioPhase(float phase) override;
 
-    // CDP1802-Bus
+    // M6800-Bus
     uint8_t readByte(uint16_t addr) const override;
-    uint8_t readByteDMA(uint16_t addr) const override;
+    uint8_t readDebugByte(uint16_t addr) const override;
     uint8_t getMemoryByte(uint32_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
+
+    bool isDisplayEnabled() const override;
 
     GenericCpu& getBackendCpu() override;
 
 private:
     int frameCycle() const;
-    int videoLine() const;
-    bool executeCdp1802();
+    cycles_t nextFrame() const;
+    //int videoLine() const;
+    bool executeM6800();
+    int executeVDG();
+    void flushScreen();
     void fetchState();
     void forceState();
     class Private;
     std::unique_ptr<Private> _impl;
 };
 
-}
+};

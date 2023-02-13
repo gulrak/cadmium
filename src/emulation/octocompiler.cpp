@@ -25,13 +25,14 @@
 //---------------------------------------------------------------------------------------
 
 #include <emulation/octocompiler.hpp>
+#include <emulation/utility.hpp>
 
 #include <unordered_set>
 
 namespace emu {
 
 static std::unordered_set<std::string> _preprocessor = {
-    "#include", "#data", "#code", "#if", "#elif", "#else", "#endif"
+    ":include", ":segment", "#code", ":if", ":elif", ":else", ":endif", ":unless", ":dump-options"
 };
 
 static std::unordered_set<std::string> _directives = {
@@ -47,16 +48,22 @@ static std::unordered_set<std::string> _reserved = {
 
 void OctoCompiler::compile(const char* source, const char* end)
 {
-    _lex.setRange(source, end);
+    //_lex.setRange("", source, end);
 }
 
 std::string OctoCompiler::preprocess(const std::string& includePath)
 {
+#ifdef _WIN32
+    auto paths = split(includePath, ';');
+#else
+    auto paths = split(includePath, ':');
+#endif
     return std::string();
 }
 
-void OctoCompiler::Lexer::setRange(const char* source, const char* end)
+void OctoCompiler::Lexer::setRange(const std::string& filename, const char* source, const char* end)
 {
+    _filename = filename;
     _srcPtr = source;
     _srcEnd = end;
     _line = 0;
@@ -65,7 +72,7 @@ void OctoCompiler::Lexer::setRange(const char* source, const char* end)
 
 bool OctoCompiler::Lexer::isPreprocessor() const
 {
-    if(peek() == '#') {
+    if(peek() == ':') {
         auto src = _srcPtr + 1;
         while(src < _srcEnd && std::isalpha(*src))
             ++src;

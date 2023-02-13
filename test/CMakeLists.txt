@@ -1,12 +1,12 @@
 
 if(FALSE)
-# JamesGriffin/CHIP-8
-file(DOWNLOAD https://raw.githubusercontent.com/JamesGriffin/CHIP-8-Emulator/master/src/chip8.h ${CMAKE_CURRENT_SOURCE_DIR}/cores/jgriffin/chip8.h)
-file(DOWNLOAD https://raw.githubusercontent.com/JamesGriffin/CHIP-8-Emulator/master/src/chip8.cpp ${CMAKE_CURRENT_SOURCE_DIR}/cores/jgriffin/chip8.cpp)
+    # JamesGriffin/CHIP-8
+    file(DOWNLOAD https://raw.githubusercontent.com/JamesGriffin/CHIP-8-Emulator/master/src/chip8.h ${CMAKE_CURRENT_SOURCE_DIR}/cores/jgriffin/chip8.h)
+    file(DOWNLOAD https://raw.githubusercontent.com/JamesGriffin/CHIP-8-Emulator/master/src/chip8.cpp ${CMAKE_CURRENT_SOURCE_DIR}/cores/jgriffin/chip8.cpp)
 
-# wernsey/chip8
-file(DOWNLOAD https://raw.githubusercontent.com/wernsey/chip8/master/chip8.h ${CMAKE_CURRENT_SOURCE_DIR}/cores/wernsey/chip8.h)
-file(DOWNLOAD https://raw.githubusercontent.com/wernsey/chip8/master/chip8.c ${CMAKE_CURRENT_SOURCE_DIR}/cores/wernsey/chip8.c)
+    # wernsey/chip8
+    file(DOWNLOAD https://raw.githubusercontent.com/wernsey/chip8/master/chip8.h ${CMAKE_CURRENT_SOURCE_DIR}/cores/wernsey/chip8.h)
+    file(DOWNLOAD https://raw.githubusercontent.com/wernsey/chip8/master/chip8.c ${CMAKE_CURRENT_SOURCE_DIR}/cores/wernsey/chip8.c)
 endif()
 
 add_executable(chip8-fpcore-tests main.cpp basic_opcode_tests.cpp variant_specific_opcode_tests.cpp chip8adapter.hpp  chip8adapter.cpp)
@@ -24,6 +24,26 @@ target_compile_definitions(chip8-vipcore-tests PUBLIC TEST_CHIP8VIP C8CORE="C8RV
 target_link_libraries(chip8-vipcore-tests PRIVATE doctest emulation)
 doctest_discover_tests(chip8-vipcore-tests)
 
+add_executable(chip8-dreamcore-tests main.cpp basic_opcode_tests.cpp variant_specific_opcode_tests.cpp chip8adapter.hpp  chip8adapter.cpp)
+target_compile_definitions(chip8-dreamcore-tests PUBLIC TEST_CHIP8DREAM C8CORE="C8RD:")
+target_link_libraries(chip8-dreamcore-tests PRIVATE doctest emulation)
+doctest_discover_tests(chip8-dreamcore-tests)
+
 add_executable(cdp1802test cdp1802test.cpp)
 target_link_libraries(cdp1802test emulation)
+#doctest_discover_tests(chip8-fpcore-tests)
+
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cores/m6800")
+    add_subdirectory(cores/m6800)
+    set(M6800_EXTERN_CORE "ExorSimCore")
+endif()
+add_executable(m6800test m6800test.cpp fuzzer.cpp)
+target_compile_definitions(m6800test PUBLIC M6800TEST_VERSION="${PROJECT_VERSION}" M6800TEST_GIT_HASH="${GIT_COMMIT_HASH}")
+if(M6800_EXTERN_CORE)
+    target_compile_definitions(m6800test PRIVATE M6800_EXTERN_CORE=${M6800_EXTERN_CORE})
+    target_link_libraries(m6800test PRIVATE m6800verify emulation)
+else()
+    target_link_libraries(m6800test PRIVATE emulation)
+endif()
 #doctest_discover_tests(chip8-fpcore-tests)

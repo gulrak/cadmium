@@ -709,6 +709,7 @@ public:
         bool inIf = false;
         if(chunk.usageType & (eJUMP | eCALL)) {
             while (code + 1 < chunk.end) {
+                auto rawOpcode = readOpcode(code);
                 auto [size, opcode, instruction] = opcode2Str(code, chunk.end);
                 auto iter = stats.find(opcode);
                 if(iter == stats.end()) {
@@ -722,6 +723,12 @@ public:
                 }
                 else
                     ++iter2->second;
+                iter = fullStats.find(rawOpcode);
+                if(iter == fullStats.end()) {
+                    fullStats.emplace(rawOpcode, 1);
+                }
+                else
+                    ++iter->second;
                 addr += size;
                 code += size;
             }
@@ -851,6 +858,7 @@ public:
     std::map<uint16_t, Chunk> chunks;
     std::map<uint16_t, LabelInfo> label;
     std::unordered_map<uint16_t, int> stats;
+    std::unordered_map<uint16_t, int> fullStats;
     inline static std::map<uint16_t, int> totalStats;
     inline static std::vector<std::vector<const OpcodeInfo*>> mappedOpcodeInfo;
 };

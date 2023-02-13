@@ -30,6 +30,10 @@
 #include <ghc/utf8.hpp>
 #include <fmt/format.h>
 
+#if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
+#include <iostream>
+#endif
+
 namespace utf8 = ghc::utf8;
 
 LogView::LogView()
@@ -57,12 +61,17 @@ void LogView::clear()
 
 void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
 {
-    _logBuffer[_writeIndex++] = {cycle, frameTime, 0, source, msg};
+    auto& logEntry = _logBuffer[_writeIndex++];
+    logEntry = {cycle, frameTime, 0, source, msg};
     if (_usedSlots < _logBuffer.size())
         ++_usedSlots;
     if (_writeIndex >= _logBuffer.size())
         _writeIndex = 0;
     _tosLine = _visibleLines >= _usedSlots ? 0 : _usedSlots - _visibleLines + 1;
+#if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
+    auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    std::cout << content << std::endl;
+#endif
 }
 
 void LogView::draw(Font& font, Rectangle rect)

@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8opcodedisass.hpp
+// src/emulation/icpu.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,25 +25,3 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
-#include <emulation/chip8options.hpp>
-
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <utility>
-
-namespace emu {
-
-class Chip8OpcodeDisassembler : public emu::IChip8Emulator
-{
-public:
-    using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
-protected:
-    Chip8EmulatorOptions& _options;
-    SymbolResolver _labelOrAddress;
-};
-
-}

@@ -88,6 +88,10 @@ extern "C" {
 #include <initializer_list>
 #include <string>
 
+#ifdef PLATFORM_WEB
+#include <emscripten/emscripten.h>
+#endif
+
 namespace gui {
 
 inline const auto DEFAULT_ROW_HEIGHT = 26.0f;
@@ -177,6 +181,8 @@ RLGUIPP_API void EndMenu();
 RLGUIPP_API bool MenuItem(const char* text, uint32_t shortcut = 0, bool* selected = nullptr);
 RLGUIPP_API int BeginPopupMenu(Vector2 position, const char* items);  // A popup menu with the items being given in raygui way seperated
 RLGUIPP_API void EndPopupMenu();
+
+RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
 
 }  // namespace gui
 
@@ -1747,6 +1753,24 @@ int BeginPopupMenu(Vector2 position, const char* items)
 }
 
 void EndPopupMenu() {}
+
+bool IsSysKeyDown()
+{
+#ifdef __APPLE__
+    return IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+#elif defined(__EMSCRIPTEN__)
+    static bool macOS = EM_ASM_INT({
+        if (navigator.userAgent.indexOf("Mac") != -1)
+            return 1;
+        return 0;
+    }) != 0;
+    if(macOS)
+        return IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+    return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+#else
+    return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+#endif
+}
 
 }  // namespace gui
 

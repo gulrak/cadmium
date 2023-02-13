@@ -40,6 +40,7 @@
 
 std::string GetClipboardTextX();
 void SetClipboardTextX(std::string text);
+bool isClipboardPaste();
 
 class Editor
 {
@@ -105,7 +106,7 @@ public:
     char* pointerFromOffset(uint32_t offset);
     uint32_t offsetFromCursor();
     std::pair<int,int> cursorFromOffset(uint32_t offset);
-    uint32_t insert(const std::string& text);
+    uint32_t insert(std::string text);
     int lineLength(uint32_t line);
     void undo();
     void redo();
@@ -120,6 +121,7 @@ public:
     void draw(Font& font, Rectangle rect);
 
 protected:
+    static void fixLinefeed(std::string& text);
     void ensureCursorVisibility();
     void highlightLine(const char* text, const char* end);
     void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);

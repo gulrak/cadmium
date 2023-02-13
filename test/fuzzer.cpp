@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8opcodedisass.hpp
+// tests/fuzzer.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,27 +23,35 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#pragma once
 
-#include <emulation/ichip8.hpp>
-#include <emulation/chip8options.hpp>
+#include "fuzzer.hpp"
 
-#include <cstdint>
-#include <functional>
-#include <string>
-#include <utility>
+#include <random>
 
-namespace emu {
+namespace fuzz {
 
-class Chip8OpcodeDisassembler : public emu::IChip8Emulator
+static std::seed_seq g_seed{3457,236};
+static std::mt19937 g_rand{g_seed};
+static std::uniform_int_distribution<uint8_t> g_randomByte{0,0xFF};
+static std::uniform_int_distribution<uint16_t> g_randomWord{0,0xFFFF};
+
+void rndSeed(uint64_t seed)
 {
-public:
-    using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
-protected:
-    Chip8EmulatorOptions& _options;
-    SymbolResolver _labelOrAddress;
-};
+    auto seedSeq = std::seed_seq({seed});
+    g_rand.seed(seedSeq);
+}
+
+uint8_t rndByte()
+{
+    return g_randomByte(g_rand);
+}
+
+uint16_t rndWord()
+{
+    return g_randomWord(g_rand);
+}
+
+
 
 }
+

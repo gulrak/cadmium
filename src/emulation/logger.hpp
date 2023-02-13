@@ -24,7 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 #pragma once
-
+#define FULL_CONSOLE_TRACE
 #include <emulation/config.hpp>
 
 namespace emu {

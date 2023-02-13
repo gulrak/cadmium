@@ -60,7 +60,6 @@ public:
     : Chip8EmulatorBase(host, options, other)
     {
         _memory.resize(MEMORY_SIZE, 0);
-        _memory_b.resize(MEMORY_SIZE, 0);
     }
     ~Chip8Emulator() override = default;
 
@@ -809,6 +808,7 @@ public:
     bool isHeadless() const override { return true; }
     uint8_t getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
+    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
     void updateScreen() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}

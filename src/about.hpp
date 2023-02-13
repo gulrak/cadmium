@@ -42,6 +42,8 @@ Currently supported CHIP-8 variants are:
   * SUPERCHIP 1.1
   * MegaChip8
   * XO-CHIP
+  * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
+  * CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
 
 Besides selecting a CHIP-8 variant it is possible to configure various
 quirks and behaviors to further tweak compatibility for a special
@@ -73,6 +75,7 @@ that speculative execution didn't have enough information to get.
 
 The editor supports the typical key combinations with CTRL, so copy,
 cut and paste are C, X and V, CTRL-A selects all text.
+Note:On macOS CMD instead of CTRL is used!
 
 Changes are automatically compiled, errors are currently shown in the
 status line. So if "No errors." is shown, the code is the one executed
@@ -133,6 +136,18 @@ I still want to give out some explicit thanks to:
   CDP1802 emulation core and getting "Support a real VIP mode"
   onto my todo list and for the interesting HyperChip64 ideas.
   https://github.com/Bandock/hyper_bandchip
+
+* Tobais V. Langhoff (@tobiasvl) - for his excellent page on CHIP-8
+  extensions:
+    https://chip-8.github.io/extensions/
+  and for his DREAM6800 emulator DRÖM that inspired me to look into
+  the DREAM6800.
+
+* Michael J Bauer(@M-J-Bauer) - for developing the DREAM6800 computer
+  and CHIPOS to extend the CHIP-8 world to the M6800 CPU, for making
+  me learn M6800 assembler and for allowing me to use the CHIPOS data
+  inside Cadmiums DREAM6800 emulator.
+  https://www.mjbauer.biz/DREAM6800.htm
 
                            - - -
 
@@ -285,5 +300,34 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+                           - - -
+
+# JsClipboardTricks
+
+An extract from ImGui-Manual, an interactive manual by Pascal Thomet.
+https://github.com/pthom/imgui_manual
+
+The MIT License (MIT)
+
+Copyright (c) 2019-2020 Pascal Thomet
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 )";
 

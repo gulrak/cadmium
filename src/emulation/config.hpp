@@ -39,9 +39,9 @@
 
 namespace emu {
 
-using namespace nlohmann;
+using json = nlohmann::ordered_json;
 
-typedef std::uint64_t cycles_t;
+using cycles_t = uint64_t;
 
 class InternalErrorException : public std::exception
 {

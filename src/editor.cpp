@@ -61,6 +61,15 @@ static int getKeySymbol(int key)
 #endif
 }
 
+void Editor::fixLinefeed(std::string& text)
+{
+    size_t pos = 0;
+    while ((pos = text.find("\r\n", pos)) != std::string::npos) {
+        text.replace(pos, 2, "\n");
+        pos += 1;
+    }
+}
+
 void Editor::setFocus()
 {
     gui::SetKeyboardFocus((void*)this);
@@ -252,8 +261,9 @@ void Editor::update()
     updateAlphaKeys();
     bool altPressed = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
     bool shiftPressed = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    bool ctrlPressed = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    bool superPressed = IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+    //bool ctrlPressed = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    //bool superPressed = IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+    bool sysKeyPressed = gui::IsSysKeyDown();
     bool selectionChange = false;
 
     if(IsMouseButtonDown(0) && CheckCollisionPointRec(GetMousePosition(), {_textArea.x + 1, _textArea.y + 1, _textArea.width - 6, _textArea.height - 6})) {
@@ -285,13 +295,13 @@ void Editor::update()
     }
     if(IsMouseButtonUp(0))
         _mouseDownInText = false;
-    if (ctrlPressed && isAlphaPressed('F')) {
+    if (sysKeyPressed && isAlphaPressed('F')) {
         _findOrReplace = _findOrReplace == eFIND ? eNONE : eFIND;
     }
-    else if (ctrlPressed && isAlphaPressed('R')) {
+    else if (sysKeyPressed && isAlphaPressed('R')) {
         _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
     }
-    else if (ctrlPressed && isAlphaPressed('S')) {
+    else if (sysKeyPressed && isAlphaPressed('S')) {
         if(!_filename.empty()) {
             writeFile(_filename, _text.data(), _text.size());
         }
@@ -327,25 +337,31 @@ void Editor::update()
         else if (IsKeyPressed(KEY_END)) {
             selectionChange |= cursorWrapper([this]() { cursorEnd(); });
         }
-        else if (ctrlPressed && isAlphaPressed('Z')) {
+        else if (sysKeyPressed && isAlphaPressed('Z')) {
             if (shiftPressed)
                 redo();
             else
                 undo();
         }
-        else if (ctrlPressed && isAlphaPressed('C')) {
+        else if (sysKeyPressed && isAlphaPressed('C')) {
             auto [selStart, selEnd] = selection();
             SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
         }
-        else if (ctrlPressed && isAlphaPressed('V')) {
+#if defined(PLATFORM_WEB) && defined(WEB_WITH_CLIPBOARD)
+        else if (isClipboardPaste()) {
             insert(GetClipboardTextX());
         }
-        else if (ctrlPressed && isAlphaPressed('X')) {
+#else
+        else if (sysKeyPressed && isAlphaPressed('V')) {
+            insert(GetClipboardTextX());
+        }
+#endif
+        else if (sysKeyPressed && isAlphaPressed('X')) {
             auto [selStart, selEnd] = selection();
             SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
             deleteSelectedText();
         }
-        else if (ctrlPressed && isAlphaPressed('A')) {
+        else if (sysKeyPressed && isAlphaPressed('A')) {
             _selectionStart = 0;
             _selectionEnd = _text.size();
             selectionChange = true;
@@ -475,7 +491,7 @@ Rectangle Editor::verticalScrollHandle()
 void Editor::highlightLine(const char* text, const char* end)
 {
     static emu::OctoCompiler::Lexer lexer;
-    lexer.setRange(text, end);
+    lexer.setRange("", text, end);
     _highlighting.resize(end - text);
     size_t index = 0;
     bool wasColon = false;
@@ -591,8 +607,9 @@ void Editor::deleteText(uint32_t offset, uint32_t length)
     }
 }
 
-uint32_t Editor::insert(const std::string& text)
+uint32_t Editor::insert(std::string text)
 {
+    fixLinefeed(text);
     deleteSelectedText();
     auto offset = offsetFromCursor();
     _undoStack.push({eINSERT, _editId, offsetFromCursor(), offset, offset, text});

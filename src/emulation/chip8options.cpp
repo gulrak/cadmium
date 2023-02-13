@@ -41,6 +41,7 @@ Chip8Variant Chip8EmulatorOptions::presetAsVariant() const
         case eSCHIP11: return Chip8Variant::SCHIP_1_1;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
+        case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
         case eCHICUEYI: return Chip8Variant::XO_CHIP;
         default: return Chip8Variant::CHIP_8;
     }
@@ -57,6 +58,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
+        case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -73,6 +75,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
+        case eCHIP8DREAM: return "CHIP8DREAM";
         case eCHICUEYI: return "CHICUEYI";
         default: return "unknown";
     }
@@ -94,6 +97,12 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
     {"vipchip8", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"chip8vip", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"cosmac", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"cosmacvip", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"chip8dream", emu::Chip8EmulatorOptions::eCHIP8DREAM},
+    {"dreamchip8", emu::Chip8EmulatorOptions::eCHIP8DREAM},
+    {"dream6800", emu::Chip8EmulatorOptions::eCHIP8DREAM},
+    {"chipos", emu::Chip8EmulatorOptions::eCHIP8DREAM},
     {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
 };
 
@@ -123,6 +132,7 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
         case eXOCHIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = true, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 1000};
         case eCHICUEYI: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = true, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = true, .optJump0Bxnn = false, .optAllowHires = true, .optOnlyHires = false, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = false, .optChicueyiSound = true, .optTraceLog = false, .instructionsPerFrame = 1000};
         case eCHIP8VIP: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 9};
+        case eCHIP8DREAM: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 15};
         case eCHIP8:
         default: return { .behaviorBase = preset, .startAddress = 0x200, .optJustShiftVx = false, .optDontResetVf = false, .optLoadStoreIncIByX = false, .optLoadStoreDontIncI = false, .optWrapSprites = false, .optInstantDxyn = false, .optJump0Bxnn = false, .optAllowHires = false, .optOnlyHires = false, .optAllowColors = false, .optHas16BitAddr = false, .optXOChipSound = false, .optChicueyiSound = false, .optTraceLog = false, .instructionsPerFrame = 9};
     }

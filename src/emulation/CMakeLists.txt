@@ -14,13 +14,19 @@ set(CHIP8_EMU_SOURCE
     chip8compiler.cpp
     chip8decompiler.cpp
     octocompiler.cpp
-    cdp1802.hpp
-    cdp186x.cpp
-    cdp186x.hpp
+    hardware/cdp1802.hpp
+    hardware/cdp186x.cpp
+    hardware/cdp186x.hpp
+    hardware/m6800.hpp
+    hardware/mc682x.cpp
+    hardware/mc682x.hpp
     chip8vip.cpp
     chip8vip.hpp
+    chip8dream.cpp
+    chip8dream.hpp
 )
 
 add_library(emulation ${CHIP8_EMU_SOURCE})
 set_source_files_properties(src/emulation/chip8compiler.cpp PROPERTIES COMPILE_FLAGS "-fpermissive -Wno-write-strings")
+target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU)
 target_link_libraries(emulation PUBLIC fmt::fmt c_octo)

@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/cdp186x.hpp
+// tests/m6800mock.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,61 +24,23 @@
 //
 //---------------------------------------------------------------------------------------
 #pragma once
-
-#include <emulation/config.hpp>
-#include <emulation/chip8options.hpp>
-
-#include <array>
+#include <emulation/hardware/m6800.hpp>
 
 namespace emu {
 
-#define VIDEO_FIRST_VISIBLE_LINE 80
-#define VIDEO_FIRST_INVISIBLE_LINE  208
-
-class Cdp1802;
-
-class Cdp186x
+class M6800Mock
 {
 public:
-    enum Type { eCDP1861, eCDP1861_C10, eCDP1861_62, eCDP1864 };
-    Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
-    void reset();
-    bool getNEFX() const;
-    int executeStep();
-    void enableDisplay();
-    void disableDisplay();
-    bool isDisplayEnabled() const { return _displayEnabled; }
-    int frames() const { return _frameCounter; }
-    const uint8_t* getScreenBuffer() const;
-
-    static int64_t machineCycle(cycles_t cycles)
-    {
-        return cycles >> 3;
-    }
-
-    static int frameCycle(cycles_t cycles)
-    {
-        return machineCycle(cycles) % 3668;
-    }
-
-    static int videoLine(cycles_t cycles)
-    {
-        return frameCycle(cycles) / 14;
-    }
-
-    static cycles_t nextFrame(cycles_t cycles)
-    {
-        return ((cycles + 8*3668) / (8*3668)) * (8*3668);
-    }
-
-private:
-    Cdp1802& _cpu;
-    Type _type{eCDP1861};
-    const Chip8EmulatorOptions& _options;
-    std::array<uint8_t,256*192> _screenBuffer;
-    int _frameCycle{0};
-    int _frameCounter{0};
-    bool _displayEnabled{false};
+    using Bus = M6800Bus<uint8_t,uint16_t>;
+    M6800Mock(Bus& bus) {}
+    void reset() {}
+    void getState(M6800State& state) const {}
+    void setState(const M6800State& state) {}
+    void executeInstruction() {}
+    void executeInstructionTraced() {}
+    std::string dumpStateLine() const { return ""; }
+    std::string disassembleCurrentInstruction() const { return ""; }
+    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) { return {0,""}; }
 };
 
-}
+}  // namespace emu

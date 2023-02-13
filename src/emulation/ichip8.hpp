@@ -26,6 +26,7 @@
 #pragma once
 
 #include <emulation/config.hpp>
+#include <emulation/hardware/genericcpu.hpp>
 
 #include <array>
 #include <cstdint>
@@ -48,7 +49,7 @@ struct Chip8State
     int st{};
 };
 
-class IChip8Emulator
+class IChip8Emulator : public GenericCpu
 {
 public:
     struct BreakpointInfo {
@@ -60,9 +61,10 @@ public:
     enum Engine {
         eCHIP8TS,       // templated core based on nested switch - this is the fastest (ch8,ch10,ch48,sc10,sc11,xo)
         eCHIP8MPT,      // method table based core - this is the most capable one (ch8,ch10,ch48,sc10,sc11,mc8,xo)
-        eCHIP8VIP       // cdp1802 based vip core running original emulator (not implemented yet, will only support <ch48 cores, but should run hybrids)
+        eCHIP8VIP,      // cdp1802 based vip core running original emulator (only supports <ch48 cores, but runs hybrids)
+        eCHIP8DREAM     // M6800 based DREAM6800 code running CHIPOS
     };
-    enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
+    //enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
     virtual ~IChip8Emulator() = default;
     virtual void reset() = 0;
@@ -72,17 +74,14 @@ public:
     virtual void tick(int instructionsPerFrame) = 0;
 
     virtual uint8_t getV(uint8_t index) const = 0;
-    virtual uint32_t getPC() const = 0;
     virtual uint32_t getI() const = 0;
-    virtual uint8_t getSP() const = 0;
+    //virtual uint8_t getSP() const = 0;
     virtual uint8_t stackSize() const = 0;
     virtual const uint16_t* getStackElements() const = 0;
 
     virtual uint8_t* memory() = 0;
-    virtual uint8_t* memoryCopy() = 0;
     virtual int memSize() const = 0;
 
-    virtual int64_t cycles() const = 0;
     virtual int64_t frames() const = 0;
 
     virtual uint8_t delayTimer() const = 0;
@@ -92,24 +91,16 @@ public:
     // Additional interfaces have default implementations that
     // allow using the unit tests without much overhead
     //---------------------------------------------------------
-    virtual std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) = 0;
+    virtual std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const = 0;
     virtual std::string dumpStateLine() const = 0;
 
     virtual bool isGenericEmulation() const { return true; }
 
     // defaults for unused debugger support
-    virtual void setExecMode(ExecMode mode) {}
-    virtual ExecMode execMode() const { return eRUNNING; }
     virtual CpuState cpuState() const { return eNORMAL; }
     virtual uint16_t opcode() {
         return (memory()[getPC()] << 8) | memory()[getPC() + 1];
     }
-    virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) {}
-    virtual void removeBreakpoint(uint32_t address) {}
-    virtual BreakpointInfo* findBreakpoint(uint32_t address) { return nullptr; }
-    virtual size_t numBreakpoints() const { return 0; }
-    virtual std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index) { return {0,nullptr}; }
-    virtual void removeAllBreakpoints() {}
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}
@@ -127,16 +118,6 @@ public:
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
     virtual uint8_t getXOPitch() const { return 0; }
     virtual uint8_t getNextMCSample() { return 0; }
-
-    // these are used to display changes between copyState calls, the default is to show no changes
-    // unit tests don't use this feature
-    virtual void copyState() {}
-    virtual uint8_t getCopyV(uint8_t index) const { return getV(index); }
-    virtual uint32_t getCopyI() const { return getI(); }
-    virtual uint8_t getCopyDT() const { return delayTimer(); }
-    virtual uint8_t getCopyST() const { return soundTimer(); }
-    virtual uint8_t getCopySP() const { return getSP(); }
-    virtual const uint16_t* getCopyStackElements() const { return getStackElements(); }
 };
 
 

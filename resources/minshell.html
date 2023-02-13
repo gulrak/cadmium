@@ -56,14 +56,12 @@
   <script type='text/javascript'>
     function saveFileFromMEMFSToDisk(memoryFSname, localFSname)     // This can be called by C/C++ code
     {
-      var isSafari = false; // Not supported, navigator.userAgent access is being restricted
+      let isSafari = false; // Not supported, navigator.userAgent access is being restricted
       //var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      var data = FS.readFile(memoryFSname);
-      var blob;
-
+      let data = FS.readFile(memoryFSname);
+      let blob;
       if (isSafari) blob = new Blob([data.buffer], { type: "application/octet-stream" });
       else blob = new Blob([data.buffer], { type: "application/octet-binary" });
-
       // NOTE: SaveAsDialog is a browser setting. For example, in Google Chrome,
       // in Settings/Advanced/Downloads section you have a setting:
       // 'Ask where to save each file before downloading' - which you can set true/false.
@@ -80,8 +78,23 @@
 <p id="output" />
 <script>
   var Module = {
+    arguments: (function(){
+      let args = window.location.search.substring(1).trim().split('&');
+      let result = [];
+      for (let i = 0; i < args.length; ++i) {
+        let param = decodeURI(args[i]).split(/=(.*)/s)
+        if(param[0].length > 1)
+          result.push('--' + param[0]);
+        else if(param[0].length == 1)
+          result.push('-' + param[0]);
+        if(param.length > 1)
+          result.push(param[1]);
+      }
+      console.log('ARGUMENTS: '+result.join(' '));
+      return result;
+    })(),
     print: (function() {
-      var element = document.getElementById('output');
+      let element = document.getElementById('output');
       if (element) element.value = ''; // clear browser cache
       return function(text) {
         if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
@@ -93,7 +106,7 @@
       };
     })(),
     canvas: (function() {
-      var canvas = document.getElementById('canvas');
+      let canvas = document.getElementById('canvas');
       return canvas;
     })()
   };

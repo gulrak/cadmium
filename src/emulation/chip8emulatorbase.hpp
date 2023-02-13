@@ -58,7 +58,6 @@ public:
         : Chip8OpcodeDisassembler(options)
         , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
-        , _memory_b(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x10000 : _memory.size(), 0)
     {
         _mcPalette[0] = be32(0x000000FF);
         _mcPalette[1] = be32(0xFFFFFFFF);
@@ -66,22 +65,16 @@ public:
         if(iother) {
             _cpuState = iother->cpuState();
             _rI = iother->getI();
-            _rI_b = iother->getCopyI();
             _rPC = iother->getPC();
             std::memcpy(_stack.data(), iother->getStackElements(), sizeof(uint16_t) * iother->stackSize());
-            std::memcpy(_stack_b.data(), iother->getCopyStackElements(), sizeof(uint16_t) * iother->stackSize());
             _rSP = iother->getSP();
-            _rSP_b = iother->getCopySP();
             _rDT = iother->delayTimer();
-            _rDT_b = iother->getCopyDT();
             _rST.store(iother->soundTimer());
             _wavePhase.store(iother->getAudioPhase());
             for (int i = 0; i < 16; ++i) {
                 _rV[i] = iother->getV(i);
-                _rV_b[i] = iother->getCopyV(i);
             }
             std::memcpy(_memory.data(), iother->memory(), std::min(_memory.size(), (size_t)iother->memSize()));
-            std::memcpy(_memory_b.data(), iother->memoryCopy(), std::min(_memory_b.size(), (size_t)iother->memSize()));
         }
         const auto* other = dynamic_cast<const Chip8EmulatorBase*>(iother);
         if(other) {
@@ -125,6 +118,66 @@ public:
     }
     ~Chip8EmulatorBase() override = default;
 
+    bool inErrorState() const override { return _cpuState == eERROR; }
+    uint32_t getCpuID() const override { return 0xC8; }
+    const std::string& getName() const override { static const std::string name = "GenericChip8"; return name; }
+    const std::vector<std::string>& getRegisterNames() const override {
+        static const std::vector<std::string> registerNames = {
+            "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7",
+            "V8", "V9", "VA", "VB", "VC", "VD", "VE", "VF",
+            "I", "DT", "ST", "PC", "SP"
+        };
+        return registerNames;
+    }
+    size_t getNumRegisters() const override { return 21; }
+    RegisterValue getRegister(size_t index) const override
+    {
+        if(index < 16)
+            return {_rV[index], 8};
+        if(index == 16)
+            return {_rI, 16};
+        else if(index == 17)
+            return {_rDT, 8};
+        else if(index == 18)
+            return {_rST, 8};
+        else if(index == 19)
+            return {_rPC, 16};
+        return {_rSP, 8};
+    }
+    void setRegister(size_t index, uint32_t value) override
+    {
+        if(index < 16)
+            _rV[index] = static_cast<uint8_t>(value);
+        else if(index == 16)
+            _rI = static_cast<uint16_t>(value);
+        else if(index == 17)
+            _rDT = static_cast<uint8_t>(value);
+        else if(index == 18)
+            _rST = static_cast<uint8_t>(value);
+        else if(index == 19)
+            _rPC = static_cast<uint16_t>(value);
+        else
+            _rSP = static_cast<uint8_t>(value);
+    }
+    uint8_t getMemoryByte(uint32_t addr) const override
+    {
+        return _memory[addr % _memory.size()];
+    }
+    std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
+    {
+        if(pc < 0) pc = _rPC;
+        uint8_t code[4];
+        for(size_t i = 0; i < 4; ++i) {
+            code[i] = getMemoryByte(pc + i);
+        }
+        auto [size, instruction] = disassembleInstruction(code, code + 4);
+        if(bytes)
+            *bytes = size;
+        if (size == 2)
+            return fmt::format("{:04X}: {:04X}       {}", pc, (code[0] << 8)|code[1], instruction);
+        return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
+    }
+
     void clearScreen()
     {
         std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT);
@@ -134,30 +187,27 @@ public:
                 c = black;
         }
     }
+
     std::string dumpStateLine() const override
     {
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
                            _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);
     }
 
-    void copyState() override;
 
     uint8_t getV(uint8_t index) const override { return _rV[index]; }
     uint32_t getPC() const override { return _rPC; }
     uint32_t getI() const override { return _rI; }
-    uint8_t getSP() const override { return _rSP; }
+    uint32_t getSP() const override { return _rSP; }
     uint8_t stackSize() const override { return _stack.size(); }
     const uint16_t* getStackElements() const override { return _stack.data(); }
-    void setExecMode(ExecMode mode) override { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = _rSP; }
-    ExecMode execMode() const override { return _execMode; }
     CpuState cpuState() const override { return _cpuState; }
     uint8_t delayTimer() const override { return _rDT; }
     uint8_t soundTimer() const override { return _rST; }
     uint8_t* memory() override { return _memory.data(); }
-    uint8_t* memoryCopy() override { return _memory_b.data(); }
     int memSize() const override { return _memory.size() - 1; }
     void reset() override;
-    int64_t cycles() const override { return _cycleCounter; }
+    int64_t getCycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
 
     inline void addCycles(emu::cycles_t cycles)
@@ -209,21 +259,6 @@ public:
     const uint8_t* getXOAudioPattern() const override { return _xoAudioPattern.data(); }
     uint8_t getXOPitch() const override { return _xoPitch; }
 
-    uint8_t getCopyV(uint8_t index) const override { return _rV_b[index]; }
-    uint32_t getCopyI() const override { return _rI_b; }
-    uint8_t getCopyDT() const override { return _rDT_b; }
-    uint8_t getCopyST() const override { return _rST_b; }
-    uint8_t getCopySP() const override { return _rSP_b; }
-    const uint16_t* getCopyStackElements() const override { return _stack_b.data(); }
-
-    void setBreakpoint(uint32_t address, const BreakpointInfo& bpi) override;
-    void removeBreakpoint(uint32_t address) override;
-    BreakpointInfo* findBreakpoint(uint32_t address) override;
-    size_t numBreakpoints() const override;
-    std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index) override;
-    void removeAllBreakpoints() override;
-    inline bool hasBreakPoint(uint32_t address) const { return _breakMap[address&0xfff] != 0; }
-
     std::pair<const uint8_t*, size_t> getSmallFontData() const;
     std::pair<const uint8_t*, size_t> getBigFontData() const;
 
@@ -234,20 +269,17 @@ public:
 
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
-    ExecMode _execMode{eRUNNING};
     CpuState _cpuState{eNORMAL};
     bool _isHires{false};
     bool _isMegaChipMode{false};
     bool _screenNeedsUpdate{false};
     uint8_t _planes{1};
-    uint16_t _stepOverSP{};
     int64_t _cycleCounter{0};
     int _frameCounter{0};
     int _clearCounter{0};
     uint32_t _rI{};
     uint32_t _rPC{};
     std::array<uint16_t,16> _stack{};
-    std::array<uint16_t,16> _stack_b{};
     uint8_t _rSP{};
     uint8_t _rDT{};
     std::atomic_uint8_t _rST{};
@@ -264,11 +296,6 @@ protected:
     std::array<uint8_t,16> _xxoPalette{};
     std::array<uint32_t,256> _mcPalette{};
     std::array<uint8_t,16> _rV{};
-    std::array<uint8_t,16> _rV_b{};
-    uint8_t _rSP_b{};
-    uint8_t _rDT_b{};
-    uint8_t _rST_b{};
-    uint16_t _rI_b{};
     uint16_t _spriteWidth{0};
     uint16_t _spriteHeight{0};
     uint8_t _collisionColor{1};
@@ -277,9 +304,6 @@ protected:
     Chip8EmulatorHost& _host;
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
-    std::vector<uint8_t> _memory_b{};
-    std::array<uint8_t,4096> _breakMap;
-    std::map<uint32_t,BreakpointInfo> _breakpoints;
     Time _systemTime{};
     /*
     inline static uint8_t _chip8font[] = {

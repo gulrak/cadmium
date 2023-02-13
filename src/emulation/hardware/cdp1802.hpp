@@ -25,9 +25,13 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#ifdef CADMIUM_WITH_GENERIC_CPU
+#include <emulation/hardware/genericcpu.hpp>
+#endif
+
 #include <emulation/time.hpp>
 
-#include <fmt/format.h>
+#include <fmt/include/fmt/format.h>
 
 #include <cstdint>
 #include <functional>
@@ -51,10 +55,31 @@ public:
     virtual void writeByte(uint16_t addr, uint8_t val) = 0;
 };
 
+struct Cdp1802State
+{
+    uint16_t r[16]{};
+    uint16_t p:4;
+    uint16_t x:4;
+    uint16_t n:4;
+    uint16_t i:4;
+    uint8_t t{};
+    uint8_t d{};
+    bool df{};
+    bool ie{};
+    bool q{};
+    int64_t cycles{};
+};
+
+#ifdef CADMIUM_WITH_GENERIC_CPU
+#define GENERIC_OVERRIDE override
+class Cdp1802 : public GenericCpu
+#else
+#define GENERIC_OVERRIDE
 class Cdp1802
+#endif
 {
 public:
-    enum ExecMode { eNORMAL, eIDLE, eHALT };
+    enum CpuState { eNORMAL, eIDLE, eHALT, eERROR };
     struct Disassembled {
         int size;
         std::string text;
@@ -71,7 +96,6 @@ public:
         _inputNEF = [](uint8_t) { return true; };
         reset();
     }
-    ~Cdp1802() {}
 
     void reset()
     {
@@ -85,7 +109,8 @@ public:
         _rIE = true;
         _cycles = 0;
         _systemTime = Time::zero;
-        _execMode = eNORMAL;
+        _execMode = eRUNNING;
+        _cpuState = eNORMAL;
     }
 
     void setOutputHandler(OutputHandler handler)
@@ -107,8 +132,8 @@ public:
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
-    int64_t getCycles() const { return _cycles; }
-    ExecMode getExecMode() const { return _execMode; }
+    int64_t getCycles() const GENERIC_OVERRIDE { return _cycles; }
+    CpuState getCpuState() const { return _cpuState; }
     uint16_t& PC() { return _rR[_rP]; }
     uint8_t getN() const { return _rN; }
     uint8_t getP() const { return _rP; }
@@ -118,6 +143,34 @@ public:
     uint8_t getT() const { return _rT; }
     uint16_t& RN() { return _rR[_rN]; }
     uint16_t& RX() { return _rR[_rX]; }
+    void getState(Cdp1802State& state) const
+    {
+        std::memcpy(state.r, _rR, sizeof(_rR));
+        state.p = _rP;
+        state.x = _rX;
+        state.n = _rN;
+        state.i = _rI;
+        state.t = _rT;
+        state.d = _rD;
+        state.df = _rDF;
+        state.ie = _rIE;
+        state.q = _rQ;
+        state.cycles = _cycles;
+    }
+    void setState(const Cdp1802State& state)
+    {
+        std::memcpy(_rR, state.r, sizeof(_rR));
+        _rP = state.p;
+        _rX = state.x;
+        _rN = state.n;
+        _rI = state.i;
+        _rT = state.t;
+        _rD = state.d;
+        _rDF = state.df;
+        _rIE = state.ie;
+        _rQ = state.q;
+        _cycles = state.cycles;
+    }
     uint8_t readByte(uint16_t addr) { return _bus.readByte(addr); }
     uint8_t readByteDMA(uint16_t addr) { return _bus.readByteDMA(addr); }
     void writeByte(uint16_t addr, uint8_t val) { _bus.writeByte(addr, val); }
@@ -153,18 +206,24 @@ public:
         addCycles(8);
     }
 
-    std::string disassembleCurrentStatement() const
+#ifdef CADMIUM_WITH_GENERIC_CPU
+    std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
+#else
+    std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const
+#endif
     {
-       uint8_t data[3];
-       data[0] = _bus.readByte(_rR[_rP]);
-       data[1] = _bus.readByte(_rR[_rP]+1);
-       data[2] = _bus.readByte(_rR[_rP]+2);
-       auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
-       switch(size) {
-           case 2:  return fmt::format("{:04x}:  {:02x} {:02x}  {}", _rR[_rP], data[0], data[1], text);
-           case 3:  return fmt::format("{:04x}:  {:02x} {:02x} {:02x}  {}", _rR[_rP], data[0], data[1], data[2], text);
-           default: return fmt::format("{:04x}:  {:02x}     {}", _rR[_rP], data[0], text);
-       }
+        auto addr = pc >= 0 ? pc : _rR[_rP];
+        uint8_t data[3];
+        data[0] = _bus.readByte(addr);
+        data[1] = _bus.readByte(addr+1);
+        data[2] = _bus.readByte(addr+2);
+        auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
+        if(bytes) *bytes = size;
+        switch(size) {
+           case 2:  return fmt::format("{:04x}: {:02x} {:02x}  {}", addr, data[0], data[1], text);
+           case 3:  return fmt::format("{:04x}: {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
+           default: return fmt::format("{:04x}: {:02x}     {}", addr, data[0], text);
+        }
     }
 
     std::string dumpStateLine() const
@@ -271,32 +330,34 @@ public:
             _rT = (_rX << 4) | _rP;
             _rP = 1;
             _rX = 2;
-            if(_execMode == eIDLE)
-                _execMode = eNORMAL;
+            if(_cpuState == eIDLE)
+                _cpuState = eNORMAL;
         }
     }
 
     void executeDMAIn(uint8_t data)
     {
         addCycles(8);
-        if(_execMode == eIDLE)
-            _execMode = eNORMAL;
+        if(_cpuState == eIDLE)
+            _cpuState = eNORMAL;
         writeByte(_rR[0]++, data);
     }
 
     uint8_t executeDMAOut()
     {
         addCycles(8);
-        if(_execMode == eIDLE)
-            _execMode = eNORMAL;
+        if(_cpuState == eIDLE)
+            _cpuState = eNORMAL;
         return readByteDMA(_rR[0]++);
     }
 
     void executeInstruction()
     {
+        if (_execMode == GenericCpu::ePAUSED || _cpuState == eERROR)
+            return;
         //if(!_rIE)
         //    std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
-        if(_execMode == eIDLE) {
+        if(_cpuState == eIDLE) {
             addCycles(8);
             return;
         }
@@ -305,7 +366,7 @@ public:
         _rN = opcode & 0xF;
         switch (opcode) {
             case 0x00: // IDL ; WAIT FOR DMA OR INTERRUPT; M(R(0)) → BUS
-                _execMode = eIDLE;
+                _cpuState = eIDLE;
                 break;
             CASE_15(0x01): // LDN Rn ; M(R(N)) → D; FOR N not 0
                 _rD = readByte(RN());
@@ -377,7 +438,7 @@ public:
                 _output(_rN, readByte(RX()++));
                 break;
             }
-            case 0x68: break; // ILLEGAL
+            case 0x68: _cpuState = eERROR; break; // ILLEGAL
             CASE_7(0x69): { // INP 1/7 ; BUS → M(R(X)); BUS → D; N LINES = N
                 _rD = _input(_rN&7);
                 writeByte(RX(), _rD);
@@ -601,18 +662,113 @@ public:
                 break;
             }
         }
-        //if(!_rIE)
-        //    std::clog << "CDP1802: " << dumpStateLine() << std::endl;
+        if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rR[_rP] >= _stepOverSP)) {
+            _execMode = ePAUSED;
+        }
+        if(hasBreakPoint(getPC())) {
+            if(findBreakpoint(getPC()))
+                _execMode = ePAUSED;
+        }
     }
+#ifdef CADMIUM_WITH_GENERIC_CPU
+    ~Cdp1802() override = default;
+    uint8_t getMemoryByte(uint32_t addr) const override
+    {
+        return _bus.readByteDMA(addr);
+    }
+    bool inErrorState() const override { return _cpuState == eERROR; }
+    uint32_t getCpuID() const override { return 1802; }
+    const std::string& getName() const override { static const std::string name = "CDP1802"; return name; }
+    const std::vector<std::string>& getRegisterNames() const override
+    {
+        static const std::vector<std::string> registerNames = {
+            "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
+            "R8", "R9", "RA", "RB", "RC", "RD", "RE", "RF",
+            "I", "N", "P", "X", "D", "DF", "T", "IE", "Q"
+        };
+        return registerNames;
+    }
+    size_t getNumRegisters() const override { return 25; }
+    RegisterValue getRegister(size_t index) const override
+    {
+        switch(index) {
+            case 0: return {_rR[0], 16};
+            case 1: return {_rR[1], 16};
+            case 2: return {_rR[2], 16};
+            case 3: return {_rR[3], 16};
+            case 4: return {_rR[4], 16};
+            case 5: return {_rR[5], 16};
+            case 6: return {_rR[6], 16};
+            case 7: return {_rR[7], 16};
+            case 8: return {_rR[8], 16};
+            case 9: return {_rR[9], 16};
+            case 10: return {_rR[10], 16};
+            case 11: return {_rR[11], 16};
+            case 12: return {_rR[12], 16};
+            case 13: return {_rR[13], 16};
+            case 14: return {_rR[14], 16};
+            case 15: return {_rR[15], 16};
+            case 16: return {_rI, 4};
+            case 17: return {_rN, 4};
+            case 18: return {_rP, 4};
+            case 19: return {_rX, 4};
+            case 20: return {_rD, 8};
+            case 21: return {_rDF, 1};
+            case 22: return {_rT, 8};
+            case 23: return {_rIE, 1};
+            case 24: return {_rQ, 1};
+            default: return {0,0};
+        }
+    }
+    void setRegister(size_t index, uint32_t value) override
+    {
+        switch(index) {
+            case 0: _rR[0] = static_cast<uint16_t>(value); break;
+            case 1: _rR[1] = static_cast<uint16_t>(value); break;
+            case 2: _rR[2] = static_cast<uint16_t>(value); break;
+            case 3: _rR[3] = static_cast<uint16_t>(value); break;
+            case 4: _rR[4] = static_cast<uint16_t>(value); break;
+            case 5: _rR[5] = static_cast<uint16_t>(value); break;
+            case 6: _rR[6] = static_cast<uint16_t>(value); break;
+            case 7: _rR[7] = static_cast<uint16_t>(value); break;
+            case 8: _rR[8] = static_cast<uint16_t>(value); break;
+            case 9: _rR[9] = static_cast<uint16_t>(value); break;
+            case 10: _rR[12] = static_cast<uint16_t>(value); break;
+            case 11: _rR[11] = static_cast<uint16_t>(value); break;
+            case 12: _rR[12] = static_cast<uint16_t>(value); break;
+            case 13: _rR[13] = static_cast<uint16_t>(value); break;
+            case 14: _rR[14] = static_cast<uint16_t>(value); break;
+            case 15: _rR[15] = static_cast<uint16_t>(value); break;
+            case 16: _rI = value & 0xF; break;
+            case 17: _rN = value & 0xF; break;
+            case 18: _rP = value & 0xF; break;
+            case 19: _rX = value & 0xF; break;
+            case 20: _rD = static_cast<uint8_t>(value); break;
+            case 21: _rDF = value != 0; break;
+            case 22: _rT = static_cast<uint8_t>(value); break;
+            case 23: _rIE = value != 0; break;
+            case 24: _rQ = value != 0; break;
+            default: break;
+        }
+    }
+    uint32_t getPC() const override
+    {
+        return _rR[_rP];
+    }
+
+    uint32_t getSP() const override
+    {
+        return _rR[2];
+    }
+#endif
 private:
     Cdp1802Bus& _bus;
     OutputHandler _output;
     InputHandler _input;
     NEFInputHandler _inputNEF;
-    ExecMode _execMode{eNORMAL};
+    CpuState _cpuState{eNORMAL};
     uint8_t _rD{};
     bool _rDF{};
-    uint8_t _rB{};
     uint16_t _rR[16]{};
     uint16_t _rP:4;
     uint16_t _rX:4;

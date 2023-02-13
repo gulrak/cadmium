@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <fstream>
 #include <cmath>
@@ -59,6 +60,29 @@ inline std::string trimRight(std::string s)
 inline std::string trim(std::string s)
 {
     return trimRight(trimLeft(s));
+}
+
+inline std::string trimMultipleSpaces(std::string s)
+{
+    auto result = s;
+    std::string::iterator end = std::unique(result.begin(), result.end(), [](char lhs, char rhs){ return (lhs == rhs) && (lhs == ' '); });
+    result.erase(end, result.end());
+    return result;
+}
+
+template <typename OutIter>
+inline void split(const std::string &s, char delimiter, OutIter result) {
+    std::istringstream is(s);
+    std::string part;
+    while (std::getline(is, part, delimiter)) {
+        *result++ = part;
+    }
+}
+
+inline std::vector<std::string> split(const std::string &s, char delimiter) {
+    std::vector<std::string> result;
+    split(s, delimiter, std::back_inserter(result));
+    return result;
 }
 
 inline std::vector<uint8_t> loadFile(const std::string& file)

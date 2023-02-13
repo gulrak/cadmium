@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #include <emulation/chip8cores.hpp>
 #include <emulation/chip8emulatorbase.hpp>
+#include <emulation/chip8dream.hpp>
 #include <emulation/logger.hpp>
 
 namespace emu {
@@ -277,6 +278,9 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
     else if(engine == eCHIP8VIP) {
         return std::make_unique<Chip8VIP>(host, options, iother);
     }
+    else if(engine == eCHIP8DREAM) {
+        return std::make_unique<Chip8Dream>(host, options, iother);
+    }
     return std::make_unique<Chip8EmulatorVIP>(host, options, iother);
 }
 
@@ -316,18 +320,6 @@ void Chip8EmulatorBase::reset()
     _spriteWidth = 0;
     _spriteHeight = 0;
     _collisionColor = 1;
-    copyState();
-}
-
-void Chip8EmulatorBase::copyState()
-{
-    std::memcpy(_rV_b.data(), _rV.data(), sizeof(uint8_t)*16);
-    std::memcpy(_stack_b.data(), _stack.data(), sizeof(uint16_t)*16);
-    std::memcpy(_memory_b.data(), _memory.data(), sizeof(uint8_t)*_memory_b.size());
-    _rSP_b = _rSP;
-    _rDT_b = _rDT;
-    _rST_b = _rST;
-    _rI_b = _rI;
 }
 
 void Chip8EmulatorBase::tick(int instructionsPerFrame)
@@ -343,57 +335,6 @@ void Chip8EmulatorBase::tick(int instructionsPerFrame)
     else {
         executeInstructions(instructionsPerFrame);
     }
-}
-
-void Chip8EmulatorBase::setBreakpoint(uint32_t address, const BreakpointInfo& bpi)
-{
-    _breakpoints[address] = bpi;
-    _breakMap[address & 0xFFF] = 1;
-}
-
-void Chip8EmulatorBase::removeBreakpoint(uint32_t address)
-{
-    _breakpoints.erase(address);
-    size_t count = 0;
-    uint32_t masked = address & 0xFFF;
-    for(const auto& [addr, bpi] : _breakpoints) {
-        if((addr & 0xFFF) == masked) {
-            _breakMap[masked] = 1;
-            return;
-        }
-    }
-    _breakMap[masked] = 0;
-}
-
-IChip8Emulator::BreakpointInfo* Chip8EmulatorBase::findBreakpoint(uint32_t address)
-{
-    if(_breakMap[address & 0xFFF]) {
-        auto iter = _breakpoints.find(address);
-        if(iter != _breakpoints.end())
-            return &iter->second;
-    }
-    return nullptr;
-}
-
-size_t Chip8EmulatorBase::numBreakpoints() const
-{
-    return _breakpoints.size();
-}
-
-std::pair<uint32_t, IChip8Emulator::BreakpointInfo*> Chip8EmulatorBase::getNthBreakpoint(size_t index)
-{
-    size_t count = 0;
-    for(auto& [addr, bpi] : _breakpoints) {
-        if(count++ == index)
-            return {addr, &bpi};
-    }
-    return {0, nullptr};
-}
-
-void Chip8EmulatorBase::removeAllBreakpoints()
-{
-    std::memset(_breakMap.data(), 0, 4096);
-    _breakpoints.clear();
 }
 
 }  // namespace emu
