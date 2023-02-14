@@ -28,6 +28,8 @@
 #define M6800_STATE_BUS_ONLY
 #include <emulation/hardware/m6800.hpp>
 
+#include <functional>
+
 namespace emu {
 
 class MC682x : public M6800Bus<>
