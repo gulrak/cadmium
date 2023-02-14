@@ -40,6 +40,7 @@ public:
     void executeInstructionTraced() {}
     std::string dumpStateLine() const { return ""; }
     std::string disassembleCurrentInstruction() const { return ""; }
+    std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const { if(bytes) bytes = 0; return ""; }
     std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) { return {0,""}; }
 };
 
