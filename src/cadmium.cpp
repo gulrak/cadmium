@@ -945,7 +945,7 @@ public:
             // Screen size x2
             if (GetScreenWidth() < _screenWidth * 2) {
                 SetWindowSize(_screenWidth * 2, _screenHeight * 2);
-                CenterWindow(_screenWidth * 2, _screenHeight * 2);
+                //CenterWindow(_screenWidth * 2, _screenHeight * 2);
                 SetMouseScale(0.5f, 0.5f);
             }
         }
@@ -953,7 +953,7 @@ public:
             // Screen size x1
             if (_screenWidth < GetScreenWidth()) {
                 SetWindowSize(_screenWidth, _screenHeight);
-                CenterWindow(_screenWidth, _screenHeight);
+                //CenterWindow(_screenWidth, _screenHeight);
                 SetMouseScale(1.0f, 1.0f);
             }
         }

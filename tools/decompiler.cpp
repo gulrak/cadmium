@@ -187,7 +187,7 @@ int main(int argc, char* argv[])
             continue;
         if(fs::is_directory(input)) {
             for(const auto& de : fs::recursive_directory_iterator(input, fs::directory_options::skip_permission_denied)) {
-                if(de.is_regular_file() && isChipRom(de.path().extension())) {
+                if(de.is_regular_file() && isChipRom(de.path().extension().string())) {
                     auto file = loadFile(de.path().string());
                     auto [isDouble, firstName] = checkDouble(de.path().string(), file);
                     if(isDouble) {

@@ -224,7 +224,7 @@ std::string dataPath()
     }
     std::string dir;
 #ifdef HOST_OS_WINDOWS
-    auto localAppData = getSysEnv("localappdata");
+    auto localAppData = getSysEnv("LOCALAPPDATA");
     if (!localAppData.empty()) {
         dir = (fs::path(localAppData) / appName()).string();
     }

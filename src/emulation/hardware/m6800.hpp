@@ -52,6 +52,22 @@
 #include <cstdint>
 #include <string>
 
+#ifdef __has_include
+#if !defined(__EMSCRIPTEN__) && !defined(CADMIUM_WITH_GENERIC_CPU) && __has_include(<format>)
+#include <format>
+namespace emu {
+using std::format;
+}
+#elif __has_include(<fmt/format.h>)
+#include <fmt/format.h>
+namespace emu {
+using fmt::format;
+}
+#else
+#error "Need __has_include support and either <format> or <fmt/format.h> in include path!"
+#endif
+#endif
+
 #ifndef M6800_STATE_BUS_ONLY
 
 #ifdef M6800_SPECULATIVE_SUPPORT
@@ -61,21 +77,6 @@
     #include <emulation/time.hpp>
 #endif
 
-#ifdef __has_include
-#if !defined(__EMSCRIPTEN__) && __has_include(<format>)
-    #include <format>
-    namespace emu {
-        using std::format;
-    }
-#elif __has_include(<fmt/format.h>)
-    #include "fmt/include/fmt/format.h"
-    namespace emu {
-        using fmt::format;
-    }
-#else
-#error "Need __has_include support and either <format> or <fmt/format.h> in include path!"
-#endif
-#endif
 
 namespace emu {
 
@@ -120,7 +121,11 @@ constexpr T asNativeInt(const T& t) { return t; }
 // clang-format on
 #endif
 
+}
+
 #endif // M6800_STATE_BUS_ONLY
+
+namespace emu {
 
 template<typename byte_t = uint8_t, typename word_t = uint16_t>
 class M6800Bus

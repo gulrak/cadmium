@@ -257,7 +257,7 @@ private:
         _cpuRef.setState(_state.initialState);
         {
             _mode = eDISASSEMBLE;
-            _state.name = trim(_cpuRef.disassembleCurrentInstruction());
+            _state.name = trim(_cpuTest.disassembleInstructionWithBytes(-1, nullptr));
             _mode = eGENERATE;
         }
         _cpuRef.executeInstruction();
@@ -272,7 +272,7 @@ private:
         _cpuTest.setState(_state.initialState);
         if(_state.name.empty()) {
             _mode = eDISASSEMBLE;
-            _state.name = trim(_cpuTest.disassembleCurrentInstruction());
+            _state.name = trim(_cpuTest.disassembleInstructionWithBytes(-1, nullptr));
             _mode = eTEST;
         }
         _cpuTest.executeInstruction();
