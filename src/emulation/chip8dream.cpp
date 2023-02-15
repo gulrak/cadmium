@@ -30,6 +30,8 @@
 #include <emulation/hardware/keymatrix.hpp>
 #include <emulation/utility.hpp>
 
+#include <nlohmann/json.hpp>
+
 //#define USE_CHIPOSLO
 
 #include <atomic>
@@ -141,11 +143,18 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
     : Chip8RealCoreBase(host, options)
     , _impl(new Private(host, *this, options))
 {
-#ifndef USE_CHIPOSLO
-    std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
-#else
-    std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-#endif
+    if(_options.advanced && _options.advanced->contains("kernel") && _options.advanced->at("kernel") == "chiposlo")
+        std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
+    else
+        std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
+    _impl->_pia.irqAOutputHandler = [this](bool level) {
+        if(!level)
+            _impl->_cpu.irq();
+    };
+    _impl->_pia.irqBOutputHandler = [this](bool level) {
+        if(!level)
+            _impl->_cpu.irq();
+    };
     _impl->_pia.portAOutputHandler = [this](uint8_t data, uint8_t mask) {
         _impl->_keyMatrix.setCols(data & 0xF, mask & 0xF);
         _impl->_keyMatrix.setRows(data >> 4, mask >> 4);
@@ -191,11 +200,6 @@ void Chip8Dream::reset()
     if(_options.optTraceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
     std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
-#ifndef USE_CHIPOSLO
-    std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
-#else
-    std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-#endif
     std::memset(_impl->_screenBuffer.data(), 0, 256*192);
     _impl->_cpu.reset();
     _impl->_ram[0x006] = 0xC0;
@@ -223,7 +227,7 @@ void Chip8Dream::reset()
 
 std::string Chip8Dream::name() const
 {
-    return "Chip-8-DREAM";
+    return "DREAM6800";
 }
 
 void Chip8Dream::fetchState()
@@ -264,9 +268,12 @@ int Chip8Dream::executeVDG()
     auto fc = frameCycle();
     if(fc < lastFC) {
         flushScreen();
+        // CPU is halted for 124*64 Cycles while video frame is generated
         _impl->_cpu.addCycles(128*64);
         ++_frames;
-        _impl->_cpu.irq();
+        // Trigger RTC/VSYNC on PIA (Will trigger IRQ on CPU)
+        _impl->_pia.pinCB1(true);
+        _impl->_pia.pinCB1(false);
         _impl->_keyMatrix.updateKeys(_host.getKeyStates());
     }
     lastFC = fc;
@@ -335,7 +342,7 @@ void Chip8Dream::executeInstruction()
     }
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
     auto start = _impl->_cpu.getCycles();
-    while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.getCycles() - start < 19968*14);
+    while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.getCycles() - start < 19968*0x30);
 }
 
 void Chip8Dream::executeInstructions(int numInstructions)

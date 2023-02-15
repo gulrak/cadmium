@@ -29,6 +29,15 @@ jobs:
     steps:
     - uses: actions/checkout@v1
 
+
+    - name: Install dependencies
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt install libasound2-dev mesa-common-dev libx11-dev libxrandr-dev libxi-dev xorg-dev libgl1-mesa-dev libglu1-mesa-dev
+        fi
+      shell: bash
+        
+
     - name: Download Ninja and CMake
       id: cmake_and_ninja
       shell: cmake -P {0}

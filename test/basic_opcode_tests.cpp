@@ -216,11 +216,17 @@ TEST_CASE(C8CORE "8xy4 - vx += vy, set vF to 1 on overflow, 0 if not")
     step(chip8); // #5
     CheckState(chip8, {.i = 0, .pc= 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0x84}, .stack = {}}, "vF := 0x84");
     step(chip8); // #6
-    CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF += v3, vF is also carry flag, should be cleared");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0xEC}, .stack = {}}, "vF += v3, vF is also carry flag, but CHIPOS overwrites it");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF += v3, vF is also carry flag, should be cleared");
     step(chip8); // #7
     CheckState(chip8, {.i = 0, .pc= 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0xDA}, .stack = {}}, "vF := 0xDA");
     step(chip8); // #8
-    CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF += v3, vF is also carry flag, should be set");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,0x42}, .stack = {}}, "vF += v3, vF is also carry flag, but CHIPOS overwrites it");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0x68, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF += v3, vF is also carry flag, should be set");
 }
 
 TEST_CASE(C8CORE "8xy5 - vx -= vy, set vF to 0 if underflow, 1 if not")
@@ -239,11 +245,17 @@ TEST_CASE(C8CORE "8xy5 - vx -= vy, set vF to 0 if underflow, 1 if not")
     step(chip8); // #5
     CheckState(chip8, {.i = 0, .pc= 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0x84}, .stack = {}}, "vF := 0x84");
     step(chip8); // #6
-    CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF -= v1, vF is also carry flag, should be set to 1 as no underflow");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0x51}, .stack = {}}, "vF -= v1, vF is also carry flag, but CHIPOS ignores it");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF -= v1, vF is also carry flag, should be set to 1 as no underflow");
     step(chip8); // #7
     CheckState(chip8, {.i = 0, .pc= 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0x30}, .stack = {}}, "vF := 0x30");
     step(chip8); // #8
-    CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF -= v1, vF is also carry flag, should be set to 0, as there is underflow");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0xFD}, .stack = {}}, "vF -= v1, vF is also carry flag, but CHIPOS ignores it");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x33,0,0xFE, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF -= v1, vF is also carry flag, should be set to 0, as there is underflow");
 }
 
 TEST_CASE(C8CORE "8xx6 - vx >>= vx, lost bit in vF, basic shift test is quirk agnostic")
@@ -260,11 +272,17 @@ TEST_CASE(C8CORE "8xx6 - vx >>= vx, lost bit in vF, basic shift test is quirk ag
     step(chip8);  // #4
     CheckState(chip8, {.i = 0, .pc = 0x208, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x84}, .stack = {}}, "vF := 0x84");
     step(chip8);  // #5
-    CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF >>= vF, vF set to 0");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x42}, .stack = {}}, "vF >>= vF, CHIPOSLO overwrites the bit in VF");
+    else
+        CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF >>= vF, vF set to 0");
     step(chip8);  // #6
     CheckState(chip8, {.i = 0, .pc = 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x83}, .stack = {}}, "vF := 0x83");
     step(chip8);  // #7
-    CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF >>= vF, vF set to 1");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x41}, .stack = {}}, "vF >>= vF, CHIPOSLO overwrites the bit in VF");
+    else
+        CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0xC, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF >>= vF, vF set to 1");
 }
 
 TEST_CASE(C8CORE "8xy7 - vx = vy-vx, set vF to 0 if underflow, 1 if not")
@@ -283,11 +301,17 @@ TEST_CASE(C8CORE "8xy7 - vx = vy-vx, set vF to 0 if underflow, 1 if not")
     step(chip8); // #5
     CheckState(chip8, {.i = 0, .pc= 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0x84}, .stack = {}}, "vF := 0x84");
     step(chip8); // #6
-    CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF = v3-vF, vF is also carry flag, should be set to 1 as no underflow");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0x4B}, .stack = {}}, "vF = v3-vF, vF is also carry flag, but CHIPOSLO ignores that");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,1}, .stack = {}}, "vF = v3-vF, vF is also carry flag, should be set to 1 as no underflow");
     step(chip8); // #7
     CheckState(chip8, {.i = 0, .pc= 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0xA0}, .stack = {}}, "vF := 0xA0");
     step(chip8); // #8
-    CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF = v1-vF, vF is also carry flag, should be set to 0, as there is underflow");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0xFC}, .stack = {}}, "vF = v1-vF, vF is also carry flag, but CHIPOSLO ignores that");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x210, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x9C,0,0xCF, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "vF = v1-vF, vF is also carry flag, should be set to 0, as there is underflow");
 }
 
 TEST_CASE(C8CORE "8xxE - vx <<= vx, lost bit in vF, basic shift test is quirk agnostic")
@@ -304,11 +328,17 @@ TEST_CASE(C8CORE "8xxE - vx <<= vx, lost bit in vF, basic shift test is quirk ag
     step(chip8);  // #4
     CheckState(chip8, {.i = 0, .pc = 0x208, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x84}, .stack = {}}, "vF := 0x84");
     step(chip8);  // #5
-    CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF <<= vF, vF set to 1");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8}, .stack = {}}, "vF <<= vF, CHIPOSLO overwrites the bit in VF");
+    else
+        CheckState(chip8, {.i = 0, .pc = 0x20a, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, .stack = {}}, "vF <<= vF, vF set to 1");
     step(chip8);  // #6
     CheckState(chip8, {.i = 0, .pc = 0x20c, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x43}, .stack = {}}, "vF := 0x43");
     step(chip8);  // #7
-    CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF <<= vF, vF set to 0");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x86}, .stack = {}}, "vF <<= vF, CHIPOSLO overwrites the bit in VF");
+    else
+        CheckState(chip8, {.i = 0, .pc = 0x20e, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0, 0x88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, .stack = {}}, "vF <<= vF, vF set to 0");
 }
 
 TEST_CASE(C8CORE "9xy0 - skip if vx != vy")
@@ -372,7 +402,10 @@ TEST_CASE(C8CORE "Fx18 - ST = vx")
     step(chip8);
     CheckState(chip8, {.i = 0, .pc= 0x202, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x25,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v1 := 0x25");
     step(chip8);
-    CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 0, .dt = TIMER_DEFAULT, .st = 0x25, .v = {0,0x25,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "st := v1");
+    if(chip8->name() == "DREAM6800")
+        CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 0, .dt = TIMER_DEFAULT, .st = 0x00, .v = {0,0x25,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "st := v1");
+    else
+        CheckState(chip8, {.i = 0, .pc= 0x204, .sp = 0, .dt = TIMER_DEFAULT, .st = 0x25, .v = {0,0x25,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "st := v1");
 }
 
 TEST_CASE(C8CORE "Fx07 - vx = DT")

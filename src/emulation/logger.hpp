@@ -77,7 +77,7 @@ public:
 
     void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) override
     {
-        auto content = source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)frameTime.frame, (int)frameTime.cycle, msg) : fmt::format("[      ] {}", msg);
+        auto content = source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)frameTime.frame, (int)frameTime.cycle, msg) : fmt::format("[      ] {}", msg);
         _outStream << content << std::endl;
     }
 

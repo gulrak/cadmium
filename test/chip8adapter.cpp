@@ -154,7 +154,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     switch(variant) {
         case C8TV_GENERIC:
         case C8TV_C8:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eC8D68CHIPOSLO);
             break;
         default:
             return nullptr;

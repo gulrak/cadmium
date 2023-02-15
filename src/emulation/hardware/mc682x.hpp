@@ -76,11 +76,11 @@ public:
 
 
 private:
-    static inline bool isC1LowHigh(uint8_t ctrl) { return !(ctrl & C1C1); }
+    static inline bool isC1LowHigh(uint8_t ctrl) { return (ctrl & C1C1); }
     static inline bool isC2Output(uint8_t ctrl) { return ctrl & C2C2; }
     static inline bool isC2Strobe(uint8_t ctrl) { return !(ctrl & C2C1); }
     static inline bool isC2StrobeEReset(uint8_t ctrl) { return ctrl & C2C0; }
-    static inline bool isC2LowHigh(uint8_t ctrl) { return !(ctrl & C2C1); }
+    static inline bool isC2LowHigh(uint8_t ctrl) { return (ctrl & C2C1); }
     static inline bool isC2Set(uint8_t ctrl) { return (ctrl & C2C1); }
     static inline bool isC2Value(uint8_t ctrl) { return (ctrl & C2C0); }
     static inline bool isIrq1Enabled(uint8_t ctrl) { return ctrl & C1C0; }

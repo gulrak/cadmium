@@ -34,7 +34,7 @@
 namespace emu {
 
 struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8DREAM, eCHICUEYI, eNUM_PRESETS };
+    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, eNUM_PRESETS };
     SupportedPreset behaviorBase{eCHIP8};
     uint16_t startAddress{0x200};
     bool optJustShiftVx{false};
@@ -52,6 +52,7 @@ struct Chip8EmulatorOptions {
     bool optChicueyiSound{false};
     bool optTraceLog{false};
     int instructionsPerFrame{9};
+    std::shared_ptr<nlohmann::ordered_json> advanced;
     Chip8Variant presetAsVariant() const;
     //static SupportedPreset variantAsPreset(Chip8Variant variant);
     static std::string nameOfPreset(SupportedPreset preset);

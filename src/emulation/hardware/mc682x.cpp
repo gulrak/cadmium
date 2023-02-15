@@ -214,17 +214,17 @@ void MC682x::writeByte(uint16_t addr, uint8_t val)
 
 void MC682x::updateIrq() const
 {
-    auto irqA = ((_ctrlA & IRQ1) && isIrq1Enabled(_ctrlA)) || ((_ctrlA && IRQ2) && isIrq2Enabled(_ctrlA));
+    auto irqA = ((_ctrlA & IRQ1) && isIrq1Enabled(_ctrlA)) || ((_ctrlA & IRQ2) && isIrq2Enabled(_ctrlA));
     if(_irqA != irqA) {
         _irqA = irqA;
         if(irqAOutputHandler)
-            irqAOutputHandler(_irqA);
+            irqAOutputHandler(!_irqA);
     }
-    auto irqB = ((_ctrlB & IRQ1) && isIrq1Enabled(_ctrlB)) || ((_ctrlB && IRQ2) && isIrq2Enabled(_ctrlB));
+    auto irqB = ((_ctrlB & IRQ1) && isIrq1Enabled(_ctrlB)) || ((_ctrlB & IRQ2) && isIrq2Enabled(_ctrlB));
     if(_irqB != irqB) {
         _irqB = irqB;
         if(irqBOutputHandler)
-            irqBOutputHandler(_irqB);
+            irqBOutputHandler(!_irqB);
     }
 }
 
@@ -278,7 +278,7 @@ void MC682x::portB(uint8_t val)
 
 void MC682x::pinCB1(bool val)
 {
-    if(val != _cb1In && val == isC2LowHigh(_ctrlB)) {
+    if(val != _cb1In && val == isC1LowHigh(_ctrlB)) {
         _ctrlB |= IRQ1;
         updateIrq();
         if(isC2Output(_ctrlB) && isC2Strobe(_ctrlB) && !isC2StrobeEReset(_ctrlB) && !(_ctrlB & IRQ1)) {

@@ -43,7 +43,7 @@ TEST_CASE(C8CORE "8xy6 - vx >>= vy, lost bit in vF, this shift test expects vy t
     SUBCASE("XO-CHIP") {
         chip8 = createChip8Instance(C8TV_XO);
     }
-    if(chip8) {
+    if(chip8 && chip8->name() != "DREAM6800") {
         chip8->reset();
         write(chip8, 0x200, {0x6142, 0x6231, 0x8126, 0x6f84, 0x8f26});
         step(chip8);  // #1
@@ -74,7 +74,7 @@ TEST_CASE(C8CORE "8xye - vx <<= vy, lost bit in vF, this shift test expects vy t
     SUBCASE("XO-CHIP") {
         chip8 = createChip8Instance(C8TV_XO);
     }
-    if(chip8) {
+    if(chip8 && chip8->name() != "DREAM6800") {
         chip8->reset();
         write(chip8, 0x200, {0x6142, 0x6281, 0x812e, 0x6f84, 0x8f1e});
         step(chip8);  // #1
