@@ -23,6 +23,7 @@ else()
         )
         add_custom_target(cadmium_icon DEPENDS cadmium_icon.png)
     endif()
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     add_custom_command(
         OUTPUT resourcedata.c
         COMMAND resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
