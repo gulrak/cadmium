@@ -46,7 +46,6 @@ extern "C" {
 #include <emulation/time.hpp>
 #include <emulation/utility.hpp>
 #include <ghc/cli.hpp>
-#include <ghc/filesystem.hpp>
 #include <librarian.hpp>
 #include <systemtools.hpp>
 #include <resourcemanager.hpp>
