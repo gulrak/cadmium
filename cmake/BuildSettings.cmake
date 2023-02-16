@@ -77,7 +77,7 @@ if (NOT raylib_POPULATED)
     set(FETCHCONTENT_QUIET NO)
     FetchContent_Populate(raylib)
     set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR})
+    add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
 FetchContent_Declare(
@@ -86,8 +86,26 @@ FetchContent_Declare(
     GIT_TAG "v2.4.9"
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(DocTest)
+FetchContent_GetProperties(DocTest)
+if(NOT doctest_POPULATED)
+    FetchContent_Populate(doctest)
+    add_subdirectory(${doctest_SOURCE_DIR} ${doctest_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
+# FetchContent_MakeAvailable(DocTest)
 include_directories(${DOCTEST_INCLUDE_DIR})
+
+FetchContent_Declare(
+        GhcFilesystem
+        GIT_REPOSITORY "https://github.com/gulrak/filesystem.git"
+        GIT_TAG "v1.5.12"
+        GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(GhcFilesystem)
+if(NOT ghcfilesystem_POPULATED)
+    FetchContent_Populate(GhcFilesystem)
+    add_subdirectory(${ghcfilesystem_SOURCE_DIR} ${ghcfilesystem_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
+#FetchContent_MakeAvailable(GhcFilesystem)
 
 find_package(Git)
 if(GIT_FOUND)

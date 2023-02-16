@@ -28,14 +28,12 @@
 #include <emulation/chip8decompiler.hpp>
 #include <emulation/chip8compiler.hpp>
 #include <emulation/utility.hpp>
+#include <filesystem.hpp>
 
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
-
-namespace fs = std::filesystem;
 
 enum WorkMode { eDISASSEMBLE, eANALYSE, eSEARCH };
 static std::unordered_map<std::string, std::string> fileMap;

@@ -25,10 +25,12 @@
 //---------------------------------------------------------------------------------------
 
 #include <systemtools.hpp>
+#include <filesystem.hpp>
+
 #include <ghc/utf8.hpp>
+
 #include <chrono>
 #include <ctime>
-#include <filesystem>
 #include <regex>
 #include <stdexcept>
 
@@ -57,7 +59,6 @@
 #include <unistd.h>
 #endif
 
-namespace fs = std::filesystem;
 
 namespace {
 

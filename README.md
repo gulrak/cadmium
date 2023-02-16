@@ -203,6 +203,7 @@ cmake --build build
   This repository contains valuable information on the specifics of
   CHIP-48/Super-Chip that go beyond the specification of Super-Chip.
 
+
 ### Other Emulators used for Verification
 
 * [Octo](https://johnearnest.github.io/Octo/) - This has to be the first one named,
@@ -214,16 +215,91 @@ cmake --build build
   more than 4 colors in XO-Chip mode this emulator helped to compare the results
   and test the very advanced and resource hungry roms its author has written.
 
+
 ### Libraries
 
 * [raylib](https://www.raylib.com) - the fun game programming library that
-  inspired me to write this.
+  inspired me to write this _(automatically fetched during configuration from a fork)_
+* [raygui](https://github.com/raysan5/raygui) - the lightweight immediate mode
+  gui library for raylib _(contained in my wrapper rlguipp)_
 * [c-octo assembler](https://github.com/JohnEarnest/c-octo) - the octo
-  assembler for support of generating binaries from [Octo assembler syntax](http://johnearnest.github.io/Octo/docs/Manual.html).
+  assembler for support of generating binaries from [Octo assembler syntax](http://johnearnest.github.io/Octo/docs/Manual.html)
+  _(containied in `external/c-octo`)_
 * [fmtlib](https://github.com/fmtlib/fmt) - a modern formatting library in
-  the style of C++20 std::format
+  the style of C++20 std::format _(contained in `external/fmt`)_
 * [date](https://howardhinnant.github.io/date/date.html) - A date and time
-  library based on the C++11/14/17 &lt;chrono&gt; header
+  library based on the C++11/14/17 &lt;chrono&gt; header _(contained in `external/date`)_
+* [json for modern c++](https://github.com/nlohmann/json) - A flexible and
+  nice to use JSON implementation _(contained in `external/nlohmann`)_
+* [ghc::filesystem](https://github.com/gulrak/filesystem) - An implementation
+  of std::filesystem for C++11/14/17/20 that also works on MingW variants
+  that don't have a working std::filesystem in C++17 and with better utf8
+  support _(automatically fetched during configuration)_
+
+
+# Special Credits
+
+Cadmium started as a "Well I guess I should at least implement CHIP-8
+once" project, after I already privately had fun writing emulators
+But the combined early reactions from the raylib Discord and the
+Emulation Development Discord gave me so much fun that I started to
+dig more into the subject. So **first of all a big thank you to all
+those who pushed me with their nice comments and inspirational
+remarks, I can't name you all, but it really did kick off this project**.
+
+I still want to give out some explicit thanks to:
+
+* _Ramon Santamaria (@raysan5)_ - I stumbled across [raylib](https://www.raylib.com/)
+  at the end of 2021 and since 2022 I started using it for some experiments and
+  then took part in the raylib game jam and had so much fun. Without
+  raylib I wouldn't have started this, it was originally a test bed
+  for my wrapper of Ramons [raygui](https://github.com/raysan5/raygui) but
+  instead became a life of its own.
+
+* _John Earnest (@JohnEarnest)_ - for his great Octo and for XO-Chip,
+  while I still would have loved for some things to be different in
+  Octo Assembly Syntax, I really appreciate that this new variant
+  got CHIP-8 development to a more modern level, made it more
+  accessible and together with the great [web based IDE](https://johnearnest.github.io/Octo/)
+  gave CHIP-8 a new live and the idea of a yearly [OctoJam](https://itch.io/jam/octojam-9)
+  sure helped, pushing it. Thank you for that!\
+  His [C-Octo implementation](https://github.com/JohnEarnest/c-octo) of the assembler
+  also is embedded in Cadmium and drives its assembling capabilities:
+
+* _Tim Franssen (@Timendus)_ - for his
+  [CHIP-8 Test Suite](https://github.com/Timendus/chip8-test-suite)
+  helped me a great deal in finding issues and get a better understanding of the
+  quirks that differentiate the CHIP-8 variants, and for his work
+  on a [binary CHIP-8 container](https://github.com/Timendus/chip8-binary-format)
+  that could carry emulation parameter allowing easy set-up for roms.
+
+* _@NinjaWeedle_ - for his great help and countless tests to get some
+  flesh on the very skinny original MegaChip8 specs to allow actually
+  support this exotic CHIP-8 variant ant maybe help it to be more
+  accepted. This work resulted in his extended
+  [MegaChip8 documentation](https://github.com/NinjaWeedle/MegaChip8).
+
+* _@Kouzeru_ - for pushing me into supporting
+  [XO-Audio](http://johnearnest.github.io/Octo/docs/XO-ChipSpecification.html#audio)
+  and the creative discussions on where to go with future chip variants
+  and the cool music he creates on XO-Audio. 
+
+* _Joshua Moss (@Bandock)_ - for motivating me to implement and
+  CDP1802 emulation core and getting "Support a real VIP mode"
+  onto my todo list and for the interesting
+  [HyperChip64](https://github.com/Bandock/hyper_bandchip) ideas.
+
+* _Tobais V. Langhoff (@tobiasvl)_ - for his excellent page on [CHIP-8 extensions
+  and compatibility](https://chip-8.github.io/extensions/),
+  and for his DREAM6800 emulator [DRÖM](https://github.com/tobiasvl/drom)
+  that inspired me to look into the DREAM6800.
+
+* _Michael J Bauer (@M-J-Bauer)_ - for developing the [DREAM6800
+  computer](https://www.mjbauer.biz/DREAM6800.htm)
+  and CHIPOS, to extend the CHIP-8 world to the [M6800 CPU](https://en.wikipedia.org/wiki/Motorola_6800),
+  and for making me learn M6800 assembler and giving his okay to use the CHIPOS rom
+  data inside Cadmiums DREAM6800 emulator.
+
 
 ## FAQ
 

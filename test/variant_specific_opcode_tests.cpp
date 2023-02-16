@@ -62,7 +62,7 @@ TEST_CASE(C8CORE "8xy6 - vx >>= vy, lost bit in vF, this shift test expects vy t
     }
 }
 
-TEST_CASE(C8CORE "8xye - vx <<= vy, lost bit in vF, this shift test expects vy to be used")
+TEST_CASE(C8CORE "8xyE - vx <<= vy, lost bit in vF, this shift test expects vy to be used")
 {
     EmuCore chip8;
     SUBCASE("CHIP8") {
@@ -127,7 +127,7 @@ TEST_CASE(C8CORE "8xy6 - vx >>= vx, lost bit in vF, this shift test expects vy t
     }
 }
 
-TEST_CASE(C8CORE "8xye - vx <<= vx, lost bit in vF, this shift test expects vy to be ignored")
+TEST_CASE(C8CORE "8xyE - vx <<= vx, lost bit in vF, this shift test expects vy to be ignored")
 {
     EmuCore chip8;
     SUBCASE("CHIP-48") {

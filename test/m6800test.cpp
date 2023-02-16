@@ -363,7 +363,7 @@ void testOpcode(uint8_t opcode, uint64_t numRounds = 10000, fuzz::FuzzerMemory::
         if(fuzzer.execute(opcode)) {
             std::cerr << "Error after " << rounds << " rounds in opcode " << fmt::format("0x{:02X}", opcode) << "." << std::endl;
             std::clog << g_testCaseCount << " tests run." << std::endl;
-            exit(0);
+            exit(1);
         }
         else if(!outputDir.empty()) {
             testSet.push_back(json(fuzzer.refState()));

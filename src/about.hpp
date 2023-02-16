@@ -103,10 +103,10 @@ I still want to give out some explicit thanks to:
   for my raygui wrapper but instead became a life of its own.
   https://raylibtech.itch.io
 
-* John Earnest (@JohnEarnest) - For his great Octo and for XO-Chip,
+* John Earnest (@JohnEarnest) - for his great Octo and for XO-Chip,
   while I still would have loved for some things to be different in
   Octo Assembly Syntax, I really appreciate that this new variant
-  got CHIP-8 development to a more modern leve, made it more
+  got CHIP-8 development to a more modern level, made it more
   accessible and together with the great web based IDE at
   https://johnearnest.github.io/Octo/
   gave CHIP-8 a new live and the OctoJam idea sure helped pushing
@@ -114,22 +114,22 @@ I still want to give out some explicit thanks to:
   also is embedded in Cadmium and drives its assembling capabilities:
   https://github.com/JohnEarnest/c-octo
 
-* Tim Franssen (@Timendus) - For his "CHIP-8 Test Suite" helped me a
+* Tim Franssen (@Timendus) - for his "CHIP-8 Test Suite" helped me a
   great deal in finding issues and get a better understanding of the
   quirks that differentiate the CHIP-8 variants:
   https://github.com/Timendus/chip8-test-suite
-  and for his work on a binary CHIP-8 container that could carray
+  and for his work on a binary CHIP-8 container that could carry
   emulation parameter allowing easy set-up for roms, more info at:
-  https://github.com/Timendus/chip8-test-suite
+  https://github.com/Timendus/chip8-binary-format
 
-* @NinjaWeedle - For his great help and countless tests to get some
+* @NinjaWeedle - for his great help and countless tests to get some
   flesh on the very skinny original MegaChip8 specs to allow actually
   support this exotic CHIP-8 variant ant maybe help it to be more
-  accepted. His work resulted in documentation and tests on:
+  accepted. This work resulted in his documentation and tests on:
   https://github.com/NinjaWeedle/MegaChip8
 
-* @Kouzeru and for pushing me into supporting XO-Audio and the
-  creative discussions on where to go with future chip
+* @Kouzeru - for pushing me into supporting XO-Audio and the
+  creative discussions on where to go with future chip variants.
   https://github.com/Kouzeru/
 
 * Joshua Moss (@Bandock) - for motivating me to implement and
@@ -142,6 +142,7 @@ I still want to give out some explicit thanks to:
     https://chip-8.github.io/extensions/
   and for his DREAM6800 emulator DRÖM that inspired me to look into
   the DREAM6800.
+  https://github.com/tobiasvl/drom
 
 * Michael J Bauer(@M-J-Bauer) - for developing the DREAM6800 computer
   and CHIPOS to extend the CHIP-8 world to the M6800 CPU, for making

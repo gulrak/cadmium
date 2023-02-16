@@ -46,6 +46,7 @@ extern "C" {
 #include <emulation/time.hpp>
 #include <emulation/utility.hpp>
 #include <ghc/cli.hpp>
+#include <ghc/filesystem.hpp>
 #include <librarian.hpp>
 #include <systemtools.hpp>
 #include <resourcemanager.hpp>
@@ -59,7 +60,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <regex>
 #include <thread>
@@ -103,10 +104,9 @@ extern "C" {
 //#ifndef PLATFORM_WEB
 #define WITH_EDITOR
 #include <editor.hpp>
-#include <filesystem>
+#include <filesystem.hpp>
 // #endif
 
-namespace fs = std::filesystem;
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {

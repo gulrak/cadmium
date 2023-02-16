@@ -28,12 +28,11 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //---------------------------------------------------------------------------------------
 #include <fstream>
-#include <filesystem>
+#include <filesystem.hpp>
 #include <iostream>
 #include <map>
 #include <string>
 
-namespace fs = std::filesystem;
 typedef std::map<std::string, long> FileInfos;
 
 std::string lineBuffer;
