@@ -25,6 +25,6 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 
 namespace fs = ghc::filesystem;
