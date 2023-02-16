@@ -62,6 +62,7 @@ void writeString(std::ostream& stream, const std::string& str)
 
 int main(int argc, char* argv[])
 {
+    std::clog << "starting resourcer..." << std::endl;
     FileInfos files;
     int totalSize = 0;
     int filenamesSize = 0;
