@@ -35,6 +35,8 @@ jobs:
         if [ "$RUNNER_OS" == "Linux" ]; then
           sudo apt update
           sudo apt install libasound2-dev mesa-common-dev libx11-dev libxrandr-dev libxi-dev xorg-dev libgl1-mesa-dev libglu1-mesa-dev
+        elif [ "$RUNNER_OS" == "Windows" ]; then
+          echo 'C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin' >> $GITHUB_PATH
         fi
       shell: bash
         
