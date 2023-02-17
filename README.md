@@ -1,6 +1,12 @@
-![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)![Supported Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Web-blue.svg)
+# Cadmium
+
+A CHIP-8 emulation environment written in C++ with a raylib backend.
+
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Supported Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows%20%7C%20Web-blue.svg)
 [![CMake Build Matrix](https://github.com/gulrak/cadmium/actions/workflows/build_cmake.yml/badge.svg)](https://github.com/gulrak/cadmium/actions/workflows/build_cmake.yml)
 [![Latest Release Tag](https://img.shields.io/github/tag/gulrak/cadmium.svg)](https://github.com/gulrak/cadmium/tree/v1.0.0)
+
 <!-- TOC -->
 * [Cadmium](#cadmium)
   * [Introduction](#introduction)
@@ -17,16 +23,12 @@
     * [Information](#information)
     * [Other Emulators used for Verification](#other-emulators-used-for-verification)
     * [Libraries](#libraries)
-* [Special Credits](#special-credits)
+  * [Special Credits](#special-credits)
   * [FAQ](#faq)
     * [Why the name Cadmium?](#why-the-name-cadmium)
     * [Why the pixel look?](#why-the-pixel-look)
     * [Which font is that?](#which-font-is-that)
 <!-- TOC -->
-
-# Cadmium
-
-A CHIP-8 emulation environment written in C++ with a raylib backend.
 
 ## Introduction
 
@@ -46,7 +48,7 @@ try to cobble an implementation together in a few hours.
 It worked quite well, and as I was using raylib for some tools and took part
 in a raylib game jam, I saw this as a good fit.
 
-![Cadmium debug view](media/screenshot01.png?raw=true "A screenshot of the debug view")
+![Cadmium debug view](media/cadmium_01.png?raw=true "A screenshot of the debug view")
 
 An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
 simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or
@@ -90,6 +92,17 @@ driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS
 kernel and run an accurate emulation of DREAM6800 CHIP-8. This core also
 allows hybrid roms that use machine code parts.
 
+### Multi Architecture Debugging
+
+Cadmium allows for the presets that emulate actual hardware to debug
+seamlessly on the CHIP-8 opcode level or the backend CPU assembly level:
+
+![Cadmium emulating DREAM6800](media/cadmium_mdbg_01.png?raw=true "Debugging on CHIP8 level") ![Cadmium emulating DREAM6800](media/cadmium_mdbg_02.png?raw=true "Debugging on M6800 level")
+
+Breakpoints and single stepping works in both views, the selected instruction
+tab defines the logical entity the debug buttons work on, the register view
+shows the registers of that entity. Breakpoints of the hidden entity still
+work and the tab switches to the entity that hit the breakpoint.
 
 ### Quirks
 
@@ -244,7 +257,7 @@ cmake --build build
   support _(automatically fetched during configuration)_
 
 
-# Special Credits
+## Special Credits
 
 Cadmium started as a "Well I guess I should at least implement CHIP-8
 once" project, after I already privately had fun writing emulators
