@@ -60,7 +60,7 @@ public:
         uint32_t _column;
     };
     OctoCompiler() = default;
-    void compile(const char* source, const char* end);
+    void compile(const std::string& filename, const char* source, const char* end);
     std::string preprocess(const std::string& includePath);
 
 

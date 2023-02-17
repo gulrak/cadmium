@@ -46,9 +46,11 @@ static std::unordered_set<std::string> _reserved = {
     "save", "saveflags", "scroll-down", "scroll-left", "scroll-right", "scroll-up", "sprite", "then", "while"
 };
 
-void OctoCompiler::compile(const char* source, const char* end)
+void OctoCompiler::compile(const std::string& filename, const char* source, const char* end)
 {
-    //_lex.setRange("", source, end);
+    Lexer lex;
+    lex.setRange(filename, source, end);
+    _lexStack.push(lex);
 }
 
 std::string OctoCompiler::preprocess(const std::string& includePath)
