@@ -27,7 +27,6 @@
 #include <emulation/chip8decompiler.hpp>
 #include <emulation/utility.hpp>
 #include <librarian.hpp>
-#include <filesystem.hpp>
 
 #include <raylib.h>
 

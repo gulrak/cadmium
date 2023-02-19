@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/editor.hpp
+// src/emulation/utility.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,10 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#pragma once
 
-#include <ghc/fs_fwd.hpp>
+#include <ghc/fs_impl.hpp>
+#include <emulation/utility.hpp>
 
-namespace fs = ghc::filesystem;
+#ifndef MAGIC_ENUM_SUPPORTED
+#error "Plattform not supported!"
+#endif

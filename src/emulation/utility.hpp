@@ -33,7 +33,14 @@
 #include <cmath>
 #include <new>
 
+#include <ghc/fs_fwd.hpp>
 #include <sha1/sha1.hpp>
+#include <fmt/format.h>
+#include <magic/magic_enum.hpp>
+
+
+namespace fs = ghc::filesystem;
+
 
 inline bool endsWith(const std::string& text, const std::string& suffix)
 {
@@ -67,6 +74,13 @@ inline std::string trimMultipleSpaces(std::string s)
     auto result = s;
     std::string::iterator end = std::unique(result.begin(), result.end(), [](char lhs, char rhs){ return (lhs == rhs) && (lhs == ' '); });
     result.erase(end, result.end());
+    return result;
+}
+
+inline std::string toLower(std::string s)
+{
+    auto result = s;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c){ return std::tolower(c); });
     return result;
 }
 

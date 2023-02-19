@@ -103,7 +103,6 @@ extern "C" {
 //#ifndef PLATFORM_WEB
 #define WITH_EDITOR
 #include <editor.hpp>
-#include <filesystem.hpp>
 // #endif
 
 

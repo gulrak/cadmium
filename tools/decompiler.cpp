@@ -28,7 +28,6 @@
 #include <emulation/chip8decompiler.hpp>
 #include <emulation/chip8compiler.hpp>
 #include <emulation/utility.hpp>
-#include <filesystem.hpp>
 
 #include <chrono>
 #include <fstream>

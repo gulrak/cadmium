@@ -2,9 +2,14 @@
 import sys
 import os
 import hashlib
+import pathlib
+import json
 
 root_dir = sys.argv[1]
+progs_file = sys.argv[2]
 
+with open(progs_file) as f:
+    progs = json.load(f)
 
 def getSHA1(file):
     sha1 = hashlib.sha1()
@@ -42,4 +47,12 @@ for chksum, info in roms.items():
         print("    ", file)
 
 print(f"Found {len(roms)} unique files with {typed_files} of them typed")
+print("Scanning for database entries...")
+for prg in progs:
+    for chksum, info in roms.items():
+        for name in info["names"]:
+            if pathlib.Path(name).stem.casefold() == pathlib.Path(prg["file"]).stem.casefold():
+                prg["hash"] = chksum
 
+with open('programs_hashed.json', 'w') as f:
+    json.dump(progs, f)

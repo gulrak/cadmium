@@ -28,10 +28,12 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //---------------------------------------------------------------------------------------
 #include <fstream>
-#include <filesystem.hpp>
 #include <iostream>
 #include <map>
 #include <string>
+#include <ghc/filesystem.hpp>
+
+namespace fs = ghc::filesystem;
 
 typedef std::map<std::string, long> FileInfos;
 

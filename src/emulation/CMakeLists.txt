@@ -24,9 +24,10 @@ set(CHIP8_EMU_SOURCE
     chip8vip.hpp
     chip8dream.cpp
     chip8dream.hpp
+    utility.cpp
 )
 
 add_library(emulation ${CHIP8_EMU_SOURCE})
 set_source_files_properties(src/emulation/chip8compiler.cpp PROPERTIES COMPILE_FLAGS "-fpermissive -Wno-write-strings")
 target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU)
-target_link_libraries(emulation PUBLIC fmt::fmt c_octo)
+target_link_libraries(emulation PUBLIC fmt::fmt c_octo ghc_filesystem)

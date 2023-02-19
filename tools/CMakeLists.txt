@@ -1,5 +1,5 @@
 if (NOT (${PLATFORM} MATCHES "Web"))
-add_executable(resourcer resourcer.cpp ../src/systemtools.cpp)
+add_executable(resourcer resourcer.cpp)
 target_compile_definitions(resourcer PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
 target_link_libraries(resourcer PUBLIC ghc_filesystem)
 add_executable(icongenerator icongenerator.cpp)
@@ -12,6 +12,10 @@ add_executable(soundfreq soundfreq.cpp)
 add_executable(decompile decompiler.cpp ../src/systemtools.cpp)
 target_compile_definitions(decompile PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
 target_link_libraries(decompile PUBLIC emulation ghc_filesystem)
+
+add_executable(chiplet chiplet.cpp)
+target_compile_definitions(chiplet PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
+target_link_libraries(chiplet PUBLIC emulation ghc_filesystem)
 
 add_executable(fontgenerator fontgenerator.cpp)
 
