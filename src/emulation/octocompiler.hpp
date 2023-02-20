@@ -56,17 +56,18 @@ public:
         Lexer() = default;
         Lexer(Lexer* parent) : _parent(parent) {}
         void setRange(const std::string& filename, const char* source, const char* end);
-        Token::Type nextToken();
+        Token::Type nextToken(bool preproc = false);
         const Token& token() const { return _token; }
         bool expect(const std::string_view& literal) const;
         std::string errorLocation();
+        const std::string& filename() const { return _filename; }
     private:
         char peek() const { return _srcPtr < _srcEnd ? *_srcPtr : 0; }
         bool checkFor(const std::string& key) const { return _srcPtr + key.size() <= _srcEnd && std::strncmp(_srcPtr, key.data(), key.size()) == 0; }
         char get() { return _srcPtr < _srcEnd ? *_srcPtr++ : 0; }
         bool isPreprocessor() const;
         Token::Type parseString();
-        void skipWhitespace();
+        void skipWhitespace(bool preproc = false);
         Token::Type error(std::string msg, size_t length = 0);
         Lexer* _parent{nullptr};
         std::string _filename;
@@ -82,6 +83,7 @@ public:
     void dumpSegments(std::ostream& output);
     void define(std::string name, Value val = 1);
     bool isTrue(const std::string_view& name) const;
+    void generateLineInfos(bool value) { _generateLineInfos = value; }
 
 private:
     enum SegmentType { eCODE, eDATA };
@@ -89,13 +91,16 @@ private:
     static bool isImage(const std::string& filename);
     Token::Type includeImage(Lexer& lex, std::string filename);
     void write(const std::string_view& text);
+    void writeLineMarker(Lexer& lex);
     void flushSegment();
     std::ostringstream _collect;
     SegmentType _currentSegment{eCODE};
+    std::string _lineMarker;
     std::vector<std::string> _codeSegments;
     std::vector<std::string> _dataSegments;
     std::stack<OutputControl> _emitCode;
     std::map<std::string, Value, std::less<>> _symbols;
+    bool _generateLineInfos{true};
 };
 
 } // namespace emu

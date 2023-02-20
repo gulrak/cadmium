@@ -77,8 +77,8 @@ void OctoCompiler::Lexer::setRange(const std::string& filename, const char* sour
     _filename = filename;
     _srcPtr = source;
     _srcEnd = end;
-    _token.line = 0;
-    _token.column = 0;
+    _token.line = 1;
+    _token.column = 1;
 }
 
 bool OctoCompiler::Lexer::isPreprocessor() const
@@ -94,10 +94,10 @@ bool OctoCompiler::Lexer::isPreprocessor() const
     return false;
 }
 
-void OctoCompiler::Lexer::skipWhitespace()
+void OctoCompiler::Lexer::skipWhitespace(bool preproc)
 {
     auto start = _srcPtr;
-    while (_srcPtr < _srcEnd && std::isspace(peek()) || (peek() == '#' && !isPreprocessor()))  {
+    while (_srcPtr < _srcEnd && std::isspace(peek()) || peek() == '#')  {
         char c = get();
         if(c == '#') {
             while (c && c != '\n')
@@ -105,15 +105,19 @@ void OctoCompiler::Lexer::skipWhitespace()
         }
         if(c == '\n') {
             ++_token.line;
-            _token.column = 0;
+            _token.column = 1;
+            if(preproc) {
+                start = _srcPtr;
+                preproc = false;
+            }
         }
     }
     _token.prefix = {start, size_t(_srcPtr - start)};
 }
 
-OctoCompiler::Token::Type OctoCompiler::Lexer::nextToken()
+OctoCompiler::Token::Type OctoCompiler::Lexer::nextToken(bool preproc)
 {
-    skipWhitespace();
+    skipWhitespace(preproc);
 
     if (peek() == '"') {
         return parseString();
@@ -153,13 +157,13 @@ OctoCompiler::Token::Type OctoCompiler::Lexer::nextToken()
         if(*start == ':') {
             if (_directives.count(_token.text))
                 return Token::eDIRECTIVE;
-            else if (_preprocessor.count(_token.text))
+            else if (_preprocessor.count(_token.text)) {
+                while(!_token.prefix.empty() && (_token.prefix.back() == ' ' || _token.prefix.back() == '\t'))
+                       _token.prefix.remove_suffix(1);
                 return Token::ePREPROCESSOR;
+            }
             else if (len > 1 && *(start + 1) != '=')
                 return error("Unknown directive: " + _token.text);
-        }
-        if(*start == '#') {
-            return Token::ePREPROCESSOR;
         }
         if(*start == '{')
             return Token::eLCURLY;
@@ -225,10 +229,10 @@ std::string OctoCompiler::Lexer::errorLocation()
     auto* parent = _parent;
     std::string includes;
     while (parent) {
-        includes = fmt::format("INFO: Included from \"{}\":{}:{}:\n", parent->_filename, parent->_token.line + 1, parent->_token.column+ 1) + includes;
+        includes = fmt::format("INFO: Included from \"{}\":{}:{}:\n", parent->_filename, parent->_token.line, parent->_token.column) + includes;
         parent = parent->_parent;
     }
-    return fmt::format("{}ERROR: File \"{}\":{}:{}", includes, _filename, _token.line + 1, _token.column + 1);
+    return fmt::format("{}ERROR: File \"{}\":{}:{}", includes, _filename, _token.line, _token.column);
 }
 
 OctoCompiler::Token::Type OctoCompiler::Lexer::error(std::string msg, size_t length)
@@ -259,6 +263,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
     emu::OctoCompiler::Lexer lex(parentLexer);
     lex.setRange(inputFile, source, end);
     _currentSegment = eCODE;
+    writeLineMarker(lex);
     auto token = lex.nextToken();
     while(true) {
         if(token == Token::eEOF)
@@ -273,14 +278,15 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
                     throw std::runtime_error("expected string after :include");
                 auto newFile = fs::absolute(inputFile).parent_path() / lex.token().text;
                 auto extension = toLower(newFile.extension().string());
-                if (isImage(extension))
+                if (isImage(extension)) {
                     token = includeImage(lex, newFile);
+                }
                 else {
                     flushSegment();
                     auto oldSeg = _currentSegment;
                     preprocessFile(newFile.string(), &lex);
                     _currentSegment = oldSeg;
-                    token = lex.nextToken();
+                    token = lex.nextToken(true);
                 }
             }
             else if (lex.expect(":segment")) {
@@ -289,7 +295,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
                     throw std::runtime_error(fmt::format("{}: expected data or code after :segment", lex.errorLocation()));
                 flushSegment();
                 _currentSegment = (lex.token().raw == "code" ? eCODE : eDATA);
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
             else if (lex.expect(":if")) {
                 auto option = lex.nextToken();
@@ -301,7 +307,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
                 else {
                     _emitCode.push( isTrue(lex.token().raw) ? eACTIVE : eINACTIVE);
                 }
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
             else if (lex.expect(":unless")) {
                 auto option = lex.nextToken();
@@ -313,24 +319,25 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
                 else {
                     _emitCode.push( !isTrue(lex.token().raw) ? eACTIVE : eINACTIVE);
                 }
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
             else if (lex.expect(":else")) {
                 if (_emitCode.empty())
                     throw std::runtime_error(fmt::format("{}: use of :else without :if or :unless", lex.errorLocation()));
                 _emitCode.top() = _emitCode.top() == eINACTIVE ? eACTIVE : eSKIP_ALL;
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
             else if (lex.expect(":end")) {
                 if (_emitCode.empty())
                     throw std::runtime_error(fmt::format("{}: use of :end without :if or :unless", lex.errorLocation()));
                 _emitCode.pop();
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
             else if (lex.expect(":dump-options")) {
                 // ignored for now
-                token = lex.nextToken();
+                token = lex.nextToken(true);
             }
+            writeLineMarker(lex);
         }
         else if(token == Token::eDIRECTIVE && lex.expect(":const") && (_emitCode.empty() || _emitCode.top() == eACTIVE)) {
             write(lex.token().prefix);
@@ -367,8 +374,17 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, emu::OctoCompile
 
 void OctoCompiler::write(const std::string_view& text)
 {
-    if(_emitCode.empty() || _emitCode.top() == eACTIVE)
-        _collect << text;
+    if(!text.empty()) {
+        if (_emitCode.empty() || _emitCode.top() == eACTIVE)
+            _collect << _lineMarker << text;
+        _lineMarker.clear();
+    }
+}
+
+void OctoCompiler::writeLineMarker(Lexer& lex)
+{
+    if(_generateLineInfos)
+        _lineMarker = fmt::format("#@line[{},{}]\n", lex.token().line, lex.filename());
 }
 
 void OctoCompiler::flushSegment()
@@ -392,7 +408,7 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
     int widthHint = -1, heightHint = -1;
     bool genLabels = true;
     bool debug = false;
-    auto token = lex.nextToken();
+    auto token = lex.nextToken(true);
     while(true) {
         if (token == Token::eSPRITESIZE) {
             auto sizes = split(lex.token().text, 'x');
@@ -412,7 +428,7 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
         else {
             break;
         }
-        token = lex.nextToken();
+        token = lex.nextToken(true);
     }
     auto* data = stbi_load(filename.c_str(), &width, &height, &numChannels, 1);
     if(!data) {
@@ -462,10 +478,21 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
 
 void OctoCompiler::dumpSegments(std::ostream& output)
 {
-    for(auto& segment : _codeSegments)
-        output << segment;
-    for(auto& segment : _dataSegments)
-        output << segment;
+    for(auto& segment : _codeSegments) {
+        if(!segment.empty()) {
+            output << segment;
+            if (segment.back() != '\n')
+                output << '\n';
+        }
+    }
+    output << '\n';
+    for(auto& segment : _dataSegments) {
+        if(!segment.empty()) {
+            output << segment;
+            if(!segment.empty() && segment.back() != '\n')
+                output << '\n';
+        }
+    }
 }
 
 void OctoCompiler::define(std::string name, Value val)
