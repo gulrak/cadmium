@@ -42,6 +42,9 @@ public:
     bool compile(std::string text);
     bool isError() const;
     const std::string& errorMessage() const;
+    std::string rawErrorMessage() const;
+    int errorLine() const;
+    int errorCol() const;
     uint16_t codeSize() const;
     const uint8_t* code() const;
     const std::string& sha1Hex() const;

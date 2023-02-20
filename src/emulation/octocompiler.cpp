@@ -25,12 +25,14 @@
 //---------------------------------------------------------------------------------------
 
 #include <emulation/octocompiler.hpp>
+#include <emulation/chip8compiler.hpp>
 #include <emulation/utility.hpp>
 
 #include <fmt/format.h>
 //#define STB_IMAGE_IMPLEMENTATION
 #include <nothings/stb_image.h>
 
+#include <charconv>
 #include <unordered_set>
 
 namespace emu {
@@ -53,11 +55,125 @@ static std::unordered_set<std::string> _reserved = {
     "save", "saveflags", "scroll-down", "scroll-left", "scroll-right", "scroll-up", "sprite", "then", "while"
 };
 
+OctoCompiler::OctoCompiler() = default;
+OctoCompiler::~OctoCompiler() = default;
+
 void OctoCompiler::compile(const std::string& filename, const char* source, const char* end)
 {
     Lexer lex;
     lex.setRange(filename, source, end);
     //_lexStack.push(lex);
+}
+
+void OctoCompiler::compile(const std::string& filename)
+{
+    std::vector<std::string> files;
+    files.push_back(filename);
+    compile(files);
+}
+
+struct FilePos {
+    std::string file;
+    int line{0};
+};
+
+static FilePos extractFilePos(std::string::const_iterator start, std::string::const_iterator end)
+{
+    std::string_view info = {start.operator->(), size_t(end - start)};
+    int line;
+    auto result = std::from_chars(info.data() + 7, info.data() + info.size(), line);
+    if(result.ptr == info.data() + 7)
+        return {};
+    return {std::string(result.ptr + 1, (info.data() + info.size()) - result.ptr - 1), line};
+}
+
+void OctoCompiler::compile(const std::vector<std::string>& files)
+{
+    for(const auto& file : files) {
+        preprocessFile(file);
+    }
+    std::string preprocessed;
+    {
+        std::ostringstream preprocessedStream;
+        dumpSegments(preprocessedStream);
+        preprocessed = preprocessedStream.str();
+    }
+    _compiler.reset(new Chip8Compiler);
+    if(_progress) _progress(1, "compiling ...");
+    _compiler->compile(preprocessed);
+    if(_compiler->isError()) {
+        if(_generateLineInfos) {
+            FilePos ep;
+            int line = 1;
+            int fileLine = 1;
+            for(auto iter = preprocessed.begin(); iter != preprocessed.end() && line != _compiler->errorLine(); ++iter) {
+                if(*iter == '\n') {
+                    line++;
+                    fileLine++;
+                }
+                if(preprocessed.end() - iter > 10 && *(iter + 1) == '#' && *(iter + 2) == '@') {
+                    auto iter2 = iter + 1;
+                    while(iter2 != preprocessed.end() && *iter2 != '\n' && *iter2 != ']')
+                        ++iter2;
+                    if(*iter2 == ']') {
+                        ep = extractFilePos(iter+1, iter2);
+                        if(ep.line)
+                            fileLine = ep.line;
+                    }
+                }
+            }
+            if(!ep.file.empty())
+                throw std::runtime_error(fmt::format("{}:{}: error: {}", ep.file, fileLine, _compiler->rawErrorMessage()));
+        }
+        throw std::runtime_error(fmt::format("error: {}", _compiler->errorMessage()));
+    }
+    else {
+        if(_progress) _progress(1, fmt::format("generated {} bytes of output", codeSize()));
+    }
+}
+
+void OctoCompiler::preprocessFiles(const std::vector<std::string>& files)
+{
+    for(const auto& file : files) {
+        preprocessFile(file);
+    }
+}
+
+void OctoCompiler::setIncludePaths(const std::vector<std::string>& paths)
+{
+    _includePaths.clear();
+    for(const auto& path : paths)
+        _includePaths.push_back(path);
+}
+
+uint32_t OctoCompiler::codeSize() const
+{
+    return _compiler ? _compiler->codeSize() : 0;
+}
+
+const uint8_t* OctoCompiler::code() const
+{
+    return _compiler ? _compiler->code() : nullptr;
+}
+
+const std::string& OctoCompiler::sha1Hex() const
+{
+    static const std::string dummy;
+    return _compiler ? _compiler->sha1Hex() : dummy;
+}
+std::pair<uint32_t, uint32_t> OctoCompiler::addrForLine(uint32_t line) const
+{
+    return _compiler ? _compiler->addrForLine(line) : std::make_pair(0xFFFFFFFFu, 0xFFFFFFFFu);;
+}
+
+uint32_t OctoCompiler::lineForAddr(uint32_t addr) const
+{
+    return _compiler ? _compiler->lineForAddr(addr) : 0xFFFFFFFF;
+}
+
+const char* OctoCompiler::breakpointForAddr(uint32_t addr) const
+{
+    return _compiler ? _compiler->breakpointForAddr(addr) : nullptr;
 }
 
 #if 0
@@ -169,15 +285,18 @@ OctoCompiler::Token::Type OctoCompiler::Lexer::nextToken(bool preproc)
             return Token::eLCURLY;
         if(*start == '}')
             return Token::eRCURLY;
-        if(std::strchr("+-*/%", *start))
+        if(std::strchr("+-*/%@|<>^!.=", *start))
             return Token::eOPERATOR;
         if(_reserved.count(_token.text)) {
             Token::Type type = len > 1 && std::isalpha(*(start + 1)) ? Token::eKEYWORD : Token::eOPERATOR;
             return type;
         }
-        for(int i = 0; i < len; ++i)
-            if(!std::isalnum((uint8_t)*(start + i)) && *(start + i) != '-' && *(start + i) != '_')
-                return error("Invalid identifier: " + _token.text);
+        for(int i = 0; i < len; ++i) {
+            if (!std::isalnum((uint8_t) * (start + i)) && *(start + i) != '-' && *(start + i) != '_') {
+                _token.text = _token.raw;
+                return Token::eSTRING;
+            }
+        }
         return Token::eIDENTIFIER;
     }
 }
@@ -229,15 +348,15 @@ std::string OctoCompiler::Lexer::errorLocation()
     auto* parent = _parent;
     std::string includes;
     while (parent) {
-        includes = fmt::format("INFO: Included from \"{}\":{}:{}:\n", parent->_filename, parent->_token.line, parent->_token.column) + includes;
+        includes = fmt::format("{}:{}:{}: info: Included from\n", parent->_filename, parent->_token.line, parent->_token.column) + includes;
         parent = parent->_parent;
     }
-    return fmt::format("{}ERROR: File \"{}\":{}:{}", includes, _filename, _token.line, _token.column);
+    return fmt::format("{}{}:{}:{}: ", includes, _filename, _token.line, _token.column);
 }
 
 OctoCompiler::Token::Type OctoCompiler::Lexer::error(std::string msg, size_t length)
 {
-    _token.text = fmt::format("{}: {}", errorLocation(), msg);
+    _token.text = fmt::format("{} error: {}", errorLocation(), msg);
     if(length)
         _token.length = length;
     return Token::eERROR;
@@ -258,6 +377,21 @@ void OctoCompiler::reset()
     _currentSegment = eCODE;
 }
 
+void OctoCompiler::error(Lexer& lex, std::string msg) const
+{
+    throw std::runtime_error(fmt::format("{}error: {}", lex.errorLocation(), msg));
+}
+
+void OctoCompiler::warning(Lexer& lex, std::string msg) const
+{
+    throw std::runtime_error(fmt::format("{}warning: {}", lex.errorLocation(), msg));
+}
+
+void OctoCompiler::info(Lexer& lex, std::string msg) const
+{
+    throw std::runtime_error(fmt::format("{}info: {}", lex.errorLocation(), msg));
+}
+
 void OctoCompiler::preprocessFile(const std::string& inputFile, const char* source, const char* end, emu::OctoCompiler::Lexer* parentLexer)
 {
     emu::OctoCompiler::Lexer lex(parentLexer);
@@ -266,8 +400,10 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
     writeLineMarker(lex);
     auto token = lex.nextToken();
     while(true) {
-        if(token == Token::eEOF)
+        if(token == Token::eEOF) {
+            write(lex.token().prefix);
             break;
+        }
         if(token == Token::eERROR)
             throw std::runtime_error(lex.token().text);
         if(token == Token::ePREPROCESSOR) {
@@ -275,7 +411,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             if (lex.expect(":include")) {
                 auto next = lex.nextToken();
                 if (next != Token::eSTRING)
-                    throw std::runtime_error("expected string after :include");
+                    error(lex, "Expected string after ':include'.");
                 auto newFile = fs::absolute(inputFile).parent_path() / lex.token().text;
                 auto extension = toLower(newFile.extension().string());
                 if (isImage(extension)) {
@@ -292,7 +428,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             else if (lex.expect(":segment")) {
                 auto next = lex.nextToken();
                 if (next != Token::eIDENTIFIER || (lex.token().raw != "data" && lex.token().raw != "code"))
-                    throw std::runtime_error(fmt::format("{}: expected data or code after :segment", lex.errorLocation()));
+                    error(lex, "Expected 'data' or 'code' after ':segment'.");
                 flushSegment();
                 _currentSegment = (lex.token().raw == "code" ? eCODE : eDATA);
                 token = lex.nextToken(true);
@@ -300,7 +436,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             else if (lex.expect(":if")) {
                 auto option = lex.nextToken();
                 if(option != Token::eIDENTIFIER)
-                    throw std::runtime_error(fmt::format("{}: identifier expected after :if", lex.errorLocation()));
+                    error(lex, "{}: Identifier expected after ':if'.");
                 if(!_emitCode.empty() && _emitCode.top() != eACTIVE) {
                     _emitCode.push(eSKIP_ALL);
                 }
@@ -312,7 +448,7 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             else if (lex.expect(":unless")) {
                 auto option = lex.nextToken();
                 if(option != Token::eIDENTIFIER)
-                    throw std::runtime_error(fmt::format("{}: identifier expected after :if", lex.errorLocation()));
+                    error(lex, "Identifier expected after ':unless'.");
                 if(!_emitCode.empty() && _emitCode.top() != eACTIVE) {
                     _emitCode.push(eSKIP_ALL);
                 }
@@ -323,13 +459,13 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             }
             else if (lex.expect(":else")) {
                 if (_emitCode.empty())
-                    throw std::runtime_error(fmt::format("{}: use of :else without :if or :unless", lex.errorLocation()));
+                    error(lex, "Use of ':else' without ':if' or ':unless'.");
                 _emitCode.top() = _emitCode.top() == eINACTIVE ? eACTIVE : eSKIP_ALL;
                 token = lex.nextToken(true);
             }
             else if (lex.expect(":end")) {
                 if (_emitCode.empty())
-                    throw std::runtime_error(fmt::format("{}: use of :end without :if or :unless", lex.errorLocation()));
+                    error(lex, "Use of ':end' without ':if' or ':unless'.");
                 _emitCode.pop();
                 token = lex.nextToken(true);
             }
@@ -344,13 +480,13 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
             write(lex.token().raw);
             auto nameToken = lex.nextToken();
             if(nameToken != Token::eIDENTIFIER)
-                throw std::runtime_error(fmt::format("{}: identifier expected after :const", lex.errorLocation()));
+                error(lex, "Identifier expected after ':const'.");
             auto constName = lex.token().raw;
             write(lex.token().prefix);
             write(lex.token().raw);
             auto value = lex.nextToken();
             if(value != Token::eIDENTIFIER && value != Token::eNUMBER)
-                throw std::runtime_error(fmt::format("{}: number or identifier expected after :const name", lex.errorLocation()));
+                error(lex, "Number or identifier expected after ':const <name>'.");
             write(lex.token().prefix);
             write(lex.token().raw);
             if(value == Token::eNUMBER) {
@@ -366,10 +502,43 @@ void OctoCompiler::preprocessFile(const std::string& inputFile, const char* sour
     flushSegment();
 }
 
+std::string OctoCompiler::resolveFile(const fs::path& file, Lexer* lexer) const
+{
+    if(file.is_absolute()) {
+        std::error_code ec;
+        if(fs::exists(file, ec))
+            return file;
+    }
+    if(lexer && !lexer->filename().empty()) {
+        std::error_code ec;
+        auto newPath = fs::absolute(lexer->filename(), ec).parent_path() / file;
+        if(!ec && fs::exists(newPath, ec))
+            return newPath;
+    }
+    else {
+        std::error_code ec;
+        if(fs::exists(file, ec))
+            return file;
+    }
+    for(const auto& path : _includePaths) {
+        std::error_code ec;
+        if(fs::exists(path / file, ec))
+            return (path / file).string();
+    }
+    if(lexer)
+        error(*lexer, fmt::format("File not found: '{}'", file.string()));
+    throw std::runtime_error(fmt::format("error: File not found: '{}'", file.string()));
+    return "";
+}
+
 void OctoCompiler::preprocessFile(const std::string& inputFile, emu::OctoCompiler::Lexer* parentLexer)
 {
+    ++_includeDepth;
+    auto file = resolveFile(inputFile, parentLexer);
+    if(_progress) _progress(_includeDepth, "preprocessing '" + inputFile + "' ...");
     auto content = loadTextFile(inputFile);
     preprocessFile(inputFile, content.data(), content.data()+content.size(), parentLexer);
+    --_includeDepth;
 }
 
 void OctoCompiler::write(const std::string_view& text)
@@ -413,7 +582,7 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
         if (token == Token::eSPRITESIZE) {
             auto sizes = split(lex.token().text, 'x');
             if(sizes.size() != 2)
-                throw std::runtime_error(fmt::format("{}: bad sprite size for image include: {}", lex.errorLocation(), lex.token().text));
+                error(lex, fmt::format("Bad sprite size for image include: '{}'", lex.token().raw));
             widthHint = std::stoi(sizes[0]);
             heightHint = std::stoi(sizes[1]);
         }
@@ -432,7 +601,7 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
     }
     auto* data = stbi_load(filename.c_str(), &width, &height, &numChannels, 1);
     if(!data) {
-        throw std::runtime_error(fmt::format("{}: Could not load image: {}", lex.errorLocation(), filename));
+        error(lex, fmt::format("Could not load image: '{}'", filename));
     }
     int spriteWidth, spriteHeight;
     if(widthHint > 0) {
@@ -450,7 +619,7 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
     }
     auto name = fs::path(filename).filename().stem().string();
     if(width % spriteWidth != 0)
-        throw std::runtime_error(fmt::format("{}: Image needs to be divisible by {}", lex.errorLocation(), spriteWidth));
+        error(lex, fmt::format("Image needs to be divisible by {}.", spriteWidth));
     for (int y = 0; y < height; y += spriteHeight) {
         for (int x = 0; x < width; x += spriteWidth) {
             int index = y * width + x;
@@ -476,21 +645,53 @@ OctoCompiler::Token::Type OctoCompiler::includeImage(Lexer& lex, std::string fil
     return token;
 }
 
+static int whitespaceLinesAtEnd(const std::string& text)
+{
+    int count = 0;
+    for(auto iter = text.rbegin(); iter != text.rend(); ++iter) {
+        if(!std::isspace((uint8_t)*iter))
+            break;
+        if(*iter == '\n')
+            ++count;
+    }
+    return count;
+}
+
+static int whitespaceLinesAtStart(const std::string& text)
+{
+    int count = 0;
+    for(auto iter = text.begin(); iter != text.end(); ++iter) {
+        if(!std::isspace((uint8_t)*iter))
+            break;
+        if(*iter == '\n')
+            ++count;
+    }
+    return count;
+}
+
 void OctoCompiler::dumpSegments(std::ostream& output)
 {
+    int endingWSLines = 2;
     for(auto& segment : _codeSegments) {
         if(!segment.empty()) {
+            auto sepLines = endingWSLines + whitespaceLinesAtStart(segment);
+            for(int i = 0; i < 2 - sepLines; ++i)
+                output << '\n';
             output << segment;
             if (segment.back() != '\n')
                 output << '\n';
+            endingWSLines = whitespaceLinesAtEnd(segment);
         }
     }
-    output << '\n';
     for(auto& segment : _dataSegments) {
         if(!segment.empty()) {
-            output << segment;
-            if(!segment.empty() && segment.back() != '\n')
+            auto sepLines = endingWSLines + whitespaceLinesAtStart(segment);
+            for(int i = 0; i < 2 - sepLines; ++i)
                 output << '\n';
+            output << segment;
+            if(segment.back() != '\n')
+                output << '\n';
+            endingWSLines = whitespaceLinesAtEnd(segment);
         }
     }
 }

@@ -35,46 +35,86 @@
 #include <chrono>
 #include <stdexcept>
 
-void preprocessFile(std::string inputFile, bool noLineInfo)
-{
-    using namespace std::chrono;
-    using namespace std::chrono_literals;    emu::OctoCompiler octo;
-    octo.generateLineInfos(!noLineInfo);
-    try {
-        auto start = steady_clock::now();
-        octo.preprocessFile(inputFile);
-        octo.dumpSegments(std::cout);
-        std::cout << "\n";
-        auto duration = duration_cast<milliseconds>(steady_clock::now() - start).count();
-        std::clog << "Duration: " << duration << "ms" << std::endl;
-    }
-    catch(std::runtime_error& e) {
-        std::cerr << "\n" << e.what() << std::endl;
-        exit(1);
-    }
-}
 
 int main(int argc, char* argv[])
 {
-
-
+    using namespace std::chrono;
+    using namespace std::chrono_literals;
     ghc::CLI cli(argc, argv);
     bool preprocess = false;
     bool noLineInfo = false;
-    std::vector<std::string> includePath;
+    bool quiet = false;
+    bool verbose = false;
+    bool version = false;
+    int verbosity = 1;
+    int rc = 0;
+    std::string outputFile;
+    std::vector<std::string> includePaths;
     std::vector<std::string> inputList;
 
     cli.option({"-P", "--preprocess"}, preprocess, "only preprocess the file and output the result");
-    cli.option({"-I", "--include-path"}, includePath, "add directory to include search path");
+    cli.option({"-I", "--include-path"}, includePaths, "add directory to include search path");
+    cli.option({"-o", "--output"}, outputFile, "name of output file, default stdout for preprocessor, a.out.ch8 for binary");
     cli.option({"--no-line-info"}, noLineInfo, "omit generation of line info comments in the preprocessed output");
+    cli.option({"-q", "--quiet"}, quiet, "suppress all output during operation");
+    cli.option({"-v", "--verbose"}, verbose, "more verbose progress output");
+    cli.option({"--version"}, version, "just shows version info and exits");
     cli.positional(inputList, "Files or directories to work on");
     cli.parse();
 
+    auto& logstream = preprocess && outputFile.empty() ? std::clog : std::cout;
 
-    for(auto inputFile : inputList) {
-        if(preprocess)
-            preprocessFile(inputFile, noLineInfo);
+    if(quiet)
+        verbosity = 0;
+    else if(verbose)
+        verbosity = 100;
+
+    emu::OctoCompiler compiler;
+    compiler.generateLineInfos(!noLineInfo);
+    compiler.setIncludePaths(includePaths);
+    if(!quiet) {
+        compiler.setProgressHandler([&](int verbLvl, std::string msg) {
+            if (verbLvl <= verbosity) {
+                logstream << std::string(verbLvl * 2 - 2, ' ') << msg << std::endl;
+            }
+        });
     }
 
-    return 0;
+    if(!quiet || version) {
+        logstream << "Chiplet v" CADMIUM_VERSION ", (c) by Steffen Schümann" << std::endl;
+        logstream << "C-Octo backend v1.2, (c) by John Earnest" << std::endl;
+        logstream << "Preprocessor syntax based on Octopus by Tim Franssen\n" << std::endl;
+        if(version)
+            return 0;
+        else
+            logstream << "current directory: " << fs::current_path().string() << std::endl;
+    }
+    auto start = steady_clock::now();
+    try {
+        if (preprocess) {
+            compiler.preprocessFiles(inputList);
+            if (outputFile.empty())
+                compiler.dumpSegments(std::cout);
+            else {
+                std::ofstream out(outputFile);
+                compiler.dumpSegments(out);
+            }
+        }
+        else {
+            compiler.compile(inputList);
+            if (outputFile.empty())
+                outputFile = "a.out.ch8";
+            std::ofstream out(outputFile, std::ios::binary);
+            out.write((const char*)compiler.code(), compiler.codeSize());
+        }
+    }
+    catch(std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+        rc = -1;
+    }
+    auto duration = duration_cast<milliseconds>(steady_clock::now() - start).count();
+    if(!quiet)
+        logstream << "Duration: " << duration << "ms\n" << std::endl;
+
+    return rc;
 }

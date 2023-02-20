@@ -26,23 +26,27 @@
 #pragma once
 
 #include <emulation/config.hpp>
+#include <emulation/utility.hpp>
 
 #include <sstream>
 #include <stack>
 #include <string_view>
 #include <map>
+#include <memory>
 #include <variant>
 #include <vector>
 
 namespace emu {
 
+class Chip8Compiler;
+
 class OctoCompiler
 {
 public:
+    using ProgressHandler = std::function<void(int verbosity, std::string msg)>;
     using Value = std::variant<int,double,std::string>;
     struct Token {
         enum Type { eNONE, eNUMBER, eSTRING, eDIRECTIVE, eIDENTIFIER, eOPERATOR, eKEYWORD, ePREPROCESSOR, eSPRITESIZE, eLCURLY, eRCURLY, eEOF, eERROR };
-        Type type;
         double number;
         std::string text;
         std::string_view raw;
@@ -75,15 +79,27 @@ public:
         const char* _srcEnd{nullptr};
         Token _token;
     };
-    OctoCompiler() = default;
+    OctoCompiler();
+    ~OctoCompiler();
     void reset();
     void compile(const std::string& filename, const char* source, const char* end);
+    void compile(const std::string& filename);
+    void compile(const std::vector<std::string>& files);
     void preprocessFile(const std::string& inputFile, const char* source, const char* end, emu::OctoCompiler::Lexer* parentLexer = nullptr);
     void preprocessFile(const std::string& inputFile, emu::OctoCompiler::Lexer* parentLexer = nullptr);
+    void preprocessFiles(const std::vector<std::string>& files);
     void dumpSegments(std::ostream& output);
     void define(std::string name, Value val = 1);
     bool isTrue(const std::string_view& name) const;
     void generateLineInfos(bool value) { _generateLineInfos = value; }
+    void setIncludePaths(const std::vector<std::string>& paths);
+    void setProgressHandler(ProgressHandler handler) { _progress = handler; }
+    uint32_t codeSize() const;
+    const uint8_t* code() const;
+    const std::string& sha1Hex() const;
+    std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
+    uint32_t lineForAddr(uint32_t addr) const;
+    const char* breakpointForAddr(uint32_t addr) const;
 
 private:
     enum SegmentType { eCODE, eDATA };
@@ -92,7 +108,11 @@ private:
     Token::Type includeImage(Lexer& lex, std::string filename);
     void write(const std::string_view& text);
     void writeLineMarker(Lexer& lex);
+    void error(Lexer& lex, std::string msg) const;
+    void warning(Lexer& lex, std::string msg) const;
+    void info(Lexer& lex, std::string msg) const;
     void flushSegment();
+    std::string resolveFile(const fs::path& file, Lexer* lexer = nullptr) const;
     std::ostringstream _collect;
     SegmentType _currentSegment{eCODE};
     std::string _lineMarker;
@@ -100,6 +120,10 @@ private:
     std::vector<std::string> _dataSegments;
     std::stack<OutputControl> _emitCode;
     std::map<std::string, Value, std::less<>> _symbols;
+    std::vector<fs::path> _includePaths;
+    std::unique_ptr<Chip8Compiler> _compiler;
+    ProgressHandler _progress;
+    int _includeDepth{0};
     bool _generateLineInfos{true};
 };
 

@@ -65,7 +65,7 @@ bool Chip8Compiler::compile(std::string str)
         _impl->_errorMessage = "ERROR: unknown error, no binary generated";
     }
     else if (_impl->_program->is_error) {
-        _impl->_errorMessage = "ERROR (" + std::to_string(_impl->_program->error_line + 1) + ":" + std::to_string(_impl->_program->error_pos + 1) + "): " + _impl->_program->error;
+        _impl->_errorMessage = "ERROR (" + std::to_string(_impl->_program->error_line) + ":" + std::to_string(_impl->_program->error_pos + 1) + "): " + _impl->_program->error;
         //std::cerr << _impl->_errorMessage << std::endl;
     }
     else {
@@ -74,6 +74,25 @@ bool Chip8Compiler::compile(std::string str)
         //std::clog << "compiled successfully." << std::endl;
     }
     return !_impl->_program->is_error;
+}
+
+std::string Chip8Compiler::rawErrorMessage() const
+{
+    if(!_impl->_program)
+        return "unknown error";
+    if(_impl->_program->is_error)
+        return _impl->_program->error;
+    return "";
+}
+
+int Chip8Compiler::errorLine() const
+{
+    return _impl->_program ? _impl->_program->error_line : 0;
+}
+
+int Chip8Compiler::errorCol() const
+{
+    return _impl->_program ? _impl->_program->error_pos + 1 : 0;
 }
 
 bool Chip8Compiler::isError() const
