@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8compiler.hpp>
+#include <emulation/octocompiler.hpp>
 
 #include <algorithm>
 #include <array>
@@ -111,7 +111,7 @@ public:
     void undo();
     void redo();
 
-    const emu::Chip8Compiler& compiler() const { return _compiler; }
+    const emu::OctoCompiler& compiler() const { return _compiler; }
 
     std::pair<uint32_t, uint32_t> selection() const
     {
@@ -126,6 +126,8 @@ protected:
     void highlightLine(const char* text, const char* end);
     void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
     Rectangle drawToolArea();
+    Rectangle layoutMessageArea();
+    void drawMessageArea();
     void safeInsert(uint32_t offset, const std::string& text);
     void safeErase(uint32_t offset, uint32_t length);
     template <typename F>
@@ -204,7 +206,7 @@ protected:
     bool _isRepeat{false};
     bool _cursorChanged{false};
     bool _mouseDownInText{false};
-    emu::Chip8Compiler _compiler;
+    emu::OctoCompiler _compiler;
     uint32_t _lastEditId{~0u};
     std::string _editedTextSha1Hex;
     std::string _compiledSourceSha1Hex;

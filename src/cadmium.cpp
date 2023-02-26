@@ -504,6 +504,8 @@ public:
         generateFont();
         if(chip8options)
             _options = *chip8options;
+        else
+            _mainView = eSETTINGS;
         updateEmulatorOptions();
         _chipEmu->reset();
         _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
@@ -2312,7 +2314,9 @@ int main(int argc, char* argv[])
         }
         catch(std::runtime_error e) {
             std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-            exit(1);
+#ifndef PLATFORM_WEB
+            presetName = "";
+#endif
         }
     }
     auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);

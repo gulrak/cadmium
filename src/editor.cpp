@@ -413,7 +413,12 @@ void Editor::update()
             _editedTextSha1Hex = calculateSha1Hex(_text);
             if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
                 _compiledSourceSha1Hex = _editedTextSha1Hex;
-                if(_compiler.compile(_text)) {
+                try {
+                    _compiler.compile(_filename, _text.data(), _text.data() + _text.size());
+                }
+                catch(std::exception& ex)
+                {}
+                if(true) {
                     //if(_compiler.sha1Hex() != romSha1Hex) {
 
                     //}
@@ -429,13 +434,14 @@ void Editor::draw(Font& font, Rectangle rect)
     int lineNumber = int(_tosLine) - 1;
     _totalArea = rect;
     _toolArea = drawToolArea();
+    _messageArea = layoutMessageArea();
     _textArea = {_totalArea.x, _totalArea.y + _toolArea.height, _totalArea.width, _totalArea.height - _toolArea.height - _messageArea.height};
     float ypos = _textArea.y - 4;
     _visibleLines = uint32_t((_textArea.height - 6) / LINE_SIZE);
     _visibleCols = uint32_t(_textArea.width - 6*COLUMN_WIDTH - 6) / COLUMN_WIDTH;
     _scrollPos = {-(float)_losCol * COLUMN_WIDTH, -(float)_tosLine * LINE_SIZE};
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 0);
-    gui::BeginScrollPanel(-1, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
+    gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
     DrawRectangle(5*COLUMN_WIDTH, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
@@ -478,6 +484,7 @@ void Editor::draw(Font& font, Rectangle rect)
     gui::EndScrollPanel();
     _tosLine = -_scrollPos.y / LINE_SIZE;
     _losCol = -_scrollPos.x / COLUMN_WIDTH;
+    drawMessageArea();
 }
 
 Rectangle Editor::verticalScrollHandle()
@@ -769,6 +776,39 @@ Rectangle Editor::drawToolArea()
         }
     }
     return toolArea;
+}
+
+Rectangle Editor::layoutMessageArea()
+{
+    return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 4, _totalArea.width, LINE_SIZE*2 + 4};
+}
+
+static void DrawRectangleX(Rectangle rec, int borderWidth, Color borderColor, Color color)
+{
+    if (color.a > 0)
+    {
+        // Draw rectangle filled with color
+        DrawRectangle((int)rec.x, (int)rec.y, (int)rec.width, (int)rec.height, color);
+    }
+
+    if (borderWidth > 0)
+    {
+        // Draw rectangle border lines with color
+        DrawRectangle((int)rec.x, (int)rec.y, (int)rec.width, borderWidth, borderColor);
+        DrawRectangle((int)rec.x, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, borderColor);
+        DrawRectangle((int)rec.x + (int)rec.width - borderWidth, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, borderColor);
+        DrawRectangle((int)rec.x, (int)rec.y + (int)rec.height - borderWidth, (int)rec.width, borderWidth, borderColor);
+    }
+}
+
+void Editor::drawMessageArea()
+{
+    using namespace gui;
+    static float w = 0, h = 0;
+    auto area = GetContentAvailable();
+
+    DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
+
 }
 
 std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)

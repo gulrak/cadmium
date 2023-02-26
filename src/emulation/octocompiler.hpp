@@ -40,30 +40,60 @@ namespace emu {
 
 class Chip8Compiler;
 
+struct CompileResult {
+    enum ResultType { eOK, eINFO, eWARNING, eERROR };
+    struct Location {
+        enum Type { eROOT, eINCLUDED, eINSTANTIATED };
+        std::string file;
+        int line;
+        int column;
+        Type type;
+    };
+    ResultType resultType{eOK};
+    std::string errorMessage;
+    std::vector<Location> locations;
+    void reset()
+    {
+        resultType = eOK;
+        errorMessage.clear();
+        locations.clear();
+    }
+};
+
 class OctoCompiler
 {
 public:
     using ProgressHandler = std::function<void(int verbosity, std::string msg)>;
     using Value = std::variant<int,double,std::string>;
     struct Token {
-        enum Type { eNONE, eNUMBER, eSTRING, eDIRECTIVE, eIDENTIFIER, eOPERATOR, eKEYWORD, ePREPROCESSOR, eSPRITESIZE, eLCURLY, eRCURLY, eEOF, eERROR };
+        enum Type { eNONE, eNUMBER, eSTRING, eDIRECTIVE, eIDENTIFIER, eOPERATOR, eKEYWORD, ePREPROCESSOR, eSPRITESIZE, eLCURLY, eRCURLY, eEOF };
         double number;
         std::string text;
         std::string_view raw;
         std::string_view prefix;
+        uint32_t prefixLine{0};
         uint32_t line{0};
         uint32_t column{0};
         uint32_t length{0};
     };
     class Lexer {
     public:
+        struct Exception : public std::exception {
+            Exception(const std::string& message) : errorMessage(message) {}
+            ~Exception() noexcept override = default;
+            const char* what() const noexcept override { return errorMessage.c_str(); }
+            std::string errorMessage;
+        };
         Lexer() = default;
         Lexer(Lexer* parent) : _parent(parent) {}
         void setRange(const std::string& filename, const char* source, const char* end);
         Token::Type nextToken(bool preproc = false);
         const Token& token() const { return _token; }
+        std::string cutPrefixLines();
+        void consumeRestOfLine();
         bool expect(const std::string_view& literal) const;
-        std::string errorLocation();
+        void errorLocation(CompileResult& result);
+        std::vector<std::pair<int,std::string>> locationStack() const;
         const std::string& filename() const { return _filename; }
     private:
         char peek() const { return _srcPtr < _srcEnd ? *_srcPtr : 0; }
@@ -72,7 +102,7 @@ public:
         bool isPreprocessor() const;
         Token::Type parseString();
         void skipWhitespace(bool preproc = false);
-        Token::Type error(std::string msg, size_t length = 0);
+        void error(std::string msg);
         Lexer* _parent{nullptr};
         std::string _filename;
         const char* _srcPtr{nullptr};
@@ -82,12 +112,12 @@ public:
     OctoCompiler();
     ~OctoCompiler();
     void reset();
-    void compile(const std::string& filename, const char* source, const char* end);
-    void compile(const std::string& filename);
-    void compile(const std::vector<std::string>& files);
-    void preprocessFile(const std::string& inputFile, const char* source, const char* end, emu::OctoCompiler::Lexer* parentLexer = nullptr);
-    void preprocessFile(const std::string& inputFile, emu::OctoCompiler::Lexer* parentLexer = nullptr);
-    void preprocessFiles(const std::vector<std::string>& files);
+    const CompileResult& compile(const std::string& filename, const char* source, const char* end, bool needsPreprocess = true);
+    const CompileResult& compile(const std::string& filename);
+    const CompileResult& compile(const std::vector<std::string>& files);
+    const CompileResult& preprocessFile(const std::string& inputFile, const char* source, const char* end);
+    const CompileResult& preprocessFile(const std::string& inputFile);
+    const CompileResult& preprocessFiles(const std::vector<std::string>& files);
     void dumpSegments(std::ostream& output);
     void define(std::string name, Value val = 1);
     bool isTrue(const std::string_view& name) const;
@@ -102,20 +132,30 @@ public:
     const char* breakpointForAddr(uint32_t addr) const;
 
 private:
+    inline Lexer& lexer()
+    {
+        if(!_lexerStack.empty())
+            return _lexerStack.top();
+        throw Lexer::Exception("Lexer stack empty!");
+    }
     enum SegmentType { eCODE, eDATA };
     enum OutputControl { eACTIVE, eINACTIVE, eSKIP_ALL };
     static bool isImage(const std::string& filename);
-    Token::Type includeImage(Lexer& lex, std::string filename);
+    Token::Type includeImage(std::string filename);
     void write(const std::string_view& text);
-    void writeLineMarker(Lexer& lex);
-    void error(Lexer& lex, std::string msg) const;
-    void warning(Lexer& lex, std::string msg) const;
-    void info(Lexer& lex, std::string msg) const;
+    void writePrefix();
+    void doWrite(const std::string_view& text, int line);
+    void writeLineMarker();
+    void error(std::string msg);
+    void warning(std::string msg);
+    void info(std::string msg);
     void flushSegment();
-    std::string resolveFile(const fs::path& file, Lexer* lexer = nullptr) const;
+    std::string resolveFile(const fs::path& file);
     std::ostringstream _collect;
+    std::vector<std::pair<int,std::string>> _collectLocationStack;
     SegmentType _currentSegment{eCODE};
     std::string _lineMarker;
+    std::stack<Lexer> _lexerStack;
     std::vector<std::string> _codeSegments;
     std::vector<std::string> _dataSegments;
     std::stack<OutputControl> _emitCode;
@@ -123,8 +163,8 @@ private:
     std::vector<fs::path> _includePaths;
     std::unique_ptr<Chip8Compiler> _compiler;
     ProgressHandler _progress;
-    int _includeDepth{0};
     bool _generateLineInfos{true};
+    CompileResult _compileResult;
 };
 
 } // namespace emu

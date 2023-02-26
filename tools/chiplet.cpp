@@ -90,26 +90,49 @@ int main(int argc, char* argv[])
             logstream << "current directory: " << fs::current_path().string() << std::endl;
     }
     auto start = steady_clock::now();
+    emu::CompileResult result;
     try {
         if (preprocess) {
-            compiler.preprocessFiles(inputList);
-            if (outputFile.empty())
-                compiler.dumpSegments(std::cout);
-            else {
-                std::ofstream out(outputFile);
-                compiler.dumpSegments(out);
+            result = compiler.preprocessFiles(inputList);
+            if(result.resultType == emu::CompileResult::eOK) {
+                if (outputFile.empty())
+                    compiler.dumpSegments(std::cout);
+                else {
+                    std::ofstream out(outputFile);
+                    compiler.dumpSegments(out);
+                }
             }
         }
         else {
-            compiler.compile(inputList);
-            if (outputFile.empty())
-                outputFile = "a.out.ch8";
-            std::ofstream out(outputFile, std::ios::binary);
-            out.write((const char*)compiler.code(), compiler.codeSize());
+            result = compiler.compile(inputList);
+            if(result.resultType == emu::CompileResult::eOK) {
+                if (outputFile.empty())
+                    outputFile = "a.out.ch8";
+                std::ofstream out(outputFile, std::ios::binary);
+                out.write((const char*)compiler.code(), compiler.codeSize());
+            }
+        }
+        if(result.resultType != emu::CompileResult::eOK) {
+            for(auto iter = result.locations.rbegin(); iter != result.locations.rend(); ++iter) {
+                switch(iter->type) {
+                    case emu::CompileResult::Location::eINCLUDED:
+                        std::cerr << "In file included from " << iter->file << ":" << iter->line << ":" << std::endl;
+                        break;
+                    case emu::CompileResult::Location::eINSTANTIATED:
+                        std::cerr << "Instantiated at " << iter->file << ":" << iter->line << ":" << std::endl;
+                        break;
+                    default:
+                        std::cerr << iter->file << ":" << iter->line << ":";
+                        if(iter->column)
+                            std::cerr << iter->column << ": ";
+                        std::cerr << result.errorMessage << "\n" << std::endl;
+                        break;
+                }
+            }
         }
     }
     catch(std::exception& ex) {
-        std::cerr << ex.what() << std::endl;
+        std::cerr << "Internal error: " << ex.what() << std::endl;
         rc = -1;
     }
     auto duration = duration_cast<milliseconds>(steady_clock::now() - start).count();

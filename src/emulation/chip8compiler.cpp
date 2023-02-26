@@ -54,12 +54,18 @@ Chip8Compiler::~Chip8Compiler()
 
 bool Chip8Compiler::compile(std::string str)
 {
+    return compile(str.data(), str.data() + str.size() + 1);
+}
+
+bool Chip8Compiler::compile(const char* start, const char* end)
+{
     if (_impl->_program) {
         octo_free_program(_impl->_program);
         _impl->_program = nullptr;
     }
-    char* source = (char*)malloc(str.length() + 1);
-    memcpy(source, str.data(), str.length() + 1);
+    // make a malloc based copy that c-octo will own and free on oct_free_program
+    char* source = (char*)malloc(end - start);
+    memcpy(source, start, end - start);
     _impl->_program = octo_compile_str(source);
     if (!_impl->_program) {
         _impl->_errorMessage = "ERROR: unknown error, no binary generated";
@@ -87,7 +93,7 @@ std::string Chip8Compiler::rawErrorMessage() const
 
 int Chip8Compiler::errorLine() const
 {
-    return _impl->_program ? _impl->_program->error_line : 0;
+    return _impl->_program ? _impl->_program->error_line + 1 : 0;
 }
 
 int Chip8Compiler::errorCol() const
