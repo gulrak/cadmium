@@ -1155,7 +1155,7 @@ public:
             auto ips = (_chipEmu->getCycles() - lastInstructionCount) / GetFrameTime();
             if(_mainView == eEDITOR) {
 #ifdef WITH_EDITOR
-                StatusBar({{0.75f, _editor.compiler().errorMessage().c_str()},
+                StatusBar({{0.75f, _editor.compiler().compileResult().errorMessage.c_str()},
                     {0.25f, fmt::format("Cursor: {}:{}", _editor.line(), _editor.column()).c_str()}});
 #endif
             }
@@ -1718,7 +1718,7 @@ public:
                 SetIndent(32);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
-                    if(selectedInfo.variant != _options.behaviorBase) {
+                    if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
                         _options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
                         updateEmulatorOptions();
                     }
@@ -1903,16 +1903,15 @@ public:
             _romSha1Hex.clear();
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
-                std::string source = loadTextFile(filename);
-                emu::Chip8Compiler c8c;
-                if(c8c.compile(source))
+                emu::OctoCompiler c8c;
+                if(c8c.compile(filename).resultType == emu::CompileResult::eOK)
                 {
                     if(c8c.codeSize() < _chipEmu->memSize() - 512) {
                         _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
                         _romSha1Hex = c8c.sha1Hex();
                         _debugger.updateOctoBreakpoints(c8c);
 #ifdef WITH_EDITOR
-                        _editor.setText(source);
+                        _editor.setText(loadTextFile(filename));
                         _editor.setFilename(filename);
                         _mainView = eEDITOR;
 #endif

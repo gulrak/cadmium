@@ -780,7 +780,9 @@ Rectangle Editor::drawToolArea()
 
 Rectangle Editor::layoutMessageArea()
 {
-    return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 4, _totalArea.width, LINE_SIZE*2 + 4};
+    if(_messageWindowVisible)
+        return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 4, _totalArea.width, LINE_SIZE*2 + 4};
+    return {0,0,0,0};
 }
 
 static void DrawRectangleX(Rectangle rec, int borderWidth, Color borderColor, Color color)
@@ -803,12 +805,22 @@ static void DrawRectangleX(Rectangle rec, int borderWidth, Color borderColor, Co
 
 void Editor::drawMessageArea()
 {
+    if(!_messageWindowVisible)
+        return;
     using namespace gui;
     static float w = 0, h = 0;
     auto area = GetContentAvailable();
-
     DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
-
+    BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
+    const auto& compileResult = _compiler.compileResult();
+    if(compileResult.resultType == emu::CompileResult::eOK) {
+        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 2}, {0,0}, 0, 8, 0, WHITE);
+    }
+    else {
+        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", compileResult.locations.back().file, compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 2}, {0,0}, 0, 8, 0, WHITE);
+        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 10}, {0,0}, 0, 8, 0, WHITE);
+    }
+    EndScissorMode();
 }
 
 std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)

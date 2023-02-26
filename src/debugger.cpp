@@ -300,10 +300,10 @@ void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
     }
 }
 
-void Debugger::updateOctoBreakpoints(const emu::Chip8Compiler& c8c)
+void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
 {
     for(uint32_t addr = 0; addr < std::min(_core->memSize(), 65536); ++addr) {
-        const auto* bpn = c8c.breakpointForAddr(addr);
+        const auto* bpn = compiler.breakpointForAddr(addr);
         if(bpn)
             _core->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
         else {

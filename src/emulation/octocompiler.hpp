@@ -120,7 +120,8 @@ public:
     const CompileResult& preprocessFiles(const std::vector<std::string>& files);
     void dumpSegments(std::ostream& output);
     void define(std::string name, Value val = 1);
-    bool isTrue(const std::string_view& name) const;
+    const CompileResult& compileResult() const { return _compileResult; }
+    bool isError() const { return _compileResult.resultType != CompileResult::eOK; }
     void generateLineInfos(bool value) { _generateLineInfos = value; }
     void setIncludePaths(const std::vector<std::string>& paths);
     void setProgressHandler(ProgressHandler handler) { _progress = handler; }
@@ -140,6 +141,7 @@ private:
     }
     enum SegmentType { eCODE, eDATA };
     enum OutputControl { eACTIVE, eINACTIVE, eSKIP_ALL };
+    bool isTrue(const std::string_view& name) const;
     static bool isImage(const std::string& filename);
     Token::Type includeImage(std::string filename);
     void write(const std::string_view& text);

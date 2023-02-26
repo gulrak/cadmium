@@ -27,7 +27,7 @@
 
 #include <emulation/ichip8.hpp>
 #include <emulation/chip8realcorebase.hpp>
-#include <emulation/chip8compiler.hpp>
+#include <emulation/octocompiler.hpp>
 
 #include <raylib.h>
 
@@ -42,7 +42,7 @@ public:
     void updateCore(emu::IChip8Emulator* core);
     void captureStates();
     void render(Font& font, std::function<void(Rectangle,int)> drawScreen);
-    void updateOctoBreakpoints(const emu::Chip8Compiler& c8c);
+    void updateOctoBreakpoints(const emu::OctoCompiler& compiler);
     bool supportsStepOver() const;
     bool isControllingChip8() const { return _backend == nullptr || _visibleCpu == CHIP8_CORE; }
 private:
