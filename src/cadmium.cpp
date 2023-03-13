@@ -52,6 +52,7 @@ extern "C" {
 #include <circularbuffer.hpp>
 #include <debugger.hpp>
 #include <logview.hpp>
+#include <nlohmann/json.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -2140,12 +2141,13 @@ std::string chip8EmuScreen(emu::IChip8Emulator& chip8)
 {
     std::string result;
     auto width = chip8.getCurrentScreenWidth();
+    auto maxWidth = 256; //chip8.getMaxScreenWidth();
     auto height = chip8.getCurrentScreenHeight();
     const auto* buffer = chip8.getScreenBuffer();
-    result.reserve(width*height+1);
+    result.reserve(width*height+height);
     for(int y = 0; y < height; ++y) {
         for(int x = 0; x < width; ++x) {
-            result.push_back(buffer[y*width + x] ? '#' : ' ');
+            result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
         }
         result.push_back('\n');
     }
@@ -2277,7 +2279,10 @@ int main(int argc, char* argv[])
     bool showHelp = false;
     bool opcodeTable = false;
     bool startRom = false;
+    bool screenDump = false;
     int64_t execSpeed = -1;
+    std::string randomGen;
+    int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName = "";
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
@@ -2287,6 +2292,9 @@ int main(int argc, char* argv[])
     cli.option({"-b", "--benchmark"}, benchmark, "Run benchmark against octo-c");
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
+    cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
+    cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
+    cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.positional(romFile, "ROM file or source to load");
     cli.parse();
@@ -2305,6 +2313,10 @@ int main(int argc, char* argv[])
     }
     if(romFile.empty() && startRom) {
         std::cerr << "ERROR: can't start anything without a ROM/source file" << std::endl;
+        exit(1);
+    }
+    if(!randomGen.empty() && (traceLines<0 || (randomGen != "rand-lgc" && randomGen != "counting"))) {
+        std::cerr << "ERROR: random generator must be 'rand-lgc' or 'counting' and trace must be used." << std::endl;
         exit(1);
     }
     if(!presetName.empty()) {
@@ -2369,8 +2381,14 @@ int main(int argc, char* argv[])
         //chip8options.optLoadStoreDontIncI = false;
         chip8options.optDontResetVf = true;
         chip8options.optInstantDxyn = true;
+        if(!randomGen.empty()) {
+            chip8options.advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
+                {"random", randomGen},
+                {"seed", randomSeed}
+            }));
+        }
         auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, chip8options);
-        std::clog << "Engine1: " << chip8->name() << std::endl;
+        std::clog << "Engine1: " << chip8->name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(chip8options.behaviorBase) << std::endl;
         octo_emulator octo;
         octo_options oopt{};
         oopt.q_clip = 1;
@@ -2387,10 +2405,9 @@ int main(int argc, char* argv[])
             //chip8.loadRom(romFile.c_str());
         }
         octo_emulator_init(&octo, (char*)chip8->memory() + 512, 4096 - 512, &oopt, nullptr);
-        std::clog << "Engine2: C-Octo" << std::endl;
         int64_t i = 0;
-        //for(int i = 0; i < traceLines; ++i) {
         if(compareRun) {
+            std::clog << "Engine2: C-Octo" << std::endl;
             do {
                 if ((i & 7) == 0) {
                     chip8->handleTimer();
@@ -2454,8 +2471,9 @@ int main(int argc, char* argv[])
                 }
                 chip8->executeInstruction();
                 ++i;
-            } while (i < traceLines || (traceLines == 0 && chip8->getExecMode() == emu::IChip8Emulator::ExecMode::eRUNNING));
-            std::cout << chip8EmuScreen(*chip8);
+            } while (i <= traceLines && chip8->getExecMode() == emu::IChip8Emulator::ExecMode::eRUNNING);
+            if(screenDump)
+                std::cout << chip8EmuScreen(*chip8);
         }
     }
 #endif

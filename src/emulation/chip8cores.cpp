@@ -28,6 +28,7 @@
 #include <emulation/logger.hpp>
 
 #include <iostream>
+#include <nlohmann/json.hpp>
 
 namespace emu
 {
@@ -69,7 +70,17 @@ void Chip8EmulatorFP::setHandler()
     on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0);
     on(0xF000, 0xA000, &Chip8EmulatorFP::opAnnn);
     on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8EmulatorFP::opBxnn : &Chip8EmulatorFP::opBnnn);
-    on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn);
+    std::string randomGen;
+    if(_options.advanced && _options.advanced->contains("random")) {
+        randomGen = _options.advanced->at("random");
+        _randomSeed = _options.advanced->at("seed");
+    }
+    if(randomGen == "rand-lcg")
+        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_randLCG);
+    else if(randomGen == "counting")
+        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_counting);
+    else
+        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn);
     if(_options.optAllowHires) {
         if(_options.optAllowColors) {
             if (_options.optWrapSprites)
@@ -215,6 +226,12 @@ void Chip8EmulatorFP::setHandler()
 
 Chip8EmulatorFP::~Chip8EmulatorFP()
 {
+}
+
+void Chip8EmulatorFP::reset()
+{
+    Chip8EmulatorBase::reset();
+    _simpleRandState = _simpleRandSeed;
 }
 
 inline void Chip8EmulatorFP::executeInstructionNoBreakpoints()
@@ -828,6 +845,18 @@ void Chip8EmulatorFP::opBxyn(uint16_t opcode)
     // TODO: CHIP-8X
 }
 
+
+inline uint8_t classicRand(uint32_t& state)
+{
+    state = ((state * 1103515245) + 12345) & 0x7FFFFFFF;
+    return state >> 16;
+}
+
+inline uint8_t countingRand(uint32_t& state)
+{
+    return state++;
+}
+
 void Chip8EmulatorFP::opCxnn(uint16_t opcode)
 {
     if(_options.behaviorBase < emu::Chip8EmulatorOptions::eSCHIP10) {
@@ -844,6 +873,16 @@ void Chip8EmulatorFP::opCxnn(uint16_t opcode)
     else {
         _rV[(opcode >> 8) & 0xF] = (rand() >> 4) & (opcode & 0xFF);
     }
+}
+
+void Chip8EmulatorFP::opCxnn_randLCG(uint16_t opcode)
+{
+    _rV[(opcode >> 8) & 0xF] = classicRand(_simpleRandState) & (opcode & 0xFF);
+}
+
+void Chip8EmulatorFP::opCxnn_counting(uint16_t opcode)
+{
+    _rV[(opcode >> 8) & 0xF] = countingRand(_simpleRandState) & (opcode & 0xFF);
 }
 
 static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)

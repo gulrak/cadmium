@@ -580,6 +580,7 @@ public:
         return "Chip-8-MPT";
     }
 
+    void reset() override;
     void executeInstruction() override;
     void executeInstructionNoBreakpoints();
     void executeInstructions(int numInstructions) override;
@@ -656,6 +657,8 @@ public:
     void opBxnn(uint16_t opcode);
     void opBxyn(uint16_t opcode);
     void opCxnn(uint16_t opcode);
+    void opCxnn_randLCG(uint16_t opcode);
+    void opCxnn_counting(uint16_t opcode);
     void opDxyn_megaChip(uint16_t opcode);
     void opEx9E(uint16_t opcode);
     void opEx9E_with_F000(uint16_t opcode);
@@ -797,6 +800,8 @@ private:
         return (_memory[addr] << 8) | (addr == ADDRESS_MASK ? _memory[0] : _memory[addr + 1]);
     }
     std::vector<OpcodeHandler> _opcodeHandler;
+    uint32_t _simpleRandSeed{12345};
+    uint32_t _simpleRandState{12345};
 };
 
 
