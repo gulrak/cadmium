@@ -190,9 +190,9 @@ to compile it.
 ### Windows
 
 Currently, _Cadmium_ is not being able to compile with MSVC++ so the recommended
-toolchain is W64devkit. I might try to make it compile on MSVC++, but I am not
-working on that in the near future. That being said, I would not per-se reject
-PRs helping with this.
+toolchain is [W64devkit](https://github.com/skeeto/w64devkit). I might try to make
+it compile on MSVC++, but I am not  working on that in the near future. That being
+said, I would not per-se reject PRs helping with this.
 
 ```
 export PATH="$PATH;C:/Program Files/CMake/bin"

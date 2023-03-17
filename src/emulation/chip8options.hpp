@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8variants.hpp>
+#include <chiplet/chip8variants.hpp>
 #include <nlohmann/json_fwd.hpp>
 
 #include <cstdint>

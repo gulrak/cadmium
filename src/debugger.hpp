@@ -27,7 +27,7 @@
 
 #include <emulation/ichip8.hpp>
 #include <emulation/chip8realcorebase.hpp>
-#include <emulation/octocompiler.hpp>
+#include <chiplet/octocompiler.hpp>
 
 #include <raylib.h>
 

@@ -24,8 +24,8 @@
 //
 //---------------------------------------------------------------------------------------
 #include <emulation/chip8cores.hpp>
-#include <emulation/chip8decompiler.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/chip8decompiler.hpp>
+#include <chiplet/utility.hpp>
 #include <librarian.hpp>
 
 #include <raylib.h>

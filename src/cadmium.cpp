@@ -29,7 +29,6 @@
 
 #include <rlguipp/rlguipp.hpp>
 #include "configuration.hpp"
-#include "emulation/chip8dream.hpp"
 
 extern "C" {
 #include <raymath.h>
@@ -40,11 +39,11 @@ extern "C" {
 #include <stdendian/stdendian.h>
 #include <about.hpp>
 #include <emulation/c8bfile.hpp>
-#include <emulation/chip8compiler.hpp>
+#include <chiplet/chip8decompiler.hpp>
 #include <emulation/chip8cores.hpp>
-#include <emulation/chip8decompiler.hpp>
+#include <emulation/chip8dream.hpp>
 #include <emulation/time.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/utility.hpp>
 #include <ghc/cli.hpp>
 #include <librarian.hpp>
 #include <systemtools.hpp>
@@ -1115,7 +1114,7 @@ public:
         }
     }
 
-    void updateOctoBreakpoints(const emu::Chip8Compiler& c8c)
+    void updateOctoBreakpoints(const emu::OctoCompiler& c8c)
     {
         for(uint32_t addr = 0; addr < std::min(_chipEmu->memSize(), 65536); ++addr) {
             const auto* bpn = c8c.breakpointForAddr(addr);

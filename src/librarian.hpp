@@ -26,7 +26,7 @@
 #pragma once
 
 #include <emulation/chip8options.hpp>
-#include <emulation/chip8variants.hpp>
+#include <chiplet/chip8variants.hpp>
 
 #include <chrono>
 #include <string>

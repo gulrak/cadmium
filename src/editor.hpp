@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/octocompiler.hpp>
+#include <chiplet/octocompiler.hpp>
 
 #include <algorithm>
 #include <array>
@@ -188,6 +188,7 @@ protected:
     Rectangle _totalArea{};
     Rectangle _textArea{};
     Rectangle _toolArea{};
+    Rectangle _projectArea{};
     Rectangle _messageArea{};
     FindReplaceMode _findOrReplace{eNONE};
     bool _findCaseSensitive{false};

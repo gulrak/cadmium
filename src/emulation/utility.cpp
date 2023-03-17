@@ -24,7 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include <ghc/fs_impl.hpp>
+//#include <ghc/fs_impl.hpp>
 #include <emulation/utility.hpp>
 
 #ifndef MAGIC_ENUM_SUPPORTED

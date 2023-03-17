@@ -94,21 +94,20 @@ if(NOT doctest_POPULATED)
     FetchContent_Populate(doctest)
     add_subdirectory(${doctest_SOURCE_DIR} ${doctest_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
-# FetchContent_MakeAvailable(DocTest)
+
 include_directories(${DOCTEST_INCLUDE_DIR})
 
 FetchContent_Declare(
-        GhcFilesystem
-        GIT_REPOSITORY "https://github.com/gulrak/filesystem.git"
-        GIT_TAG "v1.5.12"
+        Chiplet
+        GIT_REPOSITORY "https://github.com/gulrak/chiplet.git"
+        GIT_TAG "v1.0.1"
         GIT_SHALLOW TRUE
 )
-FetchContent_GetProperties(GhcFilesystem)
-if(NOT ghcfilesystem_POPULATED)
-    FetchContent_Populate(GhcFilesystem)
-    add_subdirectory(${ghcfilesystem_SOURCE_DIR} ${ghcfilesystem_BINARY_DIR} EXCLUDE_FROM_ALL)
+FetchContent_GetProperties(Chiplet)
+if(NOT chiplet_POPULATED)
+    FetchContent_Populate(Chiplet)
+    add_subdirectory(${chiplet_SOURCE_DIR} ${chiplet_BINARY_DIR})
 endif()
-#FetchContent_MakeAvailable(GhcFilesystem)
 
 find_package(Git)
 if(GIT_FOUND)

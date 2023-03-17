@@ -31,7 +31,7 @@
 
 #include <emulation/time.hpp>
 
-#include <fmt/include/fmt/format.h>
+#include <fmt/format.h>
 
 #include <cstdint>
 #include <functional>

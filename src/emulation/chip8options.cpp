@@ -148,7 +148,7 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optXOChipSound = false,
                     .optChicueyiSound = false,
                     .optTraceLog = false,
-                    .instructionsPerFrame = 9};
+                    .instructionsPerFrame = 10};
         case eCHIP48:
             return {.behaviorBase = preset,
                     .startAddress = 0x200,
@@ -334,7 +334,7 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optXOChipSound = false,
                     .optChicueyiSound = false,
                     .optTraceLog = false,
-                    .instructionsPerFrame = 9};
+                    .instructionsPerFrame = 10};
     }
 }
 

@@ -9,14 +9,6 @@ endif()
 
 add_executable(soundfreq soundfreq.cpp)
 
-add_executable(decompile decompiler.cpp ../src/systemtools.cpp)
-target_compile_definitions(decompile PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
-target_link_libraries(decompile PUBLIC emulation ghc_filesystem)
-
-add_executable(chiplet chiplet.cpp)
-target_compile_definitions(chiplet PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
-target_link_libraries(chiplet PUBLIC emulation ghc_filesystem)
-
 add_executable(fontgenerator fontgenerator.cpp)
 
 add_executable(colorsort colorsort.cpp)

@@ -31,8 +31,8 @@
 #include <cmath>
 #include <regex>
 #include <editor.hpp>
-#include <emulation/utility.hpp>
-#include <emulation/octocompiler.hpp>
+#include <chiplet/utility.hpp>
+#include <chiplet/octocompiler.hpp>
 #include <ghc/utf8.hpp>
 
 namespace utf8 = ghc::utf8;
@@ -414,7 +414,8 @@ void Editor::update()
             if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
                 _compiledSourceSha1Hex = _editedTextSha1Hex;
                 try {
-                    _compiler.compile(_filename, _text.data(), _text.data() + _text.size());
+                    _compiler.reset();
+                    _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
                 }
                 catch(std::exception& ex)
                 {}

@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include <systemtools.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/utility.hpp>
 
 #include <ghc/utf8.hpp>
 

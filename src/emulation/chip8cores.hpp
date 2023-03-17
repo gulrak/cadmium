@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include <emulation/chip8meta.hpp>
+#include <chiplet/chip8meta.hpp>
 #include <emulation/chip8options.hpp>
 #include <emulation/chip8emulatorbase.hpp>
 #include <emulation/time.hpp>

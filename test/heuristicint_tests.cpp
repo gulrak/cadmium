@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8decompiler.hpp
+// test/heuristicint_tests.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,41 +23,46 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-// NOTE: This is currently only a wrapper over the c-octo octo-compiler.h implementation
-//       by John Earnest
-//---------------------------------------------------------------------------------------
-#pragma once
 
-#include <string>
-#include <memory>
+#include <doctest/doctest.h>
 
-namespace emu {
+#include <emulation/heuristicint.hpp>
+#define M6800_SPECULATIVE_SUPPORT
+//#define CADMIUM_WITH_GENERIC_CPU
+#include <emulation/hardware/m6800.hpp>
 
-class Chip8Compiler
+using namespace emu;
+
+TEST_CASE("HeuristicInt - construction")
 {
-public:
-    Chip8Compiler();
-    ~Chip8Compiler();
+    //auto a = h_uint8_t(12);
+    h_uint8_t a;
+    CHECK(!a.isValid());
+    CHECK(!isValidInt(a));
+    h_uint8_t b{42};
+    CHECK(b.isValid());
+    CHECK(isValidInt(b));
+    CHECK(b.asNative() == 42);
+    CHECK(asNativeInt(b) == 42);
+}
 
-    bool compile(std::string text);
-    bool compile(const char* start, const char* end);
-    bool isError() const;
-    const std::string& errorMessage() const;
-    std::string rawErrorMessage() const;
-    int errorLine() const;
-    int errorCol() const;
-    uint16_t codeSize() const;
-    const uint8_t* code() const;
-    const std::string& sha1Hex() const;
-    std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
-    uint32_t lineForAddr(uint32_t addr) const;
-    const char* breakpointForAddr(uint32_t addr) const;
+struct M6k8TestBus : public emu::M6800Bus<h_uint8_t, h_uint16_t>
+{
+    ByteType readByte(WordType addr) const override
+    {
+        if(!emu::isValidInt(addr))
+            return {};
+        return ByteType(0);
+    }
 
-private:
-    void updateHash();
-    void updateLineCoverage();
-    class Private;
-    std::unique_ptr<Private> _impl;
+    void writeByte(WordType addr, ByteType val) override
+    {
+        if(emu::isValidInt(addr) && addr < 4096);
+    }
 };
 
+TEST_CASE("Speculative M6800")
+{
+    M6k8TestBus bus;
+    SpeculativeM6800 cpu(bus);
 }
