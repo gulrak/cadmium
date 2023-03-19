@@ -117,10 +117,11 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
             on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
             on(0xF0FF, 0xF029, &Chip8EmulatorFP::opFx29_ship10Beta);
-            //on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            //on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
+            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eSCHIP11:
+        case Chip8EmulatorOptions::eSCHPC:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
             on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
@@ -128,8 +129,8 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
             on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            //on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            //on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
+            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eMEGACHIP:
             on(0xFFFF, 0x0010, &Chip8EmulatorFP::op0010);
@@ -159,8 +160,8 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xE09E, &Chip8EmulatorFP::opEx9E_with_01nn);
             on(0xF0FF, 0xE0A1, &Chip8EmulatorFP::opExA1_with_01nn);
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            //on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            //on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
+            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eXOCHIP:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
@@ -183,8 +184,8 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0xF002, &Chip8EmulatorFP::opF002);
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
             on(0xF0FF, 0xF03A, &Chip8EmulatorFP::opFx3A);
-            //on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            //on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
+            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eCHICUEYI:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
@@ -208,7 +209,7 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0xF002, &Chip8EmulatorFP::opF002);
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
             on(0xF0FF, 0xF03A, &Chip8EmulatorFP::opFx3A);
-
+            break;
         default: break;
     }
 }
@@ -1112,5 +1113,22 @@ void Chip8EmulatorFP::opFx65_loadStoreDontIncI(uint16_t opcode)
     }
 }
 
+static uint8_t registerSpace[16]{};
+
+void Chip8EmulatorFP::opFx75(uint16_t opcode)
+{
+    uint8_t upto = (opcode >> 8) & 0xF;
+    for (int i = 0; i <= upto; ++i) {
+        registerSpace[i] = _rV[i];
+    }
+}
+
+void Chip8EmulatorFP::opFx85(uint16_t opcode)
+{
+    uint8_t upto = (opcode >> 8) & 0xF;
+    for (int i = 0; i <= upto; ++i) {
+        _rV[i] = registerSpace[i];
+    }
+}
 
 }

@@ -1152,13 +1152,7 @@ public:
             SetRowHeight(16);
             SetSpacing(0);
             auto ips = (_chipEmu->getCycles() - lastInstructionCount) / GetFrameTime();
-            if(_mainView == eEDITOR) {
-#ifdef WITH_EDITOR
-                StatusBar({{0.75f, _editor.compiler().compileResult().errorMessage.c_str()},
-                    {0.25f, fmt::format("Cursor: {}:{}", _editor.line(), _editor.column()).c_str()}});
-#endif
-            }
-            else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
+            if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
                            {0.15f, formatUnit(ips, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
@@ -1481,7 +1475,7 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGACHIP8;XO-CHIP;VIP-CHIP-8;CHIP-8 DREAM6800", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;CHIP-8 DREAM6800", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
@@ -1519,20 +1513,35 @@ public:
                             _options.optLoadStoreIncIByX = false;
                         }
                         _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
+                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
                         End();
                         Begin();
                         _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
                         _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
+                        bool oldLoresWidth = _options.optLoresDxy0Is8x16;
+                        _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
+                        if(!oldLoresWidth && _options.optLoresDxy0Is8x16)
+                            _options.optLoresDxy0Is16x16 = false;
+                        oldLoresWidth = _options.optLoresDxy0Is16x16;
+                        _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
+                        if(!oldLoresWidth && _options.optLoresDxy0Is16x16)
+                            _options.optLoresDxy0Is8x16 = false;
+                        bool oldVal = _options.optSC11Collision;
+                        _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
+                        if(!oldVal && _options.optSC11Collision) {
+                            _options.optAllowHires = true;
+                        }
                         bool oldAllowHires = _options.optAllowHires;
                         _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
-                        if(!_options.optAllowHires && oldAllowHires)
+                        if(!_options.optAllowHires && oldAllowHires) {
                             _options.optOnlyHires = false;
+                            _options.optSC11Collision = false;
+                        }
                         bool oldOnlyHires = _options.optOnlyHires;
                         _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
                         if(_options.optOnlyHires && !oldOnlyHires)
                             _options.optAllowHires = true;
                         _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
-                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
                         End();
                         EndColumns();
                         EndGroupBox();

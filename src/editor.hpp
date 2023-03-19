@@ -207,7 +207,7 @@ protected:
     bool _isRepeat{false};
     bool _cursorChanged{false};
     bool _mouseDownInText{false};
-    bool _messageWindowVisible{false};
+    bool _messageWindowVisible{true};
     emu::OctoCompiler _compiler;
     uint32_t _lastEditId{~0u};
     std::string _editedTextSha1Hex;

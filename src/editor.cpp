@@ -782,7 +782,7 @@ Rectangle Editor::drawToolArea()
 Rectangle Editor::layoutMessageArea()
 {
     if(_messageWindowVisible)
-        return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 4, _totalArea.width, LINE_SIZE*2 + 4};
+        return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 2, _totalArea.width, LINE_SIZE*2 + 2};
     return {0,0,0,0};
 }
 
@@ -815,11 +815,15 @@ void Editor::drawMessageArea()
     BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
     const auto& compileResult = _compiler.compileResult();
     if(compileResult.resultType == emu::CompileResult::eOK) {
-        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 2}, {0,0}, 0, 8, 0, WHITE);
+        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
     }
     else {
-        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", compileResult.locations.back().file, compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 2}, {0,0}, 0, 8, 0, WHITE);
-        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 10}, {0,0}, 0, 8, 0, WHITE);
+        std::error_code ec;
+        auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
+        auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
+        if(ec) relFile = compileResult.locations.back().file;
+        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
+        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, ORANGE);
     }
     EndScissorMode();
 }

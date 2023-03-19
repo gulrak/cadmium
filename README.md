@@ -77,10 +77,17 @@ The Supported presets are:
 * CHIP-48
 * SUPER-CHIP 1.0
 * SUPER-CHIP 1.1
+* SUPER-CHIP COMP
 * MegaChip 8
 * XO-CHIP
 * VIP-CHIP-8
 * CHIP-8-DREAM
+
+The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
+to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
+(often developed on Octo) that target SuperCHIP to run without tweeking some
+quirks that, while correct for the original SCHIP1.1 are not common in modern
+programs.
 
 The `VIP-CHIP-8` preset activates a core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8

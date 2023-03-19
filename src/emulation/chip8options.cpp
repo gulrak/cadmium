@@ -39,6 +39,7 @@ Chip8Variant Chip8EmulatorOptions::presetAsVariant() const
         case eCHIP48: return Chip8Variant::CHIP_48;
         case eSCHIP10: return Chip8Variant::SCHIP_1_0;
         case eSCHIP11: return Chip8Variant::SCHIP_1_1;
+        case eSCHPC: return Chip8Variant::SCHIPC_GCHIPC;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
         case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
@@ -56,6 +57,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eCHIP48: return "CHIP-48";
         case eSCHIP10: return "SUPER-CHIP 1.0";
         case eSCHIP11: return "SUPER-CHIP 1.1";
+        case eSCHPC: return "SUPER-CHIP-COMPATIBILITY";
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
@@ -74,6 +76,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eCHIP48: return "CHIP48";
         case eSCHIP10: return "SCHIP10";
         case eSCHIP11: return "SCHIP11";
+        case eSCHPC: return "SCHIPC";
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
@@ -92,6 +95,11 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"superchip10", emu::Chip8EmulatorOptions::eSCHIP10},
     {"schip11", emu::Chip8EmulatorOptions::eSCHIP11},
     {"superchip11", emu::Chip8EmulatorOptions::eSCHIP11},
+    {"superchipcompatibility", emu::Chip8EmulatorOptions::eSCHPC},
+    {"schipc", emu::Chip8EmulatorOptions::eSCHPC},
+    {"schipcomp", emu::Chip8EmulatorOptions::eSCHPC},
+    {"schpc", emu::Chip8EmulatorOptions::eSCHPC},
+    {"gchpc", emu::Chip8EmulatorOptions::eSCHPC},
     {"mchip", emu::Chip8EmulatorOptions::eMEGACHIP},
     {"mchip8", emu::Chip8EmulatorOptions::eMEGACHIP},
     {"megachip8", emu::Chip8EmulatorOptions::eMEGACHIP},
@@ -140,6 +148,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = false,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = true,
                     .optOnlyHires = true,
@@ -158,6 +169,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = true,
                     .optAllowHires = false,
                     .optOnlyHires = false,
@@ -176,6 +190,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = true,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = true,
                     .optAllowHires = true,
                     .optOnlyHires = false,
@@ -194,7 +211,31 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = true,
                     .optWrapSprites = false,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = true,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = true,
                     .optJump0Bxnn = true,
+                    .optAllowHires = true,
+                    .optOnlyHires = false,
+                    .optAllowColors = false,
+                    .optHas16BitAddr = false,
+                    .optXOChipSound = false,
+                    .optChicueyiSound = false,
+                    .optTraceLog = false,
+                    .instructionsPerFrame = 30};
+        case eSCHPC:
+            return {.behaviorBase = preset,
+                    .startAddress = 0x200,
+                    .optJustShiftVx = false,
+                    .optDontResetVf = true,
+                    .optLoadStoreIncIByX = false,
+                    .optLoadStoreDontIncI = false,
+                    .optWrapSprites = false,
+                    .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = true,
+                    .optSC11Collision = false,
+                    .optJump0Bxnn = false,
                     .optAllowHires = true,
                     .optOnlyHires = false,
                     .optAllowColors = false,
@@ -212,6 +253,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = true,
                     .optWrapSprites = false,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = true,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = true,
                     .optOnlyHires = false,
@@ -230,6 +274,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = true,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = true,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = true,
                     .optOnlyHires = false,
@@ -248,6 +295,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = true,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = true,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = true,
                     .optOnlyHires = false,
@@ -266,6 +316,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = false,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = false,
                     .optOnlyHires = false,
@@ -284,6 +337,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = false,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = false,
                     .optOnlyHires = false,
@@ -303,6 +359,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                 .optLoadStoreDontIncI = false,
                 .optWrapSprites = false,
                 .optInstantDxyn = false,
+                .optLoresDxy0Is8x16 = false,
+                .optLoresDxy0Is16x16 = false,
+                .optSC11Collision = false,
                 .optJump0Bxnn = false,
                 .optAllowHires = false,
                 .optOnlyHires = false,
@@ -326,6 +385,9 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optLoadStoreDontIncI = false,
                     .optWrapSprites = false,
                     .optInstantDxyn = false,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
                     .optJump0Bxnn = false,
                     .optAllowHires = false,
                     .optOnlyHires = false,
@@ -350,6 +412,9 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
         {"optLoadStoreDontIncI", o.optLoadStoreDontIncI},
         {"optWrapSprites", o.optWrapSprites},
         {"optInstantDxyn", o.optInstantDxyn},
+        {"optLoresDxy0Is8x16", o.optLoresDxy0Is8x16},
+        {"optLoresDxy0Is16x16", o.optLoresDxy0Is16x16},
+        {"optSC11Collision", o.optSC11Collision},
         {"optJump0Bxnn", o.optJump0Bxnn},
         {"optAllowHires", o.optAllowHires},
         {"optOnlyHires", o.optOnlyHires},
@@ -382,6 +447,9 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     j.at("optHas16BitAddr").get_to(o.optHas16BitAddr);
     j.at("optXOChipSound").get_to(o.optXOChipSound);
     o.optTraceLog = j.value("optTraceLog", false);
+    o.optLoresDxy0Is8x16 = j.value("optLoresDxy0Is8x16", false);
+    o.optLoresDxy0Is16x16 = j.value("optLoresDxy0Is16x16", false);
+    o.optSC11Collision = j.value("optSC11Collision", false);
     j.at("instructionsPerFrame").get_to(o.instructionsPerFrame);
     if(j.contains("advanced")) {
         o.advanced = std::make_shared<nlohmann::ordered_json>(j.at("advanced"));
