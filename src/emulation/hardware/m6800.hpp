@@ -52,8 +52,7 @@
 #include <cstdint>
 #include <string>
 
-#ifdef __has_include
-#if !defined(__EMSCRIPTEN__) && !defined(CADMIUM_WITH_GENERIC_CPU) && __has_include(<format>)
+#ifdef USE_STD_FORMAT
 #include <format>
 namespace emu {
 using std::format;
@@ -65,7 +64,6 @@ using fmt::format;
 }
 #else
 #error "Need __has_include support and either <format> or <fmt/format.h> in include path!"
-#endif
 #endif
 
 #ifndef M6800_STATE_BUS_ONLY
@@ -378,8 +376,13 @@ public:
 
     void executeInstruction()
     {
-        if (_execMode == ePAUSED || _cpuState == eERROR)
+#ifdef CADMIUM_WITH_GENERIC_CPU
+        if(_execMode == ePAUSED || _cpuState == eERROR)
             return;
+#else
+        if(_cpuState == eERROR)
+            return;
+#endif
         if(_halt) {
             handleHALT();
             return;
@@ -394,6 +397,7 @@ public:
             (this->*_info->handler)();
             ++_instructions;
         }
+#ifdef CADMIUM_WITH_GENERIC_CPU
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
@@ -401,6 +405,7 @@ public:
             if(findBreakpoint(getPC()))
                 _execMode = ePAUSED;
         }
+#endif
     }
 
     std::string executeInstructionTraced()
@@ -462,7 +467,8 @@ public:
     }
 #endif
 
-private:
+
+protected:
     enum AddressingMode { INVALID, INHERENT, IMMEDIATE, IMMEDIATE16, DIRECT, EXTENDED, RELATIVE, INDEXED, ACCUA = 8, ACCUB = 16, UNDOC = 32};
     enum InstructionType { NORMAL, READ, WRITE, STACK, JUMP, CCJUMP, CALL, CCCALL, RETURN, HALT};
     using OpcodeHandler = void (M6800::*)();
@@ -474,7 +480,12 @@ private:
         OpcodeHandler handler;
         char mnemonic[4];
     };
+    static const OpcodeInfo* opcodeIntoTable()
+    {
+        return _opcodes;
+    }
 
+private:
     void pushByte(byte_t data)
     {
         writeByte(_rSP--, data);

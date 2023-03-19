@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include <emulation/chip8meta.hpp>
+#include <chiplet/chip8meta.hpp>
 #include <emulation/chip8options.hpp>
 #include <emulation/chip8emulatorbase.hpp>
 #include <emulation/time.hpp>
@@ -685,6 +685,8 @@ public:
     void opFx65(uint16_t opcode);
     void opFx65_loadStoreIncIByX(uint16_t opcode);
     void opFx65_loadStoreDontIncI(uint16_t opcode);
+    void opFx75(uint16_t opcode);
+    void opFx85(uint16_t opcode);
 
     template<uint16_t quirks>
     void opDxyn(uint16_t opcode)
@@ -746,7 +748,7 @@ public:
     template<uint16_t quirks, int MAX_WIDTH = 128, int MAX_HEIGHT = 64>
     bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
     {
-        bool collision = false;
+        int collision = 0;
         constexpr int scrWidth = quirks&HiresSupport ? MAX_WIDTH : MAX_WIDTH/2;
         constexpr int scrHeight = quirks&HiresSupport ? MAX_HEIGHT : MAX_HEIGHT/2;
         int scale = quirks&HiresSupport ? (hires ? 1 : 2) : 1;
@@ -756,7 +758,11 @@ public:
         if(height == 0) {
             height = 16;
             // Thanks @NinjaWeedle: if not hires, draw 16x16 in XO-CHIP, 8x16 in SCHIP1.0/1.1 and nothing on the rest of the variants
-            width = hires ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eXOCHIP ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP10 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 ? 8 : 0));
+            // width = hires ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eXOCHIP ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP10 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 ? 16 : 0));
+            if(_options.optLoresDxy0Is16x16)
+                width = 16;
+            else if(!_options.optLoresDxy0Is8x16)
+                width = 0;
         }
         uint8_t planes;
         if constexpr ((quirks&MultiColor) != 0) planes = _planes; else planes = 1;
@@ -771,27 +777,38 @@ public:
                             value = *data++;
                         if (value & 0x80) {
                             if (drawSpritePixelEx<quirks>((x + b * scale) % scrWidth, (y + l * scale) % scrHeight, plane, hires))
-                                collision = true;
+                                ++collision;
                         }
                     }
                 }
                 else {
                     if (y + l * scale < scrHeight) {
+                        int lineCol = 0;
                         for (unsigned b = 0; b < width; ++b, value <<= 1) {
                             if (b == 8)
                                 value = *data++;
                             if (x + b * scale < scrWidth && (value & 0x80)) {
                                 if (drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, plane, hires))
-                                    collision = true;
+                                    lineCol = 1;
                             }
                         }
+                        collision += lineCol;
                     }
-                    else if (width == 16)
-                        ++data;
+                    else {
+                        if constexpr (quirks&SChip11Collisions)
+                            ++collision;
+                        else
+                            break;
+                        //if (width == 16)
+                        //    ++data;
+                    }
                 }
             }
         }
-        return collision;
+        if constexpr (quirks&SChip11Collisions)
+            return collision;
+        else
+            return (bool)collision;
     }
 
 private:

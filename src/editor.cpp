@@ -31,8 +31,8 @@
 #include <cmath>
 #include <regex>
 #include <editor.hpp>
-#include <emulation/utility.hpp>
-#include <emulation/octocompiler.hpp>
+#include <chiplet/utility.hpp>
+#include <chiplet/octocompiler.hpp>
 #include <ghc/utf8.hpp>
 
 namespace utf8 = ghc::utf8;
@@ -413,7 +413,13 @@ void Editor::update()
             _editedTextSha1Hex = calculateSha1Hex(_text);
             if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
                 _compiledSourceSha1Hex = _editedTextSha1Hex;
-                if(_compiler.compile(_text)) {
+                try {
+                    _compiler.reset();
+                    _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+                }
+                catch(std::exception& ex)
+                {}
+                if(true) {
                     //if(_compiler.sha1Hex() != romSha1Hex) {
 
                     //}
@@ -429,13 +435,14 @@ void Editor::draw(Font& font, Rectangle rect)
     int lineNumber = int(_tosLine) - 1;
     _totalArea = rect;
     _toolArea = drawToolArea();
+    _messageArea = layoutMessageArea();
     _textArea = {_totalArea.x, _totalArea.y + _toolArea.height, _totalArea.width, _totalArea.height - _toolArea.height - _messageArea.height};
     float ypos = _textArea.y - 4;
     _visibleLines = uint32_t((_textArea.height - 6) / LINE_SIZE);
     _visibleCols = uint32_t(_textArea.width - 6*COLUMN_WIDTH - 6) / COLUMN_WIDTH;
     _scrollPos = {-(float)_losCol * COLUMN_WIDTH, -(float)_tosLine * LINE_SIZE};
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 0);
-    gui::BeginScrollPanel(-1, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
+    gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
     DrawRectangle(5*COLUMN_WIDTH, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
@@ -478,6 +485,7 @@ void Editor::draw(Font& font, Rectangle rect)
     gui::EndScrollPanel();
     _tosLine = -_scrollPos.y / LINE_SIZE;
     _losCol = -_scrollPos.x / COLUMN_WIDTH;
+    drawMessageArea();
 }
 
 Rectangle Editor::verticalScrollHandle()
@@ -769,6 +777,55 @@ Rectangle Editor::drawToolArea()
         }
     }
     return toolArea;
+}
+
+Rectangle Editor::layoutMessageArea()
+{
+    if(_messageWindowVisible)
+        return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 2, _totalArea.width, LINE_SIZE*2 + 2};
+    return {0,0,0,0};
+}
+
+static void DrawRectangleX(Rectangle rec, int borderWidth, Color borderColor, Color color)
+{
+    if (color.a > 0)
+    {
+        // Draw rectangle filled with color
+        DrawRectangle((int)rec.x, (int)rec.y, (int)rec.width, (int)rec.height, color);
+    }
+
+    if (borderWidth > 0)
+    {
+        // Draw rectangle border lines with color
+        DrawRectangle((int)rec.x, (int)rec.y, (int)rec.width, borderWidth, borderColor);
+        DrawRectangle((int)rec.x, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, borderColor);
+        DrawRectangle((int)rec.x + (int)rec.width - borderWidth, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, borderColor);
+        DrawRectangle((int)rec.x, (int)rec.y + (int)rec.height - borderWidth, (int)rec.width, borderWidth, borderColor);
+    }
+}
+
+void Editor::drawMessageArea()
+{
+    if(!_messageWindowVisible)
+        return;
+    using namespace gui;
+    static float w = 0, h = 0;
+    auto area = GetContentAvailable();
+    DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
+    BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
+    const auto& compileResult = _compiler.compileResult();
+    if(compileResult.resultType == emu::CompileResult::eOK) {
+        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
+    }
+    else {
+        std::error_code ec;
+        auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
+        auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
+        if(ec) relFile = compileResult.locations.back().file;
+        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
+        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, ORANGE);
+    }
+    EndScissorMode();
 }
 
 std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)

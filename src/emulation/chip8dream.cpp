@@ -28,7 +28,7 @@
 #include <emulation/logger.hpp>
 #include <emulation/hardware/mc682x.hpp>
 #include <emulation/hardware/keymatrix.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/utility.hpp>
 
 #include <nlohmann/json.hpp>
 

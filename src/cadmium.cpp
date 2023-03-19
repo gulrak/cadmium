@@ -29,7 +29,6 @@
 
 #include <rlguipp/rlguipp.hpp>
 #include "configuration.hpp"
-#include "emulation/chip8dream.hpp"
 
 extern "C" {
 #include <raymath.h>
@@ -40,11 +39,11 @@ extern "C" {
 #include <stdendian/stdendian.h>
 #include <about.hpp>
 #include <emulation/c8bfile.hpp>
-#include <emulation/chip8compiler.hpp>
+#include <chiplet/chip8decompiler.hpp>
 #include <emulation/chip8cores.hpp>
-#include <emulation/chip8decompiler.hpp>
+#include <emulation/chip8dream.hpp>
 #include <emulation/time.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/utility.hpp>
 #include <ghc/cli.hpp>
 #include <librarian.hpp>
 #include <systemtools.hpp>
@@ -104,7 +103,6 @@ extern "C" {
 //#ifndef PLATFORM_WEB
 #define WITH_EDITOR
 #include <editor.hpp>
-#include <filesystem.hpp>
 // #endif
 
 
@@ -506,6 +504,8 @@ public:
         generateFont();
         if(chip8options)
             _options = *chip8options;
+        else
+            _mainView = eSETTINGS;
         updateEmulatorOptions();
         _chipEmu->reset();
         _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
@@ -1115,7 +1115,7 @@ public:
         }
     }
 
-    void updateOctoBreakpoints(const emu::Chip8Compiler& c8c)
+    void updateOctoBreakpoints(const emu::OctoCompiler& c8c)
     {
         for(uint32_t addr = 0; addr < std::min(_chipEmu->memSize(), 65536); ++addr) {
             const auto* bpn = c8c.breakpointForAddr(addr);
@@ -1153,13 +1153,7 @@ public:
             SetRowHeight(16);
             SetSpacing(0);
             auto ips = (_chipEmu->getCycles() - lastInstructionCount) / GetFrameTime();
-            if(_mainView == eEDITOR) {
-#ifdef WITH_EDITOR
-                StatusBar({{0.75f, _editor.compiler().errorMessage().c_str()},
-                    {0.25f, fmt::format("Cursor: {}:{}", _editor.line(), _editor.column()).c_str()}});
-#endif
-            }
-            else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
+            if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
                            {0.15f, formatUnit(ips, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
@@ -1482,7 +1476,7 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;MEGACHIP8;XO-CHIP;VIP-CHIP-8;CHIP-8 DREAM6800", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;CHIP-8 DREAM6800", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
@@ -1520,20 +1514,35 @@ public:
                             _options.optLoadStoreIncIByX = false;
                         }
                         _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
+                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
                         End();
                         Begin();
                         _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
                         _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
+                        bool oldLoresWidth = _options.optLoresDxy0Is8x16;
+                        _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
+                        if(!oldLoresWidth && _options.optLoresDxy0Is8x16)
+                            _options.optLoresDxy0Is16x16 = false;
+                        oldLoresWidth = _options.optLoresDxy0Is16x16;
+                        _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
+                        if(!oldLoresWidth && _options.optLoresDxy0Is16x16)
+                            _options.optLoresDxy0Is8x16 = false;
+                        bool oldVal = _options.optSC11Collision;
+                        _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
+                        if(!oldVal && _options.optSC11Collision) {
+                            _options.optAllowHires = true;
+                        }
                         bool oldAllowHires = _options.optAllowHires;
                         _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
-                        if(!_options.optAllowHires && oldAllowHires)
+                        if(!_options.optAllowHires && oldAllowHires) {
                             _options.optOnlyHires = false;
+                            _options.optSC11Collision = false;
+                        }
                         bool oldOnlyHires = _options.optOnlyHires;
                         _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
                         if(_options.optOnlyHires && !oldOnlyHires)
                             _options.optAllowHires = true;
                         _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
-                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
                         End();
                         EndColumns();
                         EndGroupBox();
@@ -1718,7 +1727,7 @@ public:
                 SetIndent(32);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
-                    if(selectedInfo.variant != _options.behaviorBase) {
+                    if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
                         _options = emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant);
                         updateEmulatorOptions();
                     }
@@ -1903,16 +1912,15 @@ public:
             _romSha1Hex.clear();
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
-                std::string source = loadTextFile(filename);
-                emu::Chip8Compiler c8c;
-                if(c8c.compile(source))
+                emu::OctoCompiler c8c;
+                if(c8c.compile(filename).resultType == emu::CompileResult::eOK)
                 {
                     if(c8c.codeSize() < _chipEmu->memSize() - 512) {
                         _romImage.assign(c8c.code(), c8c.code() + c8c.codeSize());
                         _romSha1Hex = c8c.sha1Hex();
                         _debugger.updateOctoBreakpoints(c8c);
 #ifdef WITH_EDITOR
-                        _editor.setText(source);
+                        _editor.setText(loadTextFile(filename));
                         _editor.setFilename(filename);
                         _mainView = eEDITOR;
 #endif
@@ -2325,7 +2333,9 @@ int main(int argc, char* argv[])
         }
         catch(std::runtime_error e) {
             std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-            exit(1);
+#ifndef PLATFORM_WEB
+            presetName = "";
+#endif
         }
     }
     auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);

@@ -176,6 +176,7 @@ std::pair<const uint8_t*, size_t> Chip8EmulatorBase::getSmallFontData() const
         case Chip8EmulatorOptions::eCHIP48:
         case Chip8EmulatorOptions::eSCHIP10:
         case Chip8EmulatorOptions::eSCHIP11:
+        case Chip8EmulatorOptions::eSCHPC:
         case Chip8EmulatorOptions::eMEGACHIP:
         case Chip8EmulatorOptions::eXOCHIP:
         case Chip8EmulatorOptions::eCHICUEYI:
@@ -193,6 +194,7 @@ std::pair<const uint8_t*, size_t> Chip8EmulatorBase::getBigFontData() const
         case Chip8EmulatorOptions::eSCHIP10:
             return bigFontData(C8F10_SCHIP10);
         case Chip8EmulatorOptions::eSCHIP11:
+        case Chip8EmulatorOptions::eSCHPC:
         case Chip8EmulatorOptions::eMEGACHIP:
         case Chip8EmulatorOptions::eCHICUEYI:
             return bigFontData(C8F10_SCHIP11);

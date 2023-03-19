@@ -77,10 +77,17 @@ The Supported presets are:
 * CHIP-48
 * SUPER-CHIP 1.0
 * SUPER-CHIP 1.1
+* SUPER-CHIP COMP
 * MegaChip 8
 * XO-CHIP
 * VIP-CHIP-8
 * CHIP-8-DREAM
+
+The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
+to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
+(often developed on Octo) that target SuperCHIP to run without tweeking some
+quirks that, while correct for the original SCHIP1.1 are not common in modern
+programs.
 
 The `VIP-CHIP-8` preset activates a core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
@@ -190,9 +197,9 @@ to compile it.
 ### Windows
 
 Currently, _Cadmium_ is not being able to compile with MSVC++ so the recommended
-toolchain is W64devkit. I might try to make it compile on MSVC++, but I am not
-working on that in the near future. That being said, I would not per-se reject
-PRs helping with this.
+toolchain is [W64devkit](https://github.com/skeeto/w64devkit). I might try to make
+it compile on MSVC++, but I am not  working on that in the near future. That being
+said, I would not per-se reject PRs helping with this.
 
 ```
 export PATH="$PATH;C:/Program Files/CMake/bin"

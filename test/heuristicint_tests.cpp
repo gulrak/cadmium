@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/editor.hpp
+// test/heuristicint_tests.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,8 +23,46 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#pragma once
 
-#include <ghc/fs_fwd.hpp>
+#include <doctest/doctest.h>
 
-namespace fs = ghc::filesystem;
+#include <emulation/heuristicint.hpp>
+#define M6800_SPECULATIVE_SUPPORT
+//#define CADMIUM_WITH_GENERIC_CPU
+#include <emulation/hardware/m6800.hpp>
+
+using namespace emu;
+
+TEST_CASE("HeuristicInt - construction")
+{
+    //auto a = h_uint8_t(12);
+    h_uint8_t a;
+    CHECK(!a.isValid());
+    CHECK(!isValidInt(a));
+    h_uint8_t b{42};
+    CHECK(b.isValid());
+    CHECK(isValidInt(b));
+    CHECK(b.asNative() == 42);
+    CHECK(asNativeInt(b) == 42);
+}
+
+struct M6k8TestBus : public emu::M6800Bus<h_uint8_t, h_uint16_t>
+{
+    ByteType readByte(WordType addr) const override
+    {
+        if(!emu::isValidInt(addr))
+            return {};
+        return ByteType(0);
+    }
+
+    void writeByte(WordType addr, ByteType val) override
+    {
+        if(emu::isValidInt(addr) && addr < 4096);
+    }
+};
+
+TEST_CASE("Speculative M6800")
+{
+    M6k8TestBus bus;
+    SpeculativeM6800 cpu(bus);
+}

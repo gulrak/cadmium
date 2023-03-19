@@ -1,4 +1,17 @@
-## v1.0.5 (wip)
+## v1.0.7 (wip)
+
+* Preprocessor Support, this allows to use source files with includes, conditionals and
+  sprite import from graphics files compatible to the Octopus syntax
+* Editor now has a message panel to better show errors from different (included) files
+* New CHIP-8 variant 'SuperChip-Compatibility' (SCHIPC) that behaves similar to the
+  SuperChip8 with the fixes from Chromatophore, but has a few additional quirks making
+  it more in line with what Octo does as SuperChip and what a bunch of OctoJam entries for
+  SuperChip expect as behavior
+* Added new support for the configurable quirks: "Lores Dxy0 draws 8 pixel width", "Lores Dxy0 draws 16
+  pixel width" (it is 0 if none of them is set, default in VIP), and "Dxyn uses SCHIP1.1 collision"
+* Default speed of generic CHIP-8 was raised from 9ipf to 10ipf 
+
+## v1.0.6
 
 * Real-Dream support, this is a CHIP-8 mode that runs the CHIPOS CHIP-8 interpreter from
   Michael J Bauer on an emulated M6800 driven 2k RAM equipped DREAM 6800 computer. It is

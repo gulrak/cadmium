@@ -33,11 +33,18 @@
 #include <cmath>
 #include <new>
 
+#include <ghc/fs_fwd.hpp>
 #include <sha1/sha1.hpp>
+#include <fmt/format.h>
+#include <magic/magic_enum.hpp>
+
+namespace emu {
+
+namespace fs = ghc::filesystem;
 
 inline bool endsWith(const std::string& text, const std::string& suffix)
 {
-    return text.size() >= suffix.size() && 0 == text.compare(text.size()-suffix.size(), suffix.size(), suffix);
+    return text.size() >= suffix.size() && 0 == text.compare(text.size() - suffix.size(), suffix.size(), suffix);
 }
 
 inline bool startsWith(const std::string& text, const std::string& prefix)
@@ -65,13 +72,21 @@ inline std::string trim(std::string s)
 inline std::string trimMultipleSpaces(std::string s)
 {
     auto result = s;
-    std::string::iterator end = std::unique(result.begin(), result.end(), [](char lhs, char rhs){ return (lhs == rhs) && (lhs == ' '); });
+    std::string::iterator end = std::unique(result.begin(), result.end(), [](char lhs, char rhs) { return (lhs == rhs) && (lhs == ' '); });
     result.erase(end, result.end());
     return result;
 }
 
+inline std::string toLower(std::string s)
+{
+    auto result = s;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) { return std::tolower(c); });
+    return result;
+}
+
 template <typename OutIter>
-inline void split(const std::string &s, char delimiter, OutIter result) {
+inline void split(const std::string& s, char delimiter, OutIter result)
+{
     std::istringstream is(s);
     std::string part;
     while (std::getline(is, part, delimiter)) {
@@ -79,7 +94,8 @@ inline void split(const std::string &s, char delimiter, OutIter result) {
     }
 }
 
-inline std::vector<std::string> split(const std::string &s, char delimiter) {
+inline std::vector<std::string> split(const std::string& s, char delimiter)
+{
     std::vector<std::string> result;
     split(s, delimiter, std::back_inserter(result));
     return result;
@@ -101,7 +117,7 @@ inline std::vector<uint8_t> loadFile(const std::string& file)
 inline bool writeFile(const std::string& filename, const char* data, size_t size)
 {
     std::ofstream os(filename, std::ios::binary | std::ios::trunc);
-    if(os.write(data, size))
+    if (os.write(data, size))
         return true;
     return false;
 }
@@ -132,16 +148,16 @@ static inline bool isDigit(char32_t c)
 
 static inline bool isHexDigit(char32_t c)
 {
-    return isDigit(c) || (c >= 'a' && c <= 'f') || (c >='A' && c <= 'F');
+    return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
 static inline uint16_t opcodeFromPattern(const std::string& pattern)
 {
     uint16_t opcode = 0;
-    for(auto c : pattern) {
+    for (auto c : pattern) {
         opcode <<= 4;
-        if(isHexDigit(c))
-            opcode += (c>='0' && c <= '9') ? c - '0' : std::toupper(c) - 'A' + 10;
+        if (isHexDigit(c))
+            opcode += (c >= '0' && c <= '9') ? c - '0' : std::toupper(c) - 'A' + 10;
     }
     return opcode;
 }
@@ -149,9 +165,9 @@ static inline uint16_t opcodeFromPattern(const std::string& pattern)
 static inline uint16_t maskFromPattern(const std::string& pattern)
 {
     uint16_t opcode = 0;
-    for(auto c : pattern) {
+    for (auto c : pattern) {
         opcode <<= 4;
-        if(isHexDigit(c))
+        if (isHexDigit(c))
             opcode += 15;
     }
     return opcode;
@@ -160,8 +176,8 @@ static inline uint16_t maskFromPattern(const std::string& pattern)
 static inline bool comparePattern(const std::string& pattern, const std::string& opcode)
 {
     int i;
-    for(i = 0; i < 4; ++i) {
-        if(isHexDigit(pattern[i]) && std::toupper(pattern[i]) != opcode[i])
+    for (i = 0; i < 4; ++i) {
+        if (isHexDigit(pattern[i]) && std::toupper(pattern[i]) != opcode[i])
             break;
     }
     return i == 4;
@@ -170,9 +186,21 @@ static inline bool comparePattern(const std::string& pattern, const std::string&
 class byte_range
 {
 public:
-    byte_range() : _data(nullptr), _size(0) {}
-    byte_range(uint8_t* data, size_t size) : _data(data), _size(size) {}
-    byte_range(uint8_t* data, uint8_t* end) : _data(data), _size(end - data) {}
+    byte_range()
+        : _data(nullptr)
+        , _size(0)
+    {
+    }
+    byte_range(uint8_t* data, size_t size)
+        : _data(data)
+        , _size(size)
+    {
+    }
+    byte_range(uint8_t* data, uint8_t* end)
+        : _data(data)
+        , _size(end - data)
+    {
+    }
 
     bool empty() const { return _size == 0; }
     uint8_t* data() { return _data; }
@@ -192,9 +220,10 @@ inline std::string formatUnit(double val, const std::string& suffix, int minScal
     static const char* prefix[] = {"n", "u", "m", "", "k", "M", "G", "T"};
     bool isNeg = val < 0;
     val = std::abs(val);
-    if(val < 0.000000001) return "0" + suffix;
+    if (val < 0.000000001)
+        return "0" + suffix;
     auto scale = std::max(int(std::log10(val) - (val < 10.0 ? 4 : 1)) / 3, minScale);
-    if(scale >= -3 && scale <= 4) {
+    if (scale >= -3 && scale <= 4) {
         auto scaledVal = val / std::pow(10.0, scale * 3);
         return (isNeg ? "-" : "") + std::to_string(static_cast<int>(scaledVal + 0.5)) + prefix[scale + 3] + suffix;
     }
@@ -219,4 +248,6 @@ inline std::string calculateSha1Hex(const std::string& str)
     sum.finalize();
     sum.print_hex(hex);
     return hex;
+}
+
 }

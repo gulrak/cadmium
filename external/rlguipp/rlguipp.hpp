@@ -54,8 +54,8 @@
 #define RLGUIPP_HPP
 
 // rlGuipp version in decimal (major * 10000 + minor * 100 + patch)
-#define RLGUIPP_VERSION 10000L
-#define RLGUIPP_VERSION_STRING "0.1.0"
+#define RLGUIPP_VERSION 200L
+#define RLGUIPP_VERSION_STRING "0.2.0"
 
 #ifdef RLGUIPP_IMPLEMENTATION
 #define RAYGUI_IMPLEMENTATION

@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8decompiler.hpp
+// src/emulation/utility.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,37 +23,10 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-// NOTE: This is currently only a wrapper over the c-octo octo-compiler.h implementation
-//       by John Earnest
-//---------------------------------------------------------------------------------------
-#pragma once
 
-#include <string>
-#include <memory>
+//#include <ghc/fs_impl.hpp>
+#include <emulation/utility.hpp>
 
-namespace emu {
-
-class Chip8Compiler
-{
-public:
-    Chip8Compiler();
-    ~Chip8Compiler();
-
-    bool compile(std::string text);
-    bool isError() const;
-    const std::string& errorMessage() const;
-    uint16_t codeSize() const;
-    const uint8_t* code() const;
-    const std::string& sha1Hex() const;
-    std::pair<uint32_t, uint32_t> addrForLine(uint32_t line) const;
-    uint32_t lineForAddr(uint32_t addr) const;
-    const char* breakpointForAddr(uint32_t addr) const;
-
-private:
-    void updateHash();
-    void updateLineCoverage();
-    class Private;
-    std::unique_ptr<Private> _impl;
-};
-
-}
+#ifndef MAGIC_ENUM_SUPPORTED
+#error "Plattform not supported!"
+#endif
