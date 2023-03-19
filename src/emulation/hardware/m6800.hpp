@@ -52,8 +52,7 @@
 #include <cstdint>
 #include <string>
 
-#ifdef __has_include
-#if !defined(__EMSCRIPTEN__) && !defined(CADMIUM_WITH_GENERIC_CPU) && __has_include(<format>)
+#ifdef USE_STD_FORMAT
 #include <format>
 namespace emu {
 using std::format;
@@ -65,7 +64,6 @@ using fmt::format;
 }
 #else
 #error "Need __has_include support and either <format> or <fmt/format.h> in include path!"
-#endif
 #endif
 
 #ifndef M6800_STATE_BUS_ONLY
