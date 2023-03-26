@@ -50,8 +50,13 @@ in a raylib game jam, I saw this as a good fit.
 
 ![Cadmium debug view](media/cadmium_01.png?raw=true "A screenshot of the debug view")
 
-An Emscripten build is available here for testing: https://games.gulrak.net/cadmium -
-simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or
+## Online Version
+
+Emscripten builds are available here for testing:
+* https://games.gulrak.net/cadmium - This is the most current release version
+* https://games.gulrak.net/cadmium-wip/?p=xochip - this is the current work in progress
+
+Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.sc8`, `.mc8`, `.xo8`) or
 Octo sources (`.8o`) onto the window to load them.
 
 ## Features
