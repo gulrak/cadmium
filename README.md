@@ -86,7 +86,7 @@ The Supported presets are:
 The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
 to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
 (often developed on Octo) that target SuperCHIP to run without tweeking some
-quirks that, while correct for the original SCHIP1.1 are not common in modern
+quirks that, while correct for the original SCHIP1.1, are not common in modern
 programs.
 
 The `VIP-CHIP-8` preset activates a core that is emulating a COSMAC
@@ -124,42 +124,53 @@ following options gives a basic VIP CHIP-8:
 * `Bxnn`/`jump0` uses Vx
 * wrap sprite pixels
 * `Dxyn` doesn't wait for vsync
+* Lores `Dxy0` draws with 0(classic CHIP-8)/8/16 pixel width
+* `Dxyn` uses SCHIP1.1 collision logic
 * 128x64 hires support
 * only 128x64 mode
 * multicolor support
-* xo-chip sound engine
+* XO-CHIP sound engine
 
 
 ## Command-line
 
 ```
-USAGE: cmake-build-debug/bin/cadmium [options] [file]
+USAGE: cadmium [options] file
 
 OPTIONS:
 
 --opcode-table
-Dump an opcode table to stdout
+    Dump an opcode table to stdout
+
+--random-gen <arg>
+    Select a predictable random generator used for trace log mode (rand-lgc or counting)
+
+--random-seed <arg>
+    Select a random seed for use in combination with --random-gen, default: 12345
+
+--screen-dump
+    When in trace mode, dump the final screen content to the console
 
 -b, --benchmark
-Run benchmark against octo-c
+    Run benchmark against octo-c
 
 -c, --compare
-Run and compare with reference engine, trace until diff
+    Run and compare with reference engine, trace until diff
 
 -h, --help
-Show this help text
+    Show this help text
 
 -p <arg>, --preset <arg>
-Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip, vip-chip-8
+    Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8
 
 -r, --run
-if a ROM is given (positional) start it
+    if a ROM is given (positional) start it
 
 -s <arg>, --exec-speed <arg>
-Set execution speed in instructions per frame (0-500000, 0: unlimited)
+    Set execution speed in instructions per frame (0-500000, 0: unlimited)
 
 -t <arg>, --trace <arg>
-Run headless and dump given number of trace lines
+    Run headless and dump given number of trace lines
 
 file
 ROM file ('.ch8', '.ch10', '.hc8', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load

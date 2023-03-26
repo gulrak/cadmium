@@ -186,6 +186,30 @@ public:
         int size;
         std::string text;
     };
+    struct State
+    {
+        ByteType a{};
+        ByteType b{};
+        WordType ix{};
+        WordType pc{};
+        WordType sp{};
+        FlagsType cc{};
+        int64_t cycles{};
+        int64_t instruction{};
+        std::string toString(bool shortCycles = false) const
+        {
+            auto flags = emu::format("{:c}{:c}{:c}{:c}{:c}{:c}", ((cc & 32) ? 'H' : '-'), ((cc & 16) ? 'I' : '-'), ((cc & 8) ? 'N' : '-'), ((cc & 4) ? 'Z' : '-'),
+                                     ((cc & 2) ? 'V' : '-'), ((cc & 1) ? 'C' : '-'));
+            if(shortCycles)
+                return emu::format("[{:02}/{:02}] A:{:02X} B:{:02X} X:{:04X} SP:{:04X} PC:{:04X} {}", cycles, instruction, a, b, ix, sp, pc, flags);
+            return emu::format("[{:08}/{:07}] A:{:02X} B:{:02X} X:{:04X} SP:{:04X} PC:{:04X} {}", cycles, instruction, a, b, ix, sp, pc, flags);
+        }
+        inline bool operator==(const State& rhs)
+        {
+            return pc == rhs.pc && cycles == rhs.cycles && a == rhs.a && b == rhs.b && ix == rhs.ix && cc == rhs.cc && instruction == rhs.instruction;
+        }
+    };
+
 #ifdef M6800_WITH_TIME
     M6800(M6800Bus<byte_t, word_t>& bus, Time::ticks_t clockSpeed = 1000000)
         : _bus(bus)
@@ -264,6 +288,18 @@ public:
         state.instruction = _instructions;
     }
 
+    void getState(State& state) const
+    {
+        state.a = _rA;
+        state.b = _rB;
+        state.ix = _rIX;
+        state.sp = _rSP;
+        state.pc = _rPC;
+        state.cc = _rCC;
+        state.cycles = _cycles;
+        state.instruction = _instructions;
+    }
+
     void setState(const M6800State& state)
     {
         _rA = state.a;
@@ -272,6 +308,18 @@ public:
         _rSP = state.sp;
         _rPC = state.pc;
         _rCC.setFromVal(H|I|N|Z|V|C, state.cc);
+        _cycles = state.cycles;
+        _instructions = state.instruction;
+    }
+
+    void setState(const State& state)
+    {
+        _rA = state.a;
+        _rB = state.b;
+        _rIX = state.ix;
+        _rSP = state.sp;
+        _rPC = state.pc;
+        _rCC = state.cc;
         _cycles = state.cycles;
         _instructions = state.instruction;
     }
@@ -303,19 +351,20 @@ public:
         else
             addr = pc;
         if(isValidInt(addr)) {
+            auto address = asNativeInt(addr);
             byte_t data[3];
-            data[0] = _bus.readDebugByte(addr);
-            data[1] = _bus.readDebugByte(addr + 1);
-            data[2] = _bus.readDebugByte(addr + 2);
-            auto [size, text] = disassembleInstruction(data, data + 3, addr);
+            data[0] = _bus.readDebugByte(address);
+            data[1] = _bus.readDebugByte(address + 1);
+            data[2] = _bus.readDebugByte(address + 2);
+            auto [size, text] = disassembleInstruction(data, data + 3, address);
             if(bytes) *bytes = size;
             switch (size) {
                 case 2:
-                    return emu::format("{:04X}: {:02X} {:02X}     {}", addr, data[0], data[1], text);
+                    return emu::format("{:04X}: {:02X} {:02X}     {}", address, data[0], data[1], text);
                 case 3:
-                    return emu::format("{:04X}: {:02X} {:02X} {:02X}  {}", addr, data[0], data[1], data[2], text);
+                    return emu::format("{:04X}: {:02X} {:02X} {:02X}  {}", address, data[0], data[1], data[2], text);
                 default:
-                    return emu::format("{:04X}: {:02X}        {}", addr, data[0], text);
+                    return emu::format("{:04X}: {:02X}        {}", address, data[0], text);
             }
         }
         else {
@@ -335,7 +384,7 @@ public:
         if(!isValidInt(opcode)) {
             return {1, "???"};
         }
-        const auto& info = _opcodes[opcode];
+        const auto& info = _opcodes[asNativeInt(opcode)];
         char accuSym = ' ';
         if(info.addrMode & ACCUA)
             accuSym = 'A';
@@ -1237,7 +1286,7 @@ private:
     }
     void opSBA()
     {
-        word_t res = _rA - _rB;
+        word_t res = word_t(_rA) - _rB;
         readByte(_rPC);
         ccSetFlagsCNZV(_rA, _rB, res);
         _rA = res;

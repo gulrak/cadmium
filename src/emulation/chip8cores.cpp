@@ -175,10 +175,10 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eXOCHIP:
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
-            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
+            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn_masked);
+            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn_masked);
+            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB_masked);
+            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC_masked);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
             on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
             on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
@@ -199,10 +199,10 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eCHICUEYI:
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
-            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
+            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn_masked);
+            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn_masked);
+            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB_masked);
+            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC_masked);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
             on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
             on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
@@ -406,11 +406,51 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
     }
 }
 
+
+
+void Chip8EmulatorFP::op00Cn_masked(uint16_t opcode)
+{
+    auto n = (opcode & 0xf);
+    if(!_isHires) n <<= 1;
+    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
+    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    for(int sy = height - n - 1; sy >= 0; --sy) {
+        for(int sx = 0; sx < width; ++sx) {
+            movePixelMasked(sx, sy, sx, sy + n);
+        }
+    }
+    for(int sy = 0; sy < n; ++sy) {
+        for(int sx = 0; sx < width; ++sx) {
+            clearPixelMasked(sx, sy);
+        }
+    }
+    _screenNeedsUpdate = true;
+}
+
 void Chip8EmulatorFP::op00Dn(uint16_t opcode)
 {
     auto n = (opcode & 0xf);
     std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
     std::memset(_screenBuffer.data() + (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH, 0, _screenBuffer.size() - (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH);
+    _screenNeedsUpdate = true;
+}
+
+void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
+{
+    auto n = (opcode & 0xf);
+    if(!_isHires) n <<= 1;
+    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
+    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    for(int sy = n; sy < height; ++sy) {
+        for(int sx = 0; sx < width; ++sx) {
+            movePixelMasked(sx, sy, sx, sy - n);
+        }
+    }
+    for(int sy = height - n - 1; sy < height; ++sy) {
+        for(int sx = 0; sx < width; ++sx) {
+            clearPixelMasked(sx, sy);
+        }
+    }
     _screenNeedsUpdate = true;
 }
 
@@ -455,6 +495,23 @@ void Chip8EmulatorFP::op00FB(uint16_t opcode)
     }
 }
 
+void Chip8EmulatorFP::op00FB_masked(uint16_t opcode)
+{
+    auto n = 4;
+    if(!_isHires) n <<= 1;
+    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
+    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    for(int sy = 0; sy < height; ++sy) {
+        for(int sx = width - n - 1; sx >= 0; --sx) {
+            movePixelMasked(sx, sy, sx + n, sy);
+        }
+        for(int sx = 0; sx < n; ++sx) {
+            clearPixelMasked(sx, sy);
+        }
+    }
+    _screenNeedsUpdate = true;
+}
+
 void Chip8EmulatorFP::op00FC(uint16_t opcode)
 {
     if(_isMegaChipMode) {
@@ -473,6 +530,24 @@ void Chip8EmulatorFP::op00FC(uint16_t opcode)
         }
     }
 }
+
+void Chip8EmulatorFP::op00FC_masked(uint16_t opcode)
+{
+    auto n = 4;
+    if(!_isHires) n <<= 1;
+    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
+    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    for(int sy = 0; sy < height; ++sy) {
+        for(int sx = n; sx < width; ++sx) {
+            movePixelMasked(sx, sy, sx - n, sy);
+        }
+        for(int sx = width - n; sx < width; ++sx) {
+            clearPixelMasked(sx, sy);
+        }
+    }
+    _screenNeedsUpdate = true;
+}
+
 void Chip8EmulatorFP::op00FD(uint16_t opcode)
 {
     halt();
@@ -485,12 +560,10 @@ void Chip8EmulatorFP::op00FE(uint16_t opcode)
 
 void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
 {
-    if(_isHires) {
-        _isHires = false;
-        clearScreen();
-        _screenNeedsUpdate = true;
-        ++_clearCounter;
-    }
+    _isHires = false;
+    std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+    _screenNeedsUpdate = true;
+    ++_clearCounter;
 }
 
 void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
@@ -510,12 +583,10 @@ void Chip8EmulatorFP::op00FF(uint16_t opcode)
 
 void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 {
-    if(!_isHires) {
-        _isHires = true;
-        clearScreen();
-        _screenNeedsUpdate = true;
-        ++_clearCounter;
-    }
+    _isHires = true;
+    std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+    _screenNeedsUpdate = true;
+    ++_clearCounter;
 }
 
 void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)

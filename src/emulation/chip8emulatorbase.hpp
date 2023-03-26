@@ -180,11 +180,17 @@ public:
 
     void clearScreen()
     {
-        std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT);
-        if(_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP) {
-            const auto black = be32(0x000000FF);
-            for (auto& c : _screenBuffer32)
-                c = black;
+        if(_options.optAllowColors) {
+            for(auto& pixel : _screenBuffer)
+                pixel &= ~_planes;
+        }
+        else {
+            std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+            if (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP) {
+                const auto black = be32(0x000000FF);
+                for (auto& c : _screenBuffer32)
+                    c = black;
+            }
         }
     }
 

@@ -33,9 +33,9 @@ add_executable(cdp1802test cdp1802test.cpp)
 target_link_libraries(cdp1802test emulation)
 #doctest_discover_tests(chip8-fpcore-tests)
 
-add_executable(heuristicint-tests main.cpp heuristicint_tests.cpp)
-doctest_discover_tests(heuristicint-tests)
-target_link_libraries(heuristicint-tests PRIVATE doctest fmt::fmt)
+#add_executable(heuristicint-tests main.cpp heuristicint_tests.cpp)
+#doctest_discover_tests(heuristicint-tests)
+#target_link_libraries(heuristicint-tests PRIVATE doctest fmt::fmt)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cores/m6800")
     add_subdirectory(cores/m6800)

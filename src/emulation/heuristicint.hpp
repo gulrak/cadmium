@@ -38,11 +38,14 @@ class HeuristicInt
 {
 public:
     HeuristicInt() = default;
-    explicit HeuristicInt(const PodType& val) : _val(val), _valid(true) {}
+    HeuristicInt(const PodType& val) : _val(val), _valid(true) {}
     HeuristicInt(const HeuristicInt<PodType>& other) : _val(other._val), _valid(other._valid) {}
+    template<typename PodType2, typename = typename std::enable_if<std::is_arithmetic<PodType2>::value && (sizeof(PodType) > sizeof(PodType2) && (std::is_signed_v<PodType> == std::is_signed_v<PodType2>)), PodType2>::type>
+    HeuristicInt(const HeuristicInt<PodType2>& other) : _val(other._val), _valid(other._valid) {}
 
     HeuristicInt& operator=(const PodType& val) { _val = val; _valid = true; return *this; }
-    HeuristicInt& operator=(const HeuristicInt<PodType>& other) { _val = other._val; _valid = other._valid; return *this; }
+    template<typename PodType2, typename = typename std::enable_if<std::is_arithmetic<PodType2>::value, PodType2>::type>
+    HeuristicInt& operator=(const HeuristicInt<PodType2>& other) { _val = other._val; _valid = other._valid; return *this; }
     HeuristicInt& operator+=(const PodType& val) { if(_valid) { _val += val; } return *this; }
     HeuristicInt& operator+=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val += other._val; else _valid = false; return *this; }
     HeuristicInt& operator-=(const PodType& val) { if(_valid) { _val -= val; } return *this; }
@@ -51,6 +54,10 @@ public:
     HeuristicInt& operator*=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val *= other._val; else _valid = false; return *this; }
     HeuristicInt& operator/=(const PodType& val) { if(_valid) { _val *= val; } return *this; }
     HeuristicInt& operator/=(const HeuristicInt<PodType>& other) { if (_valid && other._valid && other._val) _val /= other._val; else _valid = false; return *this; }
+    HeuristicInt& operator>>=(const PodType& val) { if(_valid) { _val >>= val; } return *this; }
+    HeuristicInt& operator>>=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val >>= other._val; else _valid = false; return *this; }
+    HeuristicInt& operator<<=(const PodType& val) { if(_valid) { _val <<= val; } return *this; }
+    HeuristicInt& operator<<=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val <<= other._val; else _valid = false; return *this; }
 
     HeuristicInt& operator&=(const PodType& val) { if(_valid) { _val &= val; } return *this; }
     HeuristicInt& operator&=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val &= other._val; else _valid = false; return *this; }
@@ -59,26 +66,38 @@ public:
     HeuristicInt& operator^=(const PodType& val) { if(_valid) { _val ^= val; } return *this; }
     HeuristicInt& operator^=(const HeuristicInt<PodType>& other) { if (_valid && other._valid) _val ^= other._val; else _valid = false; return *this; }
 
-    HeuristicInt operator+(const PodType& val) const { return {_val + val, _valid}; }
-    HeuristicInt operator+(const HeuristicInt& other) const { return {_val + other._val, _valid && other._valid}; }
-    HeuristicInt operator-(const PodType& val) const { return {_val - val, _valid}; }
-    HeuristicInt operator-(const HeuristicInt& other) const { return {_val - other._val, _valid && other._valid}; }
-    HeuristicInt operator*(const PodType& val) const { return {_val * val, _valid}; }
-    HeuristicInt operator*(const HeuristicInt& other) const { return {_val * other._val, _valid && other._valid}; }
-    HeuristicInt operator/(const PodType& val) const { return {val ? _val - val : 0, _valid && val}; }
-    HeuristicInt operator/(const HeuristicInt& other) const { return {other._val ? _val - other.val : 0, _valid && other._valid && other._val}; }
+    HeuristicInt operator+(const PodType& val) const { return {PodType(_val + val), _valid}; }
+    HeuristicInt operator+(const HeuristicInt& other) const { return {PodType(_val + other._val), _valid && other._valid}; }
+    HeuristicInt operator-(const PodType& val) const { return {PodType(_val - val), _valid}; }
+    HeuristicInt operator-(const HeuristicInt& other) const { return {PodType(_val - other._val), _valid && other._valid}; }
+    HeuristicInt operator*(const PodType& val) const { return {PodType(_val * val), _valid}; }
+    HeuristicInt operator*(const HeuristicInt& other) const { return {PodType(_val * other._val), _valid && other._valid}; }
+    HeuristicInt operator/(const PodType& val) const { return {val ? _val / val : 0, _valid && val}; }
+    HeuristicInt operator/(const HeuristicInt& other) const { return {other._val ? _val / other.val : 0, _valid && other._valid && other._val}; }
 
-    HeuristicInt operator~() const { return { PodType(~_val), _valid }; }
-    HeuristicInt operator&(const PodType& val) const { return {_val & val, _valid}; }
+    friend HeuristicInt operator+(const PodType& lhs, const HeuristicInt& rhs) { return {lhs + rhs._val, rhs._valid}; }
+    friend HeuristicInt operator-(const PodType& lhs, const HeuristicInt& rhs) { return {lhs - rhs._val, rhs._valid}; }
+    friend HeuristicInt operator*(const PodType& lhs, const HeuristicInt& rhs) { return {lhs * rhs._val, rhs._valid}; }
+    friend HeuristicInt operator/(const PodType& lhs, const HeuristicInt& rhs) { return {rhs._val ? lhs / rhs._val : 0, rhs._val && rhs._valid}; }
+
+    HeuristicInt operator&(const PodType& val) const { return {PodType(_val & val), _valid}; }
     HeuristicInt operator&(const HeuristicInt& other) const { return {PodType(_val & other._val), _valid && other._valid}; }
-    HeuristicInt operator|(const PodType& val) const { return {_val | val, _valid}; }
+    HeuristicInt operator|(const PodType& val) const { return {PodType(_val | val), _valid}; }
     HeuristicInt operator|(const HeuristicInt& other) const { return {PodType(_val | other._val), _valid && other._valid}; }
-    HeuristicInt operator^(const PodType& val) const { return {_val ^ val, _valid}; }
-    HeuristicInt operator^(const HeuristicInt& other) const { return {_val ^ other._val, _valid && other._valid}; }
-    HeuristicInt operator<<(const PodType& val) const { return {_val << val, _valid}; }
-    HeuristicInt operator<<(const HeuristicInt& other) const { return {_val << other._val, _valid && other._valid}; }
-    HeuristicInt operator>>(const PodType& val) const { return {_val >> val, _valid}; }
-    HeuristicInt operator>>(const HeuristicInt& other) const { return {_val >> other._val, _valid && other._valid}; }
+    HeuristicInt operator^(const PodType& val) const { return {PodType(_val ^ val), _valid}; }
+    HeuristicInt operator^(const HeuristicInt& other) const { return {PodType(_val ^ other._val), _valid && other._valid}; }
+    HeuristicInt operator<<(const PodType& val) const { return {PodType(_val << val), _valid}; }
+    HeuristicInt operator<<(const HeuristicInt& other) const { return {PodType(_val << other._val), _valid && other._valid}; }
+    HeuristicInt operator>>(const PodType& val) const { return {PodType(_val >> val), _valid}; }
+    HeuristicInt operator>>(const HeuristicInt& other) const { return {PodType(_val >> other._val), _valid && other._valid}; }
+
+    HeuristicInt operator-() const { return { PodType(-_val), _valid }; } // unary minus
+    HeuristicInt operator~() const { return { PodType(~_val), _valid }; } // unary inverse
+
+    HeuristicInt operator++() { return {_valid ? ++_val : _val, _valid}; }
+    HeuristicInt operator--() { return {_valid ? --_val : _val, _valid}; }
+    HeuristicInt operator++(int) { return {_valid ? _val++ : _val, _valid}; }
+    HeuristicInt operator--(int) { return {_valid ? _val-- : _val, _valid}; }
 
     bool operator==(const PodType& val) const { return _valid && _val == val; }
     bool operator==(const HeuristicInt& other) const { return _valid && other._valid && _val == other._val; }
@@ -93,7 +112,7 @@ public:
     bool operator>=(const PodType& val) const { return _valid && _val >= val; }
     bool operator>=(const HeuristicInt& other) const { return _valid && other._valid && _val >= other._val; }
 
-    template<typename PodType2, typename = typename std::enable_if<std::is_arithmetic<PodType2>::value, PodType2>::type>
+    template<typename PodType2, typename = typename std::enable_if<std::is_arithmetic<PodType2>::value && (sizeof(PodType2) < sizeof(PodType) && (std::is_signed_v<PodType> == std::is_signed_v<PodType2>)), PodType2>::type>
     explicit operator HeuristicInt<PodType2>() const { return {static_cast<PodType2>(_val), _valid}; }
 
     bool isValid() const { return _valid; }
@@ -106,25 +125,25 @@ private:
 };
 
 template<typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type>
-bool isValidInt(const T& t)
+inline bool isValidInt(const T& t)
 {
     return true;
 }
 
 template<typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type>
-bool isValidInt(const HeuristicInt<T>& h)
+inline bool isValidInt(const HeuristicInt<T>& h)
 {
     return h.isValid();
 }
 
 template<typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type>
-T asNativeInt(const T& t)
+inline T asNativeInt(const T& t)
 {
     return t;
 }
 
 template<typename T, typename = typename std::enable_if<std::is_arithmetic<T>::value, T>::type>
-T asNativeInt(const HeuristicInt<T>& h)
+inline T asNativeInt(const HeuristicInt<T>& h)
 {
     return h.asNative();
 }

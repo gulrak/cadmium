@@ -597,12 +597,16 @@ public:
     void op0011(uint16_t opcode);
     void op00Bn(uint16_t opcode);
     void op00Cn(uint16_t opcode);
+    void op00Cn_masked(uint16_t opcode);
     void op00Dn(uint16_t opcode);
+    void op00Dn_masked(uint16_t opcode);
     void op00E0(uint16_t opcode);
     void op00E0_megachip(uint16_t opcode);
     void op00EE(uint16_t opcode);
     void op00FB(uint16_t opcode);
+    void op00FB_masked(uint16_t opcode);
     void op00FC(uint16_t opcode);
+    void op00FC_masked(uint16_t opcode);
     void op00FD(uint16_t opcode);
     void op00FE(uint16_t opcode);
     void op00FE_withClear(uint16_t opcode);
@@ -812,6 +816,15 @@ public:
     }
 
 private:
+    void movePixelMasked(int sx, int sy, int dx, int dy)
+    {
+        auto& dstPixel = _screenBuffer[MAX_SCREEN_WIDTH * dy + dx];
+        dstPixel = (dstPixel & ~_planes) | (_screenBuffer[MAX_SCREEN_WIDTH * sy + sx] & _planes);
+    }
+    void clearPixelMasked(int x, int y)
+    {
+        _screenBuffer[MAX_SCREEN_WIDTH * y + x] &= ~_planes;
+    }
     inline uint16_t readWord(uint32_t addr) const
     {
         return (_memory[addr] << 8) | (addr == ADDRESS_MASK ? _memory[0] : _memory[addr + 1]);

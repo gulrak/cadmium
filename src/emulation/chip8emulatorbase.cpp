@@ -312,6 +312,7 @@ void Chip8EmulatorBase::reset()
     std::memcpy(_xxoPalette.data(), defaultPalette, 16);
     std::memset(_xoAudioPattern.data(), 0, 16);
     _xoPitch = 64;
+    _planes = 0xff;
     clearScreen();
     _host.updatePalette(_xxoPalette);
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;

@@ -441,10 +441,6 @@ GenericCpu& Chip8Dream::getBackendCpu()
 
 uint8_t Chip8Dream::readByte(uint16_t addr) const
 {
-    if(addr == 0x1ff)
-        return 5;
-    else if(addr == 0x1fe)
-        return 1;
     if(addr < _impl->_ram.size())
         return _impl->_ram[addr];
     if(addr >= 0x8010 && addr < 0x8020)
