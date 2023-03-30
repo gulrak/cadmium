@@ -84,12 +84,11 @@ public:
         while(iter != argList.end()) {
             if(!handleOption(iter)) {
                 if(positionalArgs && iter->at(0) != '-') {
-                    positionalArgs->push_back(*iter);
+                    positionalArgs->push_back(*iter++);
                 }
                 else
                     throw std::runtime_error("Unexpected argument " + *iter);
             }
-            ++iter;
         }
         return false;
     }
@@ -114,6 +113,7 @@ public:
 private:
     bool handleOption(std::vector<std::string>::iterator& iter)
     {
+        static const std::map<std::string,bool> boolKeys = {{"true", true}, {"false", false}, {"yes", true}, {"no", false}, {"on", true}, {"off", false}};
         if(*iter == "-?" || *iter == "-h" || *iter == "--help") {
             usage();
             exit(1);
@@ -121,15 +121,22 @@ private:
         for(const auto& [names, info] : handler) {
             for(const auto& name : names) {
                 if(name == *iter) {
+                    ++iter;
                     if(info.valPtr.index()) {
-                        if(++iter == argList.end()) {
+                        if(iter == argList.end()) {
                             throw std::runtime_error("Missing argument to option " + name);
                         }
+                        errno = 0;
+                        info.converter(*iter++, info.valPtr);
+                        if(errno) {
+                            throw std::runtime_error("Conversion error for option " + name);
+                        }
                     }
-                    errno = 0;
-                    info.converter(*iter, info.valPtr);
-                    if(errno) {
-                        throw std::runtime_error("Conversion error for option " + name);
+                    else if(iter != argList.end() && boolKeys.count(*iter)) {
+                        *std::get<bool*>(info.valPtr) = boolKeys.at(*iter++);
+                    }
+                    else {
+                        *std::get<bool*>(info.valPtr) = !*std::get<bool*>(info.valPtr);
                     }
                     return true;
                 }

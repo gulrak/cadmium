@@ -121,8 +121,10 @@ int main(int argc, char* argv[])
     SetTraceLogLevel(LOG_NONE);
     Image title = LoadImage(argv[1]);
     Image font = LoadImage(argv[2]);
+    std::string versionStr(CADMIUM_VERSION);
     drawMicroText(title, font, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION) * 4, 6, WHITE);
-    drawMicroText(title, font, "Beta", 38, 53, WHITE);
+    if(!versionStr.empty() && (versionStr.back() & 1))
+        drawMicroText(title, font, "WIP", 38, 53, WHITE);
     std::string buildDate = __DATE__;
     auto dateText = buildDate.substr(0, 3);
     bool shortDate = (buildDate[4] == ' ');

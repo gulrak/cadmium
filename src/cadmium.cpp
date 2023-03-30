@@ -2236,7 +2236,7 @@ div.footer { font-size: 0.7em; }
     for(const auto& info : emu::detail::opcodes) {
         if(uint64_t(info.variants & variants) != 0) {
             os << "<tr><th>" << formatOpcode(info.type, info.opcode) << "</th>";
-            auto mask = static_cast<uint64_t>(variants);
+            mask = static_cast<uint64_t>(variants);
             auto desc = info.description;
             std::smatch m;
             size_t qidx = 0;
@@ -2288,6 +2288,7 @@ int main(int argc, char* argv[])
     bool opcodeTable = false;
     bool startRom = false;
     bool screenDump = false;
+    emu::Chip8EmulatorOptions options;
     int64_t execSpeed = -1;
     std::string randomGen;
     int64_t randomSeed = 12345;
@@ -2303,10 +2304,25 @@ int main(int argc, char* argv[])
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
     cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
+    cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
+    cli.option({"--dont-reset-vf"}, options.optDontResetVf, "If true, Vf will not be reset by 8xy1/8xy2/8xy3");
+    cli.option({"--load-store-inc-i-by-x"}, options.optLoadStoreIncIByX, "If true, Fx55/Fx65 increment I by x");
+    cli.option({"--load-store-dont-inc-i"}, options.optLoadStoreDontIncI, "If true, Fx55/Fx65 don't change I");
+    cli.option({"--wrap-sprites"}, options.optWrapSprites, "If true, Dxyn wrap sprites around border");
+    cli.option({"--instant-dxyn"}, options.optInstantDxyn, "If true, Dxyn don't wait for vsync");
+    cli.option({"--lores-dxy0-width-8"}, options.optLoresDxy0Is8x16, "If true, draw Dxy0 sprites have width 8");
+    cli.option({"--lores-dxy0-width-16"}, options.optLoresDxy0Is16x16, "If true, draw Dxy0 sprites have width 16");
+    cli.option({"--sc11-collision"}, options.optSC11Collision, "If true, use SCHIP1.1 collision logic");
+    cli.option({"--jump0-bxnn"}, options.optJump0Bxnn, "If true, use Vx as offset for Bxnn");
+    cli.option({"--allow-hires"}, options.optAllowHires, "If true, support for hires (128x64) is enabled");
+    cli.option({"--only-hires"}, options.optOnlyHires, "If true, emulation has hires mode only");
+    cli.option({"--allow-color"}, options.optAllowColors, "If true, support for multi-plane drawing is enabled");
+    cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
+    cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
+    cli.option({"--trane-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
     cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.positional(romFile, "ROM file or source to load");
     cli.parse();
-
     if(showHelp) {
         cli.usage();
         exit(0);
@@ -2338,9 +2354,14 @@ int main(int argc, char* argv[])
 #endif
         }
     }
-    auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+    options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+    //------------------------------------------------------------
+    // second pass parsing for mixing preset and options
+    cli.parse();
+    //------------------------------------------------------------
+
     if(execSpeed >= 0) {
-        chip8options.instructionsPerFrame = execSpeed;
+        options.instructionsPerFrame = execSpeed;
     }
     if(traceLines < 0 && !compareRun && !benchmark) {
 #else
@@ -2368,7 +2389,7 @@ int main(int argc, char* argv[])
 #endif
 
 #ifndef PLATFORM_WEB
-        Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
+        Cadmium cadmium(presetName.empty() ? nullptr : &options);
         if (!romFile.empty()) {
             cadmium.loadRom(romFile.front().c_str(), startRom);
         }
@@ -2383,22 +2404,22 @@ int main(int argc, char* argv[])
     }
 #ifndef PLATFORM_WEB
     else {
-        emu::Chip8HeadlessHost host(chip8options);
+        emu::Chip8HeadlessHost host(options);
         //chip8options.optHas16BitAddr = true;
         //chip8options.optWrapSprites = true;
         //chip8options.optAllowColors = true;
         //chip8options.optJustShiftVx = false;
         //chip8options.optLoadStoreDontIncI = false;
-        chip8options.optDontResetVf = true;
-        chip8options.optInstantDxyn = true;
+        //chip8options.optDontResetVf = true;
+        //chip8options.optInstantDxyn = true;
         if(!randomGen.empty()) {
-            chip8options.advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
+            options.advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
                 {"random", randomGen},
                 {"seed", randomSeed}
             }));
         }
-        auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, chip8options);
-        std::clog << "Engine1: " << chip8->name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(chip8options.behaviorBase) << std::endl;
+        auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, options);
+        std::clog << "Engine1: " << chip8->name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(options.behaviorBase) << std::endl;
         octo_emulator octo;
         octo_options oopt{};
         oopt.q_clip = 1;
@@ -2476,7 +2497,7 @@ int main(int argc, char* argv[])
         else if(traceLines >= 0) {
             do {
                 std::cout << i << "/" << chip8->getCycles() << ": " << chip8->dumpStateLine() << std::endl;
-                if ((i % chip8options.instructionsPerFrame) == 0) {
+                if ((i % options.instructionsPerFrame) == 0) {
                     chip8->handleTimer();
                 }
                 chip8->executeInstruction();

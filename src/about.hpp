@@ -40,6 +40,7 @@ Currently supported CHIP-8 variants are:
   * CHIP-48
   * SUPERCHIP 1.0
   * SUPERCHIP 1.1
+  * SUPERCHIP-COMP
   * MegaChip8
   * XO-CHIP
   * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
@@ -87,8 +88,8 @@ status.
 # Special Credits
 
 Cadmium started as a "Well I guess I should at least implement CHIP-8
-once" project, after I already privately had fun writing emulators
-But the combined early reactions from the raylib Discord and the
+once" project, after I already privately had fun writing emulators,
+but the combined early reactions from the raylib Discord and the
 Emulation Development Discord gave me so much fun that I started to
 dig more into the subject. So first of all a big thank you to all
 those who pushed me with their nice comments and inspirational
@@ -114,7 +115,7 @@ I still want to give out some explicit thanks to:
   also is embedded in Cadmium and drives its assembling capabilities:
   https://github.com/JohnEarnest/c-octo
 
-* Tim Franssen (@Timendus) - for his "CHIP-8 Test Suite" helped me a
+* Tim Franssen (@Timendus) - His "CHIP-8 Test Suite" helped me a
   great deal in finding issues and get a better understanding of the
   quirks that differentiate the CHIP-8 variants:
   https://github.com/Timendus/chip8-test-suite
@@ -123,16 +124,17 @@ I still want to give out some explicit thanks to:
   https://github.com/Timendus/chip8-binary-format
 
 * @NinjaWeedle - for his great help and countless tests to get some
-  flesh on the very skinny original MegaChip8 specs to allow actually
-  support this exotic CHIP-8 variant ant maybe help it to be more
-  accepted. This work resulted in his documentation and tests on:
+  flesh on the very skinny original MegaChip8 specs, to allow to
+  actually support this exotic CHIP-8 variant ant maybe help it to
+  be more accepted. This work resulted in his documentation and
+  tests on:
   https://github.com/NinjaWeedle/MegaChip8
 
 * @Kouzeru - for pushing me into supporting XO-Audio and the
   creative discussions on where to go with future chip variants.
   https://github.com/Kouzeru/
 
-* Joshua Moss (@Bandock) - for motivating me to implement and
+* Joshua Moss (@Bandock) - for motivating me to implement an
   CDP1802 emulation core and getting "Support a real VIP mode"
   onto my todo list and for the interesting HyperChip64 ideas.
   https://github.com/Bandock/hyper_bandchip
@@ -144,7 +146,7 @@ I still want to give out some explicit thanks to:
   the DREAM6800.
   https://github.com/tobiasvl/drom
 
-* Michael J Bauer(@M-J-Bauer) - for developing the DREAM6800 computer
+* Michael J Bauer (@M-J-Bauer) - for developing the DREAM6800 computer
   and CHIPOS to extend the CHIP-8 world to the M6800 CPU, for making
   me learn M6800 assembler and for allowing me to use the CHIPOS data
   inside Cadmiums DREAM6800 emulator.
