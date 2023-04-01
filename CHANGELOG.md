@@ -3,15 +3,18 @@
 * Preprocessor Support, this allows to use source files with includes, conditionals and
   sprite import from graphics files compatible to the Octopus syntax
 * Editor now has a message panel to better show errors from different (included) files
+* Editor shows current assembled size in the status bar
 * New CHIP-8 variant 'SuperChip-Compatibility' (SCHIPC) that behaves similar to the
   SuperChip8 with the fixes from Chromatophore, but has a few additional quirks making
   it more in line with what Octo does as SuperChip and what a bunch of OctoJam entries for
   SuperChip expect as behavior
 * Added new support for the configurable quirks: "Lores Dxy0 draws 8 pixel width", "Lores Dxy0 draws 16
   pixel width" (it is 0 if none of them is set, default in VIP), and "Dxyn uses SCHIP1.1 collision"
-* Default speed of generic CHIP-8 was raised from 9ipf to 10ipf
-* Fix: The `clear` opcode (`00E0`) didn't respect the plane mask in XO-CHIP mode.
-* Fix: The scrolling was not respecting the plane mask in XO-CHIP mode.
+* Default speed of generic CHIP-8 was raised from 9ipf to 15ipf with the implementation of
+  a new display wait mechanism that estimates if one or two frames need to be waited to have a more
+  realistic timing
+* Fix: The `clear` opcode (`00E0`) didn't respect the plane mask in XO-CHIP mode
+* Fix: The scrolling was not respecting the plane mask in XO-CHIP mode
 
 ## v1.0.6
 

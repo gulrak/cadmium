@@ -721,6 +721,45 @@ public:
     }
 
     template<uint16_t quirks>
+    void opDxyn_displayWait(uint16_t opcode)
+    {
+        if constexpr (quirks&HiresSupport) {
+            if(_isHires)
+            {
+                int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+                int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+                int lines = opcode & 0xF;
+                _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, true) ? 1 : 0;
+            }
+            else
+            {
+                int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH / 2 - 1);
+                int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT / 2 - 1);
+                int lines = opcode & 0xF;
+                _rV[15] = drawSprite<quirks>(x*2, y*2, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+            }
+        }
+        else {
+            int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+            int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
+            int lines = opcode & 0xF;
+            if(_cpuState != eWAITING) {
+                auto s = lines + (x & 7);
+                if(lines > 4 && s > 9) {
+                    _rPC -= 2;
+                    _cpuState = eWAITING;
+                    return;
+                }
+            }
+            else {
+                _cpuState = eNORMAL;
+            }
+            _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+        }
+        _screenNeedsUpdate = true;
+    }
+
+    template<uint16_t quirks>
     inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         auto* pixel = _screenBuffer.data() + MAX_SCREEN_WIDTH * y + x;

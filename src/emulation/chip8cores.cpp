@@ -105,8 +105,12 @@ void Chip8EmulatorFP::setHandler()
         else {
             if (_options.optWrapSprites)
                 on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<WrapSprite>);
-            else
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<0>);
+            else {
+                if(_options.optInstantDxyn)
+                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<0>);
+                else
+                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn_displayWait<0>);
+            }
         }
     }
     //on(0xF000, 0xD000, _options.optAllowHires ? &Chip8EmulatorFP::opDxyn_allowHires : &Chip8EmulatorFP::opDxyn);

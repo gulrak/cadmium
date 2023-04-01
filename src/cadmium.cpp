@@ -1153,7 +1153,13 @@ public:
             SetRowHeight(16);
             SetSpacing(0);
             auto ips = (_chipEmu->getCycles() - lastInstructionCount) / GetFrameTime();
-            if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
+            if(_mainView == eEDITOR) {
+                StatusBar({{0.55f, fmt::format("").c_str()},
+                           {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()},
+                           {0.15f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()},
+                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+            }
+            else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
                            {0.15f, formatUnit(ips, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
@@ -2283,7 +2289,7 @@ int main(int argc, char* argv[])
     ghc::CLI cli(argc, argv);
     int64_t traceLines = -1;
     bool compareRun = false;
-    bool benchmark = false;
+    int64_t benchmark= 0;
     bool showHelp = false;
     bool opcodeTable = false;
     bool startRom = false;
@@ -2298,7 +2304,7 @@ int main(int argc, char* argv[])
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
-    cli.option({"-b", "--benchmark"}, benchmark, "Run benchmark against octo-c");
+    cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
@@ -2464,35 +2470,21 @@ int main(int argc, char* argv[])
             std::cerr << "---" << std::endl;
             std::cerr << octoScreen(octo) << std::endl;
         }
-        else if(benchmark) {
-            //const uint32_t BENCHMARK_INSTRUCTIONS = 100000000;
-            const uint32_t BENCHMARK_INSTRUCTIONS = 3800000000u;
-            uint32_t instructions = BENCHMARK_INSTRUCTIONS;
-            std::cout << "Executing benchmark..." << std::endl;
+        else if(benchmark > 0) {
+            uint32_t instructions = benchmark;
+            std::cout << "Executing benchmark (" << options.instructionsPerFrame << "ipf)..." << std::endl;
             auto startChip8 = std::chrono::steady_clock::now();
-            while(--instructions && chip8->getExecMode() == emu::IChip8Emulator::eRUNNING) {
-                if ((instructions & 7) == 0) {
-                    chip8->handleTimer();
-                }
+            auto ticks = uint64_t(instructions / options.instructionsPerFrame);
+            for(int i = 0; i < ticks; ++i) {
+                chip8->tick(options.instructionsPerFrame);
+            }
+            chip8->handleTimer();
+            while(chip8->getCycles() < instructions) {
                 chip8->executeInstruction();
             }
             auto durationChip8 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8);
             std::cout << "Executed instructions: " << chip8->getCycles() << std::endl;
             std::cout << "Cadmium: " << durationChip8.count() << "ms, " << int(double(chip8->getCycles())/durationChip8.count()/1000) << "MIPS" << std::endl;
-
-            instructions = chip8->getCycles();
-            auto startOcto = std::chrono::steady_clock::now();
-            while(--instructions) {
-                if ((instructions & 7) == 0) {
-                    if (octo.dt)
-                        --octo.dt;
-                    if (octo.st)
-                        --octo.st;
-                }
-                octo_emulator_instruction(&octo);
-            }
-            auto durationOcto = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startOcto);
-            std::cout << "Octo:    " << durationOcto.count() << "ms, " << int(double(chip8->getCycles())/durationOcto.count()/1000) << "MIPS" << std::endl;
         }
         else if(traceLines >= 0) {
             do {

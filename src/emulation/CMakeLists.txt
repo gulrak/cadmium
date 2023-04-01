@@ -22,6 +22,8 @@ set(CHIP8_EMU_SOURCE
     chip8dream.cpp
     chip8dream.hpp
     utility.cpp
+    #octocartridge.cpp
+    #octocartridge.hpp
 )
 
 add_library(emulation ${CHIP8_EMU_SOURCE})

@@ -396,7 +396,7 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optXOChipSound = false,
                     .optChicueyiSound = false,
                     .optTraceLog = false,
-                    .instructionsPerFrame = 10};
+                    .instructionsPerFrame = 15};
     }
 }
 

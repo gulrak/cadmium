@@ -26,13 +26,13 @@ typedef struct {
 } octo_str;
 
 void octo_str_init(octo_str*s){
-  s->pos=0, s->size=OCTO_CART_BLOCK, s->root=malloc(s->size);
+  s->pos=0, s->size=OCTO_CART_BLOCK, s->root=(char*)malloc(s->size);
 }
 void octo_str_destroy(octo_str*s){
   free(s->root);
 }
 void octo_str_append(octo_str*s,char c){
-  if(s->pos>=s->size)s->root=realloc(s->root,s->size+=OCTO_CART_BLOCK);
+  if(s->pos>=s->size)s->root=(char*)realloc(s->root,s->size+=OCTO_CART_BLOCK);
   s->root[s->pos++]=c;
 }
 void octo_str_join(octo_str*s,char*string){
@@ -83,7 +83,7 @@ void octo_json_map_num(octo_str*s,char*key,int num){
 }
 void octo_json_map_bool(octo_str*s,char*key,int num){
   octo_json_string(s,key),octo_str_append(s,':');
-  char* n=num?"true":"false";
+  const char* n=num?"true":"false";
   for(int z=0;n[z];z++)octo_str_append(s,n[z]);
 }
 void octo_json_map_color(octo_str*s,char*key,int num){

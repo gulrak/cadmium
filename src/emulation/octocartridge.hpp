@@ -25,12 +25,18 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <cstdint>
+#include <string>
+
+
 namespace emu
 {
 
 class OctoCartridge
 {
 public:
+    static OctoCartridge load(std::string filename);
+
 private:
 
 };

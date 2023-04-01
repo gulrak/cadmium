@@ -415,7 +415,13 @@ void Editor::update()
                 _compiledSourceSha1Hex = _editedTextSha1Hex;
                 try {
                     _compiler.reset();
-                    _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+                    if(_text.empty() || _text.back() != '\n') {
+                        auto text = _text + '\n';
+                        _compiler.compile(_filename, text.data(), text.data() + text.size() + 1);
+                    }
+                    else {
+                        _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+                    }
                 }
                 catch(std::exception& ex)
                 {}
