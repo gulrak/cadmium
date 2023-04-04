@@ -443,6 +443,26 @@ void LogHandler(int msgType, const char *text, va_list args)
     emu::Logger::log(LogView::eHOST, 0, {0,0}, buffer);
 }
 
+template <size_t N, typename ValueType = uint64_t, typename SumType = uint64_t>
+class SMA
+{
+public:
+    ValueType operator()(ValueType nextVal)
+    {
+        _sum -= _history[_index];
+        _sum += nextVal;
+        _history[_index] = nextVal;
+        if (++_index == N)
+            _index = 0;
+        return ValueType((_sum + (N / 2)) / N);
+    }
+
+private:
+    size_t _index{0};
+    ValueType _history[N]{};
+    SumType _sum{0};
+};
+
 std::atomic_uint8_t g_soundTimer{0};
 std::atomic_int g_frameBoost{1};
 
@@ -1152,7 +1172,11 @@ public:
 
             SetRowHeight(16);
             SetSpacing(0);
-            auto ips = (_chipEmu->getCycles() - lastInstructionCount) / GetFrameTime();
+            auto instructionsThisFrame = _chipEmu->getCycles() - lastInstructionCount;
+            auto ipfAvg = _ipfAverage(instructionsThisFrame);
+            auto ftAvg_ms = _frameTimeAverage_ms(GetFrameTime() * 1000);
+            auto ips = instructionsThisFrame / GetFrameTime();
+            auto ipsAvg = float(ipfAvg) / ftAvg_ms * 1000;
             if(_mainView == eEDITOR) {
                 StatusBar({{0.55f, fmt::format("").c_str()},
                            {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()},
@@ -1161,19 +1185,19 @@ public:
             }
             else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
-                           {0.15f, formatUnit(ips, "IPS").c_str()},
+                           {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->getCycles()).c_str()},
-                           {0.2f, formatUnit(ips, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
+                           {0.2f, formatUnit(ipsAvg, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(_chipEmu->isGenericEmulation()) {
                 StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
-                           {0.15f, formatUnit(ips, "IPS").c_str()},
+                           {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
@@ -1182,7 +1206,7 @@ public:
                 if(vip) {
                     const auto& cdp = vip->getBackendCpu();
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), cdp.getCycles(), _chipEmu->frames()).c_str()},
-                               {0.15f, formatUnit(ips, "IPS").c_str()},
+                               {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
@@ -1190,7 +1214,7 @@ public:
                 if(dream) {
                     const auto& m6k8 = dream->getBackendCpu();
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), m6k8.getCycles(), _chipEmu->frames()).c_str()},
-                               {0.15f, formatUnit(ips, "IPS").c_str()},
+                               {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
@@ -2105,6 +2129,8 @@ private:
     int _screenHeight{};
     RenderTexture _renderTexture{};
     AudioStream _audioStream{};
+    SMA<60,uint64_t> _ipfAverage;
+    SMA<60,uint32_t> _frameTimeAverage_ms;
 #ifndef RESIZABLE_GUI
     bool _scaleBy2{false};
 #endif
