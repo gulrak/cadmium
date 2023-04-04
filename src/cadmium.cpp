@@ -1506,7 +1506,7 @@ public:
                         SetNextWidth(_screenWidth - 373);
                         Begin();
                         Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;CHIP-8 DREAM6800", &_behaviorSel)) {
+                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;CHIP-8 DREAM6800", &_behaviorSel)) {
                             auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                             setEmulatorPresetsTo(preset);
                         }
@@ -1917,7 +1917,7 @@ public:
     void updateEmulatorOptions()
     {
         std::scoped_lock lock(_audioMutex);
-        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP)
+        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
         else if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());

@@ -42,6 +42,8 @@ Chip8Variant Chip8EmulatorOptions::presetAsVariant() const
         case eSCHPC: return Chip8Variant::SCHIPC_GCHIPC;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
+        case eCHIP8VIP: return Chip8Variant::CHIP_8;
+        case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
         case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
         case eC8D68CHIPOSLO: return Chip8Variant::CHIP_8_D6800;
         case eCHICUEYI: return Chip8Variant::XO_CHIP;
@@ -61,6 +63,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
+        case eCHIP8VIP_TPD: return "VIP-CHIP-8 64x64";
         case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eC8D68CHIPOSLO: return "CHIP-8-DREAM-CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -80,6 +83,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
+        case eCHIP8VIP_TPD: return "VIPCHIP8TDP";
         case eCHIP8DREAM: return "CHIP8DREAM";
         case eC8D68CHIPOSLO: return "D6k8CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -110,6 +114,8 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"chip8vip", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"cosmac", emu::Chip8EmulatorOptions::eCHIP8VIP},
     {"cosmacvip", emu::Chip8EmulatorOptions::eCHIP8VIP},
+    {"vipchip8tdp", emu::Chip8EmulatorOptions::eCHIP8VIP_TPD},
+    {"chip8viptdp", emu::Chip8EmulatorOptions::eCHIP8VIP_TPD},
     {"chip8dream", emu::Chip8EmulatorOptions::eCHIP8DREAM},
     {"dreamchip8", emu::Chip8EmulatorOptions::eCHIP8DREAM},
     {"dream6800", emu::Chip8EmulatorOptions::eCHIP8DREAM},
@@ -327,7 +333,32 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .optXOChipSound = false,
                     .optChicueyiSound = false,
                     .optTraceLog = false,
-                    .instructionsPerFrame = 9};
+                    .instructionsPerFrame = 15};
+        case eCHIP8VIP_TPD:
+            return {.behaviorBase = preset,
+                    .startAddress = 0x260,
+                    .optJustShiftVx = false,
+                    .optDontResetVf = false,
+                    .optLoadStoreIncIByX = false,
+                    .optLoadStoreDontIncI = false,
+                    .optWrapSprites = false,
+                    .optInstantDxyn = false,
+                    .optLoresDxy0Is8x16 = false,
+                    .optLoresDxy0Is16x16 = false,
+                    .optSC11Collision = false,
+                    .optJump0Bxnn = false,
+                    .optAllowHires = false,
+                    .optOnlyHires = false,
+                    .optAllowColors = false,
+                    .optHas16BitAddr = false,
+                    .optXOChipSound = false,
+                    .optChicueyiSound = false,
+                    .optTraceLog = true,
+                    .instructionsPerFrame = 15,
+                    .advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
+                        {"interpreter", "chip8tdp"}
+                    }))
+            };
         case eCHIP8DREAM:
             return {.behaviorBase = preset,
                     .startAddress = 0x200,
