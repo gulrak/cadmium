@@ -52,6 +52,7 @@ class CLI
         ValuePtr valPtr;
         std::function<void(std::string, ValuePtr)> converter;
         std::string help;
+        std::function<void()> triggerCallback;
     };
 public:
     CLI(int argc, char* argv[])
@@ -61,7 +62,7 @@ public:
         }
     }
     template<typename T>
-    void option(const std::vector<std::string>& names, T& destVal, std::string description = std::string())
+    void option(const std::vector<std::string>& names, T& destVal, std::string description = std::string(), std::function<void()> trigger = {})
     {
         static_assert(Contains<T*, ValuePtr>::value, "CLI: supported option types are only bool, std::int64_t, std::string or std::vector<std::string>");
         handler[names] = {&destVal,
@@ -71,7 +72,7 @@ public:
                                                  [arg](std::string* val) { *val = arg; },
                                                  [arg](std::vector<std::string>* val) { val->push_back(arg); }}, valp);
                           },
-                          description};
+                          description, trigger};
     }
     void positional(std::vector<std::string>& dest, std::string description = std::string())
     {
@@ -136,8 +137,11 @@ private:
                         *std::get<bool*>(info.valPtr) = boolKeys.at(*iter++);
                     }
                     else {
-                        *std::get<bool*>(info.valPtr) = !*std::get<bool*>(info.valPtr);
+                        std::cerr << "bool-arg: " << name << ", old value " << *std::get<bool*>(info.valPtr) << std::endl;
+                        *std::get<bool*>(info.valPtr) = true;//(*std::get<bool*>(info.valPtr) == false);
                     }
+                    if(info.triggerCallback)
+                        info.triggerCallback();
                     return true;
                 }
             }

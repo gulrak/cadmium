@@ -139,6 +139,13 @@ following options gives a basic VIP CHIP-8:
 
 ## Command-line
 
+Cadmium allows to select the CHIP-8 variant on startup via the preset parameter and quirk
+options. For that to work you need to give the preset first and then each quirk option
+can either implicitly flip the quirk to the negated one of the preset, or you can use
+them with an optional `true`, `on`, `yes`  for activating the quirk or `false`, `off` or
+`no` to disable it. For example `cadmium -p chip8 --instant-dxyn` will start with a
+classic CHIP-8 that does not wait for vertical blank on sprite draws. 
+
 ```
 USAGE: cadmium [options] file
 
@@ -156,8 +163,8 @@ OPTIONS:
 --screen-dump
     When in trace mode, dump the final screen content to the console
 
--b, --benchmark
-    Run benchmark against octo-c
+-b, --benchmark <arg>
+    Run benchmark for given number of cycles
 
 -c, --compare
     Run and compare with reference engine, trace until diff

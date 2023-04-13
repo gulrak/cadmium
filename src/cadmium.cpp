@@ -2331,7 +2331,18 @@ int main(int argc, char* argv[])
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
+    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8", [&](){
+        if(!presetName.empty()) {
+            try {
+                preset = emu::Chip8EmulatorOptions::presetForName(presetName);
+                options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+            }
+            catch(std::runtime_error e) {
+                std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
+                presetName = "";
+            }
+        }
+    });
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
@@ -2375,30 +2386,13 @@ int main(int argc, char* argv[])
         std::cerr << "ERROR: random generator must be 'rand-lgc' or 'counting' and trace must be used." << std::endl;
         exit(1);
     }
-    if(!presetName.empty()) {
-        try {
-            preset = emu::Chip8EmulatorOptions::presetForName(presetName);
-        }
-        catch(std::runtime_error e) {
-            std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-#ifndef PLATFORM_WEB
-            presetName = "";
-#endif
-        }
-    }
-    options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-    //------------------------------------------------------------
-    // second pass parsing for mixing preset and options
-    cli.parse();
-    //------------------------------------------------------------
-
     if(execSpeed >= 0) {
         options.instructionsPerFrame = execSpeed;
     }
     if(traceLines < 0 && !compareRun && !benchmark) {
 #else
     ghc::CLI cli(argc, argv);
-    std::string presetName = "";
+    std::string presetName = "schipc";
     int64_t execSpeed = -1;
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
@@ -2509,6 +2503,9 @@ int main(int argc, char* argv[])
                 chip8->executeInstruction();
             }
             auto durationChip8 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8);
+            if(screenDump) {
+                std::cout << chip8EmuScreen(*chip8);
+            }
             std::cout << "Executed instructions: " << chip8->getCycles() << std::endl;
             std::cout << "Cadmium: " << durationChip8.count() << "ms, " << int(double(chip8->getCycles())/durationChip8.count()/1000) << "MIPS" << std::endl;
         }
@@ -2521,8 +2518,9 @@ int main(int argc, char* argv[])
                 chip8->executeInstruction();
                 ++i;
             } while (i <= traceLines && chip8->getExecMode() == emu::IChip8Emulator::ExecMode::eRUNNING);
-            if(screenDump)
+            if(screenDump) {
                 std::cout << chip8EmuScreen(*chip8);
+            }
         }
     }
 #endif
