@@ -149,43 +149,91 @@ classic CHIP-8 that does not wait for vertical blank on sprite draws.
 ```
 USAGE: cadmium [options] file
 
-OPTIONS:
-
---opcode-table
+General Options:
+  --opcode-table
     Dump an opcode table to stdout
 
---random-gen <arg>
+  --random-gen <arg>
     Select a predictable random generator used for trace log mode (rand-lgc or counting)
 
---random-seed <arg>
+  --random-seed <arg>
     Select a random seed for use in combination with --random-gen, default: 12345
 
---screen-dump
+  --screen-dump
     When in trace mode, dump the final screen content to the console
 
--b, --benchmark <arg>
-    Run benchmark for given number of cycles
+  --trace-log
+    If true, enable trace logging into log-view
 
--c, --compare
+  -b <arg>, --benchmark <arg>
+    Run given number of cycles as benchmark
+
+  -c, --compare
     Run and compare with reference engine, trace until diff
 
--h, --help
+  -h, --help
     Show this help text
 
--p <arg>, --preset <arg>
+  -p <arg>, --preset <arg>
     Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8
 
--r, --run
+  -r, --run
     if a ROM is given (positional) start it
 
--s <arg>, --exec-speed <arg>
+  -s <arg>, --exec-speed <arg>
     Set execution speed in instructions per frame (0-500000, 0: unlimited)
 
--t <arg>, --trace <arg>
+  -t <arg>, --trace <arg>
     Run headless and dump given number of trace lines
 
-file
-ROM file ('.ch8', '.ch10', '.hc8', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
+Quirks:
+  --allow-color
+    If true, support for multi-plane drawing is enabled
+
+  --allow-hires
+    If true, support for hires (128x64) is enabled
+
+  --dont-reset-vf
+    If true, Vf will not be reset by 8xy1/8xy2/8xy3
+
+  --has-16bit-addr
+    If true, address space is 16bit (64k ram)
+
+  --instant-dxyn
+    If true, Dxyn don't wait for vsync
+
+  --jump0-bxnn
+    If true, use Vx as offset for Bxnn
+
+  --just-shift-vx
+    If true, 8xy6/8xyE will just shift Vx and ignore Vy
+
+  --load-store-dont-inc-i
+    If true, Fx55/Fx65 don't change I
+
+  --load-store-inc-i-by-x
+    If true, Fx55/Fx65 increment I by x
+
+  --lores-dxy0-width-16
+    If true, draw Dxy0 sprites have width 16
+
+  --lores-dxy0-width-8
+    If true, draw Dxy0 sprites have width 8
+
+  --only-hires
+    If true, emulation has hires mode only
+
+  --sc11-collision
+    If true, use SCHIP1.1 collision logic
+
+  --wrap-sprites
+    If true, Dxyn wrap sprites around border
+
+  --xo-chip-sound
+    If true, use XO-CHIP sound instead of buzzer
+
+...
+    ROM file ('.ch8', '.ch10', '.hc8', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
 ```
 
 ## Versioning

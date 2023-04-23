@@ -1,5 +1,7 @@
 ## v1.0.7 (wip)
-
+* Support for "Two page display CHIP-8" in the VIP emulation, based on the TDP interpreter
+  version from VIPER vol. 1, issue 3
+* All supported quirks can now be configured via the commandline
 * Preprocessor Support, this allows to use source files with includes, conditionals and
   sprite import from graphics files compatible to the Octopus syntax
 * Editor now has a message panel to better show errors from different (included) files

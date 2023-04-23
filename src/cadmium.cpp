@@ -2445,6 +2445,7 @@ int main(int argc, char* argv[])
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName = "";
+    cli.category("General Options");
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
@@ -2466,6 +2467,9 @@ int main(int argc, char* argv[])
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
     cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
+    cli.option({"--trace-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
+    cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
+    cli.category("Quirks");
     cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
     cli.option({"--dont-reset-vf"}, options.optDontResetVf, "If true, Vf will not be reset by 8xy1/8xy2/8xy3");
     cli.option({"--load-store-inc-i-by-x"}, options.optLoadStoreIncIByX, "If true, Fx55/Fx65 increment I by x");
@@ -2481,8 +2485,6 @@ int main(int argc, char* argv[])
     cli.option({"--allow-color"}, options.optAllowColors, "If true, support for multi-plane drawing is enabled");
     cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
-    cli.option({"--trane-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
-    cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.positional(romFile, "ROM file or source to load");
     cli.parse();
     if(showHelp) {
