@@ -530,6 +530,9 @@ public:
         _chipEmu->reset();
         _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
         _screenTexture = LoadTextureFromImage(_screen);
+        _crt = GenImageColor(256,512,BLACK);
+        _crtTexture = LoadTextureFromImage(_crt);
+        SetTextureFilter(_crtTexture, TEXTURE_FILTER_BILINEAR);
         _titleImage = LoadImage("cadmium-title.png");
         _microFont = LoadImage("micro-font.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
@@ -546,7 +549,9 @@ public:
         ImageColorReplace(&_titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
         Image icon = GenImageColor(64,64,{0,0,0,0});
         ImageDraw(&icon, _titleImage, {34,2,60,60}, {2,2,60,60}, WHITE);
+#ifndef __APPLE__
         SetWindowIcon(icon);
+#endif
         _titleTexture = LoadTextureFromImage(_titleImage);
         if(_currentDirectory.empty())
             _currentDirectory = _librarian.currentDirectory();
@@ -596,9 +601,11 @@ public:
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
+        UnloadTexture(_crtTexture);
         UnloadTexture(_screenTexture);
         UnloadAudioStream(_audioStream);
         CloseAudioDevice();
+        UnloadImage(_crt);
         UnloadImage(_screen);
         _instance = nullptr;
         CloseWindow();
@@ -919,9 +926,58 @@ public:
         auto* pixel = (uint32_t*)_screen.data;
         const uint8_t* planes = _chipEmu->getScreenBuffer();
         if(planes) {
-            const uint8_t* end = planes + 256 /*_chipEmu->getMaxScreenWidth()*/ * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
-            while (planes < end) {
-                *pixel++ = _colorPalette[*planes++];
+            if(!_renderCrt) {
+                const uint8_t* end = planes + 256 /*_chipEmu->getMaxScreenWidth()*/ * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
+                while (planes < end) {
+                    *pixel++ = _colorPalette[*planes++];
+                }
+                UpdateTexture(_screenTexture, _screen.data);
+            }
+            else {
+                static std::vector<uint8_t> buffer(_crt.width * _crt.height, 0);
+                std::memset(buffer.data(), 0, buffer.size());
+                for(unsigned y = 0; y < 128; ++y) {
+                    for(unsigned x = 0; x < 64; ++x) {
+                        if(planes[256 * y + x] == 1) {
+                            buffer[(y*3 + 0)*_crt.width + x*2 + 0]++;
+                            buffer[(y*3 + 0)*_crt.width + x*2 + 1] += 2;
+                            buffer[(y*3 + 0)*_crt.width + x*2 + 2] += 2;
+                            buffer[(y*3 + 0)*_crt.width + x*2 + 3]++;
+                            buffer[(y*3 + 1)*_crt.width + x*2 + 0] += 2;
+                            buffer[(y*3 + 1)*_crt.width + x*2 + 1] += 8;
+                            buffer[(y*3 + 1)*_crt.width + x*2 + 2] += 8;
+                            buffer[(y*3 + 1)*_crt.width + x*2 + 3] += 2;
+                            buffer[(y*3 + 2)*_crt.width + x*2 + 0] += 2;
+                            buffer[(y*3 + 2)*_crt.width + x*2 + 1] += 8;
+                            buffer[(y*3 + 2)*_crt.width + x*2 + 2] += 8;
+                            buffer[(y*3 + 2)*_crt.width + x*2 + 3] += 2;
+                            buffer[(y*3 + 3)*_crt.width + x*2 + 0]++;
+                            buffer[(y*3 + 3)*_crt.width + x*2 + 1] += 2;
+                            buffer[(y*3 + 3)*_crt.width + x*2 + 2] += 2;
+                            buffer[(y*3 + 3)*_crt.width + x*2 + 3]++;
+                        }
+                    }
+                }
+                for(unsigned y = 0; y < 128*3+1; ++y) {
+                    for(unsigned x = 0; x < 128+2; ++x) {
+                        auto cnt = buffer[y*_crt.width + x];
+                        auto* pix = (uint32_t*)_crt.data + y*_crt.width + x;
+                        if(cnt >= 8) {
+                            *pix = _colorPalette[1];
+                        }
+                        else {
+                            *pix = _colorPalette[0];
+                        }
+                        //else {
+                        //    *pix = _colorPalette[3];
+                        //}
+                    }
+                }
+                UpdateTexture(_crtTexture, _crt.data);
+                static size_t count = 0;
+                if(++count == 1000) {
+                    ExportImage(_crt, "crt-image.png");
+                }
             }
         }
         else {
@@ -931,8 +987,8 @@ public:
             while (srcPixel < end) {
                 *pixel++ = *srcPixel++;
             }
+            UpdateTexture(_screenTexture, _screen.data);
         }
-        UpdateTexture(_screenTexture, _screen.data);
     }
 
     static void updateAndDrawFrame(void* self)
@@ -1062,16 +1118,20 @@ public:
     void drawScreen(Rectangle dest, int gridScale)
     {
         const Color gridLineCol{40,40,40,255};
-        int scrWidth = _chipEmu->getCurrentScreenWidth();
-        int scrHeight = _chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128;
+        bool crt = _renderCrt;
+        int scrWidth = crt ? 130 : _chipEmu->getCurrentScreenWidth();
+        int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
         auto videoScale = dest.width / scrWidth;
         auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScale : videoScale/4;
-        auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
-        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
+        auto videoX = crt ? (dest.width - scrWidth * videoScale) / 2 + dest.x : (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
+        auto videoY = crt ? (dest.height - scrHeight * videoScaleY) / 2 + dest.y : (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
         DrawRectangleRec(dest, {0,12,24,255});
-        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+        if(crt)
+            DrawTexturePro(_crtTexture, {1, 1, (float)scrWidth-2, (float)scrHeight-2}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+        else
+            DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
 //        DrawRectangleLines(videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY, RED);
-        if (_grid) {
+        if (_grid && !crt) {
             for (short x = 0; x < scrWidth; ++x) {
                 DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScaleY, gridLineCol);
             }
@@ -1579,7 +1639,7 @@ public:
                         if(!_chipEmu->isGenericEmulation())
                             GuiEnable();
                         Space(30);
-                        if(std::memcmp(&oldOptions, &_options, sizeof(emu::Chip8EmulatorOptions)) != 0) {
+                        if(oldOptions != _options) {
                             updateEmulatorOptions();
                             safeConfig();
                         }
@@ -1883,13 +1943,14 @@ public:
 
     const std::string& romExtension()
     {
-        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".mc8", ".xo8"};
+        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".mc8", ".xo8", ".c8h"};
         switch(_options.behaviorBase) {
             case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
             case emu::Chip8EmulatorOptions::eSCHIP10:
             case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
             case emu::Chip8EmulatorOptions::eMEGACHIP: return extensions[3];
             case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[4];
+            case emu::Chip8EmulatorOptions::eCHIP8VIP_TPD: return extensions[5];
             default: return extensions[0];
         }
     }
@@ -1916,15 +1977,18 @@ public:
 
     void updateEmulatorOptions()
     {
-        std::scoped_lock lock(_audioMutex);
-        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD)
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
-        else if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
-        else
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
-        _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
-        _debugger.updateCore(_chipEmu.get());
+        static emu::Chip8EmulatorOptions previousOptions;
+        if(previousOptions != _options || !_chipEmu) {
+            std::scoped_lock lock(_audioMutex);
+            if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD)
+                _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
+            else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
+                _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
+            else
+                _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
+            _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
+            _debugger.updateCore(_chipEmu.get());
+        }
     }
 
     void loadRom(const char* filename, bool andRun = false)
@@ -1932,6 +1996,7 @@ public:
         if (strlen(filename) < 4095) {
             unsigned int size = 0;
             bool valid = false;
+            _logView.clear();
             _customPalette = false;
             _chipEmu->reset();
             _audioBuffer.reset();
@@ -1940,6 +2005,9 @@ public:
             _editor.setFilename("");
 #endif
             _romSha1Hex.clear();
+            auto fileData = loadFile(filename);
+            auto isKnown = Librarian::isKnownFile(fileData.data(), fileData.size());
+            auto knownOptions = Librarian::getOptionsForFile(fileData.data(), fileData.size());
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {
                 emu::OctoCompiler c8c;
@@ -1957,6 +2025,12 @@ public:
                         valid = true;
                     }
                 }
+            }
+            else if(isKnown) {
+                _options = knownOptions;
+                _romImage = fileData;
+                updateEmulatorOptions();
+                valid = true;
             }
             else if(endsWith(filename, ".ch8")) {
                 if (size < _chipEmu->memSize() - 512) {
@@ -1979,6 +2053,14 @@ public:
                     _romImage = loadFile(filename);
                     valid = true;
                 }
+            }
+            else if(endsWith(filename, ".c8tp")) {
+                if (size < _chipEmu->memSize() - 512) {
+                    _romImage = loadFile(filename);
+                    valid = true;
+                }
+                _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8VIP_TPD);
+                updateEmulatorOptions();
             }
             else if(endsWith(filename, ".sc8")) {
                 _options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
@@ -2119,8 +2201,10 @@ private:
     Image _titleImage{};
     Font _font{};
     Image _screen{};
+    Image _crt{};
     Texture2D _titleTexture{};
     Texture2D _screenTexture{};
+    Texture2D _crtTexture{};
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
     bool _shouldClose{false};
@@ -2140,6 +2224,7 @@ private:
     int _behaviorSel{0};
     //float _messageTime{};
     std::string _timedMessage;
+    bool _renderCrt{false};
     bool _updateScreen{false};
     int _frameBoost{1};
     int _memoryOffset{-1};
@@ -2190,6 +2275,40 @@ std::string chip8EmuScreen(emu::IChip8Emulator& chip8)
             result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
         }
         result.push_back('\n');
+    }
+    return result;
+}
+
+std::string chip8EmuScreenANSI(emu::IChip8Emulator& chip8)
+{
+    static int col[16] = {0,15,7,8, 9,10,12,11, 1,2,4,3, 13,14,5,6};
+    std::string result;
+    auto width = chip8.getCurrentScreenWidth();
+    auto maxWidth = 256; //chip8.getMaxScreenWidth();
+    auto height = chip8.getCurrentScreenHeight();
+    const auto* buffer = chip8.getScreenBuffer();
+    result.reserve(width*height*16);
+    if(chip8.isDoublePixel()) {
+        for (int y = 0; y < height; y += 4) {
+            for (int x = 0; x < width; x += 2) {
+                auto c1 = buffer[y * maxWidth + x];
+                auto c2 = buffer[(y + 2) * maxWidth + x];
+                result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
+                // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+            }
+            result += "\033[0m\n";
+        }
+    }
+    else {
+        for (int y = 0; y < height; y += 2) {
+            for (int x = 0; x < width; ++x) {
+                auto c1 = buffer[y * maxWidth + x];
+                auto c2 = buffer[(y + 1) * maxWidth + x];
+                result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
+                // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+            }
+            result += "\033[0m\n";
+        }
     }
     return result;
 }
@@ -2455,7 +2574,7 @@ int main(int argc, char* argv[])
         if(!romFile.empty()) {
             unsigned int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
-            if (size < 4096 - 512) {
+            if (size < chip8->memSize() - 512) {
                 std::memcpy(chip8->memory() + 512, data, size);
             }
             UnloadFileData(data);
@@ -2499,12 +2618,15 @@ int main(int argc, char* argv[])
                 chip8->tick(options.instructionsPerFrame);
             }
             chip8->handleTimer();
-            while(chip8->getCycles() < instructions) {
+            int64_t lastCycles = -1;
+            int64_t cycles = 0;
+            while((cycles = chip8->getCycles()) < instructions && cycles != lastCycles) {
                 chip8->executeInstruction();
+                lastCycles = cycles;
             }
             auto durationChip8 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8);
             if(screenDump) {
-                std::cout << chip8EmuScreen(*chip8);
+                std::cout << chip8EmuScreenANSI(*chip8);
             }
             std::cout << "Executed instructions: " << chip8->getCycles() << std::endl;
             std::cout << "Cadmium: " << durationChip8.count() << "ms, " << int(double(chip8->getCycles())/durationChip8.count()/1000) << "MIPS" << std::endl;
@@ -2519,7 +2641,7 @@ int main(int argc, char* argv[])
                 ++i;
             } while (i <= traceLines && chip8->getExecMode() == emu::IChip8Emulator::ExecMode::eRUNNING);
             if(screenDump) {
-                std::cout << chip8EmuScreen(*chip8);
+                std::cout << chip8EmuScreenANSI(*chip8);
             }
         }
     }

@@ -91,40 +91,58 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
     }
 }
 
+using Opts = emu::Chip8EmulatorOptions;
+
 static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetMap = {
-    {"chip8", emu::Chip8EmulatorOptions::eCHIP8},
-    {"chip10", emu::Chip8EmulatorOptions::eCHIP10},
-    {"chip48", emu::Chip8EmulatorOptions::eCHIP48},
-    {"schip10", emu::Chip8EmulatorOptions::eSCHIP10},
-    {"superchip10", emu::Chip8EmulatorOptions::eSCHIP10},
-    {"schip11", emu::Chip8EmulatorOptions::eSCHIP11},
-    {"superchip11", emu::Chip8EmulatorOptions::eSCHIP11},
-    {"superchipcompatibility", emu::Chip8EmulatorOptions::eSCHPC},
-    {"schipc", emu::Chip8EmulatorOptions::eSCHPC},
-    {"schipcomp", emu::Chip8EmulatorOptions::eSCHPC},
-    {"schpc", emu::Chip8EmulatorOptions::eSCHPC},
-    {"gchpc", emu::Chip8EmulatorOptions::eSCHPC},
-    {"mchip", emu::Chip8EmulatorOptions::eMEGACHIP},
-    {"mchip8", emu::Chip8EmulatorOptions::eMEGACHIP},
-    {"megachip8", emu::Chip8EmulatorOptions::eMEGACHIP},
-    {"mega8", emu::Chip8EmulatorOptions::eMEGACHIP},
-    {"xo", emu::Chip8EmulatorOptions::eXOCHIP},
-    {"xochip", emu::Chip8EmulatorOptions::eXOCHIP},
-    {"vipchip8", emu::Chip8EmulatorOptions::eCHIP8VIP},
-    {"chip8vip", emu::Chip8EmulatorOptions::eCHIP8VIP},
-    {"cosmac", emu::Chip8EmulatorOptions::eCHIP8VIP},
-    {"cosmacvip", emu::Chip8EmulatorOptions::eCHIP8VIP},
-    {"vipchip8tdp", emu::Chip8EmulatorOptions::eCHIP8VIP_TPD},
-    {"chip8viptdp", emu::Chip8EmulatorOptions::eCHIP8VIP_TPD},
-    {"chip8dream", emu::Chip8EmulatorOptions::eCHIP8DREAM},
-    {"dreamchip8", emu::Chip8EmulatorOptions::eCHIP8DREAM},
-    {"dream6800", emu::Chip8EmulatorOptions::eCHIP8DREAM},
-    {"chipos", emu::Chip8EmulatorOptions::eCHIP8DREAM},
-    {"chip8dreamchiposlo", emu::Chip8EmulatorOptions::eC8D68CHIPOSLO},
-    {"chip8chiposlo", emu::Chip8EmulatorOptions::eC8D68CHIPOSLO},
-    {"c8d6k8chiposlo", emu::Chip8EmulatorOptions::eC8D68CHIPOSLO},
-    {"chiposlo", emu::Chip8EmulatorOptions::eC8D68CHIPOSLO},
-    {"chicueyi", emu::Chip8EmulatorOptions::eCHICUEYI}
+    {"chip8", Opts::eCHIP8},
+    {"chip10", Opts::eCHIP10},
+    {"chip48", Opts::eCHIP48},
+    {"schip10", Opts::eSCHIP10},
+    {"superchip10", Opts::eSCHIP10},
+    {"schip11", Opts::eSCHIP11},
+    {"superchip11", Opts::eSCHIP11},
+    {"superchipcompatibility", Opts::eSCHPC},
+    {"schipc", Opts::eSCHPC},
+    {"schipcomp", Opts::eSCHPC},
+    {"schpc", Opts::eSCHPC},
+    {"gchpc", Opts::eSCHPC},
+    {"mchip", Opts::eMEGACHIP},
+    {"mchip8", Opts::eMEGACHIP},
+    {"megachip8", Opts::eMEGACHIP},
+    {"mega8", Opts::eMEGACHIP},
+    {"xo", Opts::eXOCHIP},
+    {"xochip", Opts::eXOCHIP},
+    {"vipchip8", Opts::eCHIP8VIP},
+    {"chip8vip", Opts::eCHIP8VIP},
+    {"cosmac", Opts::eCHIP8VIP},
+    {"cosmacvip", Opts::eCHIP8VIP},
+    {"vipchip8tpd", Opts::eCHIP8VIP_TPD},
+    {"chip8viptpd", Opts::eCHIP8VIP_TPD},
+    {"chip8dream", Opts::eCHIP8DREAM},
+    {"dreamchip8", Opts::eCHIP8DREAM},
+    {"dream6800", Opts::eCHIP8DREAM},
+    {"chipos", Opts::eCHIP8DREAM},
+    {"chip8dreamchiposlo", Opts::eC8D68CHIPOSLO},
+    {"chip8chiposlo", Opts::eC8D68CHIPOSLO},
+    {"c8d6k8chiposlo", Opts::eC8D68CHIPOSLO},
+    {"chiposlo", Opts::eC8D68CHIPOSLO},
+    {"chicueyi", Opts::eCHICUEYI}
+};
+
+static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
+    {Opts::eCHIP8, R"({})"},
+    {Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
+    {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":true,"optJump0Bxnn":true,"instructionsPerFrame":15})"},
+    {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15})"},
+    {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000})"},
+    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eCHIP8VIP, R"({})"},
+    {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"chip8tdp"}})"},
+    {Opts::eCHIP8DREAM, R"({})"},
+    {Opts::eC8D68CHIPOSLO, R"({"advanced":{"kernel":"chiposlo"}})"}
 };
 
 Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const std::string& name)
@@ -142,6 +160,24 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const 
     return iter->second;
 }
 
+#if 1
+Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
+{
+    static std::map<Opts::SupportedPreset,Opts> presetOptionsMap;
+    if(preset == Opts::eCHIP8)
+        return Opts();
+    if(presetOptionsMap.empty()) {
+        for(const auto& [presetId,jsonString] : presetOptionsProtoMap) {
+            Opts opts;
+            from_json(nlohmann::json::parse(jsonString),opts);
+            opts.behaviorBase = presetId;
+            presetOptionsMap[presetId] = opts;
+        }
+    }
+    auto iter = presetOptionsMap.find(preset);
+    return iter != presetOptionsMap.end() ? iter->second : Opts();
+}
+#else
 Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
 {
     switch(preset) {
@@ -430,31 +466,42 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
                     .instructionsPerFrame = 15};
     }
 }
+#endif
 
+bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
+{
+    return behaviorBase == other.behaviorBase && startAddress == other.startAddress && optJustShiftVx == other.optJustShiftVx && optDontResetVf == other.optDontResetVf && optLoadStoreIncIByX == other.optLoadStoreIncIByX &&
+           optLoadStoreDontIncI == other.optLoadStoreDontIncI && optWrapSprites == other.optWrapSprites && optInstantDxyn == other.optInstantDxyn && optLoresDxy0Is8x16 == other.optLoresDxy0Is8x16 && optLoresDxy0Is16x16 == other.optLoresDxy0Is16x16 &&
+           optSC11Collision == other.optSC11Collision && optJump0Bxnn == other.optJump0Bxnn && optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors &&
+           optHas16BitAddr == other.optHas16BitAddr && optXOChipSound == other.optXOChipSound && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame &&
+           advanced == other.advanced;
+}
+
+#define SET_IF_CHANGED(j, n) if(o.n != defaultOpts.n) j[#n] = o.n;
 void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
 {
+    const Opts defaultOpts = Chip8EmulatorOptions::optionsOfPreset(o.behaviorBase);
     using json = nlohmann::json;
-    j = json{
-        {"behaviorBase", o.nameOfPreset(o.behaviorBase)},
-        {"startAddress", o.startAddress},
-        {"optJustShiftVx", o.optJustShiftVx},
-        {"optDontResetVf", o.optDontResetVf},
-        {"optLoadStoreIncIByX", o.optLoadStoreIncIByX},
-        {"optLoadStoreDontIncI", o.optLoadStoreDontIncI},
-        {"optWrapSprites", o.optWrapSprites},
-        {"optInstantDxyn", o.optInstantDxyn},
-        {"optLoresDxy0Is8x16", o.optLoresDxy0Is8x16},
-        {"optLoresDxy0Is16x16", o.optLoresDxy0Is16x16},
-        {"optSC11Collision", o.optSC11Collision},
-        {"optJump0Bxnn", o.optJump0Bxnn},
-        {"optAllowHires", o.optAllowHires},
-        {"optOnlyHires", o.optOnlyHires},
-        {"optAllowColors", o.optAllowColors},
-        {"optHas16BitAddr", o.optHas16BitAddr},
-        {"optXOChipSound", o.optXOChipSound},
-        {"optTraceLog", o.optTraceLog},
-        {"instructionsPerFrame", o.instructionsPerFrame}
-    };
+    json obj;
+    obj["behaviorBase"] = o.nameOfPreset(o.behaviorBase);
+    SET_IF_CHANGED(obj, startAddress);
+    SET_IF_CHANGED(obj, optJustShiftVx);
+    SET_IF_CHANGED(obj, optDontResetVf);
+    SET_IF_CHANGED(obj, optLoadStoreIncIByX);
+    SET_IF_CHANGED(obj, optLoadStoreDontIncI);
+    SET_IF_CHANGED(obj, optWrapSprites);
+    SET_IF_CHANGED(obj, optInstantDxyn);
+    SET_IF_CHANGED(obj, optLoresDxy0Is8x16);
+    SET_IF_CHANGED(obj, optLoresDxy0Is16x16);
+    SET_IF_CHANGED(obj, optSC11Collision);
+    SET_IF_CHANGED(obj, optJump0Bxnn);
+    SET_IF_CHANGED(obj, optAllowHires);
+    SET_IF_CHANGED(obj, optOnlyHires);
+    SET_IF_CHANGED(obj, optAllowColors);
+    SET_IF_CHANGED(obj, optHas16BitAddr);
+    SET_IF_CHANGED(obj, optXOChipSound);
+    SET_IF_CHANGED(obj, optTraceLog);
+    SET_IF_CHANGED(obj, instructionsPerFrame);
     if(o.advanced) {
         j["advanced"] = *o.advanced;
     }
@@ -462,26 +509,27 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
 
 void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
 {
-    auto variantName = j.at("behaviorBase").get<std::string>();
+    auto variantName = j.value("behaviorBase",std::string("chip8"));
     o.behaviorBase = Chip8EmulatorOptions::presetForName(variantName);
-    j.at("startAddress").get_to(o.startAddress);
-    j.at("optJustShiftVx").get_to(o.optJustShiftVx);
-    j.at("optDontResetVf").get_to(o.optDontResetVf);
-    j.at("optLoadStoreIncIByX").get_to(o.optLoadStoreIncIByX);
-    j.at("optLoadStoreDontIncI").get_to(o.optLoadStoreDontIncI);
-    j.at("optWrapSprites").get_to(o.optWrapSprites);
-    j.at("optInstantDxyn").get_to(o.optInstantDxyn);
-    j.at("optJump0Bxnn").get_to(o.optJump0Bxnn);
-    j.at("optAllowHires").get_to(o.optAllowHires);
-    j.at("optOnlyHires").get_to(o.optOnlyHires);
-    j.at("optAllowColors").get_to(o.optAllowColors);
-    j.at("optHas16BitAddr").get_to(o.optHas16BitAddr);
-    j.at("optXOChipSound").get_to(o.optXOChipSound);
-    o.optTraceLog = j.value("optTraceLog", false);
-    o.optLoresDxy0Is8x16 = j.value("optLoresDxy0Is8x16", false);
-    o.optLoresDxy0Is16x16 = j.value("optLoresDxy0Is16x16", false);
-    o.optSC11Collision = j.value("optSC11Collision", false);
-    j.at("instructionsPerFrame").get_to(o.instructionsPerFrame);
+    const Opts defaultOpts = Chip8EmulatorOptions::optionsOfPreset(o.behaviorBase);
+    o.startAddress = j.value("startAddress", defaultOpts.startAddress);
+    o.optJustShiftVx = j.value("optJustShiftVx", defaultOpts.optJustShiftVx);
+    o.optDontResetVf = j.value("optDontResetVf", defaultOpts.optDontResetVf);
+    o.optLoadStoreIncIByX = j.value("optLoadStoreIncIByX", defaultOpts.optLoadStoreIncIByX);
+    o.optLoadStoreDontIncI = j.value("optLoadStoreDontIncI", defaultOpts.optLoadStoreDontIncI);
+    o.optWrapSprites = j.value("optWrapSprites", defaultOpts.optWrapSprites);
+    o.optInstantDxyn = j.value("optInstantDxyn", defaultOpts.optInstantDxyn);
+    o.optJump0Bxnn = j.value("optJump0Bxnn", defaultOpts.optJump0Bxnn);
+    o.optAllowHires = j.value("optAllowHires", defaultOpts.optAllowHires);
+    o.optOnlyHires = j.value("optOnlyHires", defaultOpts.optOnlyHires);
+    o.optAllowColors = j.value("optAllowColors", defaultOpts.optAllowColors);
+    o.optHas16BitAddr = j.value("optHas16BitAddr", defaultOpts.optHas16BitAddr);
+    o.optXOChipSound = j.value("optXOChipSound", defaultOpts.optXOChipSound);
+    o.optTraceLog = j.value("optTraceLog", defaultOpts.optTraceLog);
+    o.optLoresDxy0Is8x16 = j.value("optLoresDxy0Is8x16", defaultOpts.optLoresDxy0Is8x16);
+    o.optLoresDxy0Is16x16 = j.value("optLoresDxy0Is16x16", defaultOpts.optLoresDxy0Is16x16);
+    o.optSC11Collision = j.value("optSC11Collision", defaultOpts.optSC11Collision);
+    o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
     if(j.contains("advanced")) {
         o.advanced = std::make_shared<nlohmann::ordered_json>(j.at("advanced"));
     }

@@ -257,6 +257,7 @@ public:
     uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
     uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : 128; }
     uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : 64; }
+    bool isDoublePixel() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     const uint8_t* getScreenBuffer() const override { return _isMegaChipMode ? nullptr : _screenBuffer.data(); }
     const uint32_t* getScreenBuffer32() const override { return _isMegaChipMode ? _screenBuffer32.data() : nullptr; }
 

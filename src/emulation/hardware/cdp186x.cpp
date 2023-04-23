@@ -43,6 +43,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options)
 void Cdp186x::reset()
 {
     _frameCounter = 0;
+    _displayEnabledLatch = false;
     disableDisplay();
 }
 
@@ -59,7 +60,7 @@ void Cdp186x::disableDisplay()
 
 bool Cdp186x::getNEFX() const
 {
-    return _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 4) * 14 || _frameCycle >= (VIDEO_FIRST_INVISIBLE_LINE - 4) * 14;
+    return ((_frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 4) * 14 && _frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14) || (_frameCycle >= (VIDEO_FIRST_INVISIBLE_LINE - 4) * 14 && _frameCycle < VIDEO_FIRST_INVISIBLE_LINE * 14));
 }
 
 const uint8_t* Cdp186x::getScreenBuffer() const
@@ -70,29 +71,41 @@ const uint8_t* Cdp186x::getScreenBuffer() const
 int Cdp186x::executeStep()
 {
     auto fc = (_cpu.getCycles() >> 3) % 3668;
-    if(fc < _frameCycle)
+    bool vsync = false;
+    if(fc < _frameCycle) {
+        vsync = true;
         ++_frameCounter;
+    }
     _frameCycle = fc;
+    auto lineCycle = _frameCycle % 14;
+    if(_options.optTraceLog) {
+        if (vsync)
+            Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- VSYNC ---", _cpu.dumpStateLine()).c_str());
+        else if (lineCycle == 0)
+            Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- HSYNC ---", _cpu.dumpStateLine()).c_str());
+    }
     if(_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
         return _frameCycle;
-    if(_displayEnabled && _frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _cpu.getIE()) {
-        if(_options.optTraceLog)
-            Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
-        _cpu.triggerInterrupt();
+    if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 1 && _cpu.getIE()) {
+        _displayEnabledLatch = _displayEnabled;
+        if(_displayEnabled) {
+            if (_options.optTraceLog)
+                Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
+            _cpu.triggerInterrupt();
+        }
     }
     else if(_frameCycle >= VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle < VIDEO_FIRST_INVISIBLE_LINE * 14) {
         auto line = _frameCycle / 14;
-        auto lineCycle = _frameCycle % 14;
-        if(lineCycle == 2 || lineCycle == 3) {
+        if(lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
             for (int i = 0; i < 8; ++i) {
                 uint8_t* dest = &_screenBuffer[(line - VIDEO_FIRST_VISIBLE_LINE) * 256 + i * 8];
-                auto data = _displayEnabled ? _cpu.executeDMAOut() : 0;
+                auto data = _displayEnabledLatch ? _cpu.executeDMAOut() : 0;
                 for (int j = 0; j < 8; ++j) {
                     dest[j] = (data >> (7 - j)) & 1;
                 }
             }
-            if (_displayEnabled) {
+            if (_displayEnabledLatch) {
                 if(_options.optTraceLog)
                     Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _cpu.getR(0) - 1).c_str());
             }

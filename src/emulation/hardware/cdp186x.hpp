@@ -79,6 +79,7 @@ private:
     int _frameCycle{0};
     int _frameCounter{0};
     bool _displayEnabled{false};
+    bool _displayEnabledLatch{false};
 };
 
 }

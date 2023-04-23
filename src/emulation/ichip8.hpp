@@ -109,6 +109,7 @@ public:
     virtual uint16_t getCurrentScreenHeight() const { return 32; }
     virtual uint16_t getMaxScreenWidth() const { return 64; }
     virtual uint16_t getMaxScreenHeight() const { return 32; }
+    virtual bool isDoublePixel() const { return false; }
     virtual const uint8_t* getScreenBuffer() const { return nullptr; }
     virtual const uint32_t* getScreenBuffer32() const { return nullptr; }
 

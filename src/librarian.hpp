@@ -60,8 +60,10 @@ public:
     const Info& getInfo(size_t index) { return _directoryEntries[index]; }
     void select(int index) { _activeEntry = index; }
     int getSelectedIndex() const { return _activeEntry; }
+    static bool isKnownFile(const uint8_t* data, size_t size);
     static emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum);
     static emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size);
+    static emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size);
 private:
     int _activeEntry{-1};
     std::string _currentPath;
