@@ -257,6 +257,8 @@ struct TabViewContext
     int *activeTab{nullptr};
     int currentTab{0};
     float tabOffset{0.0f};
+    float incX{0};
+    float incY{0};
     static TabViewContext& getContext(int* activeTab);
 };
 
@@ -834,15 +836,19 @@ void EndTabView()
 {
     auto& ctx = detail::context();
     if (ctx.level > 1) {
-        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+        //GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 128});
     }
     else {
-        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+        //GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 128});
     }
     // ctx.increment({0, ctx.currentPos.y - ctx.area.y + (ctx.groupName.empty() ? 10 : RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 10)});
     //ctx.increment({1,2});
-    ctx.maxSize = ctx.area.width;
-    End();
+    // ctx.maxSize = ctx.area.width;
+    auto ctxOld = g_contextStack.top();
+    g_contextStack.pop();
+    auto& ctxNew = detail::context();
+    auto& tvc = *std::get<TabViewContext*>(ctxOld.contextData);
+    ctxNew.increment({tvc.incX, tvc.incY});
 }
 
 bool BeginTab(const char* text, Vector2 padding)
@@ -894,6 +900,7 @@ bool BeginTab(const char* text, Vector2 padding)
 void EndTab()
 {
     auto& ctx = detail::context();
+    auto ctxOld = ctx;
     if (ctx.level > 1) {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
@@ -901,6 +908,19 @@ void EndTab()
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
     g_contextStack.pop();
+    auto& ctxParent = detail::context();
+    ctxOld.maxSize = ctxOld.area.width;
+    auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
+    if (ctxOld.horizontal) {
+        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
+        tvc.incX = ctxOld.currentPos.x - ctxOld.area.x;
+        tvc.incY = ctxOld.maxSize;
+    }
+    else {
+        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.initialPos.x + ctxOld.maxSize, ctxOld.currentPos.y, GREEN);
+        tvc.incX = ctxOld.maxSize;
+        tvc.incY = ctxOld.currentPos.y - ctxOld.area.y;
+    }
 }
 
 void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)

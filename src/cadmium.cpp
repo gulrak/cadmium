@@ -1539,114 +1539,130 @@ public:
                     Begin();
                     BeginPanel("Settings");
                     {
-                        emu::Chip8EmulatorOptions oldOptions = _options;
-                        BeginColumns();
-                        SetNextWidth(320);
-                        BeginGroupBox("Emulation Speed");
-                        Space(5);
-                        SetIndent(180);
-                        SetRowHeight(20);
-                        if(!_chipEmu->isGenericEmulation())
-                            GuiDisable();
-                        Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
-                        if(!_chipEmu->isGenericEmulation())
-                            GuiEnable();
-                        if (!_options.instructionsPerFrame) {
-                            static int _fb1{1};
-                            GuiDisable();
-                            Spinner("Frame boost", &_fb1, 1, 100000);
-                            GuiEnable();
+                        static int activeTab = 0;
+                        BeginTabView(&activeTab);
+                        if(BeginTab("Emulation", {5, 0})) {
+                            emu::Chip8EmulatorOptions oldOptions = _options;
+                            BeginColumns();
+                            SetNextWidth(320);
+                            BeginGroupBox("Emulation Speed");
+                            Space(5);
+                            SetIndent(180);
+                            SetRowHeight(20);
+                            if (!_chipEmu->isGenericEmulation())
+                                GuiDisable();
+                            Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                            if (!_chipEmu->isGenericEmulation())
+                                GuiEnable();
+                            if (!_options.instructionsPerFrame) {
+                                static int _fb1{1};
+                                GuiDisable();
+                                Spinner("Frame boost", &_fb1, 1, 100000);
+                                GuiEnable();
+                            }
+                            else {
+                                Spinner("Frame boost", &_frameBoost, 1, 100000);
+                            }
+                            g_frameBoost = getFrameBoost();
+                            EndGroupBox();
+                            Space(20);
+                            SetNextWidth(_screenWidth - 383);
+                            Begin();
+                            Label("Opcode variant:");
+                            if (DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;CHIP-8 DREAM6800", &_behaviorSel)) {
+                                auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
+                                setEmulatorPresetsTo(preset);
+                            }
+                            if (!_chipEmu->isGenericEmulation()) {
+                                auto rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
+                                Label(TextFormat("   [%s based]", rcb->getBackendCpu().getName().c_str()));
+                            }
+                            _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
+                            End();
+                            EndColumns();
+                            Space(16);
+                            if (!_chipEmu->isGenericEmulation())
+                                GuiDisable();
+                            BeginGroupBox("Quirks");
+                            Space(5);
+                            BeginColumns();
+                            SetNextWidth(GetContentAvailable().width / 2);
+                            Begin();
+                            _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
+                            _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
+                            bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
+                            bool newInc = CheckBox("Fx55/Fx65 increment I by X + 1", oldInc);
+                            if (newInc != oldInc) {
+                                _options.optLoadStoreIncIByX = !newInc;
+                                _options.optLoadStoreDontIncI = false;
+                            }
+                            oldInc = _options.optLoadStoreIncIByX;
+                            _options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", _options.optLoadStoreIncIByX);
+                            if (_options.optLoadStoreIncIByX != oldInc) {
+                                _options.optLoadStoreDontIncI = false;
+                            }
+                            oldInc = _options.optLoadStoreDontIncI;
+                            _options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", _options.optLoadStoreDontIncI);
+                            if (_options.optLoadStoreDontIncI != oldInc) {
+                                _options.optLoadStoreIncIByX = false;
+                            }
+                            _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
+                            _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
+                            End();
+                            Begin();
+                            _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
+                            _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
+                            bool oldLoresWidth = _options.optLoresDxy0Is8x16;
+                            _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
+                            if (!oldLoresWidth && _options.optLoresDxy0Is8x16)
+                                _options.optLoresDxy0Is16x16 = false;
+                            oldLoresWidth = _options.optLoresDxy0Is16x16;
+                            _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
+                            if (!oldLoresWidth && _options.optLoresDxy0Is16x16)
+                                _options.optLoresDxy0Is8x16 = false;
+                            bool oldVal = _options.optSC11Collision;
+                            _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
+                            if (!oldVal && _options.optSC11Collision) {
+                                _options.optAllowHires = true;
+                            }
+                            bool oldAllowHires = _options.optAllowHires;
+                            _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
+                            if (!_options.optAllowHires && oldAllowHires) {
+                                _options.optOnlyHires = false;
+                                _options.optSC11Collision = false;
+                            }
+                            bool oldOnlyHires = _options.optOnlyHires;
+                            _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
+                            if (_options.optOnlyHires && !oldOnlyHires)
+                                _options.optAllowHires = true;
+                            _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
+                            End();
+                            EndColumns();
+                            EndGroupBox();
+                            if (!_chipEmu->isGenericEmulation())
+                                GuiEnable();
+                            Space(30);
+                            if (oldOptions != _options) {
+                                updateEmulatorOptions();
+                                safeConfig();
+                            }
+                            auto pos = GetCurrentPos();
+                            Space(_screenHeight - pos.y - 20 - 16);
+                            SetIndent(110);
+                            Label("(C) 2022 by Steffen '@gulrak' Schümann");
+                            EndTab();
                         }
-                        else {
-                            Spinner("Frame boost", &_frameBoost, 1, 100000);
+                        if(BeginTab("Appearance", {5, 0})) {
+                            auto pos = GetCurrentPos();
+                            Space(_screenHeight - pos.y - 20 - 16);
+                            EndTab();
                         }
-                        g_frameBoost = getFrameBoost();
-                        EndGroupBox();
-                        Space(20);
-                        SetNextWidth(_screenWidth - 373);
-                        Begin();
-                        Label("Opcode variant:");
-                        if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;CHIP-8 DREAM6800", &_behaviorSel)) {
-                            auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
-                            setEmulatorPresetsTo(preset);
+                        if(BeginTab("Misc", {5, 0})) {
+                            auto pos = GetCurrentPos();
+                            Space(_screenHeight - pos.y - 20 - 16);
+                            EndTab();
                         }
-                        if(!_chipEmu->isGenericEmulation()) {
-                            auto rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
-                            Label(TextFormat("   [%s based]", rcb->getBackendCpu().getName().c_str()));
-                        }
-                        _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
-                        End();
-                        EndColumns();
-                        Space(16);
-                        if(!_chipEmu->isGenericEmulation())
-                            GuiDisable();
-                        BeginGroupBox("Quirks");
-                        Space(5);
-                        BeginColumns();
-                        SetNextWidth(GetContentAvailable().width/2);
-                        Begin();
-                        _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
-                        _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
-                        bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
-                        bool newInc = CheckBox("Fx55/Fx65 increment I by X + 1", oldInc);
-                        if(newInc != oldInc) {
-                            _options.optLoadStoreIncIByX = !newInc;
-                            _options.optLoadStoreDontIncI = false;
-                        }
-                        oldInc = _options.optLoadStoreIncIByX;
-                        _options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", _options.optLoadStoreIncIByX);
-                        if(_options.optLoadStoreIncIByX != oldInc) {
-                            _options.optLoadStoreDontIncI = false;
-                        }
-                        oldInc = _options.optLoadStoreDontIncI;
-                        _options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", _options.optLoadStoreDontIncI);
-                        if(_options.optLoadStoreDontIncI != oldInc) {
-                            _options.optLoadStoreIncIByX = false;
-                        }
-                        _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
-                        _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
-                        End();
-                        Begin();
-                        _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
-                        _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
-                        bool oldLoresWidth = _options.optLoresDxy0Is8x16;
-                        _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
-                        if(!oldLoresWidth && _options.optLoresDxy0Is8x16)
-                            _options.optLoresDxy0Is16x16 = false;
-                        oldLoresWidth = _options.optLoresDxy0Is16x16;
-                        _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
-                        if(!oldLoresWidth && _options.optLoresDxy0Is16x16)
-                            _options.optLoresDxy0Is8x16 = false;
-                        bool oldVal = _options.optSC11Collision;
-                        _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
-                        if(!oldVal && _options.optSC11Collision) {
-                            _options.optAllowHires = true;
-                        }
-                        bool oldAllowHires = _options.optAllowHires;
-                        _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
-                        if(!_options.optAllowHires && oldAllowHires) {
-                            _options.optOnlyHires = false;
-                            _options.optSC11Collision = false;
-                        }
-                        bool oldOnlyHires = _options.optOnlyHires;
-                        _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
-                        if(_options.optOnlyHires && !oldOnlyHires)
-                            _options.optAllowHires = true;
-                        _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
-                        End();
-                        EndColumns();
-                        EndGroupBox();
-                        if(!_chipEmu->isGenericEmulation())
-                            GuiEnable();
-                        Space(30);
-                        if(oldOptions != _options) {
-                            updateEmulatorOptions();
-                            safeConfig();
-                        }
-                        auto pos = GetCurrentPos();
-                        Space(_screenHeight - pos.y - 20 - 16);
-                        SetIndent(110);
-                        Label("(C) 2022 by Steffen '@gulrak' Schümann");
+                        EndTabView();
                     }
                     EndPanel();
                     End();
@@ -1763,7 +1779,11 @@ public:
                     case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
                     default: icon = ICON_FILE_DELETE; break;
                 }
+                auto oldFG = gui::GetStyle(LABEL, TEXT_COLOR_NORMAL);
+                if(info.type == Librarian::Info::eROM_FILE)
+                    gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, info.isKnown ? ColorToInt(GREEN) : ColorToInt(YELLOW));
                 Label(GuiIconText(icon, ""));
+                gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, oldFG);
             }
             if(TableNextColumn(.6f)) {
                 if(LabelButton(info.filePath.c_str())) {
@@ -1980,6 +2000,7 @@ public:
         static emu::Chip8EmulatorOptions previousOptions;
         if(previousOptions != _options || !_chipEmu) {
             std::scoped_lock lock(_audioMutex);
+            previousOptions = _options;
             if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD)
                 _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
             else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
@@ -2007,6 +2028,7 @@ public:
             _romSha1Hex.clear();
             auto fileData = loadFile(filename);
             auto isKnown = Librarian::isKnownFile(fileData.data(), fileData.size());
+            emu::Logger::log(emu::Logger::eHOST, 0, {0,0}, fmt::format("File SHA1 is {} {}", calculateSha1Hex(fileData.data(), fileData.size()), isKnown ? "(known Version)" : "(unknown)").c_str());
             auto knownOptions = Librarian::getOptionsForFile(fileData.data(), fileData.size());
             _instructionOffset = -1;
             if(endsWith(filename, ".8o")) {

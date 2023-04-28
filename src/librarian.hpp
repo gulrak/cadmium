@@ -45,6 +45,7 @@ public:
         std::chrono::system_clock::time_point changeDate;
         //------ available after analyzed == true ------------
         bool analyzed{false};
+        bool isKnown{false};
         emu::Chip8Variant possibleVariants{};
         std::string minimumOpcodeProfile() const;
     };

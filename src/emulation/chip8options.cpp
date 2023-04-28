@@ -160,6 +160,22 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const 
     return iter->second;
 }
 
+Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chip8::Variant variant)
+{
+    if(variant == chip8::Variant::CHIP_10) return eCHIP10;
+    else if(variant == chip8::Variant::CHIP_48) return eCHIP48;
+    else if(variant == chip8::Variant::SCHIP_1_0) return eSCHIP10;
+    else if(variant == chip8::Variant::SCHIP_1_1) return eSCHIP11;
+    else if(variant == chip8::Variant::SCHIPC) return eSCHPC;
+    else if(variant == chip8::Variant::MEGA_CHIP) return eMEGACHIP;
+    else if(variant == chip8::Variant::XO_CHIP) return eXOCHIP;
+    else if(variant == chip8::Variant::CHIP_8_TPD) return eCHIP8VIP_TPD;
+    else if(variant == chip8::Variant::CHIP_8_COSMAC_VIP) return eCHIP8VIP;
+    else if(variant == chip8::Variant::CHIP_8_D6800) return eCHIP8DREAM;
+    else if(variant == chip8::Variant::CHIP_8_D6800_LOP) return eC8D68CHIPOSLO;
+    return eCHIP8;
+}
+
 #if 1
 Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
 {
