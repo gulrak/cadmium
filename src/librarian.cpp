@@ -27,11 +27,13 @@
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/utility.hpp>
 #include <librarian.hpp>
+#include <chip8emuhostex.hpp>
 
 #include <nlohmann/json.hpp>
 #include <raylib.h>
 
 #include <algorithm>
+#include <chrono>
 
 static std::unique_ptr<emu::IChip8Emulator> minion;
 
@@ -755,15 +757,34 @@ std::string Librarian::Info::minimumOpcodeProfile() const
     auto mask = static_cast<uint64_t>(possibleVariants);
     if(mask) {
         auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
-        return emu::Chip8Decompiler::chipVariantName(cv).first;
+        return emu::Chip8Decompiler::chipVariantName(cv).second;
     }
     return "unknown";
 }
 
-Librarian::Librarian()
+emu::Chip8EmulatorOptions::SupportedPreset Librarian::Info::minimumOpcodePreset() const
 {
-    TraceLog(LOG_INFO, "Internal database contains `%d` different program checksums.", (int)g_knownRoms.size());
-    fetchDir(".");
+    auto mask = static_cast<uint64_t>(possibleVariants);
+    if(mask) {
+        auto cv = (mask & -mask);
+        int cnt = 0;
+        while((cv & 1) == 0) {
+            cv >>= 1;
+            cnt++;
+        }
+        return emu::Chip8EmulatorOptions::presetForVariant(static_cast<emu::chip8::Variant>(cv + 1));
+    }
+    return emu::Chip8EmulatorOptions::eCHIP8;
+}
+
+Librarian::Librarian(const CadmiumConfiguration& cfg)
+: _cfg(cfg)
+{
+    static bool once = false;
+    if(!once) {
+        once = true;
+        TraceLog(LOG_INFO, "Internal database contains `%d` different program checksums.", (int)g_knownRoms.size());
+    }
 }
 
 std::string Librarian::fullPath(std::string file) const
@@ -846,32 +867,44 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
-                        emu::Chip8Decompiler dec;
-                        uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-                        dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);
-                        entry.possibleVariants = dec.possibleVariants;
-                        if ((uint64_t)dec.possibleVariants) {
-                            if(dec.supportsVariant(options.presetAsVariant()))
-                                entry.variant = options.behaviorBase;
-                            else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
-                                entry.variant = emu::Chip8EmulatorOptions::eXOCHIP;
-                            else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
-                                entry.variant = emu::Chip8EmulatorOptions::eMEGACHIP;
-                            else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
-                                entry.variant = emu::Chip8EmulatorOptions::eSCHIP11;
-                            else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
-                                entry.variant = emu::Chip8EmulatorOptions::eSCHIP10;
-                            else if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
-                                entry.variant = emu::Chip8EmulatorOptions::eCHIP48;
-                            else if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
-                                entry.variant = emu::Chip8EmulatorOptions::eSCHIP10;
-                            else
-                                entry.variant = emu::Chip8EmulatorOptions::eCHIP8;
+                        entry.sha1sum = calculateSha1Hex(file.data(), file.size());
+                        if(entry.isKnown) {
+                            entry.variant = getPresetForFile(entry.sha1sum);
                         }
                         else {
-                            entry.type = Info::eUNKNOWN_FILE;
+                            emu::Chip8Decompiler dec;
+                            uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
+                            dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);
+                            entry.possibleVariants = dec.possibleVariants;
+                            if ((uint64_t)dec.possibleVariants) {
+                                if (dec.supportsVariant(options.presetAsVariant()))
+                                    entry.variant = options.behaviorBase;
+                                else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
+                                    entry.variant = emu::Chip8EmulatorOptions::eXOCHIP;
+                                else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
+                                    entry.variant = emu::Chip8EmulatorOptions::eMEGACHIP;
+                                else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
+                                    entry.variant = emu::Chip8EmulatorOptions::eSCHIP11;
+                                else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
+                                    entry.variant = emu::Chip8EmulatorOptions::eSCHIP10;
+                                else if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
+                                    entry.variant = emu::Chip8EmulatorOptions::eCHIP48;
+                                else if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
+                                    entry.variant = emu::Chip8EmulatorOptions::eSCHIP10;
+                                else
+                                    entry.variant = emu::Chip8EmulatorOptions::eCHIP8;
+                            }
+                            else {
+                                entry.type = Info::eUNKNOWN_FILE;
+                            }
+                            TraceLog(LOG_DEBUG, "analyzed `%s`: %s", entry.filePath.c_str(), emu::Chip8EmulatorOptions::nameOfPreset(entry.variant).c_str());
                         }
-                        TraceLog(LOG_DEBUG, "analyzed `%s`: %s", entry.filePath.c_str(), emu::Chip8EmulatorOptions::nameOfPreset(entry.variant).c_str());
+                    }
+                    else {
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
+                        entry.isKnown = isKnownFile(file.data(), file.size());
+                        entry.sha1sum = calculateSha1Hex(file.data(), file.size());
+                        entry.variant = getPresetForFile(entry.sha1sum);
                     }
                 }
                 entry.analyzed = true;
@@ -883,36 +916,106 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
     return foundOne;
 }
 
-bool Librarian::isKnownFile(const uint8_t* data, size_t size)
+bool Librarian::isKnownFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
     auto iter = g_knownRoms.find(sha1sum);
-    return iter != g_knownRoms.end();
+    return _cfg.romConfigs.count(sha1sum) || iter != g_knownRoms.end();
 }
 
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum)
+emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum) const
 {
+    auto cfgIter = _cfg.romConfigs.find(sha1sum);
+    if(cfgIter != _cfg.romConfigs.end())
+        return cfgIter->second.behaviorBase;
     auto iter = g_knownRoms.find(sha1sum);
     return iter != g_knownRoms.end() ? emu::Chip8EmulatorOptions::presetForVariant(iter->second.variants.first()) : emu::Chip8EmulatorOptions::eCHIP8;
 }
 
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uint8_t* data, size_t size)
+emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
     return getPresetForFile(sha1sum);
 }
 
-emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size)
+emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
+    auto cfgIter = _cfg.romConfigs.find(sha1sum);
+    if(cfgIter != _cfg.romConfigs.end()) {
+        return cfgIter->second;
+    }
     auto iter = g_knownRoms.find(sha1sum);
     if (iter != g_knownRoms.end()) {
         auto preset = emu::Chip8EmulatorOptions::presetForVariant(iter->second.variants.first());
         auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
         if(!iter->second.options.empty()) {
             emu::from_json(nlohmann::json::parse(iter->second.options), options);
-            return options;
+            options.behaviorBase = preset;
         }
+        return options;
     }
     return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+}
+
+Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const
+{
+    using namespace std::literals::chrono_literals;
+    if(info.analyzed && info.isKnown) {
+        emu::Chip8HeadlessHostEx host;
+        auto options = host.options();
+        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), true)) {
+            auto& chipEmu = host.chipEmu();
+            auto ticks = 5000;
+            auto startChip8 = std::chrono::steady_clock::now();
+            int64_t lastCycles = -1;
+            int64_t cycles = 0;
+            int tickCount = 0;
+            for (tickCount = 0; tickCount < ticks /* && (cycles == chipEmu.getCycles()) != lastCycles */ && std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8) < 100ms; ++tickCount) {
+                chipEmu.tick(options.instructionsPerFrame);
+                lastCycles = cycles;
+            }
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8).count();
+            TraceLog(LOG_WARNING, "executed %d cycles and %d frames in %dms for screenshot", (int)chipEmu.getCycles(), tickCount, (int)duration);
+            if (chipEmu.getScreenBuffer()) {
+                Screenshot s;
+                const uint8_t* buffer = chipEmu.getScreenBuffer();
+                if (chipEmu.isDoublePixel()) {
+                    s.width = chipEmu.getCurrentScreenWidth() / 2;
+                    s.height = chipEmu.getCurrentScreenHeight() / 2;
+                    s.pixel.resize(s.width * s.height);
+                    for (int y = 0; y < chipEmu.getCurrentScreenHeight() / 2; ++y) {
+                        for (int x = 0; x < chipEmu.getCurrentScreenWidth() / 2; ++x) {
+                            s.pixel[y * s.width + x] = palette[buffer[y * 2 * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x * 2]];
+                        }
+                    }
+                }
+                else {
+                    s.width = chipEmu.getCurrentScreenWidth();
+                    s.height = chipEmu.getCurrentScreenHeight();
+                    s.pixel.resize(s.width * s.height);
+                    for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
+                        for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
+                            s.pixel[y * s.width + x] = palette[buffer[y * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x]];
+                        }
+                    }
+                }
+                return s;
+            }
+            else if (chipEmu.getScreenBuffer32()) {
+                Screenshot s;
+                const uint32_t* buffer = chipEmu.getScreenBuffer32();
+                s.width = chipEmu.getCurrentScreenWidth();
+                s.height = chipEmu.getCurrentScreenHeight();
+                s.pixel.resize(s.width * s.height);
+                for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
+                    for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
+                        s.pixel[y * s.width + x] = buffer[y * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x];
+                    }
+                }
+                return s;
+            }
+        }
+    }
+    return Librarian::Screenshot();
 }

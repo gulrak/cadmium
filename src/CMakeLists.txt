@@ -18,6 +18,8 @@ set(CADMIUM_SOURCE
     configuration.hpp
     circularbuffer.cpp
     circularbuffer.hpp
+    chip8emuhostex.cpp
+    chip8emuhostex.hpp
 )
 
 if(WIN32)

@@ -1194,7 +1194,10 @@ void SetReserve(float width)
 
 void SetNextWidth(float width)
 {
-    detail::context().nextWidth = width;
+    auto& ctx = detail::context();
+    if(width <= 1.0f)
+        width = std::floor(ctx.content.width * width);
+    ctx.nextWidth = width;
 }
 
 void SetRowHeight(float height)

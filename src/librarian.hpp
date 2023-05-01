@@ -27,6 +27,7 @@
 
 #include <emulation/chip8options.hpp>
 #include <chiplet/chip8variants.hpp>
+#include <configuration.hpp>
 
 #include <chrono>
 #include <string>
@@ -46,10 +47,19 @@ public:
         //------ available after analyzed == true ------------
         bool analyzed{false};
         bool isKnown{false};
+        std::string sha1sum;
         emu::Chip8Variant possibleVariants{};
         std::string minimumOpcodeProfile() const;
+        emu::Chip8EmulatorOptions::SupportedPreset minimumOpcodePreset() const;
     };
-    Librarian();
+    struct Screenshot
+    {
+        int width{0};
+        int height{0};
+        int pixelAspect{1};
+        std::vector<uint32_t> pixel;
+    };
+    Librarian(const CadmiumConfiguration& cfg);
     std::string currentDirectory() const { return _currentPath; }
     std::string fullPath(std::string file) const;
     bool fetchDir(std::string directory);
@@ -61,13 +71,15 @@ public:
     const Info& getInfo(size_t index) { return _directoryEntries[index]; }
     void select(int index) { _activeEntry = index; }
     int getSelectedIndex() const { return _activeEntry; }
-    static bool isKnownFile(const uint8_t* data, size_t size);
-    static emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum);
-    static emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size);
-    static emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size);
+    bool isKnownFile(const uint8_t* data, size_t size) const;
+    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum) const;
+    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size) const;
+    emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
+    Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
 private:
     int _activeEntry{-1};
     std::string _currentPath;
     std::vector<Info> _directoryEntries;
+    const CadmiumConfiguration& _cfg;
     bool _analyzing{false};
 };

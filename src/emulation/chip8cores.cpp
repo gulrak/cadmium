@@ -136,13 +136,18 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eSCHIP11:
+            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
+            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+            [[fallthrough]];
         case Chip8EmulatorOptions::eSCHPC:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
             on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+            if(_options.behaviorBase == Chip8EmulatorOptions::eSCHPC) {
+                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
+                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
+            }
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
             on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);

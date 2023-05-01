@@ -67,6 +67,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eC8D68CHIPOSLO: return "CHIP-8-DREAM-CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
+        case ePORTABLE: return "PORTABLE";
         default: return "unknown";
     }
 }
@@ -87,6 +88,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eCHIP8DREAM: return "CHIP8DREAM";
         case eC8D68CHIPOSLO: return "D6k8CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
+        case ePORTABLE: return "PORTABLE";
         default: return "unknown";
     }
 }
@@ -173,6 +175,7 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chi
     else if(variant == chip8::Variant::CHIP_8_COSMAC_VIP) return eCHIP8VIP;
     else if(variant == chip8::Variant::CHIP_8_D6800) return eCHIP8DREAM;
     else if(variant == chip8::Variant::CHIP_8_D6800_LOP) return eC8D68CHIPOSLO;
+    else if(variant == chip8::Variant::GENERIC_CHIP_8) return ePORTABLE;
     return eCHIP8;
 }
 
@@ -525,7 +528,7 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
 
 void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
 {
-    auto variantName = j.value("behaviorBase",std::string("chip8"));
+    auto variantName = j.value("behaviorBase",o.nameOfPreset(o.behaviorBase));
     o.behaviorBase = Chip8EmulatorOptions::presetForName(variantName);
     const Opts defaultOpts = Chip8EmulatorOptions::optionsOfPreset(o.behaviorBase);
     o.startAddress = j.value("startAddress", defaultOpts.startAddress);

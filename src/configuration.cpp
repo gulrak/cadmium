@@ -29,11 +29,12 @@
 #include <fstream>
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
-    j = nlohmann::json{ {"workingDirectory", cc.workingDirectory}, {"emuOptions", cc.emuOptions}, {"romConfigs", cc.romConfigs} };
+    j = nlohmann::json{ {"workingDirectory", cc.workingDirectory}, {"databaseDirectory", cc.databaseDirectory}, {"emuOptions", cc.emuOptions}, {"romConfigs", cc.romConfigs} };
 }
 
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     j.at("workingDirectory").get_to(cc.workingDirectory);
+    cc.databaseDirectory = j.value("databaseDirectory", "");
     j.at("emuOptions").get_to(cc.emuOptions);
     j.at("romConfigs").get_to(cc.romConfigs);
 }

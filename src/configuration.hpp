@@ -34,6 +34,7 @@
 struct CadmiumConfiguration
 {
     std::string workingDirectory;
+    std::string databaseDirectory;
     emu::Chip8EmulatorOptions emuOptions;
     std::map<std::string,emu::Chip8EmulatorOptions> romConfigs;
     bool load(const std::string& filepath);
