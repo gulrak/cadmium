@@ -544,10 +544,10 @@ public:
         //ImageColorReplace(&titleImage, {0,0,0,255}, {0x00,0x22,0x2b,0xff});
         ImageColorReplace(&_titleImage, {0,0,0,255}, {0x1a,0x1c,0x2c,0xff});
         ImageColorReplace(&_titleImage, {255,255,255,255}, {0x51,0xbf,0xd3,0xff});
-        Image icon = GenImageColor(64,64,{0,0,0,0});
-        ImageDraw(&icon, _titleImage, {34,2,60,60}, {2,2,60,60}, WHITE);
+        _icon = GenImageColor(64,64,{0,0,0,0});
+        ImageDraw(&_icon, _titleImage, {34,2,60,60}, {2,2,60,60}, WHITE);
 #ifndef __APPLE__
-        SetWindowIcon(icon);
+        SetWindowIcon(_icon);
 #endif
         _titleTexture = LoadTextureFromImage(_titleImage);
         if(_currentDirectory.empty())
@@ -594,6 +594,8 @@ public:
     {
         gui::UnloadGui();
         UnloadFont(_font);
+        UnloadImage(_fontImage);
+        UnloadImage(_microFont);
         UnloadRenderTexture(_renderTexture);
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
@@ -606,6 +608,7 @@ public:
         UnloadImage(_screenShot);
         UnloadImage(_crt);
         UnloadImage(_screen);
+        UnloadImage(_icon);
         _instance = nullptr;
         CloseWindow();
         if(!_cfgPath.empty()) {
@@ -2089,6 +2092,7 @@ private:
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
+    Image _icon{};
     Font _font{};
     Image _screen{};
     Image _crt{};
