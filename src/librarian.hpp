@@ -74,6 +74,7 @@ public:
     bool isKnownFile(const uint8_t* data, size_t size) const;
     emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum) const;
     emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size) const;
+    emu::Chip8EmulatorOptions::SupportedPreset getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const;
     emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
 private:

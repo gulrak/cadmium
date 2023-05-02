@@ -108,28 +108,31 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
             valid = true;
         }
         else if(endsWith(filename, ".ch8")) {
+            auto estimate = _librarian.getEstimatedPresetForFile(_options.behaviorBase, fileData.data(), fileData.size());
+            if(_options.behaviorBase != estimate)
+                updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(estimate));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
         else if(endsWith(filename, ".ch10")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
         else if(endsWith(filename, ".hc8")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
         else if(endsWith(filename, ".c8tp")) {
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP_TPD));
@@ -137,21 +140,21 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
         else if(endsWith(filename, ".sc8")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
         else if(endsWith(filename, ".mc8")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
         else if(endsWith(filename, ".xo8")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP));
             if (size < _chipEmu->memSize() - 512) {
-                romImage = loadFile(filename);
+                romImage = fileData;
                 valid = true;
             }
         }
@@ -217,6 +220,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
             _romIsWellKnown = isKnown;
             if(isKnown)
                 _romWellKnownOptions = _options;
+            _chipEmu->reset();
             std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
             _chipEmu->removeAllBreakpoints();
             auto p = fs::path(_romName).parent_path();

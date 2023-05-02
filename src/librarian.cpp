@@ -516,7 +516,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"a98ed56f88f11156871d871d9200fc4bb45190a4", {emu::chip8::Variant::XO_CHIP, "Super Octo Track Xo (TomRintjema, 2015-10-15)", R"({"instructionsPerFrame": 100, "optLoadStoreDontIncI": true, "advanced": {"col1": "#FF00FF", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#000000", "buzzColor": "#990099", "quietColor": "#330033"}})"}},
     //{"a9bf29597674c39b4e11d964b352b1e52c4ebb2f", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"a9bf29597674c39b4e11d964b352b1e52c4ebb2f", {emu::chip8::Variant::SCHIPC, "Line Demo (unknown aauthor)"}},
-    {"a9d3c975a5e733646a04f6e61deebcd0ad50f700", {emu::chip8::Variant::CHIP_8, "Outlaw (JohnEarnest, 2014-07-17)", R"({"instructionsPerFrame": 15, "advanced": {"col0": "#664400", "col1": "#AA4400", "buzzColor": "#FF7F50", "quietColor": "#000000"}})"}},
+    {"a9d3c975a5e733646a04f6e61deebcd0ad50f700", {emu::chip8::Variant::CHIP_8, "Outlaw (JohnEarnest, 2014-07-17)", R"({"instructionsPerFrame": 15, "optWrapSprites": true, "advanced": {"col0": "#664400", "col1": "#AA4400", "buzzColor": "#FF7F50", "quietColor": "#000000"}})"}},
     {"aa4f1a282bd64a2364102abf5737a4205365a2b4", {emu::chip8::Variant::CHIP_8, "Space Flight"}},                    // Space Flight.ch8
     {"ab36ced6e34affacd57b2874ede3f95b669a424c", {emu::chip8::Variant::XO_CHIP, "Jub8 Song 1 (your name here, 2016-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#000000", "col2": "#FDFFD5", "col3": "#BA5A1A", "col0": "#353C41", "buzzColor": "#353C41", "quietColor": "#353C41", "screenRotation": 0}})"}},
     {"ab5cbf267d74c168e174041b9594ae856cbd671d", {emu::chip8::Variant::CHIP_8, "Chipwar (JohnEarnest, 2014-06-06)", R"({"instructionsPerFrame": 15, "advanced": {"col0": "#6699FF", "col1": "#000066", "buzzColor": "#FFAA00", "quietColor": "#000000"}})"}},
@@ -938,6 +938,32 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uin
     return getPresetForFile(sha1sum);
 }
 
+emu::Chip8EmulatorOptions::SupportedPreset Librarian::getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const
+{
+    emu::Chip8Decompiler dec;
+    uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
+    dec.decompile("", data, startAddress, size, startAddress, nullptr, true, true);
+    auto possibleVariants = dec.possibleVariants;
+    if ((uint64_t)dec.possibleVariants) {
+        if (dec.supportsVariant(emu::Chip8EmulatorOptions::variantForPreset(currentPreset))) {
+            return currentPreset;
+        }
+        else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
+            return emu::Chip8EmulatorOptions::eXOCHIP;
+        else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
+            return emu::Chip8EmulatorOptions::eMEGACHIP;
+        else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
+            return emu::Chip8EmulatorOptions::eSCHIP11;
+        else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
+            return emu::Chip8EmulatorOptions::eSCHIP10;
+        else if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
+            return emu::Chip8EmulatorOptions::eCHIP48;
+        else if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
+            return emu::Chip8EmulatorOptions::eSCHIP10;
+    }
+    return emu::Chip8EmulatorOptions::eCHIP8;
+}
+
 emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
@@ -961,8 +987,9 @@ emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size
 Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const
 {
     using namespace std::literals::chrono_literals;
-    if(info.analyzed && info.isKnown) {
+    if(info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
         emu::Chip8HeadlessHostEx host;
+        host.updateEmulatorOptions({});
         auto options = host.options();
         if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), true)) {
             auto& chipEmu = host.chipEmu();

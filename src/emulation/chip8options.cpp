@@ -33,7 +33,12 @@ namespace emu {
 
 Chip8Variant Chip8EmulatorOptions::presetAsVariant() const
 {
-    switch(behaviorBase) {
+    return variantForPreset(behaviorBase);
+}
+
+Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
+{
+    switch(preset) {
         case eCHIP8: return Chip8Variant::CHIP_8;
         case eCHIP10: return Chip8Variant::CHIP_10;
         case eCHIP48: return Chip8Variant::CHIP_48;
@@ -139,8 +144,8 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30})"},
     {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"instructionsPerFrame":30})"},
     {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000})"},
-    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
-    {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHIP8VIP, R"({})"},
     {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"chip8tdp"}})"},
     {Opts::eCHIP8DREAM, R"({})"},

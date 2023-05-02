@@ -52,10 +52,10 @@ public:
     //virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual bool loadRom(const char* filename, bool andRun);
+    void updateEmulatorOptions(Chip8EmulatorOptions options);
 protected:
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(IChip8Emulator& emu) {}
-    void updateEmulatorOptions(Chip8EmulatorOptions options);
     CadmiumConfiguration _cfg;
     std::string _cfgPath;
     std::string _databaseDirectory;
