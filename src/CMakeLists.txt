@@ -20,6 +20,8 @@ set(CADMIUM_SOURCE
     circularbuffer.hpp
     chip8emuhostex.cpp
     chip8emuhostex.hpp
+    stylemanager.cpp
+    stylemanager.hpp
 )
 
 if(WIN32)

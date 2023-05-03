@@ -526,6 +526,7 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
     SET_IF_CHANGED(obj, optXOChipSound);
     SET_IF_CHANGED(obj, optTraceLog);
     SET_IF_CHANGED(obj, instructionsPerFrame);
+    j = obj;
     if(o.advanced) {
         j["advanced"] = *o.advanced;
     }

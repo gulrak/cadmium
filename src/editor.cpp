@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 #include <rlguipp/rlguipp.hpp>
+#include <stylemanager.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -713,14 +714,15 @@ Rectangle Editor::drawToolArea()
         Button(GuiIconText(ICON_LENS_BIG,""));
         SetNextWidth(toolArea.width - 18*5);
         auto txt = _findString;
-        auto oldCol = GetStyle(TEXTBOX, TEXT_COLOR_PRESSED);
-        if(_findRegex && !_findRegexValid)
-            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
-        if(TextBox(_findString, 4096))
-            updateFindResults();
-        if(toolOpened)
-            SetKeyboardFocus((void*)&_findString);
-        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, oldCol);
+        {
+            StyleManager::Scope guard;
+            if (_findRegex && !_findRegexValid)
+                guard.setStyle(Style::TEXT_COLOR_PRESSED, RED);
+            if (TextBox(_findString, 4096))
+                updateFindResults();
+            if (toolOpened)
+                SetKeyboardFocus((void*)&_findString);
+        }
         if(txt != _findString)
             updateFindResults();
         SetNextWidth(18);

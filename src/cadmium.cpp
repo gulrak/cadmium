@@ -28,6 +28,7 @@
 #include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
 
 #include <rlguipp/rlguipp.hpp>
+#include <stylemanager.hpp>
 #include "configuration.hpp"
 
 extern "C" {
@@ -511,9 +512,12 @@ public:
         _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
         SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
+        _styleManager.setDefaultTheme();
+        /*
         for (auto chip8StyleProp : chip8StyleProps) {
             GuiSetStyle(chip8StyleProp.controlId, chip8StyleProp.propertyId, chip8StyleProp.propertyValue);
         }
+         */
         generateFont();
         if(chip8options)
             _options = *chip8options;
@@ -1154,15 +1158,12 @@ public:
 
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
     {
-        auto oldColor = gui::GetStyle(BUTTON, BASE_COLOR_NORMAL);
-        auto oldFG = gui::GetStyle(BUTTON, TEXT_COLOR_NORMAL);
+        StyleManager::Scope guard;
         if (isPressed)
-            gui::SetStyle(BUTTON, BASE_COLOR_NORMAL, ColorToInt(color));
-        gui::SetStyle(BUTTON, TEXT_COLOR_NORMAL, ColorToInt(foreground));
+            guard.setStyle(Style::BASE_COLOR_NORMAL, color);
+        guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
         gui::SetNextWidth(20);
         auto result = gui::Button(GuiIconText(iconId, ""));
-        gui::SetStyle(BUTTON, BASE_COLOR_NORMAL, oldColor);
-        gui::SetStyle(BUTTON, TEXT_COLOR_NORMAL, oldFG);
         return result;
     }
 
@@ -1813,10 +1814,14 @@ public:
                     default: icon = ICON_FILE_DELETE; break;
                 }
                 auto oldFG = gui::GetStyle(LABEL, TEXT_COLOR_NORMAL);
-                if(info.type == Librarian::Info::eROM_FILE)
-                    gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, info.isKnown ? ColorToInt(GREEN) : ColorToInt(YELLOW));
-                Label(GuiIconText(icon, ""));
-                gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, oldFG);
+                {
+                    StyleManager::Scope guard;
+                    if (info.type == Librarian::Info::eROM_FILE)
+                        guard.setStyle(Style::TEXT_COLOR_NORMAL, info.isKnown ? GREEN : YELLOW);
+                    //    gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, info.isKnown ? ColorToInt(GREEN) : ColorToInt(YELLOW));
+                    Label(GuiIconText(icon, ""));
+                    //gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, oldFG);
+                }
             }
             if(TableNextColumn(.66f)) {
                 if(info.filePath.size() > 50 ? LabelButton(info.filePath.substr(0,50).c_str()) : LabelButton(info.filePath.c_str())) {
@@ -2089,6 +2094,7 @@ public:
 private:
     std::mutex _audioMutex;
     ResourceManager _resources;
+    StyleManager _styleManager;
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
