@@ -41,7 +41,7 @@ class IChip8Emulator;
 class Chip8EmuHostEx : public Chip8EmulatorHost
 {
 public:
-    Chip8EmuHostEx() ;
+    Chip8EmuHostEx();
     ~Chip8EmuHostEx() override = default;
     //virtual bool isHeadless() const = 0;
     //virtual uint8_t getKeyPressed() = 0;
@@ -53,6 +53,7 @@ public:
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual bool loadRom(const char* filename, bool andRun);
     void updateEmulatorOptions(Chip8EmulatorOptions options);
+    void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
 protected:
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(IChip8Emulator& emu) {}
@@ -69,6 +70,7 @@ protected:
     bool _romIsWellKnown{false};
     bool _customPalette{false};
     std::array<uint32_t, 256> _colorPalette{};
+    std::array<uint32_t, 256> _defaultPalette{};
     emu::Chip8EmulatorOptions _options;
     emu::Chip8EmulatorOptions _romWellKnownOptions;
     emu::Chip8EmulatorOptions _previousOptions;

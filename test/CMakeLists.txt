@@ -50,3 +50,7 @@ else()
     target_link_libraries(m6800test PRIVATE emulation)
 endif()
 #doctest_discover_tests(chip8-fpcore-tests)
+
+add_executable(variantset-tests main.cpp variantset_test.cpp)
+target_link_libraries(variantset-tests PUBLIC doctest emulation fmt::fmt)
+doctest_discover_tests(variantset-tests)

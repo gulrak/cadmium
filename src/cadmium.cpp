@@ -621,13 +621,6 @@ public:
         }
     }
 
-    void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0)
-    {
-        for(size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
-            _colorPalette[i + offset] = colors[i];
-        }
-    }
-
     void updateResolution()
     {
 #ifdef RESIZABLE_GUI
@@ -930,16 +923,14 @@ public:
     void updateScreen() override
     {
         auto* pixel = (uint32_t*)_screen.data;
-        const uint8_t* planes = _chipEmu->getScreenBuffer();
-        if(planes) {
+        const auto* screen = _chipEmu->getScreen();
+        if(screen) {
             if(!_renderCrt) {
-                const uint8_t* end = planes + 256 /*_chipEmu->getMaxScreenWidth()*/ * emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT;  //_chipEmu->getMaxScreenHeight();
-                while (planes < end) {
-                    *pixel++ = _colorPalette[*planes++];
-                }
+                screen->convert(pixel, _screen.width);
                 UpdateTexture(_screenTexture, _screen.data);
             }
             else {
+                /*
                 static std::vector<uint8_t> buffer(_crt.width * _crt.height, 0);
                 std::memset(buffer.data(), 0, buffer.size());
                 for(unsigned y = 0; y < 128; ++y) {
@@ -984,15 +975,13 @@ public:
                 if(++count == 1000) {
                     ExportImage(_crt, "crt-image.png");
                 }
+                 */
             }
         }
         else {
             //TraceLog(LOG_INFO, "Updating MC8 screen!");
-            const auto* srcPixel = _chipEmu->getScreenBuffer32();
-            const uint32_t* end = srcPixel + 256 * 192;
-            while (srcPixel < end) {
-                *pixel++ = *srcPixel++;
-            }
+            const auto* screen = _chipEmu->getScreenRGBA();
+            screen->convert(pixel, _screen.width);
             UpdateTexture(_screenTexture, _screen.data);
         }
     }
@@ -1878,7 +1867,7 @@ public:
                 }
                 if(selectedInfo.analyzed) {
                     if(_screenShotSha1sum != selectedInfo.sha1sum) {
-                        _screenshotData = _librarian.genScreenshot(selectedInfo, _colorPalette);
+                        _screenshotData = _librarian.genScreenshot(selectedInfo, _defaultPalette);
                         _screenShotSha1sum = selectedInfo.sha1sum;
                         if(_screenshotData.width && _screenshotData.pixel.size() == _screenshotData.width * _screenshotData.height) {
                             auto* image = (uint32_t*)_screenShot.data;
@@ -2168,13 +2157,15 @@ std::string chip8EmuScreen(emu::IChip8Emulator& chip8)
     auto width = chip8.getCurrentScreenWidth();
     auto maxWidth = 256; //chip8.getMaxScreenWidth();
     auto height = chip8.getCurrentScreenHeight();
-    const auto* buffer = chip8.getScreenBuffer();
-    result.reserve(width*height+height);
-    for(int y = 0; y < height; ++y) {
-        for(int x = 0; x < width; ++x) {
-            result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+    const auto* screen = chip8.getScreen();
+    if(screen) {
+        result.reserve(width * height + height);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                result.push_back(screen->getPixel(x, y) ? '#' : '.');
+            }
+            result.push_back('\n');
         }
-        result.push_back('\n');
     }
     return result;
 }
@@ -2186,28 +2177,30 @@ std::string chip8EmuScreenANSI(emu::IChip8Emulator& chip8)
     auto width = chip8.getCurrentScreenWidth();
     auto maxWidth = 256; //chip8.getMaxScreenWidth();
     auto height = chip8.getCurrentScreenHeight();
-    const auto* buffer = chip8.getScreenBuffer();
-    result.reserve(width*height*16);
-    if(chip8.isDoublePixel()) {
-        for (int y = 0; y < height; y += 4) {
-            for (int x = 0; x < width; x += 2) {
-                auto c1 = buffer[y * maxWidth + x];
-                auto c2 = buffer[(y + 2) * maxWidth + x];
-                result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
-                // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+    const auto* screen = chip8.getScreen();
+    if(screen) {
+        result.reserve(width * height * 16);
+        if (chip8.isDoublePixel()) {
+            for (int y = 0; y < height; y += 4) {
+                for (int x = 0; x < width; x += 2) {
+                    auto c1 = screen->getPixel(x, y);
+                    auto c2 = screen->getPixel(x, y + 2);
+                    result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
+                    // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+                }
+                result += "\033[0m\n";
             }
-            result += "\033[0m\n";
         }
-    }
-    else {
-        for (int y = 0; y < height; y += 2) {
-            for (int x = 0; x < width; ++x) {
-                auto c1 = buffer[y * maxWidth + x];
-                auto c2 = buffer[(y + 1) * maxWidth + x];
-                result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
-                // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+        else {
+            for (int y = 0; y < height; y += 2) {
+                for (int x = 0; x < width; ++x) {
+                    auto c1 = screen->getPixel(x, y);
+                    auto c2 = screen->getPixel(x, y + 1);
+                    result += fmt::format("\033[38;5;{}m\033[48;5;{}m\xE2\x96\x84", col[c2 & 15], col[c1 & 15]);
+                    // result.push_back(buffer[y*maxWidth + x] ? '#' : '.');
+                }
+                result += "\033[0m\n";
             }
-            result += "\033[0m\n";
         }
     }
     return result;

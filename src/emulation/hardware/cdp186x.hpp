@@ -25,8 +25,9 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include "emulation/chip8options.hpp"
-#include "emulation/config.hpp"
+#include <emulation/chip8options.hpp>
+#include <emulation/config.hpp>
+#include <emulation/videoscreen.hpp>
 
 #include <array>
 
@@ -41,6 +42,7 @@ class Cdp186x
 {
 public:
     enum Type { eCDP1861, eCDP1861_C10, eCDP1861_62, eCDP1864 };
+    using VideoType = VideoScreen<uint8_t, 256, 192>; // size for easier inter-operability with other CHIP-8 implementations, it just uses 64x128
     Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
     void reset();
     bool getNEFX() const;
@@ -49,7 +51,7 @@ public:
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }
     int frames() const { return _frameCounter; }
-    const uint8_t* getScreenBuffer() const;
+    const VideoType& getScreen() const;
 
     static int64_t machineCycle(cycles_t cycles)
     {
@@ -75,7 +77,7 @@ private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
     const Chip8EmulatorOptions& _options;
-    std::array<uint8_t,256*192> _screenBuffer;
+    VideoScreen<uint8_t,256,192> _screen;
     int _frameCycle{0};
     int _frameCounter{0};
     bool _displayEnabled{false};

@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8emulatorhost.hpp
+// src/emulation/c8capturehost.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,26 +25,21 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
+#include <chip8emuhostex.hpp>
 
-namespace emu {
+#include <raylib.h>
 
-class Chip8EmulatorHost
+
+class C8CaptureHost : public emu::Chip8HeadlessHostEx
 {
 public:
-    virtual ~Chip8EmulatorHost() = default;
-    virtual bool isHeadless() const = 0;
-    virtual uint8_t getKeyPressed() = 0;
-    virtual bool isKeyDown(uint8_t key) = 0;
-    virtual bool isKeyUp(uint8_t key) { return !isKeyDown(key); }
-    virtual const std::array<bool,16>& getKeyStates() const = 0;
-    virtual void updateScreen() = 0;
-    virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
-    virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
-    virtual void preClear() {}
-};
+    C8CaptureHost();
+    ~C8CaptureHost() override;
+    void preClear() override;
 
-}
+private:
+    void grabImage(uint32_t* destination, int destWidth, int destHeight, int destStride);
+    Image _snapshot;
+    Image _nineSnapshot;
+    int _snapNum{0};
+};

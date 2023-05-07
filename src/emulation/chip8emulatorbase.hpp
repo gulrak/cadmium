@@ -30,6 +30,7 @@
 #include <emulation/chip8vip.hpp>
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/time.hpp>
+#include <emulation/videoscreen.hpp>
 
 #include <array>
 #include <atomic>
@@ -54,7 +55,7 @@ public:
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother = nullptr)
+    Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother)
         : Chip8OpcodeDisassembler(options)
         , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
@@ -85,8 +86,8 @@ public:
             _cycleCounter = other->_cycleCounter;
             _frameCounter = other->_frameCounter;
             _clearCounter = other->_clearCounter;
-            _screenBuffer = other->_screenBuffer;
-            _screenBuffer32 = other->_screenBuffer32;
+            _screen = other->_screen;
+            _screenRGBA = other->_screenRGBA;
             _xoAudioPattern = other->_xoAudioPattern;
             _xoPitch.store(other->_xoPitch);
             _sampleStep.store(other->_sampleStep);
@@ -181,15 +182,13 @@ public:
     void clearScreen()
     {
         if(_options.optAllowColors) {
-            for(auto& pixel : _screenBuffer)
-                pixel &= ~_planes;
+            _screen.binaryAND(~_planes);
         }
         else {
-            std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+            _screen.setAll(0);
             if (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP) {
                 const auto black = be32(0x000000FF);
-                for (auto& c : _screenBuffer32)
-                    c = black;
+                _screenRGBA.setAll(black);
             }
         }
     }
@@ -258,8 +257,9 @@ public:
     uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : 128; }
     uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : 64; }
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
-    const uint8_t* getScreenBuffer() const override { return _isMegaChipMode ? nullptr : _screenBuffer.data(); }
-    const uint32_t* getScreenBuffer32() const override { return _isMegaChipMode ? _screenBuffer32.data() : nullptr; }
+    const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
+    const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? &_screenRGBA : nullptr; }
+    void setPalette(std::array<uint32_t,256>& palette) override { _screen.setPalette(palette); }
 
     float getAudioPhase() const override { return _wavePhase; }
     void setAudioPhase(float phase) override { _wavePhase = phase; }
@@ -291,8 +291,8 @@ protected:
     uint8_t _rDT{};
     std::atomic_uint8_t _rST{};
     std::atomic<float> _wavePhase{0};
-    std::array<uint8_t, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT> _screenBuffer{};
-    std::array<uint32_t, MAX_SCREEN_WIDTH*MAX_SCREEN_HEIGHT> _screenBuffer32{};
+    VideoScreen<uint8_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screen;
+    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA{};
     std::array<uint8_t,16> _xoAudioPattern{};
     std::atomic_uint8_t _xoPitch{};
     std::atomic<float> _sampleStep{0};

@@ -26,7 +26,7 @@ public:
     std::atomic<float> _wavePhase{0};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,512> _rom{};
-    std::array<uint8_t,256*192> _screenBuffer;
+    VideoType _screen;
 };
 
 
@@ -248,7 +248,7 @@ void Chip8VIP::reset()
         std::memcpy(_impl->_ram.data(), _chip8tdp_cvip, sizeof(_chip8tdp_cvip));
     else
         std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
-    std::memset(_impl->_screenBuffer.data(), 0, 256*192);
+    _impl->_screen.setAll(0);
     _impl->_video.reset();
     _impl->_cpu.reset();
     _cycles = 0;
@@ -443,9 +443,9 @@ uint16_t Chip8VIP::getMaxScreenHeight() const
     return 128;
 }
 
-const uint8_t* Chip8VIP::getScreenBuffer() const
+const IChip8Emulator::VideoType* Chip8VIP::getScreen() const
 {
-    return _impl->_video.getScreenBuffer();
+    return &_impl->_video.getScreen();
 }
 
 GenericCpu& Chip8VIP::getBackendCpu()

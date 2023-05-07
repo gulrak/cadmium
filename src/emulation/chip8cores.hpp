@@ -85,13 +85,11 @@ public:
             case 0:
                 if((opcode & 0xfff0) == 0x00C0) { // scroll-down
                     auto n = (opcode & 0xf);
-                    std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-                    std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+                    _screen.scrollDown(n);
                 }
                 else if((opcode & 0xfff0) == 0x00D0) { // scroll-up
                     auto n = (opcode & 0xf);
-                    std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-                    std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+                    _screen.scrollUp(n);
                 }
                 else if (opcode == 0x00E0) {  // 00E0 - CLS
                     clearScreen();
@@ -105,16 +103,10 @@ public:
                         _execMode = ePAUSED;
                 }
                 else if(opcode == 0x00FB) { // scroll-right
-                    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-                        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
-                        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
-                    }
+                    _screen.scrollRight(4);
                 }
                 else if(opcode == 0x00FC) { // scroll-left
-                    for(int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-                        std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
-                        std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4, 0, 4);
-                    }
+                    _screen.scrollLeft(4);
                 }
                 else if(opcode == 0x00FD) {
                     halt();
@@ -481,31 +473,10 @@ public:
 
     inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
-        auto* pixel = _screenBuffer.data() + MAX_SCREEN_WIDTH * y + x;
-        //const uint8_t planes = colorSupport ? chipEmu->_planes : 1;
-        bool collision = false;
         if constexpr (quirks&HiresSupport) {
-            if (*pixel & planes)
-                collision = true;
-            *pixel ^= planes;
-            if(!hires) {
-                if (*(pixel + 1) & planes)
-                    collision = true;
-                *(pixel + 1) ^= planes;
-                if (*(pixel + MAX_SCREEN_WIDTH) & planes)
-                    collision = true;
-                *(pixel + MAX_SCREEN_WIDTH) ^= planes;
-                if (*(pixel + MAX_SCREEN_WIDTH + 1) & planes)
-                    collision = true;
-                *(pixel + MAX_SCREEN_WIDTH + 1) ^= planes;
-            }
+            return _screen.drawSpritePixelDoubled(x, y, planes, hires);
         }
-        else {
-            if (*pixel & planes)
-                collision = true;
-            *pixel ^= planes;
-        }
-        return collision;
+        return _screen.drawSpritePixel(x, y, planes);
     }
 
     bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
@@ -762,30 +733,10 @@ public:
     template<uint16_t quirks>
     inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
-        auto* pixel = _screenBuffer.data() + MAX_SCREEN_WIDTH * y + x;
-        bool collision = false;
         if constexpr (quirks&HiresSupport) {
-            if (*pixel & planes)
-                collision = true;
-            *pixel ^= planes;
-            if(!hires) {
-                if (*(pixel + 1) & planes)
-                    collision = true;
-                *(pixel + 1) ^= planes;
-                if (*(pixel + MAX_SCREEN_WIDTH) & planes)
-                    collision = true;
-                *(pixel + MAX_SCREEN_WIDTH) ^= planes;
-                if (*(pixel + MAX_SCREEN_WIDTH + 1) & planes)
-                    collision = true;
-                *(pixel + MAX_SCREEN_WIDTH + 1) ^= planes;
-            }
+            return _screen.drawSpritePixelDoubled(x, y, planes, hires);
         }
-        else {
-            if (*pixel & planes)
-                collision = true;
-            *pixel ^= planes;
-        }
-        return collision;
+        return _screen.drawSpritePixel(x, y, planes);
     }
 
     template<uint16_t quirks, int MAX_WIDTH = 128, int MAX_HEIGHT = 64>
@@ -855,15 +806,6 @@ public:
     }
 
 private:
-    void movePixelMasked(int sx, int sy, int dx, int dy)
-    {
-        auto& dstPixel = _screenBuffer[MAX_SCREEN_WIDTH * dy + dx];
-        dstPixel = (dstPixel & ~_planes) | (_screenBuffer[MAX_SCREEN_WIDTH * sy + sx] & _planes);
-    }
-    void clearPixelMasked(int x, int y)
-    {
-        _screenBuffer[MAX_SCREEN_WIDTH * y + x] &= ~_planes;
-    }
     inline uint16_t readWord(uint32_t addr) const
     {
         return (_memory[addr] << 8) | (addr == ADDRESS_MASK ? _memory[0] : _memory[addr + 1]);

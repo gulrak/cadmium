@@ -379,85 +379,72 @@ void Chip8EmulatorFP::op0011(uint16_t opcode)
 }
 
 void Chip8EmulatorFP::op00Bn(uint16_t opcode)
-{
+{ // Scroll UP
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
-        std::memmove(_screenBuffer32.data(), _screenBuffer32.data() + n * MAX_SCREEN_WIDTH, (_screenBuffer32.size() - n * MAX_SCREEN_WIDTH) * sizeof(uint32_t));
-        const auto black = be32(0x000000FF);
-        for(size_t i = 0; i < n * MAX_SCREEN_WIDTH; ++i) {
-            _screenBuffer32[_screenBuffer32.size() - n * MAX_SCREEN_WIDTH + i] = black;
-        }
+        _screenRGBA.scrollUp(n);
         _host.updateScreen();
     }
     else {
-        std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-        std::memset(_screenBuffer.data() + _screenBuffer.size() - n * MAX_SCREEN_WIDTH, 0, n * MAX_SCREEN_WIDTH);
+        _screen.scrollUp(n);
         _screenNeedsUpdate = true;
     }
 
 }
 
 void Chip8EmulatorFP::op00Cn(uint16_t opcode)
-{
+{ // Scroll DOWN
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
-        std::memmove(_screenBuffer32.data() + n * MAX_SCREEN_WIDTH, _screenBuffer32.data(), (_screenBuffer32.size() - n * MAX_SCREEN_WIDTH) * sizeof(uint32_t));
-        const auto black = be32(0x000000FF);
-        for(size_t i = 0; i < n * MAX_SCREEN_WIDTH; ++i) {
-            _screenBuffer32[i] = black;
-        }
+        _screenRGBA.scrollDown(n);
         _host.updateScreen();
     }
     else {
-        std::memmove(_screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.data(), _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-        std::memset(_screenBuffer.data(), 0, n * MAX_SCREEN_WIDTH);
+        _screen.scrollDown(n);
         _screenNeedsUpdate = true;
     }
 }
 
-
-
 void Chip8EmulatorFP::op00Cn_masked(uint16_t opcode)
-{
+{ // Scroll DOWN masked
     auto n = (opcode & 0xf);
     if(!_isHires) n <<= 1;
     auto width = Chip8EmulatorBase::getCurrentScreenWidth();
     auto height = Chip8EmulatorBase::getCurrentScreenHeight();
     for(int sy = height - n - 1; sy >= 0; --sy) {
         for(int sx = 0; sx < width; ++sx) {
-            movePixelMasked(sx, sy, sx, sy + n);
+            _screen.movePixelMasked(sx, sy, sx, sy + n, _planes);
         }
     }
     for(int sy = 0; sy < n; ++sy) {
         for(int sx = 0; sx < width; ++sx) {
-            clearPixelMasked(sx, sy);
+            _screen.clearPixelMasked(sx, sy, _planes);
         }
     }
     _screenNeedsUpdate = true;
 }
 
 void Chip8EmulatorFP::op00Dn(uint16_t opcode)
-{
+{ // Scroll UP
     auto n = (opcode & 0xf);
-    std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * MAX_SCREEN_WIDTH, _screenBuffer.size() - n * MAX_SCREEN_WIDTH);
-    std::memset(_screenBuffer.data() + (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH, 0, _screenBuffer.size() - (Chip8EmulatorBase::getCurrentScreenHeight() - n) * MAX_SCREEN_WIDTH);
+    _screen.scrollUp(n);
     _screenNeedsUpdate = true;
 }
 
 void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
-{
+{ // Scroll UP masked
     auto n = (opcode & 0xf);
     if(!_isHires) n <<= 1;
     auto width = Chip8EmulatorBase::getCurrentScreenWidth();
     auto height = Chip8EmulatorBase::getCurrentScreenHeight();
     for(int sy = n; sy < height; ++sy) {
         for(int sx = 0; sx < width; ++sx) {
-            movePixelMasked(sx, sy, sx, sy - n);
+            _screen.movePixelMasked(sx, sy, sx, sy - n, _planes);
         }
     }
     for(int sy = height - n - 1; sy < height; ++sy) {
         for(int sx = 0; sx < width; ++sx) {
-            clearPixelMasked(sx, sy);
+            _screen.clearPixelMasked(sx, sy, _planes);
         }
     }
     _screenNeedsUpdate = true;
@@ -485,73 +472,58 @@ void Chip8EmulatorFP::op00EE(uint16_t opcode)
 }
 
 void Chip8EmulatorFP::op00FB(uint16_t opcode)
-{
+{ // Scroll right 4 pixel
     if(_isMegaChipMode) {
-        const auto black = be32(0x000000FF);
-        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-            std::memmove(_screenBuffer32.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer32.data() + y * MAX_SCREEN_WIDTH, (MAX_SCREEN_WIDTH - 4) * sizeof(uint32_t));
-            for(size_t i = 0; i < 4; ++i)
-                _screenBuffer32[y * MAX_SCREEN_WIDTH + i] = black;
-        }
+        _screenRGBA.scrollRight(4);
         _host.updateScreen();
     }
     else {
-        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-            std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, _screenBuffer.data() + y * MAX_SCREEN_WIDTH, MAX_SCREEN_WIDTH - 4);
-            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, 0, 4);
-        }
+        _screen.scrollRight(4);
         _screenNeedsUpdate = true;
     }
 }
 
 void Chip8EmulatorFP::op00FB_masked(uint16_t opcode)
-{
+{ // Scroll right 4 pixel masked
     auto n = 4;
     if(!_isHires) n <<= 1;
     auto width = Chip8EmulatorBase::getCurrentScreenWidth();
     auto height = Chip8EmulatorBase::getCurrentScreenHeight();
     for(int sy = 0; sy < height; ++sy) {
         for(int sx = width - n - 1; sx >= 0; --sx) {
-            movePixelMasked(sx, sy, sx + n, sy);
+            _screen.movePixelMasked(sx, sy, sx + n, sy, _planes);
         }
         for(int sx = 0; sx < n; ++sx) {
-            clearPixelMasked(sx, sy);
+            _screen.clearPixelMasked(sx, sy, _planes);
         }
     }
     _screenNeedsUpdate = true;
 }
 
 void Chip8EmulatorFP::op00FC(uint16_t opcode)
-{
+{ // Scroll left 4 pixel
     if(_isMegaChipMode) {
-        const auto black = be32(0x000000FF);
-        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-            std::memmove(_screenBuffer32.data() + y * MAX_SCREEN_WIDTH, _screenBuffer32.data() + y * MAX_SCREEN_WIDTH + 4, (MAX_SCREEN_WIDTH - 4) * sizeof(uint32_t));
-            for(size_t i = 0; i < 4; ++i)
-                _screenBuffer32[y * MAX_SCREEN_WIDTH + MAX_SCREEN_WIDTH - 4 + i] = black;
-        }
+        _screenRGBA.scrollLeft(4);
         _host.updateScreen();
     }
     else {
-        for (int y = 0; y < MAX_SCREEN_HEIGHT; ++y) {
-            std::memmove(_screenBuffer.data() + y * MAX_SCREEN_WIDTH, _screenBuffer.data() + y * MAX_SCREEN_WIDTH + 4, MAX_SCREEN_WIDTH - 4);
-            std::memset(_screenBuffer.data() + y * MAX_SCREEN_WIDTH + Chip8EmulatorBase::getCurrentScreenWidth() - 4, 0, MAX_SCREEN_WIDTH - Chip8EmulatorBase::getCurrentScreenWidth() + 4);
-        }
+        _screen.scrollLeft(4);
+       _screenNeedsUpdate = true;
     }
 }
 
 void Chip8EmulatorFP::op00FC_masked(uint16_t opcode)
-{
+{ // Scroll left 4 pixels masked
     auto n = 4;
     if(!_isHires) n <<= 1;
     auto width = Chip8EmulatorBase::getCurrentScreenWidth();
     auto height = Chip8EmulatorBase::getCurrentScreenHeight();
     for(int sy = 0; sy < height; ++sy) {
         for(int sx = n; sx < width; ++sx) {
-            movePixelMasked(sx, sy, sx - n, sy);
+            _screen.movePixelMasked(sx, sy, sx - n, sy, _planes);
         }
         for(int sx = width - n; sx < width; ++sx) {
-            clearPixelMasked(sx, sy);
+            _screen.clearPixelMasked(sx, sy, _planes);
         }
     }
     _screenNeedsUpdate = true;
@@ -570,7 +542,7 @@ void Chip8EmulatorFP::op00FE(uint16_t opcode)
 void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
 {
     _isHires = false;
-    std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+    _screen.setAll(0);
     _screenNeedsUpdate = true;
     ++_clearCounter;
 }
@@ -593,7 +565,7 @@ void Chip8EmulatorFP::op00FF(uint16_t opcode)
 void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 {
     _isHires = true;
-    std::memset(_screenBuffer.data(), 0, MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT);
+    _screen.setAll(0);
     _screenNeedsUpdate = true;
     ++_clearCounter;
 }
@@ -1011,8 +983,8 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
         if(ypos >= 192)
             return;
         for(int y = 0; y < _spriteHeight && ypos + y < 192; ++y) {
-            uint8_t* pixelBuffer = _screenBuffer.data() + (ypos + y) * 256 + xpos;
-            uint32_t* pixelBuffer32 = _screenBuffer32.data() + (ypos + y) * 256 + xpos;
+            uint8_t* pixelBuffer = &_screen.getPixelRef(xpos, ypos + y);
+            uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos, ypos + y);
             for(int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer, ++pixelBuffer32) {
                 auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
                 if(col) {

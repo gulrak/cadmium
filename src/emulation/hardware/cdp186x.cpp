@@ -37,6 +37,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options)
 , _type(type)
 , _options(options)
 {
+    _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
     reset();
 }
 
@@ -54,7 +55,7 @@ void Cdp186x::enableDisplay()
 
 void Cdp186x::disableDisplay()
 {
-    std::memset(_screenBuffer.data(), 0, _screenBuffer.size());
+    _screen.setAll(0);
     _displayEnabled = false;
 }
 
@@ -63,9 +64,9 @@ bool Cdp186x::getNEFX() const
     return ((_frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 4) * 14 && _frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14) || (_frameCycle >= (VIDEO_FIRST_INVISIBLE_LINE - 4) * 14 && _frameCycle < VIDEO_FIRST_INVISIBLE_LINE * 14));
 }
 
-const uint8_t* Cdp186x::getScreenBuffer() const
+const Cdp186x::VideoType& Cdp186x::getScreen() const
 {
-    return _screenBuffer.data();
+    return _screen;
 }
 
 int Cdp186x::executeStep()
@@ -99,10 +100,9 @@ int Cdp186x::executeStep()
         if(lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
             for (int i = 0; i < 8; ++i) {
-                uint8_t* dest = &_screenBuffer[(line - VIDEO_FIRST_VISIBLE_LINE) * 256 + i * 8];
                 auto data = _displayEnabledLatch ? _cpu.executeDMAOut() : 0;
                 for (int j = 0; j < 8; ++j) {
-                    dest[j] = (data >> (7 - j)) & 1;
+                    _screen.setPixel(i * 8 + j, (line - VIDEO_FIRST_VISIBLE_LINE), (data >> (7 - j)) & 1);
                 }
             }
             if (_displayEnabledLatch) {

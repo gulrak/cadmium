@@ -57,6 +57,7 @@ struct Chip8EmulatorOptions {
     int instructionsPerFrame{15};
     std::shared_ptr<nlohmann::ordered_json> advanced;
     Chip8Variant presetAsVariant() const;
+    void updateColors(std::array<uint32_t,256>& palette) const;
     bool operator==(const Chip8EmulatorOptions& other) const;
     bool operator!=(const Chip8EmulatorOptions& other) const { return !(*this == other); }
     //static SupportedPreset variantAsPreset(Chip8Variant variant);

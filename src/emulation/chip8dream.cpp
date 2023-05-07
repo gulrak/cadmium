@@ -53,7 +53,7 @@ public:
     std::atomic<float> _wavePhase{0};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,1024> _rom{};
-    std::array<uint8_t,256*192> _screenBuffer;
+    IChip8Emulator::VideoType _screen;
 };
 
 
@@ -200,7 +200,7 @@ void Chip8Dream::reset()
     if(_options.optTraceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
     std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
-    std::memset(_impl->_screenBuffer.data(), 0, 256*192);
+    _impl->_screen.setAll(0);
     _impl->_cpu.reset();
     _impl->_ram[0x006] = 0xC0;
     _impl->_ram[0x007] = 0x00;
@@ -284,10 +284,9 @@ void Chip8Dream::flushScreen()
 {
     for(int y = 0; y < 32*4; ++y) {
         for (int i = 0; i < 8; ++i) {
-            auto* dest = &_impl->_screenBuffer[y * 256 + i * 8];
             auto data = _impl->_ram[0x100 + (y>>2)*8 + i];
             for (int j = 0; j < 8; ++j) {
-                dest[j] = (data >> (7 - j)) & 1;
+                _impl->_screen.setPixel(i * 8 + j, y, (data >> (7 - j)) & 1);
             }
         }
     }
@@ -429,9 +428,9 @@ uint16_t Chip8Dream::getMaxScreenHeight() const
     return 128;
 }
 
-const uint8_t* Chip8Dream::getScreenBuffer() const
+const IChip8Emulator::VideoType* Chip8Dream::getScreen() const
 {
-    return _impl->_screenBuffer.data();
+    return &_impl->_screen;
 }
 
 GenericCpu& Chip8Dream::getBackendCpu()

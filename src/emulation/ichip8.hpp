@@ -27,6 +27,7 @@
 
 #include <emulation/config.hpp>
 #include <emulation/hardware/genericcpu.hpp>
+#include <emulation/videoscreen.hpp>
 
 #include <array>
 #include <cstdint>
@@ -66,6 +67,8 @@ public:
     };
     //enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
+    using VideoType = VideoScreen<uint8_t, 256, 192>;
+    using VideoRGBAType = VideoScreen<uint32_t, 256, 192>;
     virtual ~IChip8Emulator() = default;
     virtual void reset() = 0;
     virtual std::string name() const = 0;
@@ -110,8 +113,9 @@ public:
     virtual uint16_t getMaxScreenWidth() const { return 64; }
     virtual uint16_t getMaxScreenHeight() const { return 32; }
     virtual bool isDoublePixel() const { return false; }
-    virtual const uint8_t* getScreenBuffer() const { return nullptr; }
-    virtual const uint32_t* getScreenBuffer32() const { return nullptr; }
+    virtual const VideoType* getScreen() const { return nullptr; }
+    virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
+    virtual void setPalette(std::array<uint32_t,256>& palette) {}
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties
     virtual float getAudioPhase() const { return 0.0f; }

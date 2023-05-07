@@ -403,7 +403,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     //{"808aeb072604809e0ef13c245115a81f40422d1d", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"808aeb072604809e0ef13c245115a81f40422d1d", {emu::chip8::Variant::SCHIPC, "Flutter By (Tom Rintjema, 2019)"}},
     {"80d8baefbc2c2c2eab78a7b09c621f7618357b84", {emu::chip8::Variant::CHIP_8, "Minesweep8R (James Kohli aka Hottie Pippen, 2014)"}},
-    {"80feda2028aa31788d3d1d9e062d77d2fd9308cc", {emu::chip8::Variant::XO_CHIP, "Octoma (Cratmang, 2021-10-25)", R"({"instructionsPerFrame": 10000, "advanced": {"col1": "#FF00FF", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#000000", "buzzColor": "#000000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "fish"}})"}},
+    {"80feda2028aa31788d3d1d9e062d77d2fd9308cc", {emu::chip8::Variant::XO_CHIP, "Octoma (Cratmang, 2021-10-25)", R"({"instructionsPerFrame": 10000, "optLoadStoreDontIncI": true, "advanced": {"col1": "#FF00FF", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#000000", "buzzColor": "#000000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "fish"}})"}},
     {"80ffa819cfa42f2f5f9f836b67c666d01a915970", {emu::chip8::Variant::CHIP_8, "Tower Of Hanoi (Joel Yliluoma, 2015)"}},
     {"8109e5f502a624ce6c96b8aa4b44b3f7dc0ef968", {emu::chip8::Variant::CHIP_10}},
     {"8166328ddd1deb0df718323c0c63c76b267cec4a", {emu::chip8::Variant::CHIP_8, "Arrows (Ashton Harding, 2018)"}},
@@ -990,11 +990,15 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
     if(info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
         emu::Chip8HeadlessHostEx host;
         host.updateEmulatorOptions({});
-        auto options = host.options();
         if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), true)) {
             auto& chipEmu = host.chipEmu();
+            auto options = host.options();
             auto ticks = 5000;
             auto startChip8 = std::chrono::steady_clock::now();
+            auto colors = palette;
+            if(options.advanced) {
+                options.updateColors(colors);
+            }
             int64_t lastCycles = -1;
             int64_t cycles = 0;
             int tickCount = 0;
@@ -1004,16 +1008,17 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
             }
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8).count();
             TraceLog(LOG_WARNING, "executed %d cycles and %d frames in %dms for screenshot", (int)chipEmu.getCycles(), tickCount, (int)duration);
-            if (chipEmu.getScreenBuffer()) {
+            if (chipEmu.getScreen()) {
                 Screenshot s;
-                const uint8_t* buffer = chipEmu.getScreenBuffer();
+                auto screen = *chipEmu.getScreen();
+                screen.setPalette(colors);
                 if (chipEmu.isDoublePixel()) {
                     s.width = chipEmu.getCurrentScreenWidth() / 2;
                     s.height = chipEmu.getCurrentScreenHeight() / 2;
                     s.pixel.resize(s.width * s.height);
                     for (int y = 0; y < chipEmu.getCurrentScreenHeight() / 2; ++y) {
                         for (int x = 0; x < chipEmu.getCurrentScreenWidth() / 2; ++x) {
-                            s.pixel[y * s.width + x] = palette[buffer[y * 2 * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x * 2]];
+                            s.pixel[y * s.width + x] = screen.getPixel(x*2, y*2);
                         }
                     }
                 }
@@ -1023,21 +1028,21 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
                     s.pixel.resize(s.width * s.height);
                     for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
                         for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
-                            s.pixel[y * s.width + x] = palette[buffer[y * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x]];
+                            s.pixel[y * s.width + x] = screen.getPixel(x, y);
                         }
                     }
                 }
                 return s;
             }
-            else if (chipEmu.getScreenBuffer32()) {
+            else if (chipEmu.getScreenRGBA()) {
                 Screenshot s;
-                const uint32_t* buffer = chipEmu.getScreenBuffer32();
+                auto screen = *chipEmu.getScreenRGBA();
                 s.width = chipEmu.getCurrentScreenWidth();
                 s.height = chipEmu.getCurrentScreenHeight();
                 s.pixel.resize(s.width * s.height);
                 for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
                     for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
-                        s.pixel[y * s.width + x] = buffer[y * emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH + x];
+                        s.pixel[y * s.width + x] = screen.getPixel(x, y);
                     }
                 }
                 return s;

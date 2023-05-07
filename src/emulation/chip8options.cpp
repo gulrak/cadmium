@@ -26,6 +26,7 @@
 
 #include <emulation/chip8options.hpp>
 #include <nlohmann/json.hpp>
+#include <stdendian/stdendian.h>
 
 #include <algorithm>
 
@@ -557,6 +558,36 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
     if(j.contains("advanced")) {
         o.advanced = std::make_shared<nlohmann::ordered_json>(j.at("advanced"));
+    }
+}
+
+void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette) const
+{
+    if(advanced) {
+        if(advanced->contains("backgroundColor")) {
+            palette[0] = be32((std::strtoul(advanced->at("backgroundColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("col0")) {
+            palette[0] = be32((std::strtoul(advanced->at("col0").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("fillColor")) {
+            palette[1] = be32((std::strtoul(advanced->at("fillColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("col1")) {
+            palette[1] = be32((std::strtoul(advanced->at("col1").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("fillColor2")) {
+            palette[2] = be32((std::strtoul(advanced->at("fillColor2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("col2")) {
+            palette[2] = be32((std::strtoul(advanced->at("col2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("blendColor")) {
+            palette[3] = be32((std::strtoul(advanced->at("blendColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
+        if(advanced->contains("col3")) {
+            palette[3] = be32((std::strtoul(advanced->at("col3").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        }
     }
 }
 

@@ -20,6 +20,8 @@ set(CADMIUM_SOURCE
     circularbuffer.hpp
     chip8emuhostex.cpp
     chip8emuhostex.hpp
+    c8capturehost.cpp
+    c8capturehost.hpp
     stylemanager.cpp
     stylemanager.hpp
 )

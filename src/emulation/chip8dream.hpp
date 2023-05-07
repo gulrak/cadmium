@@ -56,7 +56,7 @@ public:
     uint16_t getCurrentScreenHeight() const override;
     uint16_t getMaxScreenWidth() const override;
     uint16_t getMaxScreenHeight() const override;
-    const uint8_t* getScreenBuffer() const override;
+    const VideoType* getScreen() const override;
 
     uint8_t soundTimer() const override;
     float getAudioPhase() const override;

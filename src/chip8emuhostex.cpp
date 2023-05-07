@@ -49,7 +49,24 @@ Chip8EmuHostEx::Chip8EmuHostEx()
     }
     _librarian.fetchDir(_currentDirectory);
 #endif
+    setPalette({
+        be32(0x1a1c2cff), be32(0xf4f4f4ff), be32(0x94b0c2ff), be32(0x333c57ff),
+        be32(0xb13e53ff), be32(0xa7f070ff), be32(0x3b5dc9ff), be32(0xffcd75ff),
+        be32(0x5d275dff), be32(0x38b764ff), be32(0x29366fff), be32(0x566c86ff),
+        be32(0xef7d57ff), be32(0x73eff7ff), be32(0x41a6f6ff), be32(0x257179ff)
+    });
+    _defaultPalette = _colorPalette;
 }
+
+void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
+{
+    for(size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
+        _colorPalette[i + offset] = colors[i];
+    }
+    if(_chipEmu)
+        _chipEmu->setPalette(_colorPalette);
+}
+
 
 void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
 {
@@ -62,6 +79,8 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
         else
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
         //
+        if(_chipEmu->getScreen())
+            _chipEmu->getScreen();
         whenEmuChanged(*_chipEmu);
         //_debugger.updateCore(_chipEmu.get());
     }
@@ -104,6 +123,9 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
         else if(isKnown) {
             if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE)
                 updateEmulatorOptions(knownOptions);
+            if(_options.advanced) {
+                _options.updateColors(_colorPalette);
+            }
             romImage = fileData;
             valid = true;
         }
@@ -167,7 +189,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
                 if(iter != c8b.variantBytecode.end()) {
                     if(!c8b.palette.empty()) {
                         _customPalette = true;
-                        auto numCol = std::max(c8b.palette.size(), (size_t)16);
+                        auto numCol = std::min(c8b.palette.size(), (size_t)16);
                         for(size_t i = 0; i < numCol; ++i) {
                             _colorPalette[i] = be32(ColorToInt({c8b.palette[i].r, c8b.palette[i].g, c8b.palette[i].b, 255}));
                         }
@@ -223,6 +245,15 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
             _chipEmu->reset();
             std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
             _chipEmu->removeAllBreakpoints();
+            setPalette({
+                be32(0x1a1c2cff), be32(0xf4f4f4ff), be32(0x94b0c2ff), be32(0x333c57ff),
+                be32(0xb13e53ff), be32(0xa7f070ff), be32(0x3b5dc9ff), be32(0xffcd75ff),
+                be32(0x5d275dff), be32(0x38b764ff), be32(0x29366fff), be32(0x566c86ff),
+                be32(0xef7d57ff), be32(0x73eff7ff), be32(0x41a6f6ff), be32(0x257179ff)
+            });
+            if(_options.advanced)
+                _options.updateColors(_colorPalette);
+            _chipEmu->setPalette(_colorPalette);
             auto p = fs::path(_romName).parent_path();
             if(fs::exists(p) && fs::is_directory(p))  {
                 _currentDirectory = fs::path(_romName).parent_path().string();
