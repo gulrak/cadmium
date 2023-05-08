@@ -749,7 +749,6 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"ff5276bfd203634ef3034475ff7bc8bd9033a03d", {emu::chip8::Variant::SCHIPC, "Bounce (Les Harris, 20xx)"}},
     {"ff639eceaf221ae66151a03779b41fae7118d2d8", {emu::chip8::Variant::CHIP_8, "Reversi (Philip Baltzer)"}},
     {"ff6b8ac59bf281cd4b5ab6e161600b00f85a0265", {emu::chip8::Variant::CHIP_8, "Danm8Ku (buffi, 2015-10-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#00FF00", "col2": "#FF0000", "col3": "#FFFF00", "col0": "#000000", "buzzColor": "#999900", "quietColor": "#333300"}})"}},
-
 };
 
 std::string Librarian::Info::minimumOpcodeProfile() const

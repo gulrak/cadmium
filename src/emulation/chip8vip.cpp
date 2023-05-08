@@ -225,6 +225,7 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
         std::memcpy(_state.s.data(), other->getStackElements(), stackSize() * sizeof(uint16_t));
         forceState();
     }
+#ifndef PLATFORM_WEB
     {
         static bool first = true;
         if(first) {
@@ -232,6 +233,7 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
             os.write((char*)_chip8tdp_cvip, sizeof(_chip8tdp_cvip));
         }
     }
+#endif
 }
 
 Chip8VIP::~Chip8VIP()

@@ -428,8 +428,9 @@ void CenterWindow(int width, int height)
 
 void LogHandler(int msgType, const char *text, va_list args)
 {
-    static std::ofstream ofs((fs::path(dataPath())/"logfile.txt").string().c_str());
     static char buffer[4096];
+#ifndef PLATFORM_WEB
+    static std::ofstream ofs((fs::path(dataPath())/"logfile.txt").string().c_str());
     ofs << date::format("[%FT%TZ]", std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
     switch (msgType)
     {
@@ -439,8 +440,11 @@ void LogHandler(int msgType, const char *text, va_list args)
         case LOG_DEBUG: ofs << "[DEBUG]: "; break;
         default: break;
     }
+#endif
     vsnprintf(buffer, 4095, text, args);
+#ifndef PLATFORM_WEB
     ofs << buffer << std::endl;
+#endif
     emu::Logger::log(emu::Logger::eHOST, 0, {0,0}, buffer);
 }
 
@@ -537,8 +541,10 @@ public:
         _titleImage = LoadImage("cadmium-title.png");
         _microFont = LoadImage("micro-font.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
+        std::string versionStr(CADMIUM_VERSION);
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
-        drawMicroText(_titleImage, "Beta", 38, 53, WHITE);
+        if(!versionStr.empty() && (versionStr.back() & 1))
+            drawMicroText(_titleImage, "WIP", 38, 53, WHITE);
         std::string buildDate = __DATE__;
         auto dateText = buildDate.substr(0, 3);
         bool shortDate = (buildDate[4] == ' ');
@@ -1982,7 +1988,7 @@ public:
         //-------------------------------------------------------------------------------
         openFileCallback = [&](const std::string& filename)
         {
-            loadRom(filename.c_str());
+            loadRom(filename.c_str(), false);
         };
         EM_ASM({
             if (typeof(open_file_element) == "undefined")
@@ -2030,6 +2036,7 @@ public:
 
     void saveConfig()
     {
+#ifndef PLATFORM_WEB
         if(!_cfgPath.empty()) {
             _cfg.emuOptions = _options;
             _cfg.workingDirectory = _currentDirectory;
@@ -2038,6 +2045,7 @@ public:
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
         }
+#endif
     }
 
     void whenEmuChanged(emu::IChip8Emulator& emu) override
@@ -2438,8 +2446,13 @@ int main(int argc, char* argv[])
             cadmium.updateAndDraw();
         }
 #else
-        Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
-        emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);
+        try {
+            Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
+            emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);
+        }
+        catch(std::exception& ex) {
+            std::cerr << "Exception: " << ex.what() << std::endl;
+        }
 #endif
     }
 #ifndef PLATFORM_WEB

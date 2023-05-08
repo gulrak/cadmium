@@ -52,6 +52,7 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
 
 bool CadmiumConfiguration::load(const std::string& filepath)
 {
+#ifndef PLATFORM_WEB
     std::ifstream ifs(filepath);
     if(ifs.fail())
         return false;
@@ -62,11 +63,13 @@ bool CadmiumConfiguration::load(const std::string& filepath)
     catch(...) {
         return false;
     }
+#endif
     return true;
 }
 
 bool CadmiumConfiguration::save(const std::string& filepath)
 {
+#ifndef PLATFORM_WEB
     std::ofstream ofs(filepath);
     if(ofs.fail())
         return false;
@@ -77,5 +80,6 @@ bool CadmiumConfiguration::save(const std::string& filepath)
     catch(...) {
         return false;
     }
+#endif
     return true;
 }

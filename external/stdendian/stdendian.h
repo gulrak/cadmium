@@ -273,7 +273,7 @@ static inline uint64_t bswap64(uint64_t x) { return be64(x); }
  * BSD host integer interfaces
  */
 
-#ifndef __HOSTSWAP_DEFINED
+#if !defined(__HOSTSWAP_DEFINED) && !defined(EMSCRIPTEN)
 static inline uint16_t htobe16(uint16_t x) { return be16(x); }
 static inline uint16_t htole16(uint16_t x) { return le16(x); }
 static inline uint16_t be16toh(uint16_t x) { return be16(x); }

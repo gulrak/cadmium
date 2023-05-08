@@ -1,4 +1,14 @@
-## v1.0.7 (wip)
+## v1.0.9 (wip)
+* Cadmium now as an embedded list of known programs that it detects by SHA1 hash and
+  automatically configures platform, quirks and colors for, if any of that is known;
+  This data is based on the combined efforts of John Earnest, Tobias Langhoff,
+  Tim Franssen and other users of the _Emulation Development Discord_
+* The settings dialog now has an option to remember program specific settings for
+  a loaded program, these take precedence over settings from the known meta data
+  (not available in the web version)
+* The desktop builds of Cadmium now show a preview of the program when selecting
+  files while browsing, by executing the emulation for them a brief moment and
+  capturing a screenshot
 * Support for "Two page display CHIP-8" in the VIP emulation, based on the TDP interpreter
   version from VIPER vol. 1, issue 3
 * All supported quirks can now be configured via the commandline
