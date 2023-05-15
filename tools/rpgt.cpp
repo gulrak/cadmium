@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
     std::vector<uint8_t> memory;
     auto odata = loadFile(original);
     auto ddata = loadFile(derived);
-    memory.resize(std::max(4096ul,ddata.size()));
+    memory.resize(std::max((size_t)4096,ddata.size()));
     std::memcpy(memory.data(), odata.data(), odata.size());
     auto iter = ddata.begin();
     auto miter = memory.begin();
