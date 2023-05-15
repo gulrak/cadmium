@@ -26,15 +26,17 @@
 #pragma once
 
 #include <chiplet/chip8variants.hpp>
-#include <nlohmann/json_fwd.hpp>
+#include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace emu {
 
 struct Chip8EmulatorOptions {
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
+    ~Chip8EmulatorOptions();
+    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8VIP_8X, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
     SupportedPreset behaviorBase{eCHIP8};
     uint16_t startAddress{0x200};
     bool optJustShiftVx{false};
@@ -55,9 +57,14 @@ struct Chip8EmulatorOptions {
     bool optChicueyiSound{false};
     bool optTraceLog{false};
     int instructionsPerFrame{15};
-    std::shared_ptr<nlohmann::ordered_json> advanced;
+    nlohmann::ordered_json advanced;
+    std::string advancedDump;
     Chip8Variant presetAsVariant() const;
-    void updateColors(std::array<uint32_t,256>& palette) const;
+    void updateColors(std::array<uint32_t,256>& palette);
+    bool hasColors() const;
+    void updatedAdvaced();
+    void unifyColors();
+    Chip8EmulatorOptions clone() const;
     bool operator==(const Chip8EmulatorOptions& other) const;
     bool operator!=(const Chip8EmulatorOptions& other) const { return !(*this == other); }
     //static SupportedPreset variantAsPreset(Chip8Variant variant);

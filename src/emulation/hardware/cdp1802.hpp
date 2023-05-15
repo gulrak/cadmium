@@ -343,12 +343,13 @@ public:
         writeByte(_rR[0]++, data);
     }
 
-    uint8_t executeDMAOut()
+    std::pair<uint8_t,uint16_t> executeDMAOut()
     {
         addCycles(8);
         if(_cpuState == eIDLE)
             _cpuState = eNORMAL;
-        return readByteDMA(_rR[0]++);
+        auto addr = _rR[0]++;
+        return {readByteDMA(addr), addr};
     }
 
     void executeInstruction()

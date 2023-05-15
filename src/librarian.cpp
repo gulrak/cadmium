@@ -60,7 +60,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"0068ff5421f5d62a1ae1c814c68716ddb65cec5b", {emu::chip8::Variant::XO_CHIP, "Master B8 (Andrew James, 2021)"}},
     {"0085dd8fce4f7ac2e39ba73cf67cc043f9ba4812", {emu::chip8::Variant::CHIP_8, "Stars (Sergey Naydenov, 2010)", R"({"optLoadStoreDontIncI": true})"}},
     {"016345d75eef34448840845a9590d41e6bfdf46a", {emu::chip8::Variant::CHIP_8, "Clock Program (Bill Fisher, 1981)"}},
-    {"018442698067c95d67e27a94e6642c11f049f108", {emu::chip8::Variant::CHIP_8, "1D Cellular Automata (SharpenedSpoon, 2014-10-26)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#00f80a", "col0": "#274a17", "buzzColor": "#FFAA00", "quietColor": "#142a12"}})"}},
+    {"018442698067c95d67e27a94e6642c11f049f108", {emu::chip8::Variant::CHIP_8, "1D Cellular Automata (SharpenedSpoon, 2014-10-26)", R"({"instructionsPerFrame": 1000, "advanced": {"palette": ["#274a17", "#00f80a"], "buzzColor": "#FFAA00", "quietColor": "#142a12"}})"}},
     //{"018e6da9937173b1ac44d4261e848af485dcd305", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"018e6da9937173b1ac44d4261e848af485dcd305", {emu::chip8::Variant::XO_CHIP, "Truck Simul8Or (Bjorn Kempen, 2015)"}},
     //{"01ffe488efbe14ca63de1c23053806533e329f3f", {emu::Chip8EmulatorOptions::eSCHIP11}},
@@ -817,6 +817,8 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP;
                 else if(ext == ".c8h")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP_TPD;
+                else if(ext == ".c8x")
+                    type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP_8X;
                 else if(ext == ".sc8")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eSCHIP11;
                 else if(ext == ".mc8")
@@ -995,7 +997,7 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
             auto ticks = 5000;
             auto startChip8 = std::chrono::steady_clock::now();
             auto colors = palette;
-            if(options.advanced) {
+            if(options.hasColors()) {
                 options.updateColors(colors);
             }
             int64_t lastCycles = -1;

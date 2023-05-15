@@ -75,6 +75,7 @@ public:
     GenericCpu& getBackendCpu() override;
 
 private:
+    bool patchRAM(std::string name);
     int frameCycle() const;
     int videoLine() const;
     bool executeCdp1802();

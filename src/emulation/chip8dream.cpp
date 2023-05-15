@@ -143,7 +143,7 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
     : Chip8RealCoreBase(host, options)
     , _impl(new Private(host, *this, options))
 {
-    if(_options.advanced && _options.advanced->contains("kernel") && _options.advanced->at("kernel") == "chiposlo")
+    if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo")
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
     else
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));

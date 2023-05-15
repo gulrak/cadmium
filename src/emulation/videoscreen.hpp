@@ -55,7 +55,12 @@ public:
     int stride() const { return _stride; }
     int ratio() const { return _ratio; }
     constexpr static bool isRGBA() { return sizeof(PixelType) == 4; }
-    void setPalette(const std::array<uint32_t, 256>& palette) { _palette = palette; }
+    void setPalette(const std::array<uint32_t, 256>& palette)
+    {
+        for(int i = 0; i < palette.size(); ++i) {
+            _palette[i] = be32(palette[i]);
+        }
+    }
     uint32_t getPixel(int x, int y) const
     {
         if constexpr (isRGBA()) {
@@ -182,7 +187,7 @@ public:
     }
     void clearPixelMasked(int x, int y, PixelType mask)
     {
-        _screenBuffer[y + x] &= ~mask;
+        _screenBuffer[y * _stride + x] &= ~mask;
     }
 protected:
     const int _stride{Width};

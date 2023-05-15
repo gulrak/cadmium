@@ -16,3 +16,6 @@ target_link_libraries(colorsort PUBLIC raylib)
 
 add_executable(imageconv imageconv.cpp)
 target_link_libraries(imageconv PUBLIC raylib fmt::fmt)
+
+add_executable(rpgt rpgt.cpp)
+target_link_libraries(rpgt PUBLIC emulation ghc_filesystem)

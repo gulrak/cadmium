@@ -41,15 +41,19 @@ class Cdp1802;
 class Cdp186x
 {
 public:
-    enum Type { eCDP1861, eCDP1861_C10, eCDP1861_62, eCDP1864 };
+    enum Type { eCDP1861, eVP590, eCDP1861_C10, eCDP1861_62, eCDP1864 };
+    enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES};
     using VideoType = VideoScreen<uint8_t, 256, 192>; // size for easier inter-operability with other CHIP-8 implementations, it just uses 64x128
     Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
     void reset();
     bool getNEFX() const;
+    Type getType() const { return _type; }
     int executeStep();
     void enableDisplay();
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }
+    void setSubMode(SubMode subMode) { _subMode = subMode; }
+    void incrementBackground();
     int frames() const { return _frameCounter; }
     const VideoType& getScreen() const;
 
@@ -76,12 +80,16 @@ public:
 private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
+    SubMode _subMode{eNONE};
     const Chip8EmulatorOptions& _options;
+    std::array<uint32_t,256> _cdp1862Palette;
     VideoScreen<uint8_t,256,192> _screen;
     int _frameCycle{0};
     int _frameCounter{0};
+    int _backgroundColor{0};
     bool _displayEnabled{false};
     bool _displayEnabledLatch{false};
+    static const uint32_t _cdp1862BackgroundColors[4];
 };
 
 }

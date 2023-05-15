@@ -2,7 +2,7 @@ file(GLOB RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/files/*.p
 if (${PLATFORM} MATCHES "Web")
     add_custom_command(
             OUTPUT resourcer resourcedata.c
-            COMMAND clang++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp
+            COMMAND clang++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp -I${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
             COMMAND ${CMAKE_CURRENT_BINARY_DIR}/resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
             DEPENDS ${RESOURCE_FILES}
     )

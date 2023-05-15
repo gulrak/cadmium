@@ -27,7 +27,7 @@
 #include <emulation/chip8options.hpp>
 #include <nlohmann/json.hpp>
 #include <stdendian/stdendian.h>
-
+#include <fmt/format.h>
 #include <algorithm>
 
 namespace emu {
@@ -50,6 +50,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eXOCHIP: return Chip8Variant::XO_CHIP;
         case eCHIP8VIP: return Chip8Variant::CHIP_8;
         case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
+        case eCHIP8VIP_8X: return Chip8Variant::CHIP_8X;
         case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
         case eC8D68CHIPOSLO: return Chip8Variant::CHIP_8_D6800;
         case eCHICUEYI: return Chip8Variant::XO_CHIP;
@@ -70,6 +71,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
         case eCHIP8VIP_TPD: return "VIP-CHIP-8 64x64";
+        case eCHIP8VIP_8X: return "VIP-CHIP-8X";
         case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eC8D68CHIPOSLO: return "CHIP-8-DREAM-CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -91,6 +93,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
         case eCHIP8VIP_TPD: return "VIPCHIP8TDP";
+        case eCHIP8VIP_8X: return "VIPCHIP8X";
         case eCHIP8DREAM: return "CHIP8DREAM";
         case eC8D68CHIPOSLO: return "D6k8CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -126,6 +129,11 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"cosmacvip", Opts::eCHIP8VIP},
     {"vipchip8tpd", Opts::eCHIP8VIP_TPD},
     {"chip8viptpd", Opts::eCHIP8VIP_TPD},
+    {"chip8vip64x64", Opts::eCHIP8VIP_TPD},
+    {"vipchip864x64", Opts::eCHIP8VIP_TPD},
+    {"vipchip8x", Opts::eCHIP8VIP_8X},
+    {"chip8xvip", Opts::eCHIP8VIP_8X},
+    {"chip8vipx", Opts::eCHIP8VIP_8X},
     {"chip8dream", Opts::eCHIP8DREAM},
     {"dreamchip8", Opts::eCHIP8DREAM},
     {"dream6800", Opts::eCHIP8DREAM},
@@ -148,10 +156,13 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHIP8VIP, R"({})"},
-    {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"chip8tdp"}})"},
+    {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"CHIP8TPD"}})"},
+    {Opts::eCHIP8VIP_8X, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8X"}})"},
     {Opts::eCHIP8DREAM, R"({})"},
     {Opts::eC8D68CHIPOSLO, R"({"advanced":{"kernel":"chiposlo"}})"}
 };
+
+Chip8EmulatorOptions::~Chip8EmulatorOptions() = default;
 
 Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForName(const std::string& name)
 {
@@ -185,7 +196,6 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chi
     return eCHIP8;
 }
 
-#if 1
 Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
 {
     static std::map<Opts::SupportedPreset,Opts> presetOptionsMap;
@@ -202,296 +212,13 @@ Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset prese
     auto iter = presetOptionsMap.find(preset);
     return iter != presetOptionsMap.end() ? iter->second : Opts();
 }
-#else
-Chip8EmulatorOptions Chip8EmulatorOptions::optionsOfPreset(SupportedPreset preset)
+
+Chip8EmulatorOptions Chip8EmulatorOptions::clone() const
 {
-    switch(preset) {
-        case eCHIP10:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = false,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = false,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = true,
-                    .optOnlyHires = true,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 10};
-        case eCHIP48:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = true,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = true,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = true,
-                    .optAllowHires = false,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 15};
-        case eSCHIP10:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = true,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = true,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = true,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = true,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 15};
-        case eSCHIP11:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = true,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = true,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = true,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = true,
-                    .optJump0Bxnn = true,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 30};
-        case eSCHPC:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = true,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 30};
-        case eMEGACHIP:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = true,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = true,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = true,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = true,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 3000};
-        case eXOCHIP:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = true,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = true,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = true,
-                    .optHas16BitAddr = true,
-                    .optXOChipSound = true,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 1000};
-        case eCHICUEYI:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = true,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = true,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = true,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = true,
-                    .optOnlyHires = false,
-                    .optAllowColors = true,
-                    .optHas16BitAddr = true,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = true,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 1000};
-        case eCHIP8VIP:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = false,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = false,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = false,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 15};
-        case eCHIP8VIP_TPD:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x260,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = false,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = false,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = false,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = true,
-                    .instructionsPerFrame = 15,
-                    .advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
-                        {"interpreter", "chip8tdp"}
-                    }))
-            };
-        case eCHIP8DREAM:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = false,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = false,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = false,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 15};
-        case eC8D68CHIPOSLO:
-            return {
-                .behaviorBase = preset,
-                .startAddress = 0x200,
-                .optJustShiftVx = false,
-                .optDontResetVf = false,
-                .optLoadStoreIncIByX = false,
-                .optLoadStoreDontIncI = false,
-                .optWrapSprites = false,
-                .optInstantDxyn = false,
-                .optLoresDxy0Is8x16 = false,
-                .optLoresDxy0Is16x16 = false,
-                .optSC11Collision = false,
-                .optJump0Bxnn = false,
-                .optAllowHires = false,
-                .optOnlyHires = false,
-                .optAllowColors = false,
-                .optHas16BitAddr = false,
-                .optXOChipSound = false,
-                .optChicueyiSound = false,
-                .optTraceLog = false,
-                .instructionsPerFrame = 15,
-                .advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
-                    {"kernel", "chiposlo"}
-                }))
-            };
-        case eCHIP8:
-        default:
-            return {.behaviorBase = preset,
-                    .startAddress = 0x200,
-                    .optJustShiftVx = false,
-                    .optDontResetVf = false,
-                    .optLoadStoreIncIByX = false,
-                    .optLoadStoreDontIncI = false,
-                    .optWrapSprites = false,
-                    .optInstantDxyn = false,
-                    .optLoresDxy0Is8x16 = false,
-                    .optLoresDxy0Is16x16 = false,
-                    .optSC11Collision = false,
-                    .optJump0Bxnn = false,
-                    .optAllowHires = false,
-                    .optOnlyHires = false,
-                    .optAllowColors = false,
-                    .optHas16BitAddr = false,
-                    .optXOChipSound = false,
-                    .optChicueyiSound = false,
-                    .optTraceLog = false,
-                    .instructionsPerFrame = 15};
-    }
+    auto result = *this;
+    result.advanced = nlohmann::json::parse(advanced.dump());
+    return result;
 }
-#endif
 
 bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
 {
@@ -499,7 +226,7 @@ bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
            optLoadStoreDontIncI == other.optLoadStoreDontIncI && optWrapSprites == other.optWrapSprites && optInstantDxyn == other.optInstantDxyn && optLoresDxy0Is8x16 == other.optLoresDxy0Is8x16 && optLoresDxy0Is16x16 == other.optLoresDxy0Is16x16 &&
            optSC11Collision == other.optSC11Collision && optJump0Bxnn == other.optJump0Bxnn && optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors &&
            optHas16BitAddr == other.optHas16BitAddr && optXOChipSound == other.optXOChipSound && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame &&
-           advanced == other.advanced;
+           advancedDump == other.advancedDump;
 }
 
 #define SET_IF_CHANGED(j, n) if(o.n != defaultOpts.n) j[#n] = o.n;
@@ -528,8 +255,8 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
     SET_IF_CHANGED(obj, optTraceLog);
     SET_IF_CHANGED(obj, instructionsPerFrame);
     j = obj;
-    if(o.advanced) {
-        j["advanced"] = *o.advanced;
+    if(!o.advanced.empty()) {
+        j["advanced"] = o.advanced;
     }
 }
 
@@ -557,38 +284,93 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     o.optSC11Collision = j.value("optSC11Collision", defaultOpts.optSC11Collision);
     o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
     if(j.contains("advanced")) {
-        o.advanced = std::make_shared<nlohmann::ordered_json>(j.at("advanced"));
+        o.advanced = j.at("advanced");
+        o.updatedAdvaced();
     }
 }
 
-void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette) const
+void unifyColors()
+void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette)
 {
-    if(advanced) {
-        if(advanced->contains("backgroundColor")) {
-            palette[0] = be32((std::strtoul(advanced->at("backgroundColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+    int maxIdx = -1;
+    if(!advanced.empty()) {
+        if(advanced.contains("backgroundColor")) {
+            palette[0] = (std::strtoul(advanced.at("backgroundColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("backgroundColor");
+            maxIdx = 0;
         }
-        if(advanced->contains("col0")) {
-            palette[0] = be32((std::strtoul(advanced->at("col0").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("col0")) {
+            palette[0] =(std::strtoul(advanced.at("col0").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("col0");
+            maxIdx = 0;
         }
-        if(advanced->contains("fillColor")) {
-            palette[1] = be32((std::strtoul(advanced->at("fillColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("fillColor")) {
+            palette[1] = (std::strtoul(advanced.at("fillColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("fillColor");
+            maxIdx = 1;
         }
-        if(advanced->contains("col1")) {
-            palette[1] = be32((std::strtoul(advanced->at("col1").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("col1")) {
+            palette[1] = (std::strtoul(advanced.at("col1").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("col1");
+            maxIdx = 1;
         }
-        if(advanced->contains("fillColor2")) {
-            palette[2] = be32((std::strtoul(advanced->at("fillColor2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("fillColor2")) {
+            palette[2] = (std::strtoul(advanced.at("fillColor2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("fillColor2");
+            maxIdx = 2;
         }
-        if(advanced->contains("col2")) {
-            palette[2] = be32((std::strtoul(advanced->at("col2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("col2")) {
+            palette[2] = (std::strtoul(advanced.at("col2").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("col2");
+            maxIdx = 2;
         }
-        if(advanced->contains("blendColor")) {
-            palette[3] = be32((std::strtoul(advanced->at("blendColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("blendColor")) {
+            palette[3] = (std::strtoul(advanced.at("blendColor").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("blendColor");
+            maxIdx = 3;
         }
-        if(advanced->contains("col3")) {
-            palette[3] = be32((std::strtoul(advanced->at("col3").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255);
+        if(advanced.contains("col3")) {
+            palette[3] = (std::strtoul(advanced.at("col3").get<std::string>().c_str() + 1, nullptr, 16) << 8) + 255;
+            advanced.erase("col3");
+            maxIdx = 3;
+        }
+        if(advanced.contains("palette") && advanced.at("palette").is_array()) {
+            auto pal = advanced.at("palette");
+            size_t idx = 0;
+            for(const auto& val : pal) {
+                if(idx >= palette.size())
+                    break;
+                if(val.is_string()) {
+                    auto str = val.get<std::string>();
+                    if(str.length()>1 && str[0] == '#')
+                        palette[idx] = (std::strtoul(str.data() + 1, nullptr, 16) << 8) + 255;
+                }
+                else if(val.is_number_unsigned()) {
+                    palette[idx] = (val.get<uint32_t>() << 8) + 255;
+                }
+                maxIdx = idx++;
+            }
         }
     }
+    if(maxIdx >= 0 && (!advanced.contains("palette") || !advanced.at("palette").is_array())) {
+        std::vector<std::string> pal(maxIdx + 1, "");
+        for (size_t i = 0; i <= maxIdx; ++i) {
+            pal[i] = fmt::format("#{:06x}", palette[i] >> 8);
+        }
+        advanced["palette"] = pal;
+    }
+}
+
+bool Chip8EmulatorOptions::hasColors() const
+{
+    return advanced.contains("palette") && advanced.at("palette").is_array();
+}
+
+void Chip8EmulatorOptions::updatedAdvaced()
+{
+    std::array<uint32_t,256> temp;
+    updateColors(temp);
+    advancedDump = advanced.dump();
 }
 
 }

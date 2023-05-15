@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8.cpp
+// src/emulation/chip8cores.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -40,6 +40,8 @@ Chip8EmulatorFP::Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& 
 , SCREEN_HEIGHT(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : options.optAllowHires ? 64 : 32)
 , _opcodeHandler(0x10000, &Chip8EmulatorFP::opInvalid)
 {
+    _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
+    _screenRGBA.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     setHandler();
     if(!other) {
         reset();
@@ -71,9 +73,9 @@ void Chip8EmulatorFP::setHandler()
     on(0xF000, 0xA000, &Chip8EmulatorFP::opAnnn);
     on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8EmulatorFP::opBxnn : &Chip8EmulatorFP::opBnnn);
     std::string randomGen;
-    if(_options.advanced && _options.advanced->contains("random")) {
-        randomGen = _options.advanced->at("random");
-        _randomSeed = _options.advanced->at("seed");
+    if(_options.advanced.contains("random")) {
+        randomGen = _options.advanced.at("random");
+        _randomSeed = _options.advanced.at("seed");
     }
     if(randomGen == "rand-lcg")
         on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_randLCG);
@@ -367,6 +369,7 @@ void Chip8EmulatorFP::opInvalid(uint16_t opcode)
 void Chip8EmulatorFP::op0010(uint16_t opcode)
 {
     _isMegaChipMode = false;
+    _host.preClear();
     clearScreen();
     ++_clearCounter;
 }
@@ -374,6 +377,7 @@ void Chip8EmulatorFP::op0010(uint16_t opcode)
 void Chip8EmulatorFP::op0011(uint16_t opcode)
 {
     _isMegaChipMode = true;
+    _host.preClear();
     clearScreen();
     ++_clearCounter;
 }
@@ -442,7 +446,7 @@ void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
             _screen.movePixelMasked(sx, sy, sx, sy - n, _planes);
         }
     }
-    for(int sy = height - n - 1; sy < height; ++sy) {
+    for(int sy = height - n; sy < height; ++sy) {
         for(int sx = 0; sx < width; ++sx) {
             _screen.clearPixelMasked(sx, sy, _planes);
         }
@@ -452,6 +456,7 @@ void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
 
 void Chip8EmulatorFP::op00E0(uint16_t opcode)
 {
+    _host.preClear();
     clearScreen();
     _screenNeedsUpdate = true;
     ++_clearCounter;
@@ -459,6 +464,7 @@ void Chip8EmulatorFP::op00E0(uint16_t opcode)
 
 void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
 {
+    _host.preClear();
     _host.updateScreen();
     clearScreen();
     ++_clearCounter;
@@ -536,11 +542,13 @@ void Chip8EmulatorFP::op00FD(uint16_t opcode)
 
 void Chip8EmulatorFP::op00FE(uint16_t opcode)
 {
+    _host.preClear();
     _isHires = false;
 }
 
 void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
 {
+    _host.preClear();
     _isHires = false;
     _screen.setAll(0);
     _screenNeedsUpdate = true;
@@ -550,6 +558,7 @@ void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
 void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
 {
     if(_isHires && !_isMegaChipMode) {
+        _host.preClear();
         _isHires = false;
         clearScreen();
         _screenNeedsUpdate = true;
@@ -559,11 +568,13 @@ void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
 
 void Chip8EmulatorFP::op00FF(uint16_t opcode)
 {
+    _host.preClear();
     _isHires = true;
 }
 
 void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 {
+    _host.preClear();
     _isHires = true;
     _screen.setAll(0);
     _screenNeedsUpdate = true;
@@ -573,6 +584,7 @@ void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
 {
     if(!_isHires && !_isMegaChipMode) {
+        _host.preClear();
         _isHires = true;
         clearScreen();
         _screenNeedsUpdate = true;

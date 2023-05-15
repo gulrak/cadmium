@@ -587,14 +587,14 @@ public:
         // {0x272223, 0xf2d3ac, 0xe7a76c, 0x6a422c, 0xb55b39, 0xb19e3f, 0x7a6977, 0xf8c65c, 0x996336, 0x606b31, 0x513a3d, 0xd58b39, 0xc28462, 0xb5c69a, 0x905b54, 0x878c87}
         // Soul of the Sea
         // {0x01141a, 0xcfbc95, 0x93a399, 0x2f4845, 0x92503f, 0x949576, 0x425961, 0x81784d, 0x703a28, 0x7a7e67, 0x203633, 0x605f33, 0x56452b, 0x467e73, 0x403521, 0x51675a}
-
+/*
         setPalette({
-            be32(0x1a1c2cff), be32(0xf4f4f4ff), be32(0x94b0c2ff), be32(0x333c57ff),
-            be32(0xb13e53ff), be32(0xa7f070ff), be32(0x3b5dc9ff), be32(0xffcd75ff),
-            be32(0x5d275dff), be32(0x38b764ff), be32(0x29366fff), be32(0x566c86ff),
-            be32(0xef7d57ff), be32(0x73eff7ff), be32(0x41a6f6ff), be32(0x257179ff)
+            0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff,
+            0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff,
+            0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff,
+            0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
         });
-
+*/
 #ifdef PLATFORM_WEB
         JsClipboard_AddJsHook();
 #endif
@@ -861,7 +861,7 @@ public:
     {
         if(!_customPalette) {
             for (int i = 0; i < palette.size(); ++i) {
-                _colorPalette[i] = be32((rgb332To888(palette[i]) << 8) | 0xff);
+                _colorPalette[i] = ((rgb332To888(palette[i]) << 8) | 0xff);
             }
             _updateScreen = true;
         }
@@ -1214,6 +1214,10 @@ public:
         Rectangle video;
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
+        static bool colorSelectOpen = false;
+        static uint32_t* selectedColor = nullptr;
+        static std::string colorText;
+        static uint32_t previousColor{};
 
 #ifdef RESIZABLE_GUI
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
@@ -1567,7 +1571,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("Opcode variant:");
-                            if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -1576,6 +1580,7 @@ public:
                                 auto rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
                                 Label(TextFormat("   [%s based]", rcb->getBackendCpu().getName().c_str()));
                             }
+                            Space(2);
                             _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
                             End();
                             EndColumns();
@@ -1640,6 +1645,110 @@ public:
                             EndGroupBox();
                             if(!_chipEmu->isGenericEmulation())
                                 GuiEnable();
+                            Space(15);
+                            {
+                                StyleManager::Scope guard;
+                                BeginColumns();
+                                auto pos = GetCurrentPos();
+                                SetNextWidth(52.0f + 16*18);
+                                Label("Colors:");
+                                for (int i = 0; i < 16; ++i) {
+                                    DrawRectangle(pos.x + 52 + i * 18 + 2, pos.y + 2 , 12, 12, GetColor(_colorPalette[i]));
+                                    bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + 52 + i * 18, pos.y, 16, 16});
+                                    if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
+                                        selectedColor = &_colorPalette[i];
+                                        previousColor = _colorPalette[i];
+                                        colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
+                                        colorSelectOpen = true;
+                                    }
+                                    DrawRectangleLines(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
+                                }
+                                static std::vector<uint32_t> prevPalette(_colorPalette.begin(), _colorPalette.end());
+                                if(std::memcmp(prevPalette.data(), _colorPalette.data(), 16*sizeof(uint32_t)) != 0) {
+                                    setPalette({_colorPalette.begin(), _colorPalette.end()});
+                                    prevPalette.assign(_colorPalette.begin(), _colorPalette.end());
+                                }
+                                static int sel = 5;
+
+                                if(DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;Custom", &sel)) {
+                                    switch(sel) {
+                                        case 0:
+                                            setPalette({
+                                                0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff,
+                                                0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff,
+                                                0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff,
+                                                0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
+                                            });
+                                            _defaultPalette = _colorPalette;
+                                            sel = 5;
+                                            break;
+                                        case 1:
+                                            setPalette({
+                                                0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
+                                                0xff0000ff, 0x00ff00ff, 0x0000ffff, 0xffff00ff,
+                                                0x880000ff, 0x008800ff, 0x000088ff, 0x888800ff,
+                                                0xff00ffff, 0x00ffffff, 0x880088ff, 0x008888ff
+                                            });
+                                            _defaultPalette = _colorPalette;
+                                            sel = 5;
+                                            break;
+                                        case 2:
+                                            setPalette({
+                                                0x000000ff, 0xfff1e8ff, 0xc2c3c7ff, 0x5f574fff,
+                                                0xef7d57ff, 0x00e436ff, 0x29adffff, 0xffec27ff,
+                                                0xab5236ff, 0x008751ff, 0x1d2b53ff, 0xffa300ff,
+                                                0xff77a8ff, 0xffccaaff, 0x7e2553ff, 0x83769cff
+                                            });
+                                            _defaultPalette = _colorPalette;
+                                            sel = 5;
+                                            break;
+                                        case 3:
+                                            setPalette({
+                                                0x996600ff, 0xFFCC00ff, 0xFF6600ff, 0x662200ff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
+                                            });
+                                            _defaultPalette = _colorPalette;
+                                            sel = 5;
+                                            break;
+                                        case 4:
+                                            setPalette({
+                                                0xf2fff2ff, 0x5b8c7cff, 0xadd9bcff, 0x0d1a1aff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
+                                                0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
+                                            });
+                                            _defaultPalette = _colorPalette;
+                                            sel = 5;
+                                            break;
+                                        default:
+                                            break;
+                                    }
+                                    // SWEETIE-16:
+                                    // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57,  0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75,  0xb13e53, 0x38b764, 0x29366f, 0x566c86,  0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
+                                    // PICO-8:
+                                    // {0x000000, 0xfff1e8, 0xc2c3c7, 0x5f574f,  0xff004d, 0x00e436, 0x29adff, 0xffec27,  0xab5236, 0x008751, 0x1d2b53, 0xffa300,  0xff77a8, 0xffccaa, 0x7e2553, 0x83769c}
+                                    // C64:
+                                    // {0x000000, 0xffffff, 0xadadad, 0x626262, 0xa1683c, 0x9ae29b, 0x887ecb, 0xc9d487, 0x9f4e44, 0x5cab5e, 0x50459b, 0x6d5412, 0xcb7e75, 0x6abfc6, 0xa057a3, 0x898989}
+                                    // Intellivision:
+                                    // {0x0c0005, 0xfffcff, 0xa7a8a8, 0x3c5800, 0xff3e00, 0x6ccd30, 0x002dff, 0xfaea27, 0xffa600, 0x00a720, 0xbd95ff, 0xc9d464, 0xff3276, 0x5acbff, 0xc81a7d, 0x00780f}
+                                    // CGA
+                                    // {0x000000, 0xffffff, 0xaaaaaa, 0x555555, 0xff5555, 0x55ff55, 0x5555ff, 0xffff55, 0xaa0000, 0x00aa00, 0x0000aa, 0xaa5500, 0xff55ff, 0x55ffff, 0xaa00aa, 0x00aaaa}
+                                    // Silicon-8 1.0
+                                    // {0x000000, 0xffffff, 0xaaaaaa, 0x555555, 0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0x880000, 0x008800, 0x000088, 0x888800, 0xff00ff, 0x00ffff, 0x880088, 0x008888}
+                                    // Macintosh II
+                                    // {0x000000, 0xffffff, 0xb9b9b9, 0x454545, 0xdc0000, 0x00a800, 0x0000ca, 0xffff00, 0xff6500, 0x006500, 0x360097, 0x976536, 0xff0097, 0x0097ff, 0x653600, 0x868686}
+                                    // IBM PCjr
+                                    // {0x1c2536, 0xced9ed, 0x81899e, 0x030625, 0xe85685, 0x2cc64e, 0x0000e8, 0xa7c251, 0x9f2441, 0x077c35, 0x0e59f0, 0x4b7432, 0xc137ff, 0x0bc3a9, 0x6b03ca, 0x028566}
+                                    // Daylight-16
+                                    // {0x272223, 0xf2d3ac, 0xe7a76c, 0x6a422c, 0xb55b39, 0xb19e3f, 0x7a6977, 0xf8c65c, 0x996336, 0x606b31, 0x513a3d, 0xd58b39, 0xc28462, 0xb5c69a, 0x905b54, 0x878c87}
+                                    // Soul of the Sea
+                                    // {0x01141a, 0xcfbc95, 0x93a399, 0x2f4845, 0x92503f, 0x949576, 0x425961, 0x81784d, 0x703a28, 0x7a7e67, 0x203633, 0x605f33, 0x56452b, 0x467e73, 0x403521, 0x51675a}
+
+                                }
+                                EndColumns();
+                            }
                             Space(30);
                             if(oldOptions != _options) {
                                 updateEmulatorOptions(_options);
@@ -1733,6 +1842,42 @@ public:
                     break;
                 }
             }
+
+            if(colorSelectOpen) {
+                colorSelectOpen = !BeginWindowBox({-1, -1, 200, 250}, "Select Color", &colorSelectOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
+                uint32_t prevCol = *selectedColor;
+                *selectedColor = ColorToInt(ColorPicker(GetColor(*selectedColor)));
+                if(*selectedColor != prevCol) {
+                    colorText = fmt::format("{:06x}", *selectedColor>>8);
+                }
+                Space(5);
+                BeginColumns();
+                SetNextWidth(40);
+                Label("Color:");
+                SetNextWidth(60);
+                if(TextBox(colorText, 7)) {
+                    *selectedColor = (std::strtoul(colorText.c_str(), nullptr, 16)<<8)+255;
+                }
+                EndColumns();
+                Space(5);
+                BeginColumns();
+                Space(30);
+                SetNextWidth(60);
+                if(Button("Ok")) {
+                    _defaultPalette = _colorPalette;
+                    selectedColor = nullptr;
+                    colorSelectOpen = false;
+                }
+                SetNextWidth(60);
+                if(Button("Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+                    *selectedColor = previousColor;
+                    selectedColor = nullptr;
+                    colorSelectOpen = false;
+                }
+                EndColumns();
+                EndWindowBox();
+            }
+
             EndGui();
         }
         if(_chipEmu->getExecMode() != ExecMode::ePAUSED) {
@@ -2038,7 +2183,13 @@ public:
     {
 #ifndef PLATFORM_WEB
         if(!_cfgPath.empty()) {
-            _cfg.emuOptions = _options;
+            auto opt = _options.clone();
+            std::vector<std::string> pal(16, "");
+            for(size_t i = 0; i < 16; ++i) {
+                pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
+            }
+            opt.advanced["palette"] = pal;
+            _cfg.emuOptions = opt;
             _cfg.workingDirectory = _currentDirectory;
             _cfg.databaseDirectory = _databaseDirectory;
             if(!_cfg.save(_cfgPath)) {
@@ -2078,7 +2229,7 @@ public:
             _audioBuffer.reset();
             updateScreen();
             _instructionOffset = -1;
-            std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
+            std::memcpy(_chipEmu->memory() + _options.startAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - _options.startAddress)));
         }
         _debugger.captureStates();
     }
@@ -2466,10 +2617,11 @@ int main(int argc, char* argv[])
         //chip8options.optDontResetVf = true;
         //chip8options.optInstantDxyn = true;
         if(!randomGen.empty()) {
-            options.advanced = std::make_shared<nlohmann::ordered_json>(nlohmann::ordered_json::object({
+            options.advanced = nlohmann::ordered_json::object({
                 {"random", randomGen},
                 {"seed", randomSeed}
-            }));
+            });
+            options.updatedAdvaced();
         }
         auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, options);
         std::clog << "Engine1: " << chip8->name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(options.behaviorBase) << std::endl;

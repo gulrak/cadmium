@@ -1117,7 +1117,7 @@ void EndPopup()
     EndTextureMode();
     g_contextStack.pop();
     SetMouseOffset((int)g_contextStack.top().mouseOffset.x, (int)g_contextStack.top().mouseOffset.y);
-    if (std::get<RenderTexture*>(g_contextStack.top().contextData)) {
+    if (std::holds_alternative<RenderTexture*>(g_contextStack.top().contextData)) {
         BeginTextureMode(*std::get<RenderTexture*>(g_contextStack.top().contextData));
     }
 }
