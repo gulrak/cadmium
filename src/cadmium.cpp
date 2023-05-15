@@ -523,8 +523,10 @@ public:
         }
          */
         generateFont();
-        if(chip8options)
+        if(chip8options) {
             _options = *chip8options;
+            setPalette({_defaultPalette.begin(), _defaultPalette.end()});
+        }
         else
             _mainView = eSETTINGS;
         updateEmulatorOptions(_options);

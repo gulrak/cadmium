@@ -314,7 +314,7 @@ void Chip8EmulatorBase::reset()
     _xoPitch = 64;
     _planes = 0xff;
     clearScreen();
-    _host.updatePalette(_xxoPalette);
+    //_host.updatePalette(_xxoPalette);
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
     _isHires = _options.optOnlyHires ? true : false;

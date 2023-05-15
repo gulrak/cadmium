@@ -285,13 +285,14 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
     if(j.contains("advanced")) {
         o.advanced = j.at("advanced");
+        o.unifyColors();
         o.updatedAdvaced();
     }
 }
 
-void unifyColors()
-void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette)
+void Chip8EmulatorOptions::unifyColors()
 {
+    std::array<uint32_t,256> palette;
     int maxIdx = -1;
     if(!advanced.empty()) {
         if(advanced.contains("backgroundColor")) {
@@ -361,6 +362,27 @@ void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette)
     }
 }
 
+void Chip8EmulatorOptions::updateColors(std::array<uint32_t,256>& palette)
+{
+    if(advanced.contains("palette") && advanced.at("palette").is_array()) {
+        auto pal = advanced.at("palette");
+        size_t idx = 0;
+        for(const auto& val : pal) {
+            if(idx >= palette.size())
+                break;
+            if(val.is_string()) {
+                auto str = val.get<std::string>();
+                if(str.length()>1 && str[0] == '#')
+                    palette[idx] = (std::strtoul(str.data() + 1, nullptr, 16) << 8) + 255;
+            }
+            else if(val.is_number_unsigned()) {
+                palette[idx] = (val.get<uint32_t>() << 8) + 255;
+            }
+            ++idx;
+        }
+    }
+}
+
 bool Chip8EmulatorOptions::hasColors() const
 {
     return advanced.contains("palette") && advanced.at("palette").is_array();
@@ -368,8 +390,6 @@ bool Chip8EmulatorOptions::hasColors() const
 
 void Chip8EmulatorOptions::updatedAdvaced()
 {
-    std::array<uint32_t,256> temp;
-    updateColors(temp);
     advancedDump = advanced.dump();
 }
 
