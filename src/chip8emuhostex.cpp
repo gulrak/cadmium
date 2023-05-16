@@ -26,6 +26,7 @@
 
 #include <chip8emuhostex.hpp>
 
+#include <chiplet/chip8decompiler.hpp>
 #include <emulation/chip8emulatorbase.hpp>
 #include <emulation/utility.hpp>
 #include <emulation/c8bfile.hpp>
@@ -276,15 +277,13 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
                 _librarian.fetchDir(_currentDirectory);
             }
             std::string source;
-#ifdef WITH_EDITOR
-            if(_editor.isEmpty() && _romImage.size() < 65536) {
+            if(_romImage.size() < 65536) {
                 std::stringstream os;
                 emu::Chip8Decompiler decomp;
                 decomp.setVariant(_options.presetAsVariant());
                 decomp.decompile(filename, _romImage.data(), 0x200, _romImage.size(), 0x200, &os, false, true);
                 source = os.str();
             }
-#endif
             whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), andRun, c8c.get(), source);
         }
         //memory[0x1FF] = 3;
