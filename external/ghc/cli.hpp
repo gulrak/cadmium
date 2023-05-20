@@ -153,8 +153,7 @@ private:
                         *std::get<bool*>(info.valPtr) = boolKeys.at(*iter++);
                     }
                     else {
-                        std::cerr << "bool-arg: " << name << ", old value " << *std::get<bool*>(info.valPtr) << std::endl;
-                        *std::get<bool*>(info.valPtr) = true;//(*std::get<bool*>(info.valPtr) == false);
+                        *std::get<bool*>(info.valPtr) = true;
                     }
                     if(info.triggerCallback)
                         info.triggerCallback();
