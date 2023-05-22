@@ -298,7 +298,7 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
 inline void Chip8EmulatorFP::executeInstruction()
 {
     if(_execMode == eRUNNING) {
-        if(_options.optTraceLog)
+        if(_options.optTraceLog && _cpuState != eWAITING)
             Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         ++_cycleCounter;

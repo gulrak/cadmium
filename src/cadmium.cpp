@@ -2490,24 +2490,63 @@ div.footer { font-size: 0.7em; }
 
 void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Variant)0x3FFFFFFFFFFFFFFF)
 {
-    nlohmann::ordered_json collection = nlohmann::json::array({});
+    using namespace nlohmann;
+    ordered_json root = ordered_json::object({});
+    ordered_json collection = json::array({});
+    std::regex quirkRE(R"(\s*\[Q:([^\]]+)\])");
+    std::map<std::string, size_t> quirkMap;
+    std::vector<std::string> quirkList;
     for(const auto& info : emu::detail::opcodes) {
         if(uint64_t(info.variants & variants) != 0) {
-            auto obj = nlohmann::ordered_json::object({});
+            auto obj = ordered_json::object({});
             obj["opcode"] = formatOpcodeString(info.type, info.opcode);
+            obj["size"] = info.size;
             obj["octo"] = info.octo;
-            obj["platforms"] = nlohmann::json::array();
+            auto mnemonic = info.octo.substr(0, info.octo.find(" "));
+            if(emu::detail::octoMacros.count(mnemonic)) {
+                obj["macro"] = emu::detail::octoMacros.at(mnemonic);
+            }
+            if(!info.mnemonic.empty()) {
+                obj["chipper"] = info.mnemonic;
+            }
+            obj["platforms"] = json::array();
             auto mask = static_cast<uint64_t>(variants & info.variants);
             while(mask) {
                 auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
                 mask &= mask - 1;
                 obj["platforms"].push_back(emu::Chip8Decompiler::chipVariantName(cv).first);
             }
-            obj["description"] = info.description;
+            auto desc = info.description;
+            std::smatch m;
+            size_t qidx = 0;
+            ordered_json quirks = json::array({});
+            while (std::regex_search(desc, m, quirkRE)) {
+                auto iter = quirkMap.find(m[1]);
+                if (iter == quirkMap.end()) {
+                    quirkMap.emplace(m[1], quirkList.size() + 1);
+                    quirkList.push_back(trim(m[1]));
+                    qidx = quirkList.size();
+                }
+                else
+                    qidx = iter->second;
+                quirks.push_back(qidx);
+                desc = desc.replace(m[0].first, m[0].second, "");
+            }
+            obj["description"] = trim(desc);
+            if(!quirks.empty())
+                obj["quirks"] = quirks;
             collection.push_back(obj);
         }
     }
-    os << collection.dump(2) << std::endl;
+    root["generator"] = "Cadmium";
+    root["version"] = CADMIUM_VERSION " " CADMIUM_GIT_HASH;
+    std::stringstream oss;
+    auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    oss << std::put_time( std::gmtime( &t ), "%F" );
+    root["date"] = oss.str();
+    root["opcodes"] = collection;
+    root["quirks"] = json(quirkList);
+    os << root.dump() << std::endl;
 }
 
 int main(int argc, char* argv[])
@@ -2581,7 +2620,7 @@ int main(int argc, char* argv[])
         exit(0);
     }
     if(opcodeJSON) {
-        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
+        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
     }
     if(romFile.size() > 1) {
