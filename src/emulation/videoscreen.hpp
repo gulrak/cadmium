@@ -180,6 +180,26 @@ public:
         }
         return collision;
     }
+    inline bool drawSpritePixelDoubledSC(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    {
+        auto* pixel = _screenBuffer.data() + _stride * y + x;
+        bool collision = false;
+        if (planes) {
+            if (*pixel & planes)
+                collision = true;
+            *pixel ^= planes;
+            if (!hires) {
+                if (*(pixel + 1) & planes)
+                    collision = true;
+                *(pixel + 1) ^= planes;
+            }
+        }
+        if(!hires) {
+            *(pixel + _stride) = *pixel;
+            *(pixel + _stride + 1) = *(pixel + 1);
+        }
+        return collision;
+    }
     void movePixelMasked(int sx, int sy, int dx, int dy, PixelType mask)
     {
         auto& dstPixel = _screenBuffer[dy * _stride + dx];

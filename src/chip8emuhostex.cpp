@@ -114,6 +114,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
 #endif
         auto fileData = loadFile(filename);
         auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
+        bool wasFromSource = false;
         //TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
         auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
         if(endsWith(filename, ".8o")) {
@@ -129,6 +130,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
                     _mainView = eEDITOR;
 #endif
                     valid = true;
+                    wasFromSource = true;
                 }
             }
         }
@@ -277,7 +279,10 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
                 _librarian.fetchDir(_currentDirectory);
             }
             std::string source;
-            if(_romImage.size() < 65536) {
+            if(wasFromSource) {
+                source = loadTextFile(filename);
+            }
+            else if(_romImage.size() < 65536) {
                 std::stringstream os;
                 emu::Chip8Decompiler decomp;
                 decomp.setVariant(_options.presetAsVariant());

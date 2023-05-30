@@ -734,7 +734,12 @@ public:
     inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         if constexpr (quirks&HiresSupport) {
-            return _screen.drawSpritePixelDoubled(x, y, planes, hires);
+            if constexpr ((quirks&SChip1xLoresDraw) != 0) {
+                return _screen.drawSpritePixelDoubledSC(x, y, planes, hires);
+            }
+            else {
+                return _screen.drawSpritePixelDoubled(x, y, planes, hires);
+            }
         }
         return _screen.drawSpritePixel(x, y, planes);
     }
@@ -781,9 +786,15 @@ public:
                         for (unsigned b = 0; b < width; ++b, value <<= 1) {
                             if (b == 8)
                                 value = *data++;
-                            if (x + b * scale < scrWidth && (value & 0x80)) {
-                                if (drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, plane, hires))
+                            if constexpr ((quirks&SChip1xLoresDraw) != 0) {
+                                if (x + b * scale < scrWidth && drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, value & 0x80 ? plane : 0, hires))
                                     lineCol = 1;
+                            }
+                            else {
+                                if (x + b * scale < scrWidth && (value & 0x80)) {
+                                    if (drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, plane, hires))
+                                        lineCol = 1;
+                                }
                             }
                         }
                         collision += lineCol;

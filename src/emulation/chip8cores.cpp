@@ -93,8 +93,12 @@ void Chip8EmulatorFP::setHandler()
         else {
             if (_options.optWrapSprites)
                 on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|WrapSprite>);
-            else
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport>);
+            else {
+                if (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP10)
+                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|SChip1xLoresDraw>);
+                else
+                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport>);
+            }
         }
     }
     else {
@@ -138,9 +142,6 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
         case Chip8EmulatorOptions::eSCHIP11:
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
-            [[fallthrough]];
         case Chip8EmulatorOptions::eSCHPC:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
@@ -149,6 +150,10 @@ void Chip8EmulatorFP::setHandler()
             if(_options.behaviorBase == Chip8EmulatorOptions::eSCHPC) {
                 on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
                 on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
+            }
+            else {
+                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
+                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
             }
             on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
             on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);

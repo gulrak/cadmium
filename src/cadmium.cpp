@@ -2500,6 +2500,7 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
         if(uint64_t(info.variants & variants) != 0) {
             auto obj = ordered_json::object({});
             obj["opcode"] = formatOpcodeString(info.type, info.opcode);
+            obj["mask"] = emu::detail::opcodeMasks[info.type];
             obj["size"] = info.size;
             obj["octo"] = info.octo;
             auto mnemonic = info.octo.substr(0, info.octo.find(" "));
@@ -2523,9 +2524,9 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
             while (std::regex_search(desc, m, quirkRE)) {
                 auto iter = quirkMap.find(m[1]);
                 if (iter == quirkMap.end()) {
-                    quirkMap.emplace(m[1], quirkList.size() + 1);
-                    quirkList.push_back(trim(m[1]));
+                    quirkMap.emplace(m[1], quirkList.size());
                     qidx = quirkList.size();
+                    quirkList.push_back(trim(m[1]));
                 }
                 else
                     qidx = iter->second;
