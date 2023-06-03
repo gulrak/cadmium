@@ -38,6 +38,10 @@
 #include <utility>
 #include <iostream>
 
+#ifndef NDEBUG
+#define DIFFERENTIATE_CYCLES
+#endif
+
 #define CASE_7(base) case base: case base+1: case base+2: case base+3: case base+4: case base+5: case base+6
 #define CASE_15(base) case base: case base+1: case base+2: case base+3: case base+4: case base+5: case base+6: case base+7:\
                      case base+8: case base+9: case base+10: case base+11: case base+12: case base+13: case base+14
@@ -87,7 +91,7 @@ public:
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
     using NEFInputHandler = std::function<bool (uint8_t)>;
-    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 1760900)
+    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 1760640)
         : _bus(bus)
         , _clockSpeed(clockFreq)
     {
@@ -108,6 +112,10 @@ public:
         _rR[1] = 0xfff;
         _rIE = true;
         _cycles = 0;
+#ifdef DIFFERENTIATE_CYCLES
+        _idleCycles = 0;
+        _irqCycles = 0;
+#endif
         _systemTime = Time::zero;
         _execMode = eRUNNING;
         _cpuState = eNORMAL;
@@ -133,6 +141,10 @@ public:
     void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
     int64_t getCycles() const GENERIC_OVERRIDE { return _cycles; }
+#ifdef DIFFERENTIATE_CYCLES
+    int64_t getIdleCycles() const { return _idleCycles; }
+    int64_t getIrqCycles() const { return _irqCycles; }
+#endif
     CpuState getCpuState() const { return _cpuState; }
     uint16_t& PC() { return _rR[_rP]; }
     uint8_t getN() const { return _rN; }
@@ -186,6 +198,14 @@ public:
     void addCycles(cycles_t cycles)
     {
         _cycles += cycles;
+#ifdef DIFFERENTIATE_CYCLES
+        if(_cpuState == eIDLE) {
+            _idleCycles += cycles;
+        }
+        else if(!_rIE) {
+            _irqCycles += cycles;
+        }
+#endif
         _systemTime.addCycles(cycles, _clockSpeed);
     }
     void branchLong(bool condition)
@@ -324,9 +344,9 @@ public:
     void triggerInterrupt()
     {
         if(_rIE) {
-            //std::clog << fmt::format("CDP1802: [{:9}]  ", _cycles) << "--- IRQ ---" << std::endl;
-            addCycles(8);
+            //std::clog << fmt::format("CDP1802: [{:9}]  ", _cycles>>3) << "--- IRQ ---" << std::endl;
             _rIE = false;
+            addCycles(8);
             _rT = (_rX << 4) | _rP;
             _rP = 1;
             _rX = 2;
@@ -337,17 +357,17 @@ public:
 
     void executeDMAIn(uint8_t data)
     {
-        addCycles(8);
         if(_cpuState == eIDLE)
             _cpuState = eNORMAL;
+        addCycles(8);
         writeByte(_rR[0]++, data);
     }
 
     std::pair<uint8_t,uint16_t> executeDMAOut()
     {
-        addCycles(8);
         if(_cpuState == eIDLE)
             _cpuState = eNORMAL;
+        addCycles(8);
         auto addr = _rR[0]++;
         return {readByteDMA(addr), addr};
     }
@@ -779,7 +799,9 @@ private:
     bool _rIE{false};
     bool _rQ{false};
     bool _irq{false};
-    int64_t _cycles;
+    int64_t _cycles{};
+    int64_t _idleCycles{};
+    int64_t _irqCycles{};
     Time::ticks_t _clockSpeed{};
     Time _systemTime;
 };

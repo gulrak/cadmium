@@ -103,7 +103,7 @@ int Cdp186x::executeStep()
     }
     if(_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
         return _frameCycle;
-    if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 1 && _cpu.getIE()) {
+    if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
         _displayEnabledLatch = _displayEnabled;
         if(_displayEnabled) {
             if (_options.optTraceLog)

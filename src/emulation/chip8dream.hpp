@@ -46,6 +46,7 @@ public:
     void executeInstruction() override;
     void executeInstructions(int numInstructions) override;
     void tick(int instructionsPerFrame) override;
+    int64_t getMachineCycles() const override;
 
     uint8_t* memory() override;
     int memSize() const override;

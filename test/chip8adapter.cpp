@@ -89,6 +89,26 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     }
 }
 
+#elif defined(TEST_CHIP8EMULATOR_STRICT)
+#include <emulation/chip8cores.hpp>
+#include <emulation/chip8strict.hpp>
+
+std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
+{
+    using namespace emu;
+    static Chip8EmulatorOptions options;
+    switch(variant) {
+        case C8TV_GENERIC:
+        case C8TV_C8:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
+            break;
+        default:
+            return nullptr;
+    }
+    static emu::Chip8HeadlessHost host(options);
+    return std::make_unique<emu::Chip8StrictEmulator>(host, options);
+}
+
 #elif defined(TEST_CHIP8EMULATOR_FP)
 #include <emulation/chip8cores.hpp>
 
@@ -138,7 +158,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         default:
             return nullptr;
     }
-    options.optTraceLog = true;
+    //options.optTraceLog = true;
     static emu::Chip8HeadlessHost host(options);
     return std::make_unique<emu::Chip8VIP>(host, options);
 }

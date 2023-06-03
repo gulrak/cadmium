@@ -65,7 +65,6 @@ public:
         eCHIP8VIP,      // cdp1802 based vip core running original emulator (only supports <ch48 cores, but runs hybrids)
         eCHIP8DREAM     // M6800 based DREAM6800 code running CHIPOS
     };
-    //enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eWAITING, eERROR };
     using VideoType = VideoScreen<uint8_t, 256, 192>;
     using VideoRGBAType = VideoScreen<uint32_t, 256, 192>;
@@ -104,6 +103,7 @@ public:
     virtual uint16_t opcode() {
         return (memory()[getPC()] << 8) | memory()[getPC() + 1];
     }
+    virtual int64_t getMachineCycles() const { return getCycles(); }
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}

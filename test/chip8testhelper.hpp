@@ -25,6 +25,8 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <iostream>
+
 struct Chip8State
 {
     int i{};
@@ -41,6 +43,7 @@ struct Chip8State
 
 inline void CheckState(const std::unique_ptr<emu::IChip8Emulator>& chip8, const Chip8State& expected, std::string comment = "")
 {
+    std::cerr << "MC: " << chip8->getMachineCycles() << std::endl;
     std::string message = (comment.empty()?"":"\nAfter step #" + std::to_string(Chip8State::stepCount) + "\nCOMMENT: " + comment) + "\nPRE:  " + Chip8State::pre + "\nPOST: " + Chip8State::post;
     INFO(message);
     if(expected.i >= 0) CHECK(expected.i == chip8->getI());

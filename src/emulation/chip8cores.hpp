@@ -57,7 +57,7 @@ public:
     constexpr static int SCREEN_HEIGHT = quirks&HiresSupport ? 64 : 32;
 
     Chip8Emulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
-    : Chip8EmulatorBase(host, options, other)
+        : Chip8EmulatorBase(host, options, other)
     {
         _memory.resize(MEMORY_SIZE, 0);
     }
@@ -80,7 +80,6 @@ public:
         uint16_t opcode = readWord(_rPC);
         _rPC = (_rPC + 2) & ADDRESS_MASK;
         ++_cycleCounter;
-        addCycles(68);
         switch (opcode >> 12) {
             case 0:
                 if((opcode & 0xfff0) == 0x00C0) { // scroll-down
@@ -91,14 +90,12 @@ public:
                     auto n = (opcode & 0xf);
                     _screen.scrollUp(n);
                 }
-                else if (opcode == 0x00E0) {  // 00E0 - CLS
+                else if (opcode == 0x00E0) {  // 00E0 - clear
                     clearScreen();
                     ++_clearCounter;
-                    addCycles(24);
                 }
-                else if (opcode == 0x00EE) {  // 00EE - RET
+                else if (opcode == 0x00EE) {  // 00EE - return
                     _rPC = _stack[--_rSP];
-                    addCycles(10);
                     if (_execMode == eSTEPOUT)
                         _execMode = ePAUSED;
                 }
@@ -118,44 +115,30 @@ public:
                     _isHires = true;
                 }
                 break;
-            case 1:  // 1nnn - JP addr
+            case 1:  // 1nnn - jump NNN
                 if((opcode & 0xFFF) == _rPC - 2)
-                    _execMode = ePAUSED; 
+                    _execMode = ePAUSED;
                 _rPC = opcode & 0xFFF;
-                addCycles(12);
                 break;
-            case 2:  // 2nnn - CALL addr
+            case 2:  // 2nnn - :call NNN
                 _stack[_rSP++] = _rPC;
                 _rPC = opcode & 0xFFF;
-                addCycles(26);
                 break;
-            case 3:  // 3xkk - SE Vx, byte
+            case 3:  // 3xnn - if vX != NN then
                 if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
                     _rPC += 2;
-                    addCycles(14);
-                }
-                else {
-                    addCycles(10);
                 }
                 break;
-            case 4:  // 4xkk - SNE Vx, byte
+            case 4:  // 4xnn - if vX == NN then
                 if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
                     _rPC += 2;
-                    addCycles(14);
-                }
-                else {
-                    addCycles(10);
                 }
                 break;
             case 5: {
                 switch (opcode & 0xF) {
-                    case 0: // 5xy0 - SE Vx, Vy
+                    case 0: // 5xy0 - if vX != vY then
                         if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
                             _rPC += 2;
-                            addCycles(18);
-                        }
-                        else {
-                            addCycles(14);
                         }
                         break;
                     case 2: {  // 5xy2  - save vx - vy
@@ -189,50 +172,45 @@ public:
                 }
                 break;
             }
-            case 6:  // 6xkk - LD Vx, byte
+            case 6:  // 6xnn - vX := NN
                 _rV[(opcode >> 8) & 0xF] = opcode & 0xFF;
-                addCycles(6);
                 break;
-            case 7:  // 7xkk - ADD Vx, byte
+            case 7:  // 7xnn - vX += NN
                 _rV[(opcode >> 8) & 0xF] += opcode & 0xFF;
-                addCycles(10);
                 break;
             case 8: {
                 switch (opcode & 0xF) {
-                    case 0:  // 8xy0 - LD Vx, Vy
+                    case 0:  // 8xy0 - vX := vY
                         _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF];
-                        addCycles(12);
                         break;
-                    case 1:  // 8xy1 - OR Vx, Vy
+                    case 1:  // 8xy1 - vX |= vY
                         _rV[(opcode >> 8) & 0xF] |= _rV[(opcode >> 4) & 0xF];
                         if (!_options.optDontResetVf)
                             _rV[0xF] = 0;
                         break;
-                    case 2:  // 8xy2 - AND Vx, Vy
+                    case 2:  // 8xy2 - vX &= vY
                         _rV[(opcode >> 8) & 0xF] &= _rV[(opcode >> 4) & 0xF];
                         if (!_options.optDontResetVf)
                             _rV[0xF] = 0;
                         break;
-                    case 3:  // 8xy3 - XOR Vx, Vy
+                    case 3:  // 8xy3 - vX ^= vY
                         _rV[(opcode >> 8) & 0xF] ^= _rV[(opcode >> 4) & 0xF];
                         if (!_options.optDontResetVf)
                             _rV[0xF] = 0;
                         break;
-                    case 4: {  // 8xy4 - ADD Vx, Vy
+                    case 4: {  // 8xy4 - vX += vY
                         uint16_t result = _rV[(opcode >> 8) & 0xF] + _rV[(opcode >> 4) & 0xF];
                         _rV[(opcode >> 8) & 0xF] = result;
                         _rV[0xF] = result>>8;
-                        addCycles(44);
                         break;
                     }
-                    case 5: {  // 8xy5 - SUB Vx, Vy
+                    case 5: {  // 8xy5 - vX -= vY
                         uint16_t result = _rV[(opcode >> 8) & 0xF] - _rV[(opcode >> 4) & 0xF];
                         _rV[(opcode >> 8) & 0xF] = result;
                         _rV[0xF] = result > 255 ? 0 : 1;
-                        addCycles(44);
                         break;
                     }
-                    case 6:  // 8xy6 - SHR Vx, Vy
+                    case 6:  // 8xy6 - vX >>= vY
                         if (!_options.optJustShiftVx) {
                             uint8_t carry = _rV[(opcode >> 4) & 0xF] & 1;
                             _rV[(opcode >> 8) & 0xF] /*= rV[(opcode >> 4) & 0xF]*/ = _rV[(opcode >> 4) & 0xF] >> 1;
@@ -243,16 +221,14 @@ public:
                             _rV[(opcode >> 8) & 0xF] >>= 1;
                             _rV[0xF] = carry;
                         }
-                        addCycles(44);
                         break;
-                    case 7: {  // 8xy7 - SUBN Vx, Vy
+                    case 7: {  // 8xy7 - vX =- vY
                         uint16_t result = _rV[(opcode >> 4) & 0xF] - _rV[(opcode >> 8) & 0xF];
                         _rV[(opcode >> 8) & 0xF] = result;
                         _rV[0xF] = result > 255 ? 0 : 1;
-                        addCycles(44);
                         break;
                     }
-                    case 0xE:  // 8xyE - SHL Vx, Vy
+                    case 0xE:  // 8xyE - vX <<= vY
                         if (!_options.optJustShiftVx) {
                             uint8_t carry = _rV[(opcode >> 4) & 0xF] >> 7;
                             _rV[(opcode >> 8) & 0xF] /*= rV[(opcode >> 4) & 0xF]*/ = _rV[(opcode >> 4) & 0xF] << 1;
@@ -263,7 +239,6 @@ public:
                             _rV[(opcode >> 8) & 0xF] <<= 1;
                             _rV[0xF] = carry;
                         }
-                        addCycles(44);
                         break;
                     default:
                         errorHalt();
@@ -271,24 +246,18 @@ public:
                 }
                 break;
             }
-            case 9:  // 9xy0 - SNE Vx, Vy
+            case 9:  // 9xy0 - if vX == vY then
                 if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
                     _rPC += 2;
-                    addCycles(18);
-                }
-                else {
-                    addCycles(14);
                 }
                 break;
-            case 0xA:  // Annn - LD I, addr
+            case 0xA:  // Annn - i := NNN
                 _rI = opcode & 0xFFF;
-                addCycles(12);
                 break;
-            case 0xB:  // Bnnn - JP V0, addr / Bxnn - JP Vx, addr
+            case 0xB:  // Bnnn - jump0 NNN / Bxnn - JP Vx, addr
                 _rPC = _options.optJump0Bxnn ? (_rV[(opcode >> 8) & 0xF] + (opcode & 0xFFF)) & ADDRESS_MASK : (_rV[0] + (opcode & 0xFFF)) & ADDRESS_MASK;
-                addCycles(22); // TODO: Check page crossing +2MC
                 break;
-            case 0xC: {  // Cxkk - RND Vx, byte
+            case 0xC: {  // Cxnn - vX := random NN
                 ++_randomSeed;
                 uint16_t val = _randomSeed>>8;
                 val += _chip8_cosmac_vip[0x100 + (_randomSeed&0xFF)];
@@ -298,10 +267,9 @@ public:
                 _randomSeed = (_randomSeed & 0xFF) | (val << 8);
                 result = val & (opcode & 0xFF);
                 _rV[(opcode >> 8) & 0xF] = result; // GetRandomValue(0, 255) & (opcode & 0xFF);
-                addCycles(36);
                 break;
             }
-            case 0xD: {  // Dxyn - DRW Vx, Vy, nibble
+            case 0xD: {  // Dxyn - sprite vX vY N
                 if constexpr (quirks&HiresSupport) {
                     if(_isHires)
                     {
@@ -327,27 +295,18 @@ public:
                 break;
             }
             case 0xE:
-                if ((opcode & 0xff) == 0x9E) {  // Ex9E - SKP Vx
+                if ((opcode & 0xff) == 0x9E) {  // Ex9E - if vX -key then
                     if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
                         _rPC += 2;
-                        addCycles(18);
-                    }
-                    else {
-                        addCycles(14);
                     }
                 }
-                else if ((opcode & 0xff) == 0xA1) {  // ExA1 - SKNP Vx
+                else if ((opcode & 0xff) == 0xA1) {  // ExA1 - if vX key then
                     if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
                         _rPC += 2;
-                        addCycles(18);
-                    }
-                    else {
-                        addCycles(14);
                     }
                 }
                 break;
             case 0xF: {
-                addCycles(4);
                 switch (opcode & 0xFF) {
                     case 0x00: // i := long nnnn
                         if constexpr (addressLines == 16) {
@@ -369,10 +328,10 @@ public:
                         }
                         else
                             errorHalt();
-                    case 0x07:  // Fx07 - LD Vx, DT
+                    case 0x07:  // Fx07 - vX := delay
                         _rV[(opcode >> 8) & 0xF] = _rDT;
                         break;
-                    case 0x0A: {  // Fx0A - LD Vx, K
+                    case 0x0A: {  // Fx0A - vX := key
                         auto key = _host.getKeyPressed();
                         if (key) {
                             _rV[(opcode >> 8) & 0xF] = key - 1;
@@ -386,23 +345,23 @@ public:
                         }
                         break;
                     }
-                    case 0x15:  // Fx15 - LD DT, Vx
+                    case 0x15:  // Fx15 - delay := vX
                         _rDT = _rV[(opcode >> 8) & 0xF];
                         break;
-                    case 0x18:  // Fx18 - LD ST, Vx
+                    case 0x18:  // Fx18 - buzzer := vX
                         _rST = _rV[(opcode >> 8) & 0xF];
                         if(!_rST) _wavePhase = 0;
                         break;
-                    case 0x1E:  // Fx1E - ADD I, Vx
+                    case 0x1E:  // Fx1E - i += vX
                         _rI = (_rI + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
                         break;
-                    case 0x29:  // Fx29 - LD F, Vx
+                    case 0x29:  // Fx29 - i := hex vX
                         _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 5;
                         break;
-                    case 0x30:  // Fx30 - LD big F, Vx
+                    case 0x30:  // Fx30 - i := bighex vX
                         _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 10 + 16*5;
                         break;
-                    case 0x33: {  // Fx33 - LD B, Vx
+                    case 0x33: {  // Fx33 - bcd vX
                         uint8_t val = _rV[(opcode >> 8) & 0xF];
                         _memory[_rI & ADDRESS_MASK] = val / 100;
                         _memory[(_rI + 1) & ADDRESS_MASK] = (val / 10) % 10;
@@ -412,12 +371,10 @@ public:
                     case 0x3A: // Fx3A - pitch vx
                         _xoPitch.store(_rV[(opcode >> 8) & 0xF]);
                         break;
-                    case 0x55: {  // Fx55 - LD [I], Vx
+                    case 0x55: {  // Fx55 - save vX
                         uint8_t upto = (opcode >> 8) & 0xF;
-                        addCycles(14);
                         for (int i = 0; i <= upto; ++i) {
                             _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
-                            addCycles(14);
                         }
                         if(_rI + upto > ADDRESS_MASK)
                             fixupSafetyPad();
@@ -429,12 +386,10 @@ public:
                         }
                         break;
                     }
-                    case 0x65: {  // Fx65 - LD Vx, [I]
+                    case 0x65: {  // Fx65 - load vX
                         uint8_t upto = (opcode >> 8) & 0xF;
-                        addCycles(14);
                         for (int i = 0; i <= upto; ++i) {
                             _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
-                            addCycles(14);
                         }
                         if (_options.optLoadStoreIncIByX) {
                             _rI = (_rI + upto) & ADDRESS_MASK;

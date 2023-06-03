@@ -41,6 +41,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
 {
     switch(preset) {
         case eCHIP8: return Chip8Variant::CHIP_8;
+        case eCHIP8TE: return Chip8Variant::CHIP_8;
         case eCHIP10: return Chip8Variant::CHIP_10;
         case eCHIP48: return Chip8Variant::CHIP_48;
         case eSCHIP10: return Chip8Variant::SCHIP_1_0;
@@ -62,6 +63,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
 {
     switch(preset) {
         case eCHIP8: return "CHIP-8";
+        case eCHIP8TE: return "CHIP-8-STRICT";
         case eCHIP10: return "CHIP-10";
         case eCHIP48: return "CHIP-48";
         case eSCHIP10: return "SUPER-CHIP 1.0";
@@ -84,6 +86,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
 {
     switch(preset) {
         case eCHIP8: return "CHIP8";
+        case eCHIP8TE: return "CHIP8ST";
         case eCHIP10: return "CHIP10";
         case eCHIP48: return "CHIP48";
         case eSCHIP10: return "SCHIP10";
@@ -106,6 +109,10 @@ using Opts = emu::Chip8EmulatorOptions;
 
 static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetMap = {
     {"chip8", Opts::eCHIP8},
+    {"chip8st", Opts::eCHIP8TE},
+    {"chip8strict", Opts::eCHIP8TE},
+    {"chip8te", Opts::eCHIP8TE},
+    {"chip8timing", Opts::eCHIP8TE},
     {"chip10", Opts::eCHIP10},
     {"chip48", Opts::eCHIP48},
     {"schip10", Opts::eSCHIP10},
@@ -147,6 +154,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
 
 static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eCHIP8, R"({})"},
+    {Opts::eCHIP8TE, R"({})"},
     {Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
     {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":true,"optJump0Bxnn":true,"instructionsPerFrame":15})"},
     {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15})"},

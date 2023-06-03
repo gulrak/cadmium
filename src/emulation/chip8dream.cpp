@@ -262,6 +262,11 @@ void Chip8Dream::forceState()
     }
 }
 
+int64_t Chip8Dream::getMachineCycles() const
+{
+    return _impl->_cpu.getCycles();
+}
+
 int Chip8Dream::executeVDG()
 {
     static int lastFC = 312*64 + 1;

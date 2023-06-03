@@ -19,6 +19,11 @@ target_compile_definitions(chip8-tscore-tests PUBLIC TEST_CHIP8EMULATOR_TS C8COR
 target_link_libraries(chip8-tscore-tests PRIVATE doctest emulation)
 doctest_discover_tests(chip8-tscore-tests)
 
+add_executable(chip8-strictcore-tests main.cpp basic_opcode_tests.cpp variant_specific_opcode_tests.cpp chip8adapter.hpp chip8adapter.cpp)
+target_compile_definitions(chip8-strictcore-tests PUBLIC TEST_CHIP8EMULATOR_STRICT C8CORE="C8ST:")
+target_link_libraries(chip8-strictcore-tests PRIVATE doctest emulation)
+doctest_discover_tests(chip8-strictcore-tests)
+
 add_executable(chip8-vipcore-tests main.cpp basic_opcode_tests.cpp variant_specific_opcode_tests.cpp chip8adapter.hpp chip8adapter.cpp)
 target_compile_definitions(chip8-vipcore-tests PUBLIC TEST_CHIP8VIP C8CORE="C8RV:")
 target_link_libraries(chip8-vipcore-tests PRIVATE doctest emulation)

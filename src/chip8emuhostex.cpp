@@ -28,6 +28,7 @@
 
 #include <chiplet/chip8decompiler.hpp>
 #include <emulation/chip8emulatorbase.hpp>
+#include <emulation/chip8strict.hpp>
 #include <emulation/utility.hpp>
 #include <emulation/c8bfile.hpp>
 #include <systemtools.hpp>
@@ -82,6 +83,8 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
         else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
+        else if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
+            _chipEmu = std::make_unique<emu::Chip8StrictEmulator>(*this, _options, _chipEmu.get());
         else
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
         //

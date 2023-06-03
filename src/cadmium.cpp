@@ -1255,29 +1255,19 @@ public:
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->getCycles()).c_str()},
-                           {0.2f, formatUnit(ipsAvg, "IPS").c_str()/*fmt::format("{:.2f}MIPS", ips / 1000000).c_str()*/},
-                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str() /*fmt::format("{:.2f}k eFPS", (float)getFrameBoost() * GetFPS() / 1000).c_str()*/},
-                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
-            }
-            else if(_chipEmu->isGenericEmulation()) {
-                StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
-                           {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                           {0.2f, formatUnit(ipsAvg, "IPS").c_str()},
+                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else {
-                auto* vip = dynamic_cast<emu::Chip8VIP*>(_chipEmu.get());
-                if(vip) {
-                    const auto& cdp = vip->getBackendCpu();
-                    StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), cdp.getCycles(), _chipEmu->frames()).c_str()},
+                if(_chipEmu->getCycles() != _chipEmu->getMachineCycles()) {
+                    StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), _chipEmu->getMachineCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
-                auto* dream = dynamic_cast<emu::Chip8Dream*>(_chipEmu.get());
-                if(dream) {
-                    const auto& m6k8 = dream->getBackendCpu();
-                    StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), m6k8.getCycles(), _chipEmu->frames()).c_str()},
+                else {
+                    StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
@@ -1553,10 +1543,10 @@ public:
                             Space(5);
                             SetIndent(150);
                             SetRowHeight(20);
-                            if(!_chipEmu->isGenericEmulation())
+                            if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiDisable();
                             Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
-                            if(!_chipEmu->isGenericEmulation())
+                            if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
                             if (!_options.instructionsPerFrame) {
                                 static int _fb1{1};
@@ -1573,7 +1563,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("Opcode variant:");
-                            if(DropdownBox("CHIP-8;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -1587,7 +1577,7 @@ public:
                             End();
                             EndColumns();
                             Space(16);
-                            if(!_chipEmu->isGenericEmulation())
+                            if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiDisable();
                             BeginGroupBox("Quirks");
                             Space(5);
@@ -1645,7 +1635,7 @@ public:
                             End();
                             EndColumns();
                             EndGroupBox();
-                            if(!_chipEmu->isGenericEmulation())
+                            if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
                             Space(15);
                             {
@@ -2038,8 +2028,9 @@ public:
                     }
                 }
                 Space(3);
+                BeginColumns();
+                Space(32);
                 SetNextWidth(80);
-                SetIndent(32);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
                     //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
@@ -2048,7 +2039,18 @@ public:
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), false);
                     _mainView = _lastView;
                 }
+                SetNextWidth(110);
+                if(Button("Load w/o Config") && selectedInfo.analyzed) {
+                    //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
+                    //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
+                    //}
+                    auto options = _options;
+                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), false);
+                    updateEmulatorOptions(options);
+                    _mainView = _lastView;
+                }
                 GuiEnable();
+                EndColumns();
                 break;
             }
             case eWEB_SAVE:
@@ -2204,6 +2206,7 @@ public:
     void whenEmuChanged(emu::IChip8Emulator& emu) override
     {
         _debugger.updateCore(&emu);
+        reloadRom();
     }
 
     void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) override
@@ -2504,9 +2507,9 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
             obj["size"] = info.size;
             obj["octo"] = info.octo;
             auto mnemonic = info.octo.substr(0, info.octo.find(" "));
-            if(emu::detail::octoMacros.count(mnemonic)) {
-                obj["macro"] = emu::detail::octoMacros.at(mnemonic);
-            }
+            //if(emu::detail::octoMacros.count(mnemonic)) {
+            //    obj["macro"] = emu::detail::octoMacros.at(mnemonic);
+            //}
             if(!info.mnemonic.empty()) {
                 obj["chipper"] = info.mnemonic;
             }

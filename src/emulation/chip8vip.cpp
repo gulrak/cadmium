@@ -23,6 +23,8 @@ public:
     int64_t _irqStart{0};
     int64_t _nextFrame{0};
     uint8_t _keyLatch{0};
+    uint16_t _lastOpcode{0};
+    uint16_t _currentOpcode{0};
     std::atomic<float> _wavePhase{0};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,256> _colorRam{};
@@ -250,6 +252,7 @@ void Chip8VIP::reset()
     _cycles = 0;
     _frames = 0;
     _impl->_nextFrame = 0;
+    _impl->_lastOpcode = 0;
     _cpuState = eNORMAL;
     setExecMode(eRUNNING);
     while(!executeCdp1802() || getPC() != _options.startAddress); // fast-forward to fetch/decode loop
@@ -264,6 +267,7 @@ bool Chip8VIP::patchRAM(std::string name)
     if(iter == g_patchSets.end())
         return false;
     iter->second.apply(_impl->_ram.data(), _impl->_ram.size());
+    return true;
 }
 
 std::string Chip8VIP::name() const
@@ -303,6 +307,11 @@ void Chip8VIP::forceState()
     }
 }
 
+int64_t Chip8VIP::getMachineCycles() const
+{
+    return _impl->_cpu.getCycles() >> 3;
+}
+
 bool Chip8VIP::executeCdp1802()
 {
     static int lastFC = 0;
@@ -311,13 +320,37 @@ bool Chip8VIP::executeCdp1802()
     if(_options.optTraceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
     if(_impl->_cpu.PC() == Private::FETCH_LOOP_ENTRY) {
+        _cycles++;
+        //std::cout << fmt::format("{:06d}:{:04x}", _impl->_cpu.getCycles()>>3, opcode()) << std::endl;
+        _impl->_currentOpcode = opcode();
         if(_options.optTraceLog)
             Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
     }
     _impl->_cpu.executeInstruction();
     if(_impl->_cpu.PC() == Private::FETCH_LOOP_ENTRY) {
+        _impl->_lastOpcode = _impl->_currentOpcode;
+#ifdef DIFFERENTIATE_CYCLES
+        static int64_t lastCycles{}, lastIdle{}, lastIrq{};
+#endif
         fetchState();
-        _cycles++;
+#ifdef DIFFERENTIATE_CYCLES
+        if((_impl->_lastOpcode & 0xF000) == 0xD000) {
+            static int64_t lastDrawCycle{};
+            int64_t machineCycles = _impl->_cpu.getCycles() - lastCycles;
+            int64_t idleTime = _impl->_cpu.getIdleCycles() - lastIdle;
+            int64_t irqTime = _impl->_cpu.getIrqCycles() - lastIrq;
+            int64_t nonCode = idleTime + irqTime;
+            int64_t betweenDraws = (_impl->_cpu.getCycles() - lastDrawCycle) >> 3;
+            int fetchTime = (_impl->_lastOpcode&0xF000)?68:40;
+            std::cout << fmt::format("{:04x},{},{},{},{},{},{},{},{},{},{}", _impl->_lastOpcode, _state.v[(_impl->_lastOpcode&0xF00)>>8], _state.v[(_impl->_lastOpcode&0xF0)>>4], _impl->_lastOpcode&0xF,
+                                     fetchTime, ((machineCycles - nonCode)>>3) - fetchTime,
+                                     (machineCycles - nonCode)>>3, idleTime>>3, irqTime>>3, machineCycles>>3, betweenDraws) << std::endl;
+            lastDrawCycle = _impl->_cpu.getCycles();
+        }
+        lastCycles = _impl->_cpu.getCycles();
+        lastIdle = _impl->_cpu.getIdleCycles();
+        lastIrq = _impl->_cpu.getIrqCycles();
+#endif
         if(_impl->_cpu.getExecMode() == ePAUSED) {
             setExecMode(ePAUSED);
             _backendStopped = true;

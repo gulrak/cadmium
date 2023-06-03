@@ -36,7 +36,7 @@ namespace emu {
 
 struct Chip8EmulatorOptions {
     ~Chip8EmulatorOptions();
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8VIP_8X, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
+    enum SupportedPreset { eCHIP8, eCHIP8TE, eCHIP10, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8VIP_8X, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
     SupportedPreset behaviorBase{eCHIP8};
     uint16_t startAddress{0x200};
     bool optJustShiftVx{false};
