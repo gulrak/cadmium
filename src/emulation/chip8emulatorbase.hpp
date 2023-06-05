@@ -272,6 +272,7 @@ protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     CpuState _cpuState{eNORMAL};
     bool _isHires{false};
+    bool _isInstantDxyn{false};
     bool _isMegaChipMode{false};
     bool _screenNeedsUpdate{false};
     uint8_t _planes{1};

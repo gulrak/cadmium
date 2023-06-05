@@ -194,11 +194,18 @@ public:
                 *(pixel + 1) ^= planes;
             }
         }
-        if(!hires) {
+        /*if(!hires) {
             *(pixel + _stride) = *pixel;
             *(pixel + _stride + 1) = *(pixel + 1);
-        }
+        }*/
         return collision;
+    }
+    void copyPixelRow(int x1, int x2, int ySrc, int yDst)
+    {
+        const auto* src = _screenBuffer.data() + _stride * ySrc + x1;
+        auto* dst = _screenBuffer.data() + _stride * yDst + x1;
+        while(x1++ < x2)
+            *dst++ = *src++;
     }
     void movePixelMasked(int sx, int sy, int dx, int dy, PixelType mask)
     {

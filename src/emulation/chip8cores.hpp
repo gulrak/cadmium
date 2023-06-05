@@ -752,6 +752,13 @@ public:
                                 }
                             }
                         }
+                        if constexpr ((quirks&SChip1xLoresDraw) != 0) {
+                            if(!hires) {
+                                auto x1 = x & 0x70;
+                                auto x2 = std::min(x1 + 32, 128);
+                                _screen.copyPixelRow(x1, x2, y + l * scale, y + l * scale + 1);
+                            }
+                        }
                         collision += lineCol;
                     }
                     else {
@@ -759,8 +766,6 @@ public:
                             ++collision;
                         else
                             break;
-                        //if (width == 16)
-                        //    ++data;
                     }
                 }
             }

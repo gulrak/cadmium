@@ -273,7 +273,7 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
                 Chip8EmulatorFP::executeInstruction();
         }
     }
-    else if(_options.optInstantDxyn) {
+    else if(_isInstantDxyn) {
         if(_execMode ==  eRUNNING && _breakpoints.empty() && !_options.optTraceLog) {
             for (int i = 0; i < numInstructions; ++i) {
                 uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
@@ -549,12 +549,14 @@ void Chip8EmulatorFP::op00FE(uint16_t opcode)
 {
     _host.preClear();
     _isHires = false;
+    _isInstantDxyn = _options.optInstantDxyn;
 }
 
 void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
 {
     _host.preClear();
     _isHires = false;
+    _isInstantDxyn = _options.optInstantDxyn;
     _screen.setAll(0);
     _screenNeedsUpdate = true;
     ++_clearCounter;
@@ -565,6 +567,7 @@ void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
     if(_isHires && !_isMegaChipMode) {
         _host.preClear();
         _isHires = false;
+        _isInstantDxyn = _options.optInstantDxyn;
         clearScreen();
         _screenNeedsUpdate = true;
         ++_clearCounter;
@@ -575,12 +578,14 @@ void Chip8EmulatorFP::op00FF(uint16_t opcode)
 {
     _host.preClear();
     _isHires = true;
+    _isInstantDxyn = true;
 }
 
 void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
 {
     _host.preClear();
     _isHires = true;
+    _isInstantDxyn = true;
     _screen.setAll(0);
     _screenNeedsUpdate = true;
     ++_clearCounter;
@@ -591,6 +596,7 @@ void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
     if(!_isHires && !_isMegaChipMode) {
         _host.preClear();
         _isHires = true;
+        _isInstantDxyn = true;
         clearScreen();
         _screenNeedsUpdate = true;
         ++_clearCounter;

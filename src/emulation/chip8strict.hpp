@@ -383,6 +383,10 @@ public:
             if(_cpuState != eWAITING)
                 _execMode = ePAUSED;
         }
+        if(hasBreakPoint(_rPC)) {
+            if(Chip8EmulatorBase::findBreakpoint(_rPC))
+                _execMode = ePAUSED;
+        }
     }
 
     void executeInstructions(int numInstructions) override

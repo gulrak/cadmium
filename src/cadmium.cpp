@@ -1562,7 +1562,7 @@ public:
                             Space(10);
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
-                            Label("Opcode variant:");
+                            Label("CHIP-8 variant / Core:");
                             if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
@@ -2207,6 +2207,7 @@ public:
     {
         _debugger.updateCore(&emu);
         reloadRom();
+        _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
     }
 
     void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) override
@@ -2507,9 +2508,9 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
             obj["size"] = info.size;
             obj["octo"] = info.octo;
             auto mnemonic = info.octo.substr(0, info.octo.find(" "));
-            //if(emu::detail::octoMacros.count(mnemonic)) {
-            //    obj["macro"] = emu::detail::octoMacros.at(mnemonic);
-            //}
+            if(emu::detail::octoMacros.count(mnemonic)) {
+                obj["macro"] = emu::detail::octoMacros.at(mnemonic);
+            }
             if(!info.mnemonic.empty()) {
                 obj["chipper"] = info.mnemonic;
             }
@@ -2595,7 +2596,7 @@ int main(int argc, char* argv[])
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
     cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.option({"--trace-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
-    cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
+    //cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
     cli.category("Quirks");
     cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
@@ -2679,7 +2680,7 @@ int main(int argc, char* argv[])
 #else
         try {
             Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
-            emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 60, 1);
+            emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 0, 1);
         }
         catch(std::exception& ex) {
             std::cerr << "Exception: " << ex.what() << std::endl;
