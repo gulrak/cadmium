@@ -318,6 +318,7 @@ void Chip8EmulatorBase::reset()
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
     _isHires = _options.optOnlyHires ? true : false;
+    _isInstantDxyn = _options.optInstantDxyn;
     _isMegaChipMode = false;
     _planes = 1;
     _spriteWidth = 0;

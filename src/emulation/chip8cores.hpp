@@ -669,7 +669,7 @@ public:
             int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
             int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
             int lines = opcode & 0xF;
-            if(_cpuState != eWAITING) {
+            if(!_isInstantDxyn && _cpuState != eWAITING) {
                 auto s = lines + (x & 7);
                 if(lines > 4 && s > 9) {
                     _rPC -= 2;
@@ -711,8 +711,6 @@ public:
         y %= scrHeight;
         if(height == 0) {
             height = 16;
-            // Thanks @NinjaWeedle: if not hires, draw 16x16 in XO-CHIP, 8x16 in SCHIP1.0/1.1 and nothing on the rest of the variants
-            // width = hires ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eXOCHIP ? 16 : (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP10 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 ? 16 : 0));
             if(_options.optLoresDxy0Is16x16)
                 width = 16;
             else if(!_options.optLoresDxy0Is8x16)

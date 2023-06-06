@@ -318,7 +318,6 @@ public:
                         else {
                             // keep waiting...
                             _rPC -= 2;
-                            --_cycleCounter;
                             _cpuState = eWAITING;
                         }
                         break;
