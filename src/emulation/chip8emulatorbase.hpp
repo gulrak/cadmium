@@ -214,10 +214,11 @@ public:
     int64_t getCycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
 
-    inline void errorHalt()
+    inline void errorHalt(std::string errorMessage)
     {
         _execMode = ePAUSED;
         _cpuState = eERROR;
+        _errorMessage = std::move(errorMessage);
         _rPC -= 2;
         --_cycleCounter;
     }
@@ -271,6 +272,7 @@ public:
 protected:
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     CpuState _cpuState{eNORMAL};
+    std::string _errorMessage;
     bool _isHires{false};
     bool _isInstantDxyn{false};
     bool _isMegaChipMode{false};

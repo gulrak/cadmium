@@ -114,6 +114,9 @@ public:
                 else if(opcode == 0x00FF && _options.optAllowHires) { // HIRES
                     _isHires = true;
                 }
+                else {
+                    errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
+                }
                 break;
             case 1:  // 1nnn - jump NNN
                 if((opcode & 0xFFF) == _rPC - 2)
@@ -167,7 +170,7 @@ public:
                         break;
                     }
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;
@@ -241,7 +244,7 @@ public:
                         }
                         break;
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;
@@ -309,12 +312,14 @@ public:
             case 0xF: {
                 switch (opcode & 0xFF) {
                     case 0x00: // i := long nnnn
+                        if(opcode != 0xF000)
+                            errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         if constexpr (addressLines == 16) {
                             _rI = ((_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
                             _rPC = (_rPC + 2) & ADDRESS_MASK;
                         }
                         else {
-                            errorHalt();
+                            errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         }
                         break;
                     case 0x01: // Fx01 - planes x
@@ -327,7 +332,7 @@ public:
                             }
                         }
                         else
-                            errorHalt();
+                            errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                     case 0x07:  // Fx07 - vX := delay
                         _rV[(opcode >> 8) & 0xF] = _rDT;
                         break;
@@ -400,7 +405,7 @@ public:
                         break;
                     }
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;
@@ -529,6 +534,7 @@ public:
     void op00E0(uint16_t opcode);
     void op00E0_megachip(uint16_t opcode);
     void op00EE(uint16_t opcode);
+    void op00EE_cyclic(uint16_t opcode);
     void op00FB(uint16_t opcode);
     void op00FB_masked(uint16_t opcode);
     void op00FC(uint16_t opcode);
@@ -551,6 +557,7 @@ public:
     void op09nn(uint16_t opcode);
     void op1nnn(uint16_t opcode);
     void op2nnn(uint16_t opcode);
+    void op2nnn_cyclic(uint16_t opcode);
     void op3xnn(uint16_t opcode);
     void op3xnn_with_F000(uint16_t opcode);
     void op3xnn_with_01nn(uint16_t opcode);

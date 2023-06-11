@@ -156,18 +156,18 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eCHIP8, R"({})"},
     {Opts::eCHIP8TE, R"({})"},
     {Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
-    {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optJump0Bxnn":true,"instructionsPerFrame":15})"},
-    {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15})"},
-    {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30})"},
-    {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"instructionsPerFrame":30})"},
-    {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000})"},
-    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
-    {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optJump0Bxnn":true,"instructionsPerFrame":15,"frameRate":64})"},
+    {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15,"frameRate":64})"},
+    {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optSC11Collision":true,"optHalfPixelScroll":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30,"frameRate":64})"},
+    {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optModeChangeClear":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000})"},
+    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
+    {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHIP8VIP, R"({})"},
     {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"CHIP8TPD"}})"},
     {Opts::eCHIP8VIP_8X, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8X"}})"},
-    {Opts::eCHIP8DREAM, R"({})"},
-    {Opts::eC8D68CHIPOSLO, R"({"advanced":{"kernel":"chiposlo"}})"}
+    {Opts::eCHIP8DREAM, R"({"frameRate":50})"},
+    {Opts::eC8D68CHIPOSLO, R"({"frameRate":50,"advanced":{"kernel":"chiposlo"}})"}
 };
 
 Chip8EmulatorOptions::~Chip8EmulatorOptions() = default;
@@ -232,9 +232,9 @@ bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
 {
     return behaviorBase == other.behaviorBase && startAddress == other.startAddress && optJustShiftVx == other.optJustShiftVx && optDontResetVf == other.optDontResetVf && optLoadStoreIncIByX == other.optLoadStoreIncIByX &&
            optLoadStoreDontIncI == other.optLoadStoreDontIncI && optWrapSprites == other.optWrapSprites && optInstantDxyn == other.optInstantDxyn && optLoresDxy0Is8x16 == other.optLoresDxy0Is8x16 && optLoresDxy0Is16x16 == other.optLoresDxy0Is16x16 &&
-           optSC11Collision == other.optSC11Collision && optJump0Bxnn == other.optJump0Bxnn && optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors &&
-           optHas16BitAddr == other.optHas16BitAddr && optXOChipSound == other.optXOChipSound && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame &&
-           advancedDump == other.advancedDump;
+           optSC11Collision == other.optSC11Collision && optSCLoresDrawing == other.optSCLoresDrawing && optHalfPixelScroll == other.optHalfPixelScroll && optModeChangeClear == other.optModeChangeClear && optJump0Bxnn == other.optJump0Bxnn &&
+           optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors && optHas16BitAddr == other.optHas16BitAddr && optCyclicStack == other.optCyclicStack &&
+           optXOChipSound == other.optXOChipSound && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame && frameRate == other.frameRate && advancedDump == other.advancedDump;
 }
 
 #define SET_IF_CHANGED(j, n) if(o.n != defaultOpts.n) j[#n] = o.n;
@@ -254,25 +254,55 @@ void to_json(nlohmann::json& j, const Chip8EmulatorOptions& o)
     SET_IF_CHANGED(obj, optLoresDxy0Is8x16);
     SET_IF_CHANGED(obj, optLoresDxy0Is16x16);
     SET_IF_CHANGED(obj, optSC11Collision);
+    SET_IF_CHANGED(obj, optSCLoresDrawing);
+    SET_IF_CHANGED(obj, optHalfPixelScroll);
+    SET_IF_CHANGED(obj, optModeChangeClear);
     SET_IF_CHANGED(obj, optJump0Bxnn);
     SET_IF_CHANGED(obj, optAllowHires);
     SET_IF_CHANGED(obj, optOnlyHires);
     SET_IF_CHANGED(obj, optAllowColors);
     SET_IF_CHANGED(obj, optHas16BitAddr);
+    SET_IF_CHANGED(obj, optCyclicStack);
     SET_IF_CHANGED(obj, optXOChipSound);
     SET_IF_CHANGED(obj, optTraceLog);
     SET_IF_CHANGED(obj, instructionsPerFrame);
+    SET_IF_CHANGED(obj, frameRate);
     j = obj;
     if(!o.advanced.empty()) {
         j["advanced"] = o.advanced;
     }
 }
 
+#define GET_OR_DEFAULT(o, j, n) o.n = j.value(#n, defaultOpts.n);
 void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
 {
     auto variantName = j.value("behaviorBase",o.nameOfPreset(o.behaviorBase));
     o.behaviorBase = Chip8EmulatorOptions::presetForName(variantName);
     const Opts defaultOpts = Chip8EmulatorOptions::optionsOfPreset(o.behaviorBase);
+    GET_OR_DEFAULT(o, j, startAddress);
+    GET_OR_DEFAULT(o, j, optJustShiftVx);
+    GET_OR_DEFAULT(o, j, optDontResetVf);
+    GET_OR_DEFAULT(o, j, optLoadStoreIncIByX);
+    GET_OR_DEFAULT(o, j, optLoadStoreDontIncI);
+    GET_OR_DEFAULT(o, j, optWrapSprites);
+    GET_OR_DEFAULT(o, j, optInstantDxyn);
+    GET_OR_DEFAULT(o, j, optJump0Bxnn);
+    GET_OR_DEFAULT(o, j, optAllowHires);
+    GET_OR_DEFAULT(o, j, optOnlyHires);
+    GET_OR_DEFAULT(o, j, optAllowColors);
+    GET_OR_DEFAULT(o, j, optHas16BitAddr);
+    GET_OR_DEFAULT(o, j, optCyclicStack);
+    GET_OR_DEFAULT(o, j, optXOChipSound);
+    GET_OR_DEFAULT(o, j, optTraceLog);
+    GET_OR_DEFAULT(o, j, optLoresDxy0Is8x16);
+    GET_OR_DEFAULT(o, j, optLoresDxy0Is16x16);
+    GET_OR_DEFAULT(o, j, optSC11Collision);
+    GET_OR_DEFAULT(o, j, optSCLoresDrawing);
+    GET_OR_DEFAULT(o, j, optModeChangeClear);
+    GET_OR_DEFAULT(o, j, optHalfPixelScroll);
+    GET_OR_DEFAULT(o, j, instructionsPerFrame);
+    GET_OR_DEFAULT(o, j, frameRate);
+#if 0
     o.startAddress = j.value("startAddress", defaultOpts.startAddress);
     o.optJustShiftVx = j.value("optJustShiftVx", defaultOpts.optJustShiftVx);
     o.optDontResetVf = j.value("optDontResetVf", defaultOpts.optDontResetVf);
@@ -285,16 +315,19 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     o.optOnlyHires = j.value("optOnlyHires", defaultOpts.optOnlyHires);
     o.optAllowColors = j.value("optAllowColors", defaultOpts.optAllowColors);
     o.optHas16BitAddr = j.value("optHas16BitAddr", defaultOpts.optHas16BitAddr);
+    o.optCyclicStack = j.value("optCyclicStack", defaultOpts.optCyclicStack);
     o.optXOChipSound = j.value("optXOChipSound", defaultOpts.optXOChipSound);
     o.optTraceLog = j.value("optTraceLog", defaultOpts.optTraceLog);
     o.optLoresDxy0Is8x16 = j.value("optLoresDxy0Is8x16", defaultOpts.optLoresDxy0Is8x16);
     o.optLoresDxy0Is16x16 = j.value("optLoresDxy0Is16x16", defaultOpts.optLoresDxy0Is16x16);
     o.optSC11Collision = j.value("optSC11Collision", defaultOpts.optSC11Collision);
+    o.optSCLoresDrawing = j.value("optSCLoresDrawing", defaultOpts.optSCLoresDrawing);
     o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
+#endif
     if(j.contains("advanced")) {
         o.advanced = j.at("advanced");
         o.unifyColors();
-        o.updatedAdvaced();
+        o.updatedAdvanced();
     }
 }
 
@@ -396,7 +429,7 @@ bool Chip8EmulatorOptions::hasColors() const
     return advanced.contains("palette") && advanced.at("palette").is_array();
 }
 
-void Chip8EmulatorOptions::updatedAdvaced()
+void Chip8EmulatorOptions::updatedAdvanced()
 {
     advancedDump = advanced.dump();
 }

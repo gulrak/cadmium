@@ -1,0 +1,285 @@
+#this version of Timendus font-library.8o was patched to be used runtime platform agnostic
+:alias minX v2
+:alias Ypos v3
+:alias maxX v4
+:alias maxY v5
+:alias Xpos v6
+:alias index v7
+:alias temp v1
+
+:const fontlib-soft-newline 0xFD
+:const fontlib-space 71
+
+:unless FONTLIB-NOWRAP
+
+# Inputs:
+#   * v0 - v1  ->  0xANNN where NNN is pointer to string (or 0xNNNN for XO-CHIP)
+#   * v2       ->  min X coordinate
+#   * v3       ->  min Y coordinate
+#   * v4       ->  max X coordinate
+#   * v5       ->  max Y coordinate
+# Destroys:
+#   * v0, v1, v3, v6, v7, v8, v9
+#   * i
+: fontlib-wrap-text
+  fontlib-unwrap-text  # Also saves pointer and fixes max coordinates
+  index := 0
+  Xpos := minX
+: fontlib-wrap-text-loop
+  fontlib-get-text-pointer
+  # i now points to string
+  if Ypos > maxY then return
+  index += 1
+  if index == 0 begin
+    # Can't handle strings of more than 255 characters
+    :breakpoint fontlib-wrap-text-cant-handle-strings-longer-than-255-chars
+    return
+  end
+  load v0
+
+  # Are we done?
+  if v0 == fontlib-str-end then return
+
+  # Is this a hard newline?
+  if v0 == fontlib-str-newline begin
+    fontlib-go-to-new-line
+    jump fontlib-wrap-text-loop
+  end
+
+  # How wide is this character?
+  fontlib-get-font-pointer  # i now points to font
+  load v0 # Get font width in pixels
+
+  # Will we go over maxX if we render this character?
+  temp := Xpos
+  temp += v0
+
+  # All is well, just add to Xpos and move on
+  if temp <= maxX begin
+    Xpos += v0
+    jump fontlib-wrap-text-loop
+  end
+
+  # We've overflowed maxX
+
+  # Backtrack back up the string, find the first space
+: -
+  index -= 1
+  if index == 255 begin  # Hit start of string, bail ("should never happen")
+    :breakpoint fontlib-wrap-text-cant-wrap-this-string-badness-1
+    return
+  end
+  fontlib-get-text-pointer
+  load v0
+  if v0 != fontlib-space begin
+    # Subtract this character's width from Xpos,
+    # backtracking through the pixels as well
+    fontlib-get-font-pointer
+    load v0
+    Xpos -= v0
+    if vF == 0 begin  # Subtracted too much, bail ("should never happen")
+      :breakpoint fontlib-wrap-text-cant-wrap-this-string-badness-2
+      return
+    end
+    jump -
+  end
+
+  # `index` now points to the previous space, replace with soft-newline
+  fontlib-get-text-pointer
+  v0 := fontlib-soft-newline
+  save v0
+
+  # And move on
+  fontlib-go-to-new-line
+  index += 1
+  jump fontlib-wrap-text-loop
+
+# Inputs:
+#   * v0 - v1  ->  0xANNN where NNN is pointer to string (or 0xNNNN for XO-CHIP)
+# Destroys:
+#   * v0, v7
+: fontlib-unwrap-text
+  fontlib-save-text-pointer
+  :next fontlib-fontheight-1
+  maxY -= 0
+  maxY += 1
+  maxX += 2
+  index := 0
+: fontlib-unwrap-text-loop
+  fontlib-get-text-pointer
+  # i now points to string
+  index += 1
+   if index == 0 begin
+    # Can't handle strings of more than 255 characters
+    :breakpoint fontlib-unwrap-text-cant-handle-strings-longer-than-255-chars
+    return
+  end
+  load v0
+  if v0 == fontlib-str-end then return
+
+  # The width may have changed, so do a fresh text wrap
+  # If we encounter an existing soft-newline, revert it back to a space
+  if v0 == fontlib-soft-newline begin
+    index -= 1
+    fontlib-get-text-pointer
+    v0 := fontlib-space
+    save v0
+  end
+  jump fontlib-unwrap-text-loop
+
+:end # FONTLIB-NOWRAP
+
+
+# Inputs:
+#   * v0 - v1  ->  0xANNN where NNN is pointer to font (or 0xNNNN for XO-CHIP)
+# Destroys:
+#   * v0, v1
+: fontlib-set-font
+  i := fontlib-set-font-smc
+  save v1
+  vF := 1
+  v1 += vF
+  v0 += vF
+  :unless XOCHIP
+    vF := 0xA0
+    v0 |= vF
+  :end
+  # Store font address in the appropriate places
+  i := fontlib-get-font-pointer-smc
+  save v1
+  :if XOCHIP
+    0xF0 0x00
+  :end
+: fontlib-set-font-smc
+  0x00 0x00
+  load v0
+  # Store font height in the appropriate places
+
+  # Update this addition and setting of register
+  i := fontlib-fontheight-4
+  save v0
+  i := fontlib-fontheight-5
+  save v0
+
+  # Update these subtractions
+  v1 := v0
+  v0 := 0
+  v0 -= v1
+  :unless FONTLIB-NOWRAP
+    i := fontlib-fontheight-1
+    save v0
+  :end
+  i := fontlib-fontheight-2
+  save v0
+
+  # Update sprite opcode
+  i := fontlib-fontheight-3
+  load v0
+  vF := 0xF0
+  v0 &= vF
+  v0 |= v1
+  i := fontlib-fontheight-3
+  save v0
+  return
+
+
+# Inputs:
+#   * v0 - v1  ->  0xANNN where NNN is pointer to string (or 0xNNNN for XO-CHIP)
+#   * v2       ->  min X coordinate
+#   * v3       ->  min Y coordinate
+#   * v4       ->  max X coordinate
+#   * v5       ->  max Y coordinate
+# Destroys:
+#   * v0, v1, v3, v6, v7
+#   * i
+: fontlib-draw-text
+  fontlib-save-text-pointer
+  :next fontlib-fontheight-2
+  maxY -= 0
+  maxY += 1
+  maxX += 2
+: fontlib-draw-text-leave-pointer
+  index := 0
+  Xpos := minX
+: fontlib-draw-text-loop
+  fontlib-get-text-pointer
+  # i now points to string
+  if Ypos > maxY then return
+  index += 1
+   if index == 0 begin
+    # Can't handle strings of more than 255 characters
+    :breakpoint fontlib-draw-text-cant-handle-strings-longer-than-255-chars
+    return
+  end
+  load v0
+  if v0 == fontlib-str-end then return
+  if v0 == fontlib-str-newline begin
+    fontlib-go-to-new-line
+    jump fontlib-draw-text-loop
+  end
+  if v0 == fontlib-soft-newline begin
+    fontlib-go-to-new-line
+    jump fontlib-draw-text-loop
+  end
+  fontlib-get-font-pointer  # i now points to font
+  v8 := v0
+  load v0  # Get font width in pixels
+  v9 := v0
+  v0 := v8
+  fontlib-get-font-pointer  # i now points to font
+  v0 := v9
+  # :if SUPERCHIP
+  vF := 1
+  i += vF
+  # :end
+  temp := Xpos
+  temp += v0
+  if temp > maxX begin
+    fontlib-go-to-new-line
+    if Ypos > maxY then return
+  end
+  :next fontlib-fontheight-3
+  sprite Xpos Ypos 0
+  Xpos += v0
+  jump fontlib-draw-text-loop
+
+
+: fontlib-go-to-new-line
+  Xpos := minX
+  :next fontlib-fontheight-4
+  Ypos += 0
+  Ypos += 1
+  return
+
+# v0 - v1 are unpacked string pointer
+: fontlib-save-text-pointer
+  i := fontlib-get-text-pointer-smc
+  save v1
+  return
+
+# Get pointer to current character in `i`
+: fontlib-get-text-pointer
+  :if XOCHIP
+    0xF0 0x00
+  :end
+: fontlib-get-text-pointer-smc
+  0x00 0x00
+  i += index
+  return
+
+# v0 is requested character
+: fontlib-get-font-pointer
+  :if XOCHIP
+    0xF0 0x00
+  :end
+: fontlib-get-font-pointer-smc
+  0x00 0x00
+  i += v0
+  :next fontlib-fontheight-5
+  temp := 5
+  loop
+    i += v0
+    temp -= 1
+    if temp != 0 then
+  again
+  return

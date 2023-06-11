@@ -1248,7 +1248,7 @@ public:
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
-                StatusBar({{0.55f, fmt::format("Invalid opcode: {:04X}", _chipEmu->opcode()).c_str()},
+                StatusBar({{0.55f, _chipEmu->errorMessage().c_str()},
                            {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                            {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
@@ -1546,6 +1546,7 @@ public:
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiDisable();
                             Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                            Spinner("Frame rate", &_options.frameRate, 10, 120);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
                             if (!_options.instructionsPerFrame) {
@@ -1603,7 +1604,10 @@ public:
                                 _options.optLoadStoreIncIByX = false;
                             }
                             _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
+                            _options.optCyclicStack = CheckBox("Cyclic stack", _options.optCyclicStack);
                             _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
+                            _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
+                            _options.optHas16BitAddr = CheckBox("Has 16 bit addresses", _options.optHas16BitAddr);
                             End();
                             Begin();
                             _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
@@ -1621,6 +1625,8 @@ public:
                             if(!oldVal && _options.optSC11Collision) {
                                 _options.optAllowHires = true;
                             }
+                            _options.optSCLoresDrawing = CheckBox("HP SuperChip lores drawing", _options.optSCLoresDrawing);
+                            _options.optHalfPixelScroll = CheckBox("Half pixel scrolling", _options.optHalfPixelScroll);
                             bool oldAllowHires = _options.optAllowHires;
                             _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
                             if(!_options.optAllowHires && oldAllowHires) {
@@ -1631,13 +1637,13 @@ public:
                             _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
                             if(_options.optOnlyHires && !oldOnlyHires)
                                 _options.optAllowHires = true;
-                            _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
+                            _options.optModeChangeClear = CheckBox("Mode change clear", _options.optModeChangeClear);
                             End();
                             EndColumns();
                             EndGroupBox();
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
-                            Space(15);
+                            Space(10);
                             {
                                 StyleManager::Scope guard;
                                 BeginColumns();
@@ -1741,7 +1747,7 @@ public:
                                 }
                                 EndColumns();
                             }
-                            Space(30);
+                            Space(8);
                             if(oldOptions != _options) {
                                 updateEmulatorOptions(_options);
                                 saveConfig();
@@ -2702,7 +2708,7 @@ int main(int argc, char* argv[])
                 {"random", randomGen},
                 {"seed", randomSeed}
             });
-            options.updatedAdvaced();
+            options.updatedAdvanced();
         }
         auto chip8 = emu::Chip8EmulatorBase::create(host, emu::IChip8Emulator::eCHIP8MPT, options);
         std::clog << "Engine1: " << chip8->name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(options.behaviorBase) << std::endl;

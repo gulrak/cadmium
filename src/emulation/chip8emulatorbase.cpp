@@ -317,6 +317,7 @@ void Chip8EmulatorBase::reset()
     //_host.updatePalette(_xxoPalette);
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
+    _errorMessage.clear();
     _isHires = _options.optOnlyHires ? true : false;
     _isInstantDxyn = _options.optInstantDxyn;
     _isMegaChipMode = false;

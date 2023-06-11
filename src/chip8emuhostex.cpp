@@ -71,7 +71,7 @@ void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offs
         pal[i] = fmt::format("#{:06x}", _colorPalette[i] >> 8);
     }
     _options.advanced["palette"] = pal;
-    _options.updatedAdvaced();
+    _options.updatedAdvanced();
 }
 
 

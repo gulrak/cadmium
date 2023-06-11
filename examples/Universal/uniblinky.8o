@@ -34,7 +34,7 @@
     #   mc_detected - MegaChip8
     #   xo_detected - XO-CHIP
     # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    # 1. Check for CO-CHIP
+    # 1. Check for XO-CHIP
     # XO-CHIP skip would see this as a four byte opcode and skip all
     # others will just skip two byte executing the jump
     if vf != vf then 0xF0 0x00 jump no_xo_support

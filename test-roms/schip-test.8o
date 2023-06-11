@@ -1,0 +1,349 @@
+# Tell the library that we're assembling this program for XO-CHIP
+:const SUPERCHIP 1
+# Include the font-header first, it contains the constants and macros needed to
+# define and draw your strings
+:include "inc/font-header.8o"
+
+:macro setPlatform label {
+  :unpack 0xA label
+}
+
+: main
+    clear
+    setFont font-4-pix-low
+    drawText autodetect-str 8 10 64 32
+
+    #----------------------------------------------------------------
+    # AUTO-DETECTION-CODE:
+    # Jumps to the following labels:
+    #   c8_detected - CHIP-8
+    #   sc_detected - SCHIP
+    #   mc_detected - MegaChip8
+    #   xo_detected - XO-CHIP
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # 1. Check for CO-CHIP
+    # XO-CHIP skip would see this as a four byte opcode and skip all
+    # others will just skip two byte executing the jump
+    if vf != vf then 0xF0 0x00 jump no_xo_support
+    jump xo_detected
+
+: no_xo_support
+    # 2. CHIP48/SCHIP1.x uses Bxnn, instead of Bnnn so SCHIP will
+    # jump to xnn + v2, while MegaCHip8 will jump to nnn + v0
+    v0 := 0
+    v2 := 2
+    jump0 has_bnnn
+: has_bnnn
+    jump no_classic_hpchip
+    jump sc_classic_detected
+
+: no_classic_hpchip
+    # Now it can be either an SCHPC (Chromatophores Compatibility SCHIP) or modern SCHIP (as propagated by Octo) or some classic CHIP-8
+    v0 := 0
+    i := widesprite
+    sprite v0 v0 0
+    sprite v0 v0 0
+    if vf != 0 then
+        jump new_sc_detected
+    i := smallsprite
+    sprite v0 v0 0
+    sprite v0 v0 0
+    if vf != 0 then
+        jump schpc_detected
+
+    # 3. Check for SCHIP/MegaChip8
+    # Shifting on SCHIP/MC8 ignores vy and just shifts vx
+    # if v0 is 1, v1 was used and it is CHIP-8
+    v1 := 2
+    v0 := 0
+    v0 >>= v1
+    if v0 == 1 then jump no_sc_support
+
+: smallsprite
+    0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x80
+
+: widesprite
+    0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00
+: pixel
+    0x80 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00  0x00 0x00
+
+: no_sc_support
+    jump c8_detected
+    # AUTO-DETECTION-END
+    #----------------------------------------------------------------
+
+: c8_detected
+    setPlatform pf-chip8
+    jump main-check
+
+: xo_detected
+    :call test-scrolling
+    hires
+    setPlatform pf-xo-chip
+    jump main-check
+
+: sc_classic_detected
+    # We need to check for CHIP-48, SCHIP 1.0 and SCHIP 1.1
+    i := smallsprite
+    sprite v0 v0 0
+    sprite v0 v0 0
+    if vf != 0 then
+        jump schip1x_detected
+    setPlatform pf-chip48
+    jump main-check
+ : schip1x_detected
+    i := schip-detect-data
+    load v1
+    load v0
+    if v0 == v1 then
+        jump schip10_detected
+    :call test-scrolling
+    hires
+    setPlatform pf-schip-11
+    jump main-check
+ : schip10_detected
+    hires
+    setPlatform pf-schip-10
+    jump main-check
+
+ : schip-detect-data
+    0x00 0x01
+
+: schpc_detected
+    :call test-scrolling
+    hires
+    setPlatform pf-schpc
+    jump main-check
+
+: new_sc_detected
+    :call test-scrolling
+    hires
+    setPlatform pf-modern-schip
+    jump main-check
+
+
+    v0 := key
+
+    setFont font-4-pix-low
+    drawText lores-scr-str 0 0 128 64
+    drawText hires-scr-str 0 6 128 64
+
+: main-check
+    i := get-platform
+    save v1
+    clear
+    v1 += 8
+    v2 := 0
+    v3 := 0
+    v4 := 64
+    v5 := 32
+    fontlib-draw-text
+
+
+    :breakpoint "Hu!"
+    drawText lores-scr-str 0 6 128 64
+    i := result-lores-scroll-left
+    load v0
+    v2 := 45
+    v3 := 6
+    :call print-x-scroll-result
+    i := result-lores-scroll-down
+    load v0
+    v2 := 80
+    v3 := 6
+    :call print-y-scroll-result
+    drawText hires-scr-str 0 11 128 64
+    i := result-hires-scroll-down
+    load v0
+    v2 := 80
+    v3 := 11
+    :call print-y-scroll-result
+
+    loop again
+
+: print-y-scroll-result
+    v4 := 128
+    v5 := 64
+    if v0 == 0 begin
+        :unpack 0xA scroll-result-0
+        fontlib-draw-text
+    else
+        if v0 == 1 begin
+            :unpack 0xA scroll-result-1
+            fontlib-draw-text
+        else
+            if v0 == 2 begin
+                :unpack 0xA scroll-result-2
+                fontlib-draw-text
+            else
+                if v0 == 3 begin
+                    :unpack 0xA scroll-result-1
+                    fontlib-draw-text
+                end
+            end
+        end
+    end
+    return
+
+: print-x-scroll-result
+    v4 := 64
+    v5 := 32
+    if v0 == 0 begin
+        :unpack 0xA scroll-result-3
+        fontlib-draw-text
+    else
+        if v0 == 1 begin
+            :unpack 0xA scroll-result-5
+            fontlib-draw-text
+        else
+            if v0 == 2 begin
+                :unpack 0xA scroll-result-4
+                fontlib-draw-text
+            else
+                if v0 == 3 begin
+                    :unpack 0xA scroll-result-3
+                    fontlib-draw-text
+                end
+            end
+        end
+    end
+    return
+
+: test-scrolling
+    v0 := key
+    i := data-scroll-left-lores
+    load v5
+    :call generic-scroll-test
+    i := result-lores-scroll-left
+    save v0
+    i := data-scroll-right-lores
+    load v5
+    :call generic-scroll-test
+    i := result-lores-scroll-right
+    save v0
+    i := data-scroll-down-lores
+    load v5
+    :call generic-scroll-test
+    i := result-lores-scroll-down
+    save v0
+    hires
+    i := data-scroll-left-hires
+    load v5
+    :call generic-scroll-test
+    i := result-hires-scroll-left
+    save v0
+    i := data-scroll-right-hires
+    load v5
+    :call generic-scroll-test
+    i := result-hires-scroll-right
+    save v0
+    i := data-scroll-down-hires
+    load v5
+    :call generic-scroll-test
+    i := result-hires-scroll-down
+    save v0
+    return
+
+: generic-scroll-test
+    i := generic-opcode
+    save v1
+    i := pixel
+    sprite v2 v3 1
+    :call generic-opcode
+    sprite v4 v5 1
+    v0 := 0
+    if vf != 0 then
+        v0 += 1
+    :call generic-opcode
+    sprite v4 v5 1
+    if vf != 0 then
+        v0 += 2
+    return
+
+: data-scroll-left-lores
+    0x00 0xfc 0x18 0x00 0x14 0x00
+: data-scroll-right-lores
+    0x00 0xfb 0x14 0x01 0x18 0x01
+: data-scroll-left-hires
+    0x00 0xfc 0x38 0x00 0x34 0x00
+: data-scroll-right-hires
+    0x00 0xfb 0x34 0x01 0x38 0x01
+: data-scroll-down-lores
+    0x00 0xc1 0x00 0x00 0x00 0x01
+: data-scroll-down-hires
+    0x00 0xc1 0x02 0x00 0x02 0x01
+
+: generic-opcode
+    clear
+    return
+
+: get-platform
+    0xa0 0x00
+    return
+
+: write-nth-str
+
+
+: test-results
+: result-lores-scroll-right
+    0x00
+: result-lores-scroll-left
+    0x00
+: result-lores-scroll-down
+    0x00
+: result-hires-scroll-right
+    0x00
+: result-hires-scroll-left
+    0x00
+: result-hires-scroll-down
+    0x00
+
+
+: autodetect-str
+    str "AUTODETECT..." str-end
+
+: lores-scr-str
+#      SCRL L 2 N/2 H 4 N
+    str "LORES SCRL:" str-end
+: hires-scr-str
+    str "HIRES SCRL:" str-end
+: scroll-result-0
+    str "Y: ?" str-end
+: scroll-result-1
+    str "Y: N/2 px" str-end
+: scroll-result-2
+    str "Y: Npx" str-end
+: scroll-result-3
+    str "X: ?" str-end
+: scroll-result-4
+    str "X: 2px" str-end
+: scroll-result-5
+    str "X: 4px" str-end
+
+
+: pf-chip8
+    0x00 0x00 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: CHIP-8" str-end
+: pf-chip48
+    0x00 0x00 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: CHIP-48" str-end
+: pf-schip-10
+    0x00 0x00 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: SCHIP 1.0" str-end
+: pf-schip-11
+    0x01 0x01 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: SCHIP 1.1" str-end
+: pf-schpc
+    0x01 0x01 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: SCHPC" str-end
+: pf-modern-schip
+    0x02 0x01 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: SCHIP OCTO" str-end
+: pf-xo-chip
+    0x02 0x01 0x00 0x00  0x00 0x00 0x00 0x00
+    str "SYS: XO-CHIP" str-end
+
+# Include the font library anywhere you like
+:include "inc/font-library.8o"
+
+:include "inc/fonts/4-pix-low.8o"

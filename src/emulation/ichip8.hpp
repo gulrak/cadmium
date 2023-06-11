@@ -104,6 +104,7 @@ public:
         return (memory()[getPC()] << 8) | memory()[getPC() + 1];
     }
     virtual int64_t getMachineCycles() const { return getCycles(); }
+    virtual const std::string& errorMessage() const { static std::string none; return none; }
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}

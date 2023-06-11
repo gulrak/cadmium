@@ -101,13 +101,15 @@ public:
                     addCycles(3078);
                 }
                 else if (opcode == 0x00EE) {  // 00EE - return
+                    if(!_rSP)
+                        errorHalt("STACK UNDERFLOW");
                     _rPC = _stack[--_rSP];
                     addCycles(10);
                     if (_execMode == eSTEPOUT)
                         _execMode = ePAUSED;
                 }
                 else {
-                    errorHalt();
+                    errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                 }
                 break;
             case 1:  // 1nnn - jump NNN
@@ -117,6 +119,8 @@ public:
                 addCycles(12);
                 break;
             case 2:  // 2nnn - :call NNN
+                if(_rSP == 0x15)
+                    errorHalt("STACK OVERFLOW");
                 _stack[_rSP++] = _rPC;
                 _rPC = opcode & 0xFFF;
                 addCycles(26);
@@ -151,7 +155,7 @@ public:
                         }
                         break;
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;
@@ -221,7 +225,7 @@ public:
                         break;
                     }
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;
@@ -372,7 +376,7 @@ public:
                         break;
                     }
                     default:
-                        errorHalt();
+                        errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         break;
                 }
                 break;

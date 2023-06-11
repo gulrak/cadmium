@@ -52,9 +52,9 @@ Chip8EmulatorFP::Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& 
 void Chip8EmulatorFP::setHandler()
 {
     on(0xFFFF, 0x00E0, &Chip8EmulatorFP::op00E0);
-    on(0xFFFF, 0x00EE, &Chip8EmulatorFP::op00EE);
+    on(0xFFFF, 0x00EE, _options.optCyclicStack ? &Chip8EmulatorFP::op00EE_cyclic : &Chip8EmulatorFP::op00EE);
     on(0xF000, 0x1000, &Chip8EmulatorFP::op1nnn);
-    on(0xF000, 0x2000, &Chip8EmulatorFP::op2nnn);
+    on(0xF000, 0x2000, _options.optCyclicStack ? &Chip8EmulatorFP::op2nnn_cyclic : &Chip8EmulatorFP::op2nnn);
     on(0xF000, 0x3000, &Chip8EmulatorFP::op3xnn);
     on(0xF000, 0x4000, &Chip8EmulatorFP::op4xnn);
     on(0xF00F, 0x5000, &Chip8EmulatorFP::op5xy0);
@@ -94,7 +94,7 @@ void Chip8EmulatorFP::setHandler()
             if (_options.optWrapSprites)
                 on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|WrapSprite>);
             else {
-                if (_options.behaviorBase == Chip8EmulatorOptions::eSCHIP11 || _options.behaviorBase == Chip8EmulatorOptions::eSCHIP10)
+                if (_options.optSCLoresDrawing)
                     on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|SChip1xLoresDraw>);
                 else
                     on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport>);
@@ -135,8 +135,14 @@ void Chip8EmulatorFP::setHandler()
     switch(_options.behaviorBase) {
         case Chip8EmulatorOptions::eSCHIP10:
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+            if(_options.optModeChangeClear) {
+                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
+                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
+            }
+            else {
+                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
+                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+            }
             on(0xF0FF, 0xF029, &Chip8EmulatorFP::opFx29_ship10Beta);
             on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
@@ -147,7 +153,7 @@ void Chip8EmulatorFP::setHandler()
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
             on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            if(_options.behaviorBase == Chip8EmulatorOptions::eSCHPC) {
+            if(_options.optModeChangeClear) {
                 on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
                 on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
             }
@@ -368,7 +374,8 @@ void Chip8EmulatorFP::opNop(uint16_t)
 
 void Chip8EmulatorFP::opInvalid(uint16_t opcode)
 {
-    errorHalt();
+    _rPC -= 2;
+    errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
 }
 
 void Chip8EmulatorFP::op0010(uint16_t opcode)
@@ -395,7 +402,7 @@ void Chip8EmulatorFP::op00Bn(uint16_t opcode)
         _host.updateScreen();
     }
     else {
-        _screen.scrollUp(n);
+        _screen.scrollUp(_isHires || _options.optHalfPixelScroll ? n : (n<<1));
         _screenNeedsUpdate = true;
     }
 
@@ -409,7 +416,7 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
         _host.updateScreen();
     }
     else {
-        _screen.scrollDown(n);
+        _screen.scrollDown(_isHires || _options.optHalfPixelScroll ? n : (n<<1));
         _screenNeedsUpdate = true;
     }
 }
@@ -436,7 +443,7 @@ void Chip8EmulatorFP::op00Cn_masked(uint16_t opcode)
 void Chip8EmulatorFP::op00Dn(uint16_t opcode)
 { // Scroll UP
     auto n = (opcode & 0xf);
-    _screen.scrollUp(n);
+    _screen.scrollUp(_isHires || _options.optHalfPixelScroll ? n : (n<<1));
     _screenNeedsUpdate = true;
 }
 
@@ -477,7 +484,16 @@ void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
 
 void Chip8EmulatorFP::op00EE(uint16_t opcode)
 {
-        _rPC = _stack[--_rSP];
+    if(!_rSP)
+        errorHalt("STACK UNDERFLOW");
+    _rPC = _stack[--_rSP];
+    if (_execMode == eSTEPOUT)
+        _execMode = ePAUSED;
+}
+
+void Chip8EmulatorFP::op00EE_cyclic(uint16_t opcode)
+{
+    _rPC = _stack[(--_rSP)&0xF];
     if (_execMode == eSTEPOUT)
         _execMode = ePAUSED;
 }
@@ -489,7 +505,7 @@ void Chip8EmulatorFP::op00FB(uint16_t opcode)
         _host.updateScreen();
     }
     else {
-        _screen.scrollRight(4);
+        _screen.scrollRight(_isHires || _options.optHalfPixelScroll ? 4 : 8);
         _screenNeedsUpdate = true;
     }
 }
@@ -518,7 +534,7 @@ void Chip8EmulatorFP::op00FC(uint16_t opcode)
         _host.updateScreen();
     }
     else {
-        _screen.scrollLeft(4);
+        _screen.scrollLeft(_isHires || _options.optHalfPixelScroll ? 4 : 8);
        _screenNeedsUpdate = true;
     }
 }
@@ -681,7 +697,15 @@ void Chip8EmulatorFP::op1nnn(uint16_t opcode)
 
 void Chip8EmulatorFP::op2nnn(uint16_t opcode)
 {
+    if(_rSP == 16)
+        errorHalt("STACK OVERFLOW");
     _stack[_rSP++] = _rPC;
+    _rPC = opcode & 0xFFF;
+}
+
+void Chip8EmulatorFP::op2nnn_cyclic(uint16_t opcode)
+{
+    _stack[(_rSP++)&0xF] = _rPC;
     _rPC = opcode & 0xFFF;
 }
 
