@@ -150,6 +150,7 @@ void Chip8EmulatorFP::setHandler()
         case Chip8EmulatorOptions::eSCHIP11:
         case Chip8EmulatorOptions::eSCHPC:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
+            on(0xFFFF, 0x00C0, &Chip8EmulatorFP::opInvalid);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
             on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
             on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
@@ -374,7 +375,6 @@ void Chip8EmulatorFP::opNop(uint16_t)
 
 void Chip8EmulatorFP::opInvalid(uint16_t opcode)
 {
-    _rPC -= 2;
     errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
 }
 

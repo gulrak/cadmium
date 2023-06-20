@@ -42,6 +42,7 @@ public:
     constexpr static uint32_t MEMORY_SIZE = 4096;
     constexpr static int SCREEN_WIDTH = 64;
     constexpr static int SCREEN_HEIGHT = 32;
+    static const uint64_t CPU_CLOCK_FREQUENCY = 1760640;
 
     Chip8StrictEmulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
         : Chip8EmulatorBase(host, options, other)
@@ -428,7 +429,7 @@ public:
         return collision;
     }
 protected:
-    int64_t calcNextFrame() const { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
+    int64_t calcNextFrame() const override { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
     void handleTimer() override
     {
         ++_frameCounter;
@@ -439,16 +440,18 @@ protected:
             --_rST;
         if (!_rST)
             _wavePhase = 0;
+        if(_screenNeedsUpdate)
+            _host.updateScreen();
     }
     inline void addCycles(emu::cycles_t cycles)
     {
         _machineCycles += cycles;
-        _systemTime.addCycles(cycles * 8, 1760640);
+        _systemTime.addCycles(cycles * 8, CPU_CLOCK_FREQUENCY);
         if(_machineCycles >= _nextFrame) {
             handleTimer();
             auto irqTime = 1832 + (_rST ? 4 : 0) + (_rDT ? 8 : 0);
             _machineCycles += irqTime;
-            _systemTime.addCycles(irqTime * 8, 1760640);
+            _systemTime.addCycles(irqTime * 8, CPU_CLOCK_FREQUENCY);
             _nextFrame = calcNextFrame();
         }
     }

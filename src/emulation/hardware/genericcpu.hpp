@@ -54,6 +54,7 @@ public:
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
 
+    virtual void executeFor(int milliseconds) = 0;
     virtual ExecMode getExecMode() const { return _execMode; }
     virtual void setExecMode(ExecMode mode) { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = getSP(); }
     virtual bool inErrorState() const = 0;

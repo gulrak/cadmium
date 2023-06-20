@@ -213,6 +213,7 @@ public:
     void reset() override;
     int64_t getCycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
+    const std::string& errorMessage() const override { return _errorMessage; }
 
     inline void errorHalt(std::string errorMessage)
     {
@@ -241,9 +242,12 @@ public:
                 --_rST;
             if (!_rST)
                 _wavePhase = 0;
+            if(_screenNeedsUpdate)
+                _host.updateScreen();
         }
     }
 
+    void executeFor(int milliseconds) override;
     void tick(int instructionsPerFrame) override;
 
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
@@ -270,6 +274,7 @@ public:
     static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font = Chip8BigFont::C8F10_SCHIP11);
 
 protected:
+    virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     CpuState _cpuState{eNORMAL};
     std::string _errorMessage;
@@ -279,6 +284,7 @@ protected:
     bool _screenNeedsUpdate{false};
     uint8_t _planes{1};
     int64_t _cycleCounter{0};
+    int64_t _nextFrame{0};
     int _frameCounter{0};
     int _clearCounter{0};
     uint32_t _rI{};

@@ -327,6 +327,20 @@ void Chip8EmulatorBase::reset()
     _collisionColor = 1;
 }
 
+void Chip8EmulatorBase::executeFor(int milliseconds)
+{
+    if (_execMode == ePAUSED || _cpuState == eERROR) {
+        setExecMode(ePAUSED);
+        return;
+    }
+    auto endCycles = _cycleCounter + ((int64_t)_options.instructionsPerFrame * _options.frameRate * milliseconds) / 1000;
+    auto nextFrame = _nextFrame;
+    while(_execMode != ePAUSED && _cycleCounter < endCycles) {
+        executeInstruction();
+    }
+
+}
+
 void Chip8EmulatorBase::tick(int instructionsPerFrame)
 {
     handleTimer();

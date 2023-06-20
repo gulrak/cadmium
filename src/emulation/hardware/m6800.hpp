@@ -47,6 +47,7 @@
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
 #include <emulation/hardware/genericcpu.hpp>
+#define M6800_WITH_TIME
 #endif
 
 #include <cstdint>
@@ -422,6 +423,16 @@ public:
     {
         return emu::format("A:{:02X} B:{:02X} X:{:04X} SP:{:04X} PC:{:04X} SR:{}", _rA, _rB, _rIX, _rSP, _rPC, _rCC.asString().substr(2));
     }
+
+#ifdef CADMIUM_WITH_GENERIC_CPU
+    void executeFor(int milliseconds) override
+    {
+        auto endTime = _systemTime + Time::fromMicroseconds(milliseconds*1000ull);
+        while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
+            executeInstruction();
+        }
+    }
+#endif
 
     void executeInstruction()
     {

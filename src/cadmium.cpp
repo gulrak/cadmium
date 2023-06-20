@@ -531,7 +531,6 @@ public:
             _mainView = eSETTINGS;
         updateEmulatorOptions(_options);
         _debugger.updateCore(_chipEmu.get());
-        _chipEmu->reset();
         _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
         _screenTexture = LoadTextureFromImage(_screen);
         _crt = GenImageColor(256,512,BLACK);
@@ -543,6 +542,7 @@ public:
         _titleImage = LoadImage("cadmium-title.png");
         _microFont = LoadImage("micro-font.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
+        _chipEmu->reset();
         std::string versionStr(CADMIUM_VERSION);
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
         if(!versionStr.empty() && (versionStr.back() & 1))
@@ -1001,6 +1001,7 @@ public:
 
     void updateAndDraw()
     {
+        float deltaT = GetFrameTime();
 #ifdef RESIZABLE_GUI
 #if 0
         static int resizeCount = 0;
@@ -1066,6 +1067,7 @@ public:
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
         auto fb = getFrameBoost();
+        getInstrPerFrame();
         for(int i = 0; i < fb; ++i) {
             _chipEmu->tick(getInstrPerFrame());
             g_soundTimer.store(_chipEmu->soundTimer());

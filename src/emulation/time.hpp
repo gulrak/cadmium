@@ -135,6 +135,7 @@ public:
     std::string asString() const;
 
     static Time fromSeconds(double seconds) { return Time(seconds); }
+    static Time fromMicroseconds(uint64_t microseconds) { return Time(microseconds/1000000, (microseconds%1000000) * (ticksPerSecond/1000000)); }
 
     static Time fromCycles(cycles_t cycles, uint32_t frequency)
     {
@@ -196,5 +197,31 @@ inline cycles_t Time::differenceInClockTicks(const Time& other, uint32_t frequen
     }
     return Time(diffSeconds, diffTicks).asClockTicks(frequency);
 }
+
+class ClockedTime : public Time
+{
+public:
+    using Time::addCycles;
+    using Time::asClockTicks;
+    explicit ClockedTime(uint32_t frequency) : Time(), _clockFreq(frequency) {}
+    inline void addCycles(cycles_t cycles)
+    {
+        addCycles(cycles, _clockFreq);
+    }
+    inline cycles_t asClockTicks() const
+    {
+        return asClockTicks(_clockFreq);
+    }
+    uint32_t getClockFreq() const
+    {
+        return _clockFreq;
+    }
+    void reset()
+    {
+        (Time&)*this = Time::zero;
+    }
+private:
+    uint32_t _clockFreq{};
+};
 
 }  // namespace emu

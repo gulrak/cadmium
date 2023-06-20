@@ -91,9 +91,9 @@ public:
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
     using NEFInputHandler = std::function<bool (uint8_t)>;
-    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 1760640)
+    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
         : _bus(bus)
-        , _clockSpeed(clockFreq)
+        , _systemTime(clockFreq)
     {
         _output = [](uint8_t, uint8_t){};
         _input = [](uint8_t){ return 0; };
@@ -116,7 +116,7 @@ public:
         _idleCycles = 0;
         _irqCycles = 0;
 #endif
-        _systemTime = Time::zero;
+        _systemTime.reset();
         _execMode = eRUNNING;
         _cpuState = eNORMAL;
     }
@@ -206,7 +206,7 @@ public:
             _irqCycles += cycles;
         }
 #endif
-        _systemTime.addCycles(cycles, _clockSpeed);
+        _systemTime.addCycles(cycles);
     }
     void branchLong(bool condition)
     {
@@ -352,6 +352,14 @@ public:
             _rX = 2;
             if(_cpuState == eIDLE)
                 _cpuState = eNORMAL;
+        }
+    }
+
+    void executeFor(int milliseconds) override
+    {
+        auto endTime = _systemTime + Time::fromMicroseconds(milliseconds*1000ull);
+        while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
+            executeInstruction();
         }
     }
 
@@ -802,8 +810,7 @@ private:
     int64_t _cycles{};
     int64_t _idleCycles{};
     int64_t _irqCycles{};
-    Time::ticks_t _clockSpeed{};
-    Time _systemTime;
+    ClockedTime _systemTime;
 };
 
 }

@@ -1,0 +1,41 @@
+: main
+    v0 := 0
+    v3 := 8
+    v1 := 0
+    i := 0x34A
+    sprite v0 v1 8
+    sprite v3 v1 8
+    v0 += 1
+    v3 += 1
+    v1 += 8
+    sprite v0 v1 8
+    sprite v3 v1 8
+    v0 += 1
+    v3 += 1
+    v1 += 8
+    sprite v0 v1 8
+    sprite v3 v1 8
+    v0 += 1
+    v3 += 1
+    v1 += 8
+    sprite v0 v1 8
+    sprite v3 v1 8
+    v2 := 7
+    vA := key
+    0xb0 0x2f
+    vA := key
+    v6 := 1
+    v3 := 0
+    v4 := 0x10
+    v5 := 3
+    0xb3 0x50
+    vA := key
+    v3 := 8
+    v4 := 0
+    0xb3 0x78
+    vA := key
+    v7 += 1
+    0x13 0x32
+
+: sprite-0
+    0xaa 0x55 0xaa 0x55 0xaa 0x55 0xaa 0x55 0x00

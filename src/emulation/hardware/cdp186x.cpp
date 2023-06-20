@@ -39,7 +39,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options)
 , _type(type)
 , _options(options)
 {
-    static uint32_t foregroundColors[8] = { 0x000000FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
+    static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
     _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
     for(int i = 0; i < 256; ++i) {
         if(i & 0xF) {
@@ -58,6 +58,10 @@ void Cdp186x::reset()
         _subMode = eVP590_DEFAULT;
         _screen.setPalette(_cdp1862Palette);
         _backgroundColor = 0;
+        for(int i = 0; i < 256; i += 16) {
+            _cdp1862Palette[i] = _cdp1862BackgroundColors[_backgroundColor];
+        }
+        _screen.setPalette(_cdp1862Palette);
     }
     _frameCounter = 0;
     _displayEnabledLatch = false;
