@@ -93,7 +93,7 @@ public:
     // Additional interfaces have default implementations that
     // allow using the unit tests without much overhead
     //---------------------------------------------------------
-    virtual std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const = 0;
+    virtual std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const = 0;
     virtual std::string dumpStateLine() const = 0;
 
     virtual bool isGenericEmulation() const { return true; }
@@ -121,6 +121,7 @@ public:
     // optional interfaces for audio and/or modern CHIP-8 variant properties
     virtual float getAudioPhase() const { return 0.0f; }
     virtual void setAudioPhase(float) { }
+    virtual float getAudioFrequency() const { return 1400.0f; }
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
     virtual uint8_t getXOPitch() const { return 0; }
     virtual uint8_t getNextMCSample() { return 0; }

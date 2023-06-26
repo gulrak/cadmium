@@ -71,7 +71,8 @@ void Chip8EmulatorFP::setHandler()
     on(0xF00F, 0x800E, _options.optJustShiftVx ? &Chip8EmulatorFP::op8xyE_justShiftVx : &Chip8EmulatorFP::op8xyE);
     on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0);
     on(0xF000, 0xA000, &Chip8EmulatorFP::opAnnn);
-    on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8EmulatorFP::opBxnn : &Chip8EmulatorFP::opBnnn);
+    if(_options.behaviorBase != Chip8EmulatorOptions::eCHIP8X)
+        on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8EmulatorFP::opBxnn : &Chip8EmulatorFP::opBnnn);
     std::string randomGen;
     if(_options.advanced.contains("random")) {
         randomGen = _options.advanced.at("random");
@@ -83,7 +84,13 @@ void Chip8EmulatorFP::setHandler()
         on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_counting);
     else
         on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn);
-    if(_options.optAllowHires) {
+    if(_options.behaviorBase == Chip8EmulatorOptions::eCHIP8X) {
+        if(_options.optInstantDxyn)
+            on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<0>);
+        else
+            on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn_displayWait<0>);
+    }
+    else if(_options.optAllowHires) {
         if(_options.optAllowColors) {
             if (_options.optWrapSprites)
                 on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|MultiColor|WrapSprite>);
@@ -146,6 +153,16 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF029, &Chip8EmulatorFP::opFx29_ship10Beta);
             on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            break;
+        case Chip8EmulatorOptions::eCHIP8X:
+            on(0xFFFF, 0x02A0, &Chip8EmulatorFP::op02A0_c8x);
+            on(0xF00F, 0x5001, &Chip8EmulatorFP::op5xy1_c8x);
+            on(0xF000, 0xB000, &Chip8EmulatorFP::opBxyn_c8x);
+            on(0xF00F, 0xB000, &Chip8EmulatorFP::opBxy0_c8x);
+            on(0xF0FF, 0xE0F2, &Chip8EmulatorFP::opExF2_c8x);
+            on(0xF0FF, 0xE0F5, &Chip8EmulatorFP::opExF5_c8x);
+            on(0xF0FF, 0xF0F8, &Chip8EmulatorFP::opFxF8_c8x);
+            on(0xF0FF, 0xF0FB, &Chip8EmulatorFP::opFxFB_c8x);
             break;
         case Chip8EmulatorOptions::eSCHIP11:
         case Chip8EmulatorOptions::eSCHPC:
@@ -256,6 +273,10 @@ void Chip8EmulatorFP::reset()
 {
     Chip8EmulatorBase::reset();
     _simpleRandState = _simpleRandSeed;
+    if(_options.behaviorBase == Chip8EmulatorOptions::eCHIP8X) {
+        _screen.setOverlayCellHeight(-1); // reset
+        _chip8xBackgroundColor = 0;
+    }
 }
 
 inline void Chip8EmulatorFP::executeInstructionNoBreakpoints()
@@ -625,6 +646,12 @@ void Chip8EmulatorFP::op01nn(uint16_t opcode)
     _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
+void Chip8EmulatorFP::op02A0_c8x(uint16_t opcode)
+{
+    _chip8xBackgroundColor = (_chip8xBackgroundColor + 1) & 3;
+    _screenNeedsUpdate = true;
+}
+
 void Chip8EmulatorFP::op02nn(uint16_t opcode)
 {
     auto numCols = opcode & 0xFF;
@@ -772,6 +799,11 @@ void Chip8EmulatorFP::op5xy0_with_01nn(uint16_t opcode)
     if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
+}
+
+void Chip8EmulatorFP::op5xy1_c8x(uint16_t opcode)
+{
+    _rV[(opcode >> 8) & 0xF] = ((_rV[(opcode >> 8) & 0xF] & 0x77) + (_rV[(opcode >> 4) & 0xF] & 0x77)) & 0x77;
 }
 
 void Chip8EmulatorFP::op5xy2(uint16_t opcode)
@@ -928,6 +960,39 @@ void Chip8EmulatorFP::op9xy0_with_01nn(uint16_t opcode)
 void Chip8EmulatorFP::opAnnn(uint16_t opcode)
 {
     _rI = opcode & 0xFFF;
+}
+
+void Chip8EmulatorFP::opBxy0_c8x(uint16_t opcode)
+{
+    auto rx = _rV[(opcode >> 8) & 0xF];
+    auto ry = _rV[((opcode >> 8) & 0xF) + 1];
+    auto xPos = rx & 0xF;
+    auto width = rx >> 4;
+    auto yPos = ry & 0xF;
+    auto height = ry >> 4;
+    auto col = _rV[(opcode >> 4) & 0xF] & 7;
+    _screen.setOverlayCellHeight(4);
+    for(int y = 0; y <= height; ++y) {
+        for(int x = 0; x <= width; ++x) {
+            _screen.setOverlayCell(xPos + x, yPos + y, col);
+        }
+    }
+    _screenNeedsUpdate = true;
+}
+
+void Chip8EmulatorFP::opBxyn_c8x(uint16_t opcode)
+{
+    auto rx = _rV[(opcode >> 8) & 0xF];
+    auto ry = _rV[((opcode >> 8) & 0xF) + 1];
+    auto xPos = (rx >> 3) & 7;
+    auto yPos = ry & 0x1F;
+    auto height = opcode & 0xF;
+    auto col = _rV[(opcode >> 4) & 0xF] & 7;
+    _screen.setOverlayCellHeight(1);
+    for(int y = 0; y < height; ++y) {
+        _screen.setOverlayCell(xPos, yPos + y, col);
+    }
+    _screenNeedsUpdate = true;
 }
 
 void Chip8EmulatorFP::opBnnn(uint16_t opcode)
@@ -1108,6 +1173,16 @@ void Chip8EmulatorFP::opExA1_with_01nn(uint16_t opcode)
     }
 }
 
+void Chip8EmulatorFP::opExF2_c8x(uint16_t opcode)
+{
+    // still nop
+}
+
+void Chip8EmulatorFP::opExF5_c8x(uint16_t opcode)
+{
+    _rPC += 2;
+}
+
 void Chip8EmulatorFP::opF000(uint16_t opcode)
 {
     _rI = ((_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
@@ -1267,6 +1342,17 @@ void Chip8EmulatorFP::opFx85(uint16_t opcode)
     for (int i = 0; i <= upto; ++i) {
         _rV[i] = registerSpace[i];
     }
+}
+
+void Chip8EmulatorFP::opFxF8_c8x(uint16_t opcode)
+{
+    uint8_t val = _rV[(opcode >> 8) & 0xF];
+    _vp595Frequency = val ? val : 0x80;
+}
+
+void Chip8EmulatorFP::opFxFB_c8x(uint16_t opcode)
+{
+    // still nop
 }
 
 }

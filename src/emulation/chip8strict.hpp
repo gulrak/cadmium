@@ -33,6 +33,9 @@
 namespace emu
 {
 
+extern const uint8_t _chip8_cvip[0x200];
+extern const uint8_t _rom_cvip[0x200];
+
 class Chip8StrictEmulator : public Chip8EmulatorBase
 {
 public:
@@ -59,6 +62,7 @@ public:
     void reset() override
     {
         Chip8EmulatorBase::reset();
+        std::memcpy(_memory.data(), _chip8_cvip, 512);
         _machineCycles = 3206;  // This is the amount of cycles a VIP needs to get to the start of the program
         _nextFrame = calcNextFrame();
         _cycleCounter = 2;
@@ -67,7 +71,7 @@ public:
 
     inline uint16_t readWord(uint32_t addr) const
     {
-        return (_memory[addr] << 8) | _memory[addr + 1];
+        return (readByte(addr) << 8) | readByte(addr + 1);
     }
 
     int64_t getMachineCycles() const override { return _machineCycles; }
@@ -89,7 +93,7 @@ public:
         if (_execMode == ePAUSED || _cpuState == eERROR)
             return;
         uint16_t opcode = readWord(_rPC);
-        _rPC = (_rPC + 2) & ADDRESS_MASK;
+        _rPC = uint16_t(_rPC + 2);;
         if(_cpuState != eWAITING) {
             ++_cycleCounter;
             addCycles((opcode & 0xF000) ? 68 : 40);
@@ -114,7 +118,7 @@ public:
                 }
                 break;
             case 1:  // 1nnn - jump NNN
-                if((opcode & 0xFFF) == _rPC - 2)
+                if((opcode & 0xFFF) == (uint16_t)(_rPC - 2))
                     _execMode = ePAUSED;
                 _rPC = opcode & 0xFFF;
                 addCycles(12);
@@ -128,7 +132,7 @@ public:
                 break;
             case 3:  // 3xnn - if vX != NN then
                 if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
-                    _rPC += 2;
+                    _rPC = uint16_t(_rPC + 2);
                     addCycles(14);
                 }
                 else {
@@ -137,7 +141,7 @@ public:
                 break;
             case 4:  // 4xnn - if vX == NN then
                 if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
-                    _rPC += 2;
+                    _rPC = uint16_t(_rPC + 2);
                     addCycles(14);
                 }
                 else {
@@ -148,7 +152,7 @@ public:
                 switch (opcode & 0xF) {
                     case 0: // 5xy0 - if vX != vY then
                         if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
-                            _rPC += 2;
+                            _rPC = uint16_t(_rPC + 2);
                             addCycles(18);
                         }
                         else {
@@ -233,7 +237,7 @@ public:
             }
             case 9:  // 9xy0 - if vX == vY then
                 if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
-                    _rPC += 2;
+                    _rPC = uint16_t(_rPC + 2);
                     addCycles(18);
                 }
                 else {
@@ -246,14 +250,13 @@ public:
                 break;
             case 0xB: {  // Bnnn - jump0 NNN
                 auto t = _rPC = opcode & 0xFFF;
-                _rPC += _rV[0];
+                _rPC = uint16_t(_rPC + _rV[0]);
                 addCycles(((_rPC ^ t) & 0xFF00) ? 24 : 22);
-                _rPC &= ADDRESS_MASK;
                 break;
             }
             case 0xC: {  // Cxnn - vX := random NN
                 uint16_t val = ++_randomSeed>>8;
-                val += _chip8_cosmac_vip[0x100 + (_randomSeed&0xFF)];
+                val += _chip8_cvip[0x100 + (_randomSeed&0xFF)];
                 val = (val & 0xFF) + (val >> 1);
                 _randomSeed = (_randomSeed & 0xFF) | (val << 8);
                 _rV[(opcode >> 8) & 0xF] = val & (opcode & 0xFF);
@@ -269,20 +272,20 @@ public:
                 if(_cpuState != eWAITING) {
                     auto prepareTime = 68 + lines * (46 + 20 * (x & 7));
                     _cpuState = eWAITING;
-                    _rPC -= 2;
+                    _rPC = uint16_t(_rPC - 2);
                     _instructionCycles = (prepareTime > cyclesLeftInFrame) ? prepareTime - cyclesLeftInFrame : 0;
                     addCycles(cyclesLeftInFrame);
                 }
                 else
                 {
                     if(_instructionCycles) {
-                        _rPC -= 2;
+                        _rPC = uint16_t(_rPC - 2);
                         _instructionCycles -= (_instructionCycles > cyclesLeftInFrame) ? cyclesLeftInFrame : _instructionCycles;
                         addCycles(cyclesLeftInFrame);
                     }
                     else {
                         _cpuState = eNORMAL;
-                        _rV[15] = drawSprite(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+                        _rV[15] = drawSprite(x, y, _rI, lines, false) ? 1 : 0;
                     }
                 }
                 break;
@@ -290,7 +293,7 @@ public:
             case 0xE:
                 if ((opcode & 0xff) == 0x9E) {  // Ex9E - if vX -key then
                     if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
-                        _rPC += 2;
+                        _rPC = uint16_t(_rPC + 2);
                         addCycles(18);
                     }
                     else {
@@ -299,7 +302,7 @@ public:
                 }
                 else if ((opcode & 0xff) == 0xA1) {  // ExA1 - if vX key then
                     if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
-                        _rPC += 2;
+                        _rPC = uint16_t(_rPC + 2);
                         addCycles(18);
                     }
                     else {
@@ -338,42 +341,41 @@ public:
                         break;
                     case 0x1E: {  // Fx1E - i += vX
                         auto oldIH = _rI >> 8;
-                        _rI = (_rI + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
+                        _rI = (_rI + _rV[(opcode >> 8) & 0xF]);
                         addCycles(_rI>>8 != oldIH ? 18 : 12);
                         break;
                     }
                     case 0x29:  // Fx29 - i := hex vX
-                        _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 5;
+                        _rI = 0x8100 + readByte(0x8100 + (_rV[(opcode >> 8) & 0xF] & 0xF));
                         addCycles(16);
                         break;
                     case 0x33: {  // Fx33 - bcd vX
                         uint8_t val = _rV[(opcode >> 8) & 0xF];
-                        _memory[_rI & ADDRESS_MASK] = val / 100;
-                        _memory[(_rI + 1) & ADDRESS_MASK] = (val / 10) % 10;
-                        _memory[(_rI + 2) & ADDRESS_MASK] = val % 10;
-                        addCycles(80 + (_memory[_rI & ADDRESS_MASK] + _memory[(_rI + 1) & ADDRESS_MASK] + _memory[(_rI + 2) & ADDRESS_MASK]) * 16);
+                        auto a = val / 100, b = (val / 10) % 10, c = val % 10;
+                        writeByte(_rI, a);
+                        writeByte(_rI + 1, b);
+                        writeByte(_rI + 2, c);
+                        addCycles(80 + (a + b + c) * 16);
                         break;
                     }
                     case 0x55: {  // Fx55 - save vX
                         uint8_t upto = (opcode >> 8) & 0xF;
                         addCycles(14);
                         for (int i = 0; i <= upto; ++i) {
-                            _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+                            writeByte(_rI + i, _rV[i]);
                             addCycles(14);
                         }
-                        if(_rI + upto > ADDRESS_MASK)
-                            fixupSafetyPad();
-                        _rI = (_rI + upto + 1) & ADDRESS_MASK;
+                        _rI = uint16_t(_rI + upto + 1);
                         break;
                     }
                     case 0x65: {  // Fx65 - load vX
                         uint8_t upto = (opcode >> 8) & 0xF;
                         addCycles(14);
                         for (int i = 0; i <= upto; ++i) {
-                            _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            _rV[i] = readByte(_rI + i);
                             addCycles(14);
                         }
-                        _rI = (_rI + upto + 1) & ADDRESS_MASK;
+                        _rI = uint16_t(_rI + upto + 1);
                         break;
                     }
                     default:
@@ -399,7 +401,7 @@ public:
             Chip8StrictEmulator::executeInstruction();
     }
 
-    bool drawSprite(uint8_t x, uint8_t y, const uint8_t* data, uint8_t height, bool hires)
+    bool drawSprite(uint8_t x, uint8_t y, uint16_t data, uint8_t height, bool hires)
     {
         // sdt = 26 + 34*VisN + 4*ColRow1 + (VX < 56 ? 16*VisN + 4*ColRow2 : 0);
         bool collision = false;
@@ -408,7 +410,7 @@ public:
         x %= 64;
         y %= 32;
         for (int l = 0; l < height; ++l) {
-            uint8_t value = *data++;
+            uint8_t value = readByte(data++);
             if (y + l < 32) {
                 unsigned col1 = 0, col2 = 0;
                 for (unsigned b = 0; b < 8; ++b, value <<= 1) {
@@ -429,6 +431,23 @@ public:
         return collision;
     }
 protected:
+    uint8_t readByte(uint16_t addr) const
+    {
+        if(addr < 0x1000) {
+            return _memory[addr];
+        }
+        else if(addr >= 0x8000 && addr < 0x8200)
+        {
+            return _rom_cvip[addr & 0x1ff];
+        }
+        return 0;
+    }
+    void writeByte(uint16_t addr, uint8_t val)
+    {
+        if(addr < 0x1000) {
+            _memory[addr] = val;
+        }
+    }
     int64_t calcNextFrame() const override { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
     void handleTimer() override
     {

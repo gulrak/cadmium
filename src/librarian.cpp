@@ -1052,3 +1052,15 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
     }
     return Librarian::Screenshot();
 }
+
+bool Librarian::isPrefixedTPDRom(const uint8_t* data, size_t size)
+{
+    static const uint8_t magic[] = {0x12, 0x60, 0x01, 0x7a, 0x42, 0x70, 0x22, 0x78};
+    return size > 0x60 && std::memcmp(magic, data, 8) == 0;
+}
+
+bool Librarian::isPrefixedRSTDPRom(const uint8_t* data, size_t size)
+{
+    static const uint8_t magic[] = {0x9c, 0x7c, 0x00, 0xbc, 0xfb, 0x10, 0x30, 0xfc};
+    return size > 0xC0 && isPrefixedTPDRom(data, size) && std::memcmp(magic, data + 0x50, 8) == 0;
+}

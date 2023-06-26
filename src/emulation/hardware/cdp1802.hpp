@@ -153,6 +153,7 @@ public:
     uint8_t getD() const { return _rD; }
     uint8_t getDF() const { return _rDF ? 1 : 0; }
     uint8_t getT() const { return _rT; }
+    bool getQ() const { return _rQ; }
     uint16_t& RN() { return _rR[_rN]; }
     uint16_t& RX() { return _rR[_rX]; }
     void getState(Cdp1802State& state) const

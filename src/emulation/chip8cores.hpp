@@ -547,6 +547,7 @@ public:
     void op00FF_withClear(uint16_t opcode);
     void op00FF_megachip(uint16_t opcode);
     void op01nn(uint16_t opcode);
+    void op02A0_c8x(uint16_t opcode);
     void op02nn(uint16_t opcode);
     void op03nn(uint16_t opcode);
     void op04nn(uint16_t opcode);
@@ -567,6 +568,7 @@ public:
     void op5xy0(uint16_t opcode);
     void op5xy0_with_F000(uint16_t opcode);
     void op5xy0_with_01nn(uint16_t opcode);
+    void op5xy1_c8x(uint16_t opcode);
     void op5xy2(uint16_t opcode);
     void op5xy3(uint16_t opcode);
     void op5xy4(uint16_t opcode);
@@ -591,6 +593,8 @@ public:
     void op9xy0_with_01nn(uint16_t opcode);
     void opAnnn(uint16_t opcode);
     void opBnnn(uint16_t opcode);
+    void opBxy0_c8x(uint16_t opcode);
+    void opBxyn_c8x(uint16_t opcode);
     void opBxnn(uint16_t opcode);
     void opBxyn(uint16_t opcode);
     void opCxnn(uint16_t opcode);
@@ -603,6 +607,8 @@ public:
     void opExA1(uint16_t opcode);
     void opExA1_with_F000(uint16_t opcode);
     void opExA1_with_01nn(uint16_t opcode);
+    void opExF2_c8x(uint16_t opcode);
+    void opExF5_c8x(uint16_t opcode);
     void opF000(uint16_t opcode);
     void opF002(uint16_t opcode);
     void opFx01(uint16_t opcode);
@@ -624,6 +630,8 @@ public:
     void opFx65_loadStoreDontIncI(uint16_t opcode);
     void opFx75(uint16_t opcode);
     void opFx85(uint16_t opcode);
+    void opFxF8_c8x(uint16_t opcode);
+    void opFxFB_c8x(uint16_t opcode);
 
     template<uint16_t quirks>
     void opDxyn(uint16_t opcode)
@@ -781,6 +789,10 @@ public:
             return (bool)collision;
     }
 
+    float getAudioFrequency() const override
+    {
+        return _options.behaviorBase == Chip8EmulatorOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1400.0f;
+    }
 private:
     inline uint16_t readWord(uint32_t addr) const
     {
@@ -789,6 +801,8 @@ private:
     std::vector<OpcodeHandler> _opcodeHandler;
     uint32_t _simpleRandSeed{12345};
     uint32_t _simpleRandState{12345};
+    int _chip8xBackgroundColor{0};
+    uint8_t _vp595Frequency{0x80};
 };
 
 

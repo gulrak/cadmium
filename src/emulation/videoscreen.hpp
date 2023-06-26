@@ -50,6 +50,16 @@ public:
         _height = height;
         _ratio = ratio > 0 ? ratio : (width/height/2);
     }
+    void setOverlayCellHeight(int height) {
+        _overlayCellHeight = height;
+        if(_overlayCellHeight < 0) {
+            std::memset(_colorOverlay.data(), 0, 256);
+            _colorOverlay[0] = 2;
+            _overlayBackground = 0;
+            _overlayCellHeight = 4;
+        }
+    }
+    void setOverlayBackground(int background) { _overlayBackground = background; }
     int width() const { return _width; }
     int height() const { return _height; }
     int stride() const { return _stride; }
@@ -76,17 +86,40 @@ public:
     {
         _screenBuffer[y * _stride + x] = value;
     }
+    void setOverlayCell(int x, int y, uint8_t value)
+    {
+        if(_overlayCellHeight > 0)
+            _colorOverlay[((y * _overlayCellHeight)&31) * 8 + (x & 7)] = value & 0xF;
+    }
     void convert(uint32_t* destination, int destinationStride) const
     {
-        for(unsigned row = 0; row < _height; ++row) {
-            auto srcPtr = _screenBuffer.data() + row * _stride;
-            auto dstPtr = destination + row * destinationStride;
-            for(unsigned x = 0; x < _width; ++x) {
-                if constexpr (isRGBA()) {
-                    *dstPtr++ = *srcPtr++;
+        if(isRGBA() || !_overlayCellHeight) {
+            for (unsigned row = 0; row < _height; ++row) {
+                auto srcPtr = _screenBuffer.data() + row * _stride;
+                auto dstPtr = destination + row * destinationStride;
+                for (unsigned x = 0; x < _width; ++x) {
+                    if constexpr (isRGBA()) {
+                        *dstPtr++ = *srcPtr++;
+                    }
+                    else {
+                        *dstPtr++ = _palette[*srcPtr++];
+                    }
                 }
-                else {
-                    *dstPtr++ = _palette[*srcPtr++];
+            }
+        }
+        else {
+            for (unsigned row = 0; row < _height; ++row) {
+                auto srcPtr = _screenBuffer.data() + row * _stride;
+                auto dstPtr = destination + row * destinationStride;
+                auto overlayPtr = _colorOverlay.data() + (row/_overlayCellHeight)*_overlayCellHeight * 8;
+                for (unsigned x = 0; x < _width; ++x) {
+                    auto pxl = *srcPtr++;
+                    if(_overlayCellHeight < 0) {
+                        *dstPtr++ = pxl ? _palette[7+4] : _palette[_overlayBackground & 3];
+                    }
+                    else {
+                        *dstPtr++ = pxl ? _palette[overlayPtr[x >> 3] + 4] : _palette[_overlayBackground & 3];
+                    }
                 }
             }
         }
@@ -221,10 +254,13 @@ protected:
     int _width{Width};
     int _height{Height};
     int _ratio{1};
+    int _overlayCellHeight{0};
+    int _overlayBackground{0};
     PixelType _black{isRGBA() ? be32(0x000000FF) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
     std::array<PixelType, Width*Height> _screenBuffer;
     std::array<uint32_t, 256> _palette{};
+    std::array<uint8_t, 256> _colorOverlay{};
 };
 
 }

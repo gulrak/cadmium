@@ -62,7 +62,9 @@ Octo sources (`.8o`) onto the window to load them.
 ## Features
 
 The emulation behavior used in Cadmium is based on opcode information documented
-in [the wiki](https://github.com/gulrak/cadmium/wiki/Instruction-Overview).
+in [the opcode table](https://chip8.gulrak.net), various VIPER magazine issues,
+the [CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/) pages
+and tests on various emulators and the HP-48SX/HP-48GX calculator implementations.
 
 ### Supported CHIP-8 variants
 
@@ -73,11 +75,13 @@ a core, some settings and set of quirks to easily switch between CHIP-8 variants
 The naming conventions adapted are based on the list put together by
 _Tobias V. Langhoff_ at https://chip-8.github.io/extensions/ and for the
 classic COSMAC VIP based variants it is mainly based on the VIPER magazine where
-those  interpreter variants where published.
+those interpreter variants where published.
 
 The Supported presets are:
 
 * CHIP-8
+* CHIP-8-STRICT
+* CHIP-8X
 * CHIP-10
 * CHIP-48
 * SUPER-CHIP 1.0
@@ -86,7 +90,19 @@ The Supported presets are:
 * MegaChip 8
 * XO-CHIP
 * VIP-CHIP-8
+* VIP-CHIP-8 TPD
+* VIP-HI-RES-CHIP-8
+* VIP-CHIP-8X
 * CHIP-8-DREAM
+
+Whith `CHIP-8-STRICT` Cadmium might be the first high-level emulator that has
+a core that can execute CHIP-8 with the behavior and timing of the initial
+VIP CHIP-8 interpreter without actually emulating the actual COSMAC VIP. While
+this core, like other HLE emulators, can not execute machine subroutines, it
+emulates the exact timing behavior of every instruction and the overall frame
+timing to reach cycle exact accuracy compared to the real machine. The main
+difference to the VIP-CHIP-8 preset is, that this one needs quite less host
+CPU resources.
 
 The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
 to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
@@ -94,10 +110,13 @@ to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
 quirks that, while correct for the original SCHIP1.1, are not common in modern
 programs.
 
-The `VIP-CHIP-8` preset activates a core that is emulating a COSMAC
+The `VIP-CHIP-8` variant presets activate a core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
-allow hybrid roms (`.hc8`) that contain CDP1802 parts  to execute on Cadmium.
+allow hybrid roms (`.hc8`) that contain CDP1802 parts to execute on Cadmium.
+The currently available behaviors are classic CHIP-8, CHIP-8 Two Page Display (TPD),
+HI-RES-CHIP-8 (four page display, FPD), and CHIP-8X with the _VP-590 Color Board_
+and the _VP-595 Simple Sound Board_ attached.
 
 The `CHIP-8-DREAM` preset activates a core that is emulating a DREAM6800
 driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS

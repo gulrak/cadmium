@@ -43,6 +43,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eCHIP8: return Chip8Variant::CHIP_8;
         case eCHIP8TE: return Chip8Variant::CHIP_8;
         case eCHIP10: return Chip8Variant::CHIP_10;
+        case eCHIP8X: return Chip8Variant::CHIP_8X;
         case eCHIP48: return Chip8Variant::CHIP_48;
         case eSCHIP10: return Chip8Variant::SCHIP_1_0;
         case eSCHIP11: return Chip8Variant::SCHIP_1_1;
@@ -51,6 +52,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eXOCHIP: return Chip8Variant::XO_CHIP;
         case eCHIP8VIP: return Chip8Variant::CHIP_8;
         case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
+        case eCHIP8VIP_FPD: return Chip8Variant::HI_RES_CHIP_8;
         case eCHIP8VIP_8X: return Chip8Variant::CHIP_8X;
         case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
         case eC8D68CHIPOSLO: return Chip8Variant::CHIP_8_D6800;
@@ -65,6 +67,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eCHIP8: return "CHIP-8";
         case eCHIP8TE: return "CHIP-8-STRICT";
         case eCHIP10: return "CHIP-10";
+        case eCHIP8X: return "CHIP-8X";
         case eCHIP48: return "CHIP-48";
         case eSCHIP10: return "SUPER-CHIP 1.0";
         case eSCHIP11: return "SUPER-CHIP 1.1";
@@ -73,6 +76,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
         case eCHIP8VIP_TPD: return "VIP-CHIP-8 64x64";
+        case eCHIP8VIP_FPD: return "VIP-HI-RES-CHIP-8";
         case eCHIP8VIP_8X: return "VIP-CHIP-8X";
         case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eC8D68CHIPOSLO: return "CHIP-8-DREAM-CHIPOSLO";
@@ -88,6 +92,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eCHIP8: return "CHIP8";
         case eCHIP8TE: return "CHIP8ST";
         case eCHIP10: return "CHIP10";
+        case eCHIP8X: return "CHIP8X";
         case eCHIP48: return "CHIP48";
         case eSCHIP10: return "SCHIP10";
         case eSCHIP11: return "SCHIP11";
@@ -95,7 +100,8 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
-        case eCHIP8VIP_TPD: return "VIPCHIP8TDP";
+        case eCHIP8VIP_TPD: return "VIPCHIP8TPD";
+        case eCHIP8VIP_FPD: return "VIPCHIP8FPD";
         case eCHIP8VIP_8X: return "VIPCHIP8X";
         case eCHIP8DREAM: return "CHIP8DREAM";
         case eC8D68CHIPOSLO: return "D6k8CHIPOSLO";
@@ -114,6 +120,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"chip8te", Opts::eCHIP8TE},
     {"chip8timing", Opts::eCHIP8TE},
     {"chip10", Opts::eCHIP10},
+    {"chip8x", Opts::eCHIP8X},
     {"chip48", Opts::eCHIP48},
     {"schip10", Opts::eSCHIP10},
     {"superchip10", Opts::eSCHIP10},
@@ -138,6 +145,12 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"chip8viptpd", Opts::eCHIP8VIP_TPD},
     {"chip8vip64x64", Opts::eCHIP8VIP_TPD},
     {"vipchip864x64", Opts::eCHIP8VIP_TPD},
+    {"vipchip8fpd", Opts::eCHIP8VIP_FPD},
+    {"chip8vipfpd", Opts::eCHIP8VIP_FPD},
+    {"chip8vip64x128", Opts::eCHIP8VIP_FPD},
+    {"vipchip864x128", Opts::eCHIP8VIP_FPD},
+    {"viphireschip8", Opts::eCHIP8VIP_FPD},
+    {"hireschip8vip", Opts::eCHIP8VIP_FPD},
     {"vipchip8x", Opts::eCHIP8VIP_8X},
     {"chip8xvip", Opts::eCHIP8VIP_8X},
     {"chip8vipx", Opts::eCHIP8VIP_8X},
@@ -156,6 +169,7 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eCHIP8, R"({})"},
     {Opts::eCHIP8TE, R"({})"},
     {Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
+    {Opts::eCHIP8X, R"({"startAddress":768,"instructionsPerFrame":18,"advanced":{"palette":["#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"]}})"},
     {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optJump0Bxnn":true,"instructionsPerFrame":15,"frameRate":64})"},
     {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15,"frameRate":64})"},
     {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optSC11Collision":true,"optHalfPixelScroll":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30,"frameRate":64})"},
@@ -164,7 +178,8 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHIP8VIP, R"({})"},
-    {Opts::eCHIP8VIP_TPD, R"({"advanced":{"interpreter":"CHIP8TPD"}})"},
+    {Opts::eCHIP8VIP_TPD, R"({"startAddress":608,"advanced":{"interpreter":"CHIP8TPD"}})"},
+    {Opts::eCHIP8VIP_FPD, R"({"startAddress":580,"advanced":{"interpreter":"CHIP8FPD"}})"},
     {Opts::eCHIP8VIP_8X, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8X"}})"},
     {Opts::eCHIP8DREAM, R"({"frameRate":50})"},
     {Opts::eC8D68CHIPOSLO, R"({"frameRate":50,"advanced":{"kernel":"chiposlo"}})"}
@@ -302,28 +317,6 @@ void from_json(const nlohmann::json& j, Chip8EmulatorOptions& o)
     GET_OR_DEFAULT(o, j, optHalfPixelScroll);
     GET_OR_DEFAULT(o, j, instructionsPerFrame);
     GET_OR_DEFAULT(o, j, frameRate);
-#if 0
-    o.startAddress = j.value("startAddress", defaultOpts.startAddress);
-    o.optJustShiftVx = j.value("optJustShiftVx", defaultOpts.optJustShiftVx);
-    o.optDontResetVf = j.value("optDontResetVf", defaultOpts.optDontResetVf);
-    o.optLoadStoreIncIByX = j.value("optLoadStoreIncIByX", defaultOpts.optLoadStoreIncIByX);
-    o.optLoadStoreDontIncI = j.value("optLoadStoreDontIncI", defaultOpts.optLoadStoreDontIncI);
-    o.optWrapSprites = j.value("optWrapSprites", defaultOpts.optWrapSprites);
-    o.optInstantDxyn = j.value("optInstantDxyn", defaultOpts.optInstantDxyn);
-    o.optJump0Bxnn = j.value("optJump0Bxnn", defaultOpts.optJump0Bxnn);
-    o.optAllowHires = j.value("optAllowHires", defaultOpts.optAllowHires);
-    o.optOnlyHires = j.value("optOnlyHires", defaultOpts.optOnlyHires);
-    o.optAllowColors = j.value("optAllowColors", defaultOpts.optAllowColors);
-    o.optHas16BitAddr = j.value("optHas16BitAddr", defaultOpts.optHas16BitAddr);
-    o.optCyclicStack = j.value("optCyclicStack", defaultOpts.optCyclicStack);
-    o.optXOChipSound = j.value("optXOChipSound", defaultOpts.optXOChipSound);
-    o.optTraceLog = j.value("optTraceLog", defaultOpts.optTraceLog);
-    o.optLoresDxy0Is8x16 = j.value("optLoresDxy0Is8x16", defaultOpts.optLoresDxy0Is8x16);
-    o.optLoresDxy0Is16x16 = j.value("optLoresDxy0Is16x16", defaultOpts.optLoresDxy0Is16x16);
-    o.optSC11Collision = j.value("optSC11Collision", defaultOpts.optSC11Collision);
-    o.optSCLoresDrawing = j.value("optSCLoresDrawing", defaultOpts.optSCLoresDrawing);
-    o.instructionsPerFrame = j.value("instructionsPerFrame", defaultOpts.instructionsPerFrame);
-#endif
     if(j.contains("advanced")) {
         o.advanced = j.at("advanced");
         o.unifyColors();

@@ -33,6 +33,9 @@
 
 namespace emu {
 
+extern const uint8_t _chip8_cvip[0x200];
+extern const uint8_t _rom_cvip[0x200];
+
 class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
 {
 public:
@@ -67,6 +70,7 @@ public:
 
     float getAudioPhase() const override;
     void setAudioPhase(float phase) override;
+    float getAudioFrequency() const override;
 
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;

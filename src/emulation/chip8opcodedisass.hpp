@@ -27,6 +27,8 @@
 
 #include <emulation/ichip8.hpp>
 #include <emulation/chip8options.hpp>
+#include <chiplet/chip8meta.hpp>
+
 
 #include <cstdint>
 #include <functional>
@@ -40,10 +42,11 @@ class Chip8OpcodeDisassembler : public emu::IChip8Emulator
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
-    std::pair<uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
+    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
 protected:
     Chip8EmulatorOptions& _options;
     SymbolResolver _labelOrAddress;
+    detail::OpcodeSet _opcodeSet;
 };
 
 }

@@ -36,13 +36,21 @@ as well as developing software for them using Octo assembler language.
 
 Currently supported CHIP-8 variants are:
   * CHIP-8
+  * CHIP-8-STRICT (cycle exact HLE VIP CHIP-8)
+  * CHIP-8X
   * CHIP-10
   * CHIP-48
-  * SUPERCHIP 1.0
-  * SUPERCHIP 1.1
-  * SUPERCHIP-COMP
-  * MegaChip8
+  * SUPER-CHIP 1.0
+  * SUPER-CHIP 1.1
+  * SUPER-CHIP COMP
+  * MegaChip 8
   * XO-CHIP
+  * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
+  * VIP-CHIP-8 TPD (same, but with 64x64 display)
+  * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
+  * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
+  * CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
+
   * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
   * CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
 

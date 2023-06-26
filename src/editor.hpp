@@ -111,6 +111,7 @@ public:
     void undo();
     void redo();
 
+    void updateCompilerOptions(int startAddress);
     const emu::OctoCompiler& compiler() const { return _compiler; }
 
     std::pair<uint32_t, uint32_t> selection() const
@@ -121,6 +122,7 @@ public:
     void draw(Font& font, Rectangle rect);
 
 protected:
+    void recompile();
     static void fixLinefeed(std::string& text);
     void ensureCursorVisibility();
     void highlightLine(const char* text, const char* end);

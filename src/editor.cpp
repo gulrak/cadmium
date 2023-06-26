@@ -414,18 +414,7 @@ void Editor::update()
             _editedTextSha1Hex = calculateSha1Hex(_text);
             if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
                 _compiledSourceSha1Hex = _editedTextSha1Hex;
-                try {
-                    _compiler.reset();
-                    if(_text.empty() || _text.back() != '\n') {
-                        auto text = _text + '\n';
-                        _compiler.compile(_filename, text.data(), text.data() + text.size() + 1);
-                    }
-                    else {
-                        _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
-                    }
-                }
-                catch(std::exception& ex)
-                {}
+                recompile();
                 if(true) {
                     //if(_compiler.sha1Hex() != romSha1Hex) {
 
@@ -434,6 +423,28 @@ void Editor::update()
             }
         }
     }
+}
+
+void Editor::recompile()
+{
+    try {
+        _compiler.reset();
+        if(_text.empty() || _text.back() != '\n') {
+            auto text = _text + '\n';
+            _compiler.compile(_filename, text.data(), text.data() + text.size() + 1);
+        }
+        else {
+            _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+        }
+    }
+    catch(std::exception& ex)
+    {}
+}
+
+void Editor::updateCompilerOptions(int startAddress)
+{
+    _compiler.setStartAddress(startAddress);
+    recompile();
 }
 
 void Editor::draw(Font& font, Rectangle rect)

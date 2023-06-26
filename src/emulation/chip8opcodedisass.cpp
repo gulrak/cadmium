@@ -3,7 +3,7 @@
 //
 
 #include <emulation/chip8opcodedisass.hpp>
-
+#include <chiplet/chip8meta.hpp>
 
 #include <fmt/format.h>
 
@@ -11,15 +11,18 @@ namespace emu {
 
 Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(Chip8EmulatorOptions& options)
 : _options(options)
+, _opcodeSet(Chip8EmulatorOptions::variantForPreset(options.behaviorBase))
 {
     _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
 }
 
-std::pair<uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end) const
+std::tuple<uint16_t, uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end) const
 {
     auto opcode = (*code << 8) | *(code + 1);
     auto next = code + 3 < end ? (*(code + 2) << 8) | *(code + 3) : 0;
-
+#if 1
+    return _opcodeSet.formatOpcode(opcode, next);
+#else
     switch (opcode >> 12) {
         case 0:
             if (opcode == 0x0010 && _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) return {2, "megaoff"};
@@ -117,6 +120,7 @@ std::pair<uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction
         default:
             return {2, fmt::format("0x{:02X} 0x{:02X}", opcode >> 8, opcode & 0xFF)};
     }
+#endif
 }
 
 }

@@ -170,7 +170,7 @@ public:
         for(size_t i = 0; i < 4; ++i) {
             code[i] = getMemoryByte(pc + i);
         }
-        auto [size, instruction] = disassembleInstruction(code, code + 4);
+        auto [size, opcode, instruction] = disassembleInstruction(code, code + 4);
         if(bytes)
             *bytes = size;
         if (size == 2)

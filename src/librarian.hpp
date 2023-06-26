@@ -77,6 +77,8 @@ public:
     emu::Chip8EmulatorOptions::SupportedPreset getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const;
     emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
+    static bool isPrefixedTPDRom(const uint8_t* data, size_t size);
+    static bool isPrefixedRSTDPRom(const uint8_t* data, size_t size);
 private:
     int _activeEntry{-1};
     std::string _currentPath;
