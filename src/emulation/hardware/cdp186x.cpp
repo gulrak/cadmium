@@ -120,7 +120,7 @@ int Cdp186x::executeStep()
         if(lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
             auto highBits = 0;
-            auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0xFF : 0xE7) : 0;
+            auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0x3FF : 0x3E7) : 0;
             if(_subMode == eVP590_DEFAULT)
                 highBits = 7;
             for (int i = 0; i < 8; ++i) {

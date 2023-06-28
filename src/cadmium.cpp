@@ -1193,7 +1193,7 @@ public:
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
             SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
-            SetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING, 1);
+            SetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING, 0);
 
             SetRowHeight(16);
             SetSpacing(0);
@@ -1295,10 +1295,10 @@ public:
                         menuOpen = false;
                 }
                 if(aboutOpen) {
-                    aboutOpen = !BeginWindowBox({-1,-1,450,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
+                    aboutOpen = !BeginWindowBox({-1,-1,460,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
                     static size_t newlines = std::count_if( aboutText.begin(), aboutText.end(), [](char c){ return c =='\n'; });
-                    BeginScrollPanel(-1, {0,0,440,newlines*10.0f + 100}, &aboutScroll);
+                    BeginScrollPanel(-1, {0,0,445,newlines*10.0f + 100}, &aboutScroll);
                     SetRowHeight(10);
                     DrawTextureRec(_titleTexture, {34,2,60,60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
                     auto styleColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
@@ -1525,7 +1525,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("CHIP-8 variant / Core:");
-                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));

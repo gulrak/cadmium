@@ -79,7 +79,8 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
 {
     if(_previousOptions != options || !_chipEmu) {
         _previousOptions = _options = options;
-        if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_FPD ||  _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_8X)
+        if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_FPD ||
+            _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
         else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
@@ -185,7 +186,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
                 romImage = fileData;
                 valid = true;
             }
-            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP_8X));
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8XVIP));
         }
         else if(endsWith(filename, ".sc8")) {
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11));
