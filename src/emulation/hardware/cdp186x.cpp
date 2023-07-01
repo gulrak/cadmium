@@ -127,6 +127,7 @@ int Cdp186x::executeStep()
                 auto [data, addr] = _displayEnabledLatch ? _cpu.executeDMAOut() : std::make_pair((uint8_t)0, (uint16_t)0);
                 if(mask)
                     highBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
+//                std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
                 for (int j = 0; j < 8; ++j) {
                     _screen.setPixel(i * 8 + j, (line - VIDEO_FIRST_VISIBLE_LINE), highBits | ((data >> (7 - j)) & 1));
                 }

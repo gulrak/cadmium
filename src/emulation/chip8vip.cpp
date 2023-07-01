@@ -53,14 +53,18 @@ struct Patch {
 };
 
 struct PatchSet {
-    void apply(uint8_t* destination, size_t destSize) const
+    uint16_t apply(uint8_t* destination, size_t destSize) const
     {
+        uint16_t maxOffset = 0;
         for(const auto& [offset, bytes] : patches) {
             auto* dst = destination + offset;
+            if(offset + bytes.size() > maxOffset)
+                maxOffset = offset + bytes.size();
             for(const auto& data : bytes) {
                 *dst++ = data;
             }
         }
+        return maxOffset;
     }
     std::vector<Patch> patches;
 };
@@ -360,7 +364,7 @@ void Chip8VIP::reset()
     std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
     if(_options.advanced.contains("interpreter")) {
         auto name = _options.advanced.value("interpreter", "");
-        patchRAM(name);
+        patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
     }
     _impl->_screen.setAll(0);
     _impl->_video.reset();
@@ -379,13 +383,12 @@ void Chip8VIP::reset()
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.getCycles(), frameCycle()).c_str());
 }
 
-bool Chip8VIP::patchRAM(std::string name)
+uint16_t Chip8VIP::patchRAM(std::string name, uint8_t* ram, size_t size)
 {
     auto iter = g_patchSets.find(name);
     if(iter == g_patchSets.end())
-        return false;
-    iter->second.apply(_impl->_ram.data(), _impl->_ram.size());
-    return true;
+        return 0;
+    return iter->second.apply(ram, size);
 }
 
 std::string Chip8VIP::name() const
@@ -624,11 +627,11 @@ uint8_t Chip8VIP::readByte(uint16_t addr) const
         return _impl->_ram[addr];
     if(addr >= 0xC000 && addr < 0xD000)
         return _impl->_colorRam[addr & _impl->_colorRamMaskLores];
-    if(addr >= 0xC000 && addr < 0xE000)
+    if(addr >= 0xD000 && addr < 0xE000)
         return _impl->_colorRam[addr & _impl->_colorRamMask];
     if(addr >= 0x8000 && addr < 0x8200)
         return _impl->_rom[addr & 0x1ff];
-    _cpuState = eERROR;
+    //_cpuState = eERROR;
     return 0;
 }
 
@@ -638,7 +641,7 @@ uint8_t Chip8VIP::readByteDMA(uint16_t addr) const
         return _impl->_ram[addr];
     if(addr >= 0xC000 && addr < 0xD000)
         return _impl->_colorRam[addr & _impl->_colorRamMaskLores];
-    if(addr >= 0xC000 && addr < 0xE000)
+    if(addr >= 0xD000 && addr < 0xE000)
         return _impl->_colorRam[addr & _impl->_colorRamMask];
     if(addr >= 0x8000 && addr < 0x8200)
         return _impl->_rom[addr & 0x1ff];
@@ -660,15 +663,29 @@ void Chip8VIP::writeByte(uint16_t addr, uint8_t val)
             _impl->_video.setSubMode(Cdp186x::eVP590_LORES);
         }
         else {
+            std::cout << fmt::format("color {:04x} = {:02x}", addr, val) << std::endl;
             _impl->_colorRam[addr & _impl->_colorRamMask] = val & 7;
             _impl->_video.setSubMode(Cdp186x::eVP590_HIRES);
         }
     }
     else {
-        setExecMode(ePAUSED);
-        _cpuState = eERROR;
+        //setExecMode(ePAUSED);
+        //_cpuState = eERROR;
     }
 }
 
+std::vector<uint8_t> Chip8VIP::getInterpreterCode(const std::string& name)
+{
+    std::vector<uint8_t> memory;
+    memory.resize(MAX_MEMORY_SIZE, 0);
+    std::memcpy(memory.data(), _chip8_cvip, sizeof(_chip8_cvip));
+    uint16_t used = 512;
+    if(name != "CHIP8")
+        used = patchRAM(name, memory.data(), memory.size());
+    if(!used)
+        return {};
+    memory.resize(std::max(sizeof(_chip8_cvip), (size_t)used));
+    return memory;
+}
 
 }
