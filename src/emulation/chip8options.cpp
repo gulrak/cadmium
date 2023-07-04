@@ -228,6 +228,9 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chi
     else if(variant == chip8::Variant::XO_CHIP) return eXOCHIP;
     else if(variant == chip8::Variant::CHIP_8_TPD) return eCHIP8VIP_TPD;
     else if(variant == chip8::Variant::CHIP_8_COSMAC_VIP) return eCHIP8VIP;
+    else if(variant == chip8::Variant::CHIP_8X) return eCHIP8XVIP;
+    else if(variant == chip8::Variant::CHIP_8X_TPD) return eCHIP8XVIP_TPD;
+    else if(variant == chip8::Variant::HI_RES_CHIP_8X) return eCHIP8XVIP_FPD;
     else if(variant == chip8::Variant::CHIP_8_D6800) return eCHIP8DREAM;
     else if(variant == chip8::Variant::CHIP_8_D6800_LOP) return eC8D68CHIPOSLO;
     else if(variant == chip8::Variant::GENERIC_CHIP_8) return ePORTABLE;
