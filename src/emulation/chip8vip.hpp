@@ -80,8 +80,10 @@ public:
 
     GenericCpu& getBackendCpu() override;
 
+    static std::vector<uint8_t> getInterpreterCode(const std::string& name);
+
 private:
-    bool patchRAM(std::string name);
+    static uint16_t patchRAM(std::string name, uint8_t* ram, size_t size);
     int frameCycle() const;
     int videoLine() const;
     bool executeCdp1802();

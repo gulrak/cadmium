@@ -120,13 +120,14 @@ int Cdp186x::executeStep()
         if(lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
             auto highBits = 0;
-            auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0xFF : 0xE7) : 0;
+            auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0x3FF : 0x3E7) : 0;
             if(_subMode == eVP590_DEFAULT)
                 highBits = 7;
             for (int i = 0; i < 8; ++i) {
                 auto [data, addr] = _displayEnabledLatch ? _cpu.executeDMAOut() : std::make_pair((uint8_t)0, (uint16_t)0);
                 if(mask)
                     highBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
+//                std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
                 for (int j = 0; j < 8; ++j) {
                     _screen.setPixel(i * 8 + j, (line - VIDEO_FIRST_VISIBLE_LINE), highBits | ((data >> (7 - j)) & 1));
                 }

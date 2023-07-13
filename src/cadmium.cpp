@@ -1198,7 +1198,7 @@ public:
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
             SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
-            SetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING, 1);
+            SetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING, 0);
 
             SetRowHeight(16);
             SetSpacing(0);
@@ -1300,10 +1300,10 @@ public:
                         menuOpen = false;
                 }
                 if(aboutOpen) {
-                    aboutOpen = !BeginWindowBox({-1,-1,450,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
+                    aboutOpen = !BeginWindowBox({-1,-1,460,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
                     static size_t newlines = std::count_if( aboutText.begin(), aboutText.end(), [](char c){ return c =='\n'; });
-                    BeginScrollPanel(-1, {0,0,440,newlines*10.0f + 100}, &aboutScroll);
+                    BeginScrollPanel(-1, {0,0,445,newlines*10.0f + 100}, &aboutScroll);
                     SetRowHeight(10);
                     DrawTextureRec(_titleTexture, {34,2,60,60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
                     auto styleColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
@@ -1530,7 +1530,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("CHIP-8 variant / Core:");
-                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -2542,6 +2542,7 @@ int main(int argc, char* argv[])
     bool opcodeJSON = false;
     bool startRom = false;
     bool screenDump = false;
+    std::string dumpInterpreter;
     emu::Chip8EmulatorOptions options;
     int64_t execSpeed = -1;
     std::string randomGen;
@@ -2573,6 +2574,9 @@ int main(int argc, char* argv[])
     cli.option({"--trace-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
     //cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
+#ifndef NDEBUG
+    cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
+#endif
     cli.category("Quirks");
     cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
     cli.option({"--dont-reset-vf"}, options.optDontResetVf, "If true, Vf will not be reset by 8xy1/8xy2/8xy3");
@@ -2602,6 +2606,21 @@ int main(int argc, char* argv[])
     if(opcodeJSON) {
         dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
+    }
+    if(!dumpInterpreter.empty()) {
+        auto data = emu::Chip8VIP::getInterpreterCode(toUpper(dumpInterpreter));
+        if(!data.empty()) {
+            {
+                std::ofstream os(dumpInterpreter + ".ram", std::ios::binary);
+                os.write((const char*)data.data(), data.size());
+            }
+            std::cout << "Written " << data.size() << " bytes to '" << dumpInterpreter << ".ram'." << std::endl;
+            exit(0);
+        }
+        else {
+            std::cerr << "ERROR: Unknown interpreter '" << dumpInterpreter << "'." << std::endl;
+            exit(1);
+        }
     }
     if(romFile.size() > 1) {
         std::cerr << "ERROR: only one ROM/source file supported" << std::endl;
