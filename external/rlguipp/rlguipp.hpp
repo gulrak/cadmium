@@ -80,6 +80,7 @@ extern "C" {
 #endif  // __GNUC__
 
 #include "raygui.h"
+#include "rlgl.h"
 
 #pragma GCC diagnostic pop
 }
@@ -113,9 +114,9 @@ RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});          
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns);                                                            //
+RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                            //
 RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                             //
-RLGUIPP_API bool TableNextColumn();                                                                                       //
+RLGUIPP_API bool TableNextColumn(float width);                                                                            //
 RLGUIPP_API void EndTableView();                                                                                          //
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
@@ -146,8 +147,8 @@ RLGUIPP_API int ToggleGroup(const char* text, int active);                      
 RLGUIPP_API bool CheckBox(const char* text, bool checked);                                                                // Check Box control, returns true when active
 RLGUIPP_API int ComboBox(const char* text, int active);                                                                   // Combo Box control, returns selected item index
 RLGUIPP_API bool DropdownBox(const char* text, int* active);                                                              // Dropdown Box control, returns selected item
-RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue, bool editMode);                        // Spinner control, returns selected value
-RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue, bool editMode);                       // Value Box control, updates input text with numbers
+RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                                       // Spinner control, returns selected value
+RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                                      // Value Box control, updates input text with numbers
 RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
 RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
 RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
