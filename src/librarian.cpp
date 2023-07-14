@@ -48,6 +48,7 @@ struct KnownRomInfo {
     emu::chip8::VariantSet variants;
     std::string name;
     std::string options;
+    std::string url;
 };
 
 static std::map<std::string, KnownRomInfo> g_knownRoms = {
@@ -76,7 +77,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"048659b97e0cf9506eba85ef7baaf21ada22c6f2", {emu::chip8::Variant::CHIP_8, "Astro Dodge (Revival Studios)"}},
     {"04e18ff4ae42e3056c502e0c99d4740ecea65966", {emu::chip8::Variant::XO_CHIP, "Nyan Cat (Kouzerumatsu, 2022)"}},
     {"050f07a54371da79f924dd0227b89d07b4f2aed0", {emu::chip8::Variant::CHIP_8, "Hidden (David Winter, 1996)"}},
-    {"0572f188fc25ccda14b0c306c4156fe4b1d21ae1", {emu::chip8::Variant::GENERIC_CHIP_8, "4-Flags (Timendus, 2023-04-12)"}},
+    {"0572f188fc25ccda14b0c306c4156fe4b1d21ae1", {emu::chip8::Variant::GENERIC_CHIP_8, "4-Flags (Timendus, 2023-04-12)", "", "@GH/Timendus/chip8-test-suite/v4.0/bin/4-flags.ch8"}},
     {"064492173cf4ccac3cce8fe307fc164b397013b9", {emu::chip8::Variant::CHIP_8, "Division Test (Sergey Naydenov, 2010)"}},
     //{"0663449e1cc8d79ee38075fe86d6b9439a7e43d7", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"0663449e1cc8d79ee38075fe86d6b9439a7e43d7", {emu::chip8::Variant::SCHIPC, "Super Sierp Chaos (Marco Varesio, 2015)"}},
@@ -98,7 +99,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"0d0cc129dad3c45ba672f85fec71a668232212cc", {emu::chip8::Variant::CHIP_8, "Missile Command (David Winter, 19xx)"}},
     //{"0dc782f0607d34b8355c150e81bc280de7472d94", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"0dc782f0607d34b8355c150e81bc280de7472d94", {emu::chip8::Variant::XO_CHIP, "Dig Site 8 (taqueso, 2018)"}},
-    {"0df2789f661358d8f7370e6cf93490c5bcd44b01", {emu::chip8::Variant::GENERIC_CHIP_8, "1-chip8-logo (Timendus, 2023-04-12)"}},
+    {"0df2789f661358d8f7370e6cf93490c5bcd44b01", {emu::chip8::Variant::GENERIC_CHIP_8, "1-chip8-logo (Timendus, 2023-04-12)","","@GH/Timendus/chip8-test-suite/v4.0/bin/1-chip8-logo.ch8"}},
     {"0ebc4b92c6059d6193565644fb00108161d03d23", {emu::chip8::Variant::CHIP_8, "Keypad Test (Hap, 2006)", R"({"optJustShiftVx": true})"}},
     {"0f479a10fec51d159866e5760069cd18bdfd293f", {emu::chip8::Variant::CHIP_8, "Bad Kaiju Ju (MattBooth, 2015-08-24)", R"({"instructionsPerFrame": 7, "advanced": {"col1": "#330033", "col0": "#AAAAFF"}})"}},
     {"100dea0037219d82a090e35eb93526ba4413ffe4", {emu::chip8::Variant::CHIP_8, "Shooter (Group 8 Team, 2019)"}},
@@ -231,7 +232,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"4200636c4d2a4495d10d6348049d21b887e8d1be", {emu::chip8::Variant::CHIP_8, "Space Explorer (TCNJ S.572.2)"}},
     {"429d455a4bc53167942bf6fd934d72b0f648dce3", {emu::chip8::Variant::CHIP_8, "Tic-Tac-Toe (David Winter)"}},
     {"4333eff4cbb49e57f8c0fb12f1e4cd0ac1dedd56", {emu::chip8::Variant::CHIP_8, "Labview Splash Screen (Richard James Lewis, 2019)"}},
-    {"4309cba3fb0b96761fcba01acaf233e0ca585b4d", {emu::chip8::Variant::GENERIC_CHIP_8, "5-Quirks (Timendus, 2023-04-12)"}},
+    {"4309cba3fb0b96761fcba01acaf233e0ca585b4d", {emu::chip8::Variant::GENERIC_CHIP_8, "5-Quirks (Timendus, 2023-04-12)", "", "@GH/Timendus/chip8-test-suite/v4.0/bin/5-quirks.ch8"}},
     //{"440c5fbe9f5f840e76c308738fb0d37772d66674", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"440c5fbe9f5f840e76c308738fb0d37772d66674", {emu::chip8::Variant::XO_CHIP, "Super Neatboy (JohnEarnest, 2020-08-01)", R"({"instructionsPerFrame": 1000, "optWrapSprites": false, "advanced": {"col1": "#E6E6FA", "col2": "#FF1493", "col3": "#FF1493", "col0": "#100010", "buzzColor": "#000000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})"}},
     {"443550abf646bc7f475ef0466f8e1232ec7474f3", {emu::chip8::Variant::CHIP_8, "Shooting Stars (Philip Baltzer, 1978)"}},
@@ -432,7 +433,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"8b2fc2e08830b8a9e604d11c9b319e2cc0a581b3", {emu::chip8::Variant::XO_CHIP, "T8Nks (your name here, 2015-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#554422", "col2": "#456543", "col3": "#EEEEFF", "col0": "#87CEEB", "buzzColor": "#FFFFFF", "quietColor": "#000000"}})"}},
     {"8b70080adbac44513ec60005734a816372b845ec", {emu::chip8::Variant::CHIP_8, "Maze (David Winter, 199x)"}},
     {"8c404dc15f854456cafe9b22fcdbaf16830ffde5", {emu::chip8::Variant::CHIP_8, "Tick-Tack-Toe (Joseph Weisbecker, 1977)"}},
-    {"8c7f101c61f82cacaacc45f8c11c1a00c8cc451e", {emu::chip8::Variant::GENERIC_CHIP_8, "6-Keypad (Timendus, 2023-04-12)"}},
+    {"8c7f101c61f82cacaacc45f8c11c1a00c8cc451e", {emu::chip8::Variant::GENERIC_CHIP_8, "6-Keypad (Timendus, 2023-04-12)", "", "@GH/Timendus/chip8-test-suite/v4.0/bin/6-keypad.ch8"}},
     {"8cf29db367b7db4760dee8252dfc88066a45ce4a", {emu::chip8::Variant::CHIP_8, "Jumpfill (Bj”rn Kempen, 2015)"}},
     {"8d56a781bf16acccb307177b80ff326f62aabbdc", {emu::chip8::Variant::CHIP_8_COSMAC_VIP}}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"8e5f19d8ae9f3346779613359610967a5ed95fa8", {emu::chip8::Variant::CHIP_8, "Deflection (John Fort)"}},
@@ -448,7 +449,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"9441cd611eb019217621a11ebeba15b499bbd31e", {emu::chip8::Variant::CHIP_8, "Tank Warfare (unknown author)"}},
     {"945fa6dd1ac72f1ede1cb829ef31b5328a32f67a", {emu::chip8::Variant::CHIP_8, "Etch-A-Sketch (KrzysztofJeszke, 2020)"}},
     {"9468a94294997009a2c50c1a18376947d3d3d3bb", {emu::chip8::Variant::CHIP_8, "Driving Simulator (Team 15 Chipotle, 2019)"}},
-    {"949b661091efe706a32fb0d89991005783243bb9", {emu::chip8::Variant::GENERIC_CHIP_8, "3-Corax+ (Timendus, 2023-04-12)"}},
+    {"949b661091efe706a32fb0d89991005783243bb9", {emu::chip8::Variant::GENERIC_CHIP_8, "3-Corax+ (Timendus, 2023-04-12)", "", "@GH/Timendus/chip8-test-suite/v4.0/bin/3-corax%2B.ch8"}},
     {"9514e9e2ab7e1ddc91265823e7e895de6c8dd303", {emu::chip8::Variant::SCHIP_1_1}},
     {"95384fbb895b6420da690bc06cb16739c9a5d800", {emu::chip8::Variant::CHIP_8, "Maze276 (Firas Fakih, 2019)"}},
     {"9593099c1fe1be31cbaea526aa04fd492ff90382", {emu::chip8::Variant::SCHIP_1_1}},
@@ -601,7 +602,7 @@ static std::map<std::string, KnownRomInfo> g_knownRoms = {
     {"d11e76793c231cdce513c09f0511202ed076834d", {emu::chip8::Variant::CHIP_8, "Space Racer (William Donnely, 2017)"}},
     {"d2b0a8cdab1d0bdb4186953abcd75c3a8d660033", {emu::chip8::Variant::CHIP_8, "Enchantment (Verisimilitudes, 2020)"}},
     {"d2fa3927b31f81fc06cd9466123309c59264fa41", {emu::chip8::Variant::CHIP_8, "Mastermind (William Donnelly, 2015)"}},
-    {"d3554b9789728294d881823126ba6eb8103bd42c", {emu::chip8::Variant::GENERIC_CHIP_8, "2-Ibm-Logo (Timendus, 2023-04-12)"}},
+    {"d3554b9789728294d881823126ba6eb8103bd42c", {emu::chip8::Variant::GENERIC_CHIP_8, "2-Ibm-Logo (Timendus, 2023-04-12)","", "@GH/Timendus/chip8-test-suite/v4.0/bin/2-ibm-logo.ch8"}},
     //{"d40abc54374e4343639f993e897e00904ddf85d9", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"d40abc54374e4343639f993e897e00904ddf85d9", {emu::chip8::Variant::CHIP_8, "Blinky (Hans Christian Egeberg, 1991)", R"({"optLoadStoreDontIncI": true, "optJustShiftVx": true})"}},
     //{"d4339dac64038f30130af02fbe73b57cd7d481a1", {emu::Chip8EmulatorOptions::eXOCHIP}},

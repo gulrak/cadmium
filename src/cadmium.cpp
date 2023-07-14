@@ -76,6 +76,25 @@ void openFileCallbackC(const char* str)
     if (openFileCallback)
         openFileCallback(str);
 }
+#ifdef WEB_WITH_FETCHING
+#include <emscripten/fetch.h>
+extern "C" void loadBinaryCallbackC(emscripten_fetch_t *fetch) __attribute__((used));
+extern "C" void downloadFailedCallbackC(emscripten_fetch_t *fetch) __attribute__((used));
+static std::function<void(std::string, const uint8_t*, size_t)> loadBinaryCallback;
+void loadBinaryCallbackC(emscripten_fetch_t *fetch)
+{
+    if (loadBinaryCallback) {
+        std::string_view url{fetch->url};
+        auto pos = url.rfind('/');
+        loadBinaryCallback(std::string(pos != std::string_view::npos ? url.substr(pos + 1) : url), reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes);
+    }
+    emscripten_fetch_close(fetch);
+}
+void downloadFailedCallbackC(emscripten_fetch_t *fetch)
+{
+    emscripten_fetch_close(fetch);
+}
+#endif
 #define RESIZABLE_GUI
 #else
 #ifdef __GNUC__
@@ -2544,7 +2563,7 @@ int main(int argc, char* argv[])
     std::string randomGen;
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
-    std::string presetName = "";
+    std::string presetName;
     cli.category("General Options");
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
@@ -2637,10 +2656,15 @@ int main(int argc, char* argv[])
 #else
     ghc::CLI cli(argc, argv);
     std::string presetName = "schipc";
+#ifdef WEB_WITH_FETCHING
+    std::string urlLoad;
+#endif
     int64_t execSpeed = -1;
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
-
+#ifdef WEB_WITH_FETCHING
+    cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
+#endif
     cli.parse();
     if(!presetName.empty()) {
         try {
@@ -2670,6 +2694,18 @@ int main(int argc, char* argv[])
 #else
         try {
             Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
+#ifdef WEB_WITH_FETCHING
+            if(!urlLoad.empty()) {
+                emscripten_fetch_attr_t attr;
+                emscripten_fetch_attr_init(&attr);
+                strcpy(attr.requestMethod, "GET");
+                attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+                attr.onsuccess = loadBinaryCallbackC;
+                attr.onerror = downloadFailedCallbackC;
+                loadBinaryCallback = [&](std::string filename, const uint8_t* data, size_t size) { cadmium.loadBinary(filename, data, size, false); };
+                emscripten_fetch(&attr, urlLoad.c_str());
+            }
+#endif
             emscripten_set_main_loop_arg(Cadmium::updateAndDrawFrame, &cadmium, 0, 1);
         }
         catch(std::exception& ex) {

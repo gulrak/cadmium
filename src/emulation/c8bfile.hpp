@@ -123,6 +123,23 @@ public:
                 return eREAD_ERROR;
             size = is.gcount();
             rawData.resize(size);
+            return parse();
+        }
+        catch(std::exception&) {
+            return eINVALID_C8B;
+        }
+    }
+
+    Status loadFromData(const uint8_t* data, size_t size)
+    {
+        rawData.assign(data, data + size);
+        return parse();
+    }
+
+    Status parse()
+    {
+        try {
+            auto  size = rawData.size();
             if (size < 6)
                 return eINVALID_C8B;
             if (std::memcmp(rawData.data(), "\x43\x42\x46", 3))

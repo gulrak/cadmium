@@ -52,6 +52,7 @@ public:
     //virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual bool loadRom(const char* filename, bool andRun);
+    virtual bool loadBinary(std::string filename, const uint8_t* data, size_t size, bool andRun);
     void updateEmulatorOptions(Chip8EmulatorOptions options);
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
 protected:

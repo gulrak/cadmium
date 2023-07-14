@@ -82,13 +82,13 @@
       let args = window.location.search.substring(1).trim().split('&');
       let result = [];
       for (let i = 0; i < args.length; ++i) {
-        let param = decodeURI(args[i]).split(/=(.*)/s)
+        let param = args[i].split(/=(.*)/s)
         if(param[0].length > 1)
           result.push('--' + param[0]);
-        else if(param[0].length == 1)
+        else if(param[0].length === 1)
           result.push('-' + param[0]);
         if(param.length > 1)
-          result.push(param[1]);
+          result.push(decodeURIComponent(param[1]));
       }
       console.log('ARGUMENTS: '+result.join(' '));
       return result;

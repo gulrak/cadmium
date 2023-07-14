@@ -784,7 +784,7 @@ public:
             }
         }
         if constexpr (quirks&SChip11Collisions)
-            return collision;
+            return hires ? collision : (bool)collision;
         else
             return (bool)collision;
     }
