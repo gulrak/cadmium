@@ -24,6 +24,7 @@ set(CADMIUM_SOURCE
     c8capturehost.hpp
     stylemanager.cpp
     stylemanager.hpp
+    rlguippimpl.cpp
 )
 
 if(WIN32)

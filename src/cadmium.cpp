@@ -24,7 +24,6 @@
 //
 //---------------------------------------------------------------------------------------
 #include <raylib.h>
-#define RLGUIPP_IMPLEMENTATION
 #include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
 
 #include <rlguipp/rlguipp.hpp>
@@ -1060,7 +1059,7 @@ public:
 
         BeginDrawing();
         {
-            ClearBackground(BLACK);
+            ClearBackground(RED);
 #ifdef RESIZABLE_GUI
             Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
             if(guiOffset.x < 0) guiOffset.x = 0;
@@ -1130,6 +1129,12 @@ public:
             auto offsetY = (dest.height - 60*scale) / 2;
             DrawTexturePro(_titleTexture, {34, 2, 60, 60}, {dest.x + offsetX, dest.y + offsetY, 60*scale, 60*scale}, {0, 0}, 0, {255,255,255,uint8_t(GetTime()>4 ? 255.0f*(4.0f-GetTime()) : 255.0f)});
         }
+#if 0
+        rlSetBlendFactors(1, 0, 0x8006);
+        rlSetBlendMode(RL_BLEND_CUSTOM);
+        DrawRectangle(25,25,75,75, {0,0,0,0});
+        rlSetBlendMode(RL_BLEND_ALPHA);
+#endif
     }
 
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
@@ -1454,8 +1459,8 @@ public:
                     _mainView = eSETTINGS;
                 SetTooltip("SETTINGS");
 
-                static Vector2 versionSize = MeasureTextEx(guiFont, "v" CADMIUM_VERSION, 8, 0);
-                DrawTextEx(guiFont, "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
+                static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
+                DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
 #ifndef RESIZABLE_GUI
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleBy2))
@@ -1855,7 +1860,6 @@ public:
                 EndColumns();
                 EndWindowBox();
             }
-
             EndGui();
         }
         if(_chipEmu->getExecMode() != ExecMode::ePAUSED) {
