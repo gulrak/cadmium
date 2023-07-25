@@ -93,7 +93,7 @@ public:
         if (_execMode == ePAUSED || _cpuState == eERROR)
             return;
         uint16_t opcode = readWord(_rPC);
-        _rPC = uint16_t(_rPC + 2);;
+        _rPC = uint16_t(_rPC + 2);
         if(_cpuState != eWAITING) {
             ++_cycleCounter;
             addCycles((opcode & 0xF000) ? 68 : 40);
