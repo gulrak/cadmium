@@ -325,6 +325,9 @@ void Chip8EmulatorBase::reset()
     _spriteWidth = 0;
     _spriteHeight = 0;
     _collisionColor = 1;
+    _sampleLength = 0;
+    _sampleStep = 0;
+    _mcSamplePos = 0;
 }
 
 void Chip8EmulatorBase::executeFor(int milliseconds)

@@ -314,7 +314,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         else if(_romImage.size() < 65536) {
             std::stringstream os;
             emu::Chip8Decompiler decomp;
-            decomp.setVariant(_options.presetAsVariant());
+            decomp.setVariant(_options.presetAsVariant(), true);
             decomp.decompile(filename, _romImage.data(), _options.startAddress, _romImage.size(), _options.startAddress, &os, false, true);
             source = os.str();
         }

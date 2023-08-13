@@ -877,8 +877,8 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                             emu::Chip8Decompiler dec;
                             uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
                             dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);
-                            entry.possibleVariants = dec.possibleVariants;
-                            if ((uint64_t)dec.possibleVariants) {
+                            entry.possibleVariants = dec.possibleVariants();
+                            if ((uint64_t)dec.possibleVariants()) {
                                 if (dec.supportsVariant(options.presetAsVariant()))
                                     entry.variant = options.behaviorBase;
                                 else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
@@ -945,8 +945,8 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getEstimatedPresetForFile(
     emu::Chip8Decompiler dec;
     uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
     dec.decompile("", data, startAddress, size, startAddress, nullptr, true, true);
-    auto possibleVariants = dec.possibleVariants;
-    if ((uint64_t)dec.possibleVariants) {
+    auto possibleVariants = dec.possibleVariants();
+    if ((uint64_t)dec.possibleVariants()) {
         if (dec.supportsVariant(emu::Chip8EmulatorOptions::variantForPreset(currentPreset))) {
             return currentPreset;
         }
