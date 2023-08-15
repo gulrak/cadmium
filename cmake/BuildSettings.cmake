@@ -7,6 +7,9 @@ endif()
 # add_compile_options(-fsanitize=address)
 # add_link_options(-fsanitize=address)
 
+math(EXPR PROJECT_VERSION_DECIMAL "${PROJECT_VERSION_MAJOR} * 10000 + (${PROJECT_VERSION_MINOR} * 100) + ${PROJECT_VERSION_PATCH}")
+math(EXPR PROJECT_IS_WIP "${PROJECT_VERSION_PATCH} & 1")
+
 set(DEPENDENCY_FOLDER "external")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER ${DEPENDENCY_FOLDER})

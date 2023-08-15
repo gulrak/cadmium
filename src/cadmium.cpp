@@ -1059,7 +1059,7 @@ public:
 
         BeginDrawing();
         {
-            ClearBackground(RED);
+            ClearBackground(CADMIUM_VERSION_DECIMAL & 1 ? RED : BLACK);
 #ifdef RESIZABLE_GUI
             Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
             if(guiOffset.x < 0) guiOffset.x = 0;
@@ -1165,32 +1165,6 @@ public:
             }
         }
         return disassembly;
-    }
-
-    void toggleBreakpoint(uint32_t address)
-    {
-        auto* bpi = _chipEmu->findBreakpoint(address);
-        if(bpi) {
-            if(bpi->type != emu::GenericCpu::BreakpointInfo::eCODED)
-                _chipEmu->removeBreakpoint(address);
-        }
-        else {
-            _chipEmu->setBreakpoint(address, {fmt::format("BP@{:x}", address), emu::GenericCpu::BreakpointInfo::eTRANSIENT, true});
-        }
-    }
-
-    void updateOctoBreakpoints(const emu::OctoCompiler& c8c)
-    {
-        for(uint32_t addr = 0; addr < std::min(_chipEmu->memSize(), 65536); ++addr) {
-            const auto* bpn = c8c.breakpointForAddr(addr);
-            if(bpn)
-                _chipEmu->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
-            else {
-                auto* bpi = _chipEmu->findBreakpoint(addr);
-                if(bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
-                    _chipEmu->removeBreakpoint(addr);
-            }
-        }
     }
 
     void drawGui()
