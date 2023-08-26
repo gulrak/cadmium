@@ -2769,12 +2769,12 @@ int main(int argc, char* argv[])
                 chip8->executeInstruction();
                 lastCycles = cycles;
             }
-            auto durationChip8 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8);
+            auto durationChip8 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startChip8);
             if(screenDump) {
                 std::cout << chip8EmuScreenANSI(*chip8);
             }
             std::cout << "Executed instructions: " << chip8->getCycles() << std::endl;
-            std::cout << "Cadmium: " << durationChip8.count() << "ms, " << int(double(chip8->getCycles())/durationChip8.count()/1000) << "MIPS" << std::endl;
+            std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8->getCycles())/durationChip8.count()) << "MIPS" << std::endl;
         }
         else if(traceLines >= 0) {
             do {

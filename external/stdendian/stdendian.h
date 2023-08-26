@@ -4,6 +4,7 @@
  * stdendian.h
  *
  * Declared public domain at https://gist.github.com/michaeljclark/3b4fd912f6fa8bb598b3
+ * new home at: https://github.com/michaeljclark/stdendian
  *
  * This header defines the following endian macros as defined here:
  *
