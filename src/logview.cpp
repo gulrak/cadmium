@@ -26,7 +26,7 @@
 
 #include "logview.hpp"
 
-#include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp4.hpp>
 #include <ghc/utf8.hpp>
 #include <fmt/format.h>
 

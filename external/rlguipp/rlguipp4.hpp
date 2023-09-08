@@ -80,6 +80,7 @@ extern "C" {
 #endif  // __GNUC__
 
 #include "raygui4.h"
+#include "rlgl.h"
 
 #pragma GCC diagnostic pop
 }
@@ -113,9 +114,9 @@ RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});          
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns);                                                            //
+RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                            //
 RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                             //
-RLGUIPP_API bool TableNextColumn();                                                                                       //
+RLGUIPP_API bool TableNextColumn(float width);                                                                            //
 RLGUIPP_API void EndTableView();                                                                                          //
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
@@ -146,8 +147,8 @@ RLGUIPP_API int ToggleGroup(const char* text, int active);                      
 RLGUIPP_API bool CheckBox(const char* text, bool checked);                                                                // Check Box control, returns true when active
 RLGUIPP_API int ComboBox(const char* text, int active);                                                                   // Combo Box control, returns selected item index
 RLGUIPP_API bool DropdownBox(const char* text, int* active);                                                              // Dropdown Box control, returns selected item
-RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue, bool editMode);                        // Spinner control, returns selected value
-RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue, bool editMode);                       // Value Box control, updates input text with numbers
+RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                        // Spinner control, returns selected value
+RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                       // Value Box control, updates input text with numbers
 RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
 RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
 RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
@@ -941,7 +942,7 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
     ctx.maxSize = 0;
     ctx.padding = {0, 0};
 
-    Rectangle view{};
+    Rectangle view;
     GuiScrollPanel(ctx.area, NULL, ctx.content, scroll, &view);
     ctx.scrollOffset = {ctx.area.x + scroll->x, ctx.area.y + scroll->y};
     BeginScissorMode(view.x, view.y, view.width, view.height);
@@ -1383,7 +1384,7 @@ bool TextBoxImpl(Rectangle bounds, char* text, int bufferSize, bool editMode)
 
             // Only allow keys in range [32..125]
             if ((keyCount + byteSize) < bufferSize) {
-                float maxWidth = (bounds.width - (GuiGetStyle(TEXTBOX, TEXT_INNER_PADDING) * 2));
+                float maxWidth = (bounds.width - (GuiGetStyle(TEXTBOX, TEXT_PADDING) * 2));
 
                 if ((key >= 32)) {
                     for (int i = 0; i < byteSize; i++) {
@@ -1411,7 +1412,7 @@ bool TextBoxImpl(Rectangle bounds, char* text, int bufferSize, bool editMode)
             if (textAlignment == TEXT_ALIGN_CENTER)
                 cursor.x = bounds.x + textWidth / 2 + bounds.width / 2 + 1;
             else if (textAlignment == TEXT_ALIGN_RIGHT)
-                cursor.x = bounds.x + bounds.width - GuiGetStyle(TEXTBOX, TEXT_INNER_PADDING);
+                cursor.x = bounds.x + bounds.width - GuiGetStyle(TEXTBOX, TEXT_PADDING);
         }
         else {
             if (CheckCollisionPointRec(mousePoint, bounds)) {
@@ -1458,13 +1459,13 @@ bool TextBoxImpl(Rectangle bounds, char* text, int bufferSize, bool editMode)
 
 bool TextBox(char* text, int textSize)
 {
-    return detail::editableWidget(detail::TextBoxImpl, (void*)text, text, textSize);
+    return detail::editableWidget(GuiTextBox, (void*)text, text, textSize);
 }
 
 bool TextBox(std::string& text, int textSize)
 {
     text.resize(textSize + 1);
-    auto rc = detail::editableWidget(detail::TextBoxImpl, (void*)&text, text.data(), textSize);
+    auto rc = detail::editableWidget(GuiTextBox, (void*)&text, text.data(), textSize);
     text.resize(std::strlen(text.data()));
     return rc;
 }

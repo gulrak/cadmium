@@ -26,7 +26,7 @@
 
 #include <stylemanager.hpp>
 
-#include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp4.hpp>
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {

@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include "icons.h"
-#include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp4.hpp>
 #include "debugger.hpp"
 
 void Debugger::setExecMode(ExecMode mode)

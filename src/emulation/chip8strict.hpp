@@ -268,7 +268,7 @@ public:
                 int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
                 int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
                 int lines = opcode & 0xF;
-                auto cyclesLeftInFrame = _nextFrame - _machineCycles;
+                auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
                 if(_cpuState != eWAITING) {
                     auto prepareTime = 68 + lines * (46 + 20 * (x & 7));
                     _cpuState = eWAITING;
@@ -318,15 +318,31 @@ public:
                         addCycles(6);
                         break;
                     case 0x0A: {  // Fx0A - vX := key
-                        auto key = _host.getKeyPressed();
-                        if (key) {
-                            _rV[(opcode >> 8) & 0xF] = key - 1;
-                            _cpuState = eNORMAL;
+                        if(_instructionCycles) {
+                            if(_rST) {
+                                addCycles(cyclesLeftInCurrentFrame());
+                            }
+                            else {
+                                _instructionCycles = 0;
+                                _cpuState = eNORMAL;
+                                addCycles(8);
+                            }
                         }
                         else {
-                            // keep waiting...
-                            _rPC -= 2;
-                            _cpuState = eWAITING;
+                            auto key = _host.getKeyPressed();
+                            if (key) {
+                                _rV[(opcode >> 8) & 0xF] = key - 1;
+                                addCycles(cyclesLeftInCurrentFrame());
+                                _instructionCycles = 3 * 3668;
+                                _rST = 4;
+                                _cpuState = eWAITING;
+                            }
+                            else {
+                                // keep waiting...
+                                _rPC -= 2;
+                                _rST = 4;
+                                _cpuState = eWAITING;
+                            }
                         }
                         break;
                     }
@@ -431,6 +447,16 @@ public:
         return collision;
     }
 protected:
+    void wait(int instructionCycles = 0)
+    {
+        _rPC -= 2;
+        _instructionCycles = instructionCycles;
+        _cpuState = eWAITING;
+    }
+    int64_t cyclesLeftInCurrentFrame() const
+    {
+        return _nextFrame - _machineCycles;
+    }
     uint8_t readByte(uint16_t addr) const
     {
         if(addr < 0x1000) {

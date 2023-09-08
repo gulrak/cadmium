@@ -26,7 +26,7 @@
 #include <raylib.h>
 #include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
 
-#include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp4.hpp>
 #include <stylemanager.hpp>
 #include "configuration.hpp"
 
@@ -2717,7 +2717,7 @@ int main(int argc, char* argv[])
 
         chip8->reset();
         if(!romFile.empty()) {
-            unsigned int size = 0;
+            int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
             if (size < chip8->memSize() - 512) {
                 std::memcpy(chip8->memory() + 512, data, size);
