@@ -1325,7 +1325,7 @@ int ToggleGroup(const char* text, int active)
     auto size = ctx.standardSize();
     auto rc = GuiToggleGroup({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, &active);
     ctx.increment({cols * size.x + (cols - 1) * (float)GuiGetStyle(TOGGLE, GROUP_PADDING), rows * size.y + (rows - 1) * (float)GuiGetStyle(TOGGLE, GROUP_PADDING)});
-    return rc;
+    return active;
 }
 
 bool CheckBox(const char* text, bool checked)
@@ -1334,7 +1334,7 @@ bool CheckBox(const char* text, bool checked)
     auto size = ctx.standardSize();
     auto rc = GuiCheckBox({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y + (ctx.rowHeight - 15) / 2, 15, 15}, text, &checked);
     ctx.increment(size);
-    return rc;
+    return checked;
 }
 
 int ComboBox(const char* text, int active)
