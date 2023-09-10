@@ -330,18 +330,29 @@ void Chip8EmulatorBase::reset()
     _mcSamplePos = 0;
 }
 
-void Chip8EmulatorBase::executeFor(int milliseconds)
+void Chip8EmulatorBase::executeFor(int millis)
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {
         setExecMode(ePAUSED);
         return;
     }
-    auto endCycles = _cycleCounter + ((int64_t)_options.instructionsPerFrame * _options.frameRate * milliseconds) / 1000;
-    auto nextFrame = _nextFrame;
-    while(_execMode != ePAUSED && _cycleCounter < endCycles) {
-        executeInstruction();
+    if(_options.instructionsPerFrame) {
+        auto endCycles = _cycleCounter + ((int64_t)_options.instructionsPerFrame * _options.frameRate * millis) / 1000;
+        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
+            if(_cycleCounter % _options.instructionsPerFrame == 0)
+                handleTimer();
+            executeInstruction();
+        }
     }
-
+    else {
+        using namespace std::chrono;
+        handleTimer();
+        auto endTime = steady_clock::now() + milliseconds(millis - 1);
+        do {
+            executeInstructions(487);
+        }
+        while(_execMode != ePAUSED && steady_clock::now() < endTime);
+    }
 }
 
 void Chip8EmulatorBase::tick(int instructionsPerFrame)
