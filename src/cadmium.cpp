@@ -130,18 +130,18 @@ static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 0, 0x2f7486ff},   // DEFAULT_BORDER_COLOR_NORMAL
     {0, 1, 0x024658ff},   // DEFAULT_BASE_COLOR_NORMAL
     {0, 2, 0x51bfd3ff},   // DEFAULT_TEXT_COLOR_NORMAL
-    {0, 3, 0x82cde0ff},   // DEFAULT_BORDER_COLOR_FOCUSED
+    {0, 3, (int)0x82cde0ff},   // DEFAULT_BORDER_COLOR_FOCUSED
     {0, 4, 0x3299b4ff},   // DEFAULT_BASE_COLOR_FOCUSED
-    {0, 5, 0xb6e1eaff},   // DEFAULT_TEXT_COLOR_FOCUSED
-    {0, 6, 0x82cde0ff},   // DEFAULT_BORDER_COLOR_PRESSED
+    {0, 5, (int)0xb6e1eaff},   // DEFAULT_TEXT_COLOR_FOCUSED
+    {0, 6, (int)0x82cde0ff},   // DEFAULT_BORDER_COLOR_PRESSED
     {0, 7, 0x3299b4ff},   // DEFAULT_BASE_COLOR_PRESSED
-    {0, 8, 0xeff8ffff},   // DEFAULT_TEXT_COLOR_PRESSED
+    {0, 8, (int)0xeff8ffff},   // DEFAULT_TEXT_COLOR_PRESSED
     {0, 9, 0x134b5aff},   // DEFAULT_BORDER_COLOR_DISABLED
     {0, 10, 0x0e273aff},  // DEFAULT_BASE_COLOR_DISABLED
     {0, 11, 0x17505fff},  // DEFAULT_TEXT_COLOR_DISABLED
     {0, 16, 0x0000000e},  // DEFAULT_TEXT_SIZE
     {0, 17, 0x00000000},  // DEFAULT_TEXT_SPACING
-    {0, 18, 0x81c0d0ff},  // DEFAULT_LINE_COLOR
+    {0, 18, (int)0x81c0d0ff},  // DEFAULT_LINE_COLOR
     {0, 19, 0x00222bff},  // DEFAULT_BACKGROUND_COLOR
 };
 
@@ -1201,7 +1201,7 @@ public:
             auto ips = instructionsThisFrame / GetFrameTime();
             auto ipsAvg = float(ipfAvg) / ftAvg_ms * 1000;
             if(_mainView == eEDITOR) {
-                StatusBar({{0.55f, fmt::format("").c_str()},
+                StatusBar({{0.55f, ""},
                            {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()},
                            {0.15f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
@@ -1733,12 +1733,13 @@ public:
                             GuiEnable();
                             EndColumns();
                             auto pos = GetCurrentPos();
-                            Space(_screenHeight - pos.y - 20 - 17);
-                            SetIndent(110);
-                            Label("(C) 2022 by Steffen '@gulrak' Schümann");
+                            Space(_screenHeight - pos.y - 20 - 1);
+                            //SetIndent(110);
+                            //Label("(C) 2022 by Steffen '@gulrak' Schümann");
                             EndTab();
                         }
                         if(BeginTab("Appearance", {5, 0})) {
+                            Label("[Not implemented yet.]");
                             auto pos = GetCurrentPos();
                             Space(_screenHeight - pos.y - 20 - 1);
                             EndTab();
@@ -2717,7 +2718,7 @@ int main(int argc, char* argv[])
 
         chip8->reset();
         if(!romFile.empty()) {
-            int size = 0;
+            unsigned int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
             if (size < chip8->memSize() - 512) {
                 std::memcpy(chip8->memory() + 512, data, size);
@@ -2755,11 +2756,11 @@ int main(int argc, char* argv[])
             std::cerr << octoScreen(octo) << std::endl;
         }
         else if(benchmark > 0) {
-            uint32_t instructions = benchmark;
+            uint64_t instructions = benchmark;
             std::cout << "Executing benchmark (" << options.instructionsPerFrame << "ipf)..." << std::endl;
             auto startChip8 = std::chrono::steady_clock::now();
             auto ticks = uint64_t(instructions / options.instructionsPerFrame);
-            for(int i = 0; i < ticks; ++i) {
+            for(i = 0; i < ticks; ++i) {
                 chip8->tick(options.instructionsPerFrame);
             }
             chip8->handleTimer();
