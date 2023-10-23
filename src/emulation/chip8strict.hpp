@@ -29,6 +29,7 @@
 #include <emulation/chip8options.hpp>
 #include <emulation/chip8emulatorbase.hpp>
 #include <emulation/time.hpp>
+#include <iostream>
 
 namespace emu
 {
@@ -50,6 +51,7 @@ public:
     Chip8StrictEmulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
         : Chip8EmulatorBase(host, options, other)
     {
+        _systemTime.setFrequency(CPU_CLOCK_FREQUENCY>>3);
         _memory.resize(MEMORY_SIZE, 0);
     }
     ~Chip8StrictEmulator() override = default;
@@ -66,7 +68,8 @@ public:
         _machineCycles = 3206;  // This is the amount of cycles a VIP needs to get to the start of the program
         _nextFrame = calcNextFrame();
         _cycleCounter = 2;
-        ++_frameCounter;
+        _systemTime.reset();
+        _frameCounter = 0;
     }
 
     inline uint16_t readWord(uint32_t addr) const
@@ -75,6 +78,18 @@ public:
     }
 
     int64_t getMachineCycles() const override { return _machineCycles; }
+
+    int64_t executeFor(int64_t microseconds) override
+    {
+        if(_execMode != ePAUSED) {
+            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
+            while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
+                executeInstruction();
+            }
+            return _systemTime.difference_us(endTime);
+        }
+        return 0;
+    }
 
     void tick(int instructionsPerFrame) override
     {
@@ -491,19 +506,18 @@ protected:
     inline void addCycles(emu::cycles_t cycles)
     {
         _machineCycles += cycles;
-        _systemTime.addCycles(cycles * 8, CPU_CLOCK_FREQUENCY);
+        _systemTime.addCycles(cycles);
         if(_machineCycles >= _nextFrame) {
             handleTimer();
             auto irqTime = 1832 + (_rST ? 4 : 0) + (_rDT ? 8 : 0);
             _machineCycles += irqTime;
-            _systemTime.addCycles(irqTime * 8, CPU_CLOCK_FREQUENCY);
+            _systemTime.addCycles(irqTime);
             _nextFrame = calcNextFrame();
         }
     }
     int64_t _machineCycles{0};
     int64_t _nextFrame{1122};
     int _instructionCycles{0};
-    Time _systemTime{};
 };
 
 }

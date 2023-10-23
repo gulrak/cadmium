@@ -291,10 +291,13 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
 {
     if(_execMode == ePAUSED)
         return;
+    auto start = _cycleCounter;
     if(_isMegaChipMode) {
         for (int i = 0; i < numInstructions; ++i) {
-            if (i && ((_memory[_rPC] << 8) | _memory[_rPC + 1]) == 0x00E0)
+            if (i && ((_memory[_rPC] << 8) | _memory[_rPC + 1]) == 0x00E0) {
+                _systemTime.addCycles(_cycleCounter - start);
                 return;
+            }
             if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
                 Chip8EmulatorFP::executeInstructionNoBreakpoints();
             else
@@ -318,14 +321,18 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
     }
     else {
         for (int i = 0; i < numInstructions; ++i) {
-            if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000)
+            if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000) {
+                _cycleCounter = calcNextFrame();
+                _systemTime.addCycles(_cycleCounter - start);
                 return;
+            }
             if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
                 Chip8EmulatorFP::executeInstructionNoBreakpoints();
             else
                 Chip8EmulatorFP::executeInstruction();
         }
     }
+    _systemTime.addCycles(_cycleCounter - start);
 }
 
 inline void Chip8EmulatorFP::executeInstruction()
@@ -1216,7 +1223,7 @@ void Chip8EmulatorFP::opFx0A(uint16_t opcode)
     else {
         // keep waiting...
         _rPC -= 2;
-        --_cycleCounter;
+        //--_cycleCounter;
         if(_isMegaChipMode && _cpuState != eWAITING)
             _host.updateScreen();
         _cpuState = eWAITING;

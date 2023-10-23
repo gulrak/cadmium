@@ -68,7 +68,7 @@ public:
 
     void addCycles(cycles_t cycles, uint32_t frequency);
     cycles_t asClockTicks(uint32_t frequency) const;
-    cycles_t differenceInClockTicks(const Time& other, uint32_t frequency) const;
+    int64_t differenceInClockTicks(const Time& other, uint32_t frequency) const;
 
     const Time& operator+=(const Time& other)
     {
@@ -80,14 +80,14 @@ public:
         return *this;
     }
 
-    Time operator+(const Time& other)
+    virtual Time operator+(const Time& other)
     {
         Time result(*this);
         result += other;
         return result;
     }
 
-    Time& operator*=(uint32_t factor)
+    virtual Time& operator*=(uint32_t factor)
     {
         uint32_t ticklo, tickhi, reslo, reshi;
         tickhi = math::split64(_ticks, ticklo);
@@ -110,7 +110,7 @@ public:
 
     void normalize()
     {
-        if (_ticks > ticksPerSecond) {
+        if (_ticks >= ticksPerSecond) {
             _seconds += ticksInSeconds(_ticks);
             _ticks = _ticks & (ticksPerSecond - 1);
             if (_seconds >= maxSeconds) {
@@ -139,7 +139,7 @@ public:
 
     static Time fromCycles(cycles_t cycles, uint32_t frequency)
     {
-        ticks_t ticksPerCycle = ticks_t(ticksPerSecond) / frequency;
+        ticks_t ticksPerCycle = ticks_t(ticksPerSecond) / frequency + (ticks_t(ticksPerSecond) % frequency != 0);
         if (cycles < frequency) {
             return Time(0, cycles * ticksPerCycle);
         }
@@ -183,45 +183,120 @@ inline cycles_t Time::asClockTicks(uint32_t frequency) const
     return cycles_t(math::mulu32by32(_seconds, frequency) + fraction);
 }
 
-inline cycles_t Time::differenceInClockTicks(const Time& other, uint32_t frequency) const
+inline int64_t Time::differenceInClockTicks(const Time& other, uint32_t frequency) const
 {
     seconds_t diffSeconds = 0;
     ticks_t diffTicks = 0;
     if (*this < other) {
         diffTicks = (other._ticks - _ticks) & (ticksPerSecond - 1);
         diffSeconds = other._seconds - _seconds - (diffTicks > other._ticks ? 1 : 0);
+        return -(int64_t)(Time(diffSeconds, diffTicks).asClockTicks(frequency));
     }
     else {
         diffTicks = (_ticks - other._ticks) & (ticksPerSecond - 1);
         diffSeconds = _seconds - other._seconds - (diffTicks > _ticks ? 1 : 0);
+        return Time(diffSeconds, diffTicks).asClockTicks(frequency);
     }
-    return Time(diffSeconds, diffTicks).asClockTicks(frequency);
 }
 
-class ClockedTime : public Time
+class ClockedTime
 {
 public:
-    using Time::addCycles;
-    using Time::asClockTicks;
-    explicit ClockedTime(uint32_t frequency) : Time(), _clockFreq(frequency) {}
+    using seconds_t = Time::seconds_t;
+    using ticks_t = Time::ticks_t;
+
+    ClockedTime() = delete;
+    explicit ClockedTime(uint32_t frequency) : _clockFreq(frequency) {}
+    void setFrequency(uint32_t frequency) { _clockFreq = frequency; }
     inline void addCycles(cycles_t cycles)
     {
-        addCycles(cycles, _clockFreq);
+        _time.addCycles(cycles, _clockFreq);
     }
     inline cycles_t asClockTicks() const
     {
-        return asClockTicks(_clockFreq);
+        return _time.asClockTicks(_clockFreq);
     }
     uint32_t getClockFreq() const
     {
         return _clockFreq;
     }
+
+    inline bool isZero() const { return _time.isZero(); }
+    inline bool isNever() const { return _time.isNever(); }
+    inline seconds_t seconds() const { return _time.seconds(); }
+    inline seconds_t secondsRounded() const { return _time.secondsRounded(); }
+    inline ticks_t ticks() const { return _time.ticks(); }
+    inline double asSeconds() const { return _time.asSeconds(); }
+
+    virtual ClockedTime operator+(const Time& other)
+    {
+        ClockedTime result{_clockFreq};
+        result._time = _time + other;
+        return result;
+    }
+
+    bool operator<(const Time& other) const { return _time < other; }
+    bool operator<(const ClockedTime& other) const { return _time < other._time; }
+
+    bool operator>=(const ClockedTime& other) const { return !(*this < other); }
+    bool operator>=(const Time& other) const { return !(*this < other); }
+
+    bool operator>(const ClockedTime& other) const { return other < *this; }
+    bool operator>(const Time& other) const { return other < this->_time; }
+
+    bool operator<=(const ClockedTime& other) const { return other >= *this; }
+    bool operator<=(const Time& other) const { return other >= this->_time; }
+
+    bool operator==(const ClockedTime& other) const { return _time == other._time && _clockFreq && other._clockFreq; }
+
+    bool operator!=(const ClockedTime& other) const { return !(*this == other); }
+
+    std::string asString() const { return _time.asString(); }
+
+    int64_t difference(const ClockedTime& other) const
+    {
+        return _time.differenceInClockTicks(other._time, _clockFreq);
+    }
+    int64_t difference_us(const ClockedTime& other) const
+    {
+        auto cycleDiff = difference(other);
+        return cycleDiff < 0x80000000000ll ? difference(other) * 1000000 / _clockFreq : difference(other) / _clockFreq * 1000000;
+    }
+    int64_t excessTime_us(const ClockedTime& endTime, int64_t targetDuration) const
+    {
+        auto t = difference_us(endTime) - targetDuration;
+        return t > 0 ? t : 0;
+    }
     void reset()
     {
-        (Time&)*this = Time::zero;
+        _time = Time::zero;
     }
 private:
     uint32_t _clockFreq{};
+    Time _time{};
+};
+
+class TimeGuard {
+public:
+    TimeGuard(const ClockedTime& clockedTime, int64_t targetDuration_us)
+        : _clockedTime(clockedTime)
+        , _startTime(clockedTime)
+        , _targetDuration_us(targetDuration_us)
+    {
+    }
+    inline int64_t diffTime() const
+    {
+        return _startTime.difference_us(_clockedTime)/ (Time::ticksPerSecond/1000000) - _targetDuration_us;
+    }
+    inline int64_t excessTime() const
+    {
+        auto t = diffTime();
+        return t > 0 ? t : 0;
+    }
+private:
+    const ClockedTime& _clockedTime;
+    ClockedTime _startTime;
+    int64_t _targetDuration_us;
 };
 
 }  // namespace emu

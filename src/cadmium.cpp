@@ -470,17 +470,18 @@ template <size_t N, typename ValueType = uint64_t, typename SumType = uint64_t>
 class SMA
 {
 public:
-    ValueType operator()(ValueType nextVal)
+    void add(ValueType nextVal)
     {
+        if(_fill < N) ++_fill;
         _sum -= _history[_index];
         _sum += nextVal;
         _history[_index] = nextVal;
         if (++_index == N)
             _index = 0;
-        return ValueType((_sum + (N / 2)) / N);
     }
-
+    double get() const { return _fill ? double(_sum) / _fill : 0.0; }
 private:
+    size_t _fill{0};
     size_t _index{0};
     ValueType _history[N]{};
     SumType _sum{0};
@@ -975,6 +976,10 @@ public:
 
     void updateAndDraw()
     {
+        static auto lastFrameTime = std::chrono::steady_clock::now() - std::chrono::milliseconds(16);
+        auto now = std::chrono::steady_clock::now();
+        double deltaTC = std::chrono::duration<double>(now - lastFrameTime).count();
+        lastFrameTime = now;
         float deltaT = GetFrameTime();
 #ifdef RESIZABLE_GUI
 #if 0
@@ -1040,13 +1045,24 @@ public:
         for(uint8_t key = 0; key < 16; ++key) {
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
+        static int cntx = 0;
+        static int64_t excessTime = 0;
+        //if(!(cntx++ & 0x7f))
+        //    std::clog << fmt::format("Frame time: rl: {}ms, chrono: {}ms, excessTime_us: {}", deltaT, deltaTC, excessTime) << std::endl;
+        if(excessTime < deltaTC * 1000000) {
+            excessTime = _chipEmu->executeFor(deltaTC * 1000000 - excessTime);
+        }
+        else {
+            excessTime = 0;
+        }
+        /*
         auto fb = getFrameBoost();
-        getInstrPerFrame();
         for(int i = 0; i < fb; ++i) {
             _chipEmu->tick(getInstrPerFrame());
             g_soundTimer.store(_chipEmu->soundTimer());
         }
-        pushAudio(GetFrameTime());
+         */
+        pushAudio(deltaT);
 
         if(_chipEmu->needsScreenUpdate())
             updateScreen();
@@ -1088,7 +1104,7 @@ public:
             DrawText(TextFormat("Window resized: %dx%d, fb: %dx%d, rzc: %d", GetScreenWidth(), GetScreenHeight(), width, height, resizeCount), 10,30,10,GREEN);
 #endif
             // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
-            // DrawFPS(10,10);
+            DrawFPS(10,45);
         }
         EndDrawing();
     }
@@ -1174,6 +1190,7 @@ public:
         Rectangle video;
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
+        static int64_t lastFrameCount = 0;
         static bool colorSelectOpen = false;
         static uint32_t* selectedColor = nullptr;
         static std::string colorText;
@@ -1195,11 +1212,19 @@ public:
 
             SetRowHeight(16);
             SetSpacing(0);
-            auto instructionsThisFrame = _chipEmu->getCycles() - lastInstructionCount;
-            auto ipfAvg = _ipfAverage(instructionsThisFrame);
-            auto ftAvg_ms = _frameTimeAverage_ms(GetFrameTime() * 1000);
-            auto ips = instructionsThisFrame / GetFrameTime();
-            auto ipsAvg = float(ipfAvg) / ftAvg_ms * 1000;
+            auto instructionsThisUpdate = _chipEmu->getCycles() - lastInstructionCount;
+            auto framesThisUpdate = _chipEmu->frames() - lastFrameCount;
+            if(_chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
+                _ipfAverage.add(instructionsThisUpdate);
+                _frameTimeAverage_us.add(GetFrameTime() * 1000000);
+                _frameDelta.add(framesThisUpdate);
+            }
+            auto ipfAvg = _ipfAverage.get();
+            auto ftAvg_us = _frameTimeAverage_us.get();
+            auto fdAvg = _frameDelta.get();
+            auto ips = instructionsThisUpdate / GetFrameTime();
+
+            auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
             if(_mainView == eEDITOR) {
                 StatusBar({{0.55f, ""},
                            {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()},
@@ -1209,30 +1234,32 @@ public:
             else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, _chipEmu->errorMessage().c_str()},
                            {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                           {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->getCycles()).c_str()},
                            {0.2f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "eFPS").c_str()},
+                           {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "eFPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else {
                 if(_chipEmu->getCycles() != _chipEmu->getMachineCycles()) {
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), _chipEmu->getMachineCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                               {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                               {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
                 else {
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                               {0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                               //{0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
+                               {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
             }
             lastInstructionCount = _chipEmu->getCycles();
+            lastFrameCount = _chipEmu->frames();
             BeginColumns();
             {
                 SetRowHeight(20);
@@ -2241,7 +2268,8 @@ private:
     RenderTexture _renderTexture{};
     AudioStream _audioStream{};
     SMA<60,uint64_t> _ipfAverage;
-    SMA<60,uint32_t> _frameTimeAverage_ms;
+    SMA<120,uint32_t> _frameTimeAverage_us;
+    SMA<120,int> _frameDelta;
 #ifndef RESIZABLE_GUI
     bool _scaleBy2{false};
 #endif
@@ -2666,7 +2694,7 @@ int main(int argc, char* argv[])
         if (!romFile.empty()) {
             cadmium.loadRom(romFile.front().c_str(), startRom);
         }
-        SetTargetFPS(60);
+        //SetTargetFPS(60);
         while (!cadmium.windowShouldClose()) {
             cadmium.updateAndDraw();
         }
@@ -2718,7 +2746,7 @@ int main(int argc, char* argv[])
 
         chip8->reset();
         if(!romFile.empty()) {
-            unsigned int size = 0;
+            int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
             if (size < chip8->memSize() - 512) {
                 std::memcpy(chip8->memory() + 512, data, size);

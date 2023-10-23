@@ -18,7 +18,7 @@ static size_t readInteger(const unsigned char* data)
     return size_t(val);
 }
 
-unsigned char *LoadFileDataFromResource(const char *fileName, unsigned int *bytesRead)
+unsigned char *LoadFileDataFromResource(const char *fileName, int *bytesRead)
 {
     auto resource = ResourceManager::instance().resourceForName(fileName);
     if(bytesRead) {

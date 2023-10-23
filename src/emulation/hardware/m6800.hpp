@@ -215,6 +215,7 @@ public:
     M6800(M6800Bus<byte_t, word_t>& bus, Time::ticks_t clockSpeed = 1000000)
         : _bus(bus)
         , _clockSpeed(clockSpeed)
+        , _systemTime(clockSpeed)
 #else
     M6800(M6800Bus<byte_t, word_t>& bus)
         : _bus(bus)
@@ -237,7 +238,7 @@ public:
         _instructions = 0;
         _cpuState = eNORMAL;
 #ifdef M6800_WITH_TIME
-        _systemTime = Time::zero;
+        _systemTime.reset();
 #endif
     }
 
@@ -256,6 +257,13 @@ public:
         _halt = state;
         _cpuState = _halt ? eHALT : eNORMAL;
     }
+
+#ifdef M6800_WITH_TIME
+    const ClockedTime& getTime() const override
+    {
+        return _systemTime;
+    }
+#endif
 
     int64_t getCycles() const GENERIC_OVERRIDE
     {
@@ -336,7 +344,7 @@ public:
     {
         _cycles += cycles;
 #ifdef M6800_WITH_TIME
-        _systemTime.addCycles(cycles, _clockSpeed);
+        _systemTime.addCycles(cycles);
 #endif
     }
 
@@ -425,12 +433,17 @@ public:
     }
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
-    void executeFor(int milliseconds) override
+    int64_t executeFor(int64_t microseconds) override
     {
-        auto endTime = _systemTime + Time::fromMicroseconds(milliseconds*1000ull);
-        while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-            executeInstruction();
+        if(_execMode != GenericCpu::ePAUSED) {
+            auto startTime = _systemTime;
+            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
+            while (_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
+                executeInstruction();
+            }
+            return startTime.excessTime_us(_systemTime, microseconds);
         }
+        return 0;
     }
 #endif
 
@@ -1481,7 +1494,7 @@ private:
     bool _halt{false};
 #ifdef M6800_WITH_TIME
     Time::ticks_t _clockSpeed{};
-    Time _systemTime;
+    ClockedTime _systemTime;
 #endif
 #if defined(OC) || defined(OC_ILL)
 #error "Conflicting symbols defined!"

@@ -57,6 +57,7 @@ public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother)
         : Chip8OpcodeDisassembler(options)
+        , _systemTime(options.instructionsPerFrame ? options.instructionsPerFrame * options.frameRate : 1000000)
         , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
     {
@@ -213,6 +214,7 @@ public:
     void reset() override;
     int64_t getCycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
+    const ClockedTime& getTime() const override { return _systemTime; }
     const std::string& errorMessage() const override { return _errorMessage; }
 
     inline void errorHalt(std::string errorMessage)
@@ -221,14 +223,14 @@ public:
         _cpuState = eERROR;
         _errorMessage = std::move(errorMessage);
         _rPC -= 2;
-        --_cycleCounter;
+        //--_cycleCounter;
     }
 
     inline void halt()
     {
         _execMode = ePAUSED;
         _rPC -= 2;
-        --_cycleCounter;
+        //--_cycleCounter;
     }
 
     void handleTimer() override
@@ -247,7 +249,7 @@ public:
         }
     }
 
-    void executeFor(int milliseconds) override;
+    int64_t executeFor(int64_t microseconds) override;
     void tick(int instructionsPerFrame) override;
 
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
@@ -287,6 +289,7 @@ protected:
     int64_t _nextFrame{0};
     int _frameCounter{0};
     int _clearCounter{0};
+    ClockedTime _systemTime;
     uint32_t _rI{};
     uint32_t _rPC{};
     std::array<uint16_t,16> _stack{};

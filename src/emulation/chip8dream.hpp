@@ -43,7 +43,7 @@ public:
 
     void reset() override;
     std::string name() const override;
-    void executeFor(int milliseconds) override {}
+    int64_t executeFor(int64_t microseconds) override;
     void executeInstruction() override;
     void executeInstructions(int numInstructions) override;
     void tick(int instructionsPerFrame) override;

@@ -383,6 +383,19 @@ void Chip8Dream::tick(int)
     }
 }
 
+int64_t Chip8Dream::executeFor(int64_t microseconds)
+{
+    if(_execMode != ePAUSED) {
+        auto cpuTime = _impl->_cpu.getTime();
+        auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
+        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.getTime() < endTime) {
+            executeInstruction();
+        }
+        return _impl->_cpu.getTime().difference_us(endTime);
+    }
+    return 0;
+}
+
 bool Chip8Dream::isDisplayEnabled() const
 {
     return true; //_impl->_video.isDisplayEnabled();

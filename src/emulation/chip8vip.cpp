@@ -556,6 +556,19 @@ void Chip8VIP::tick(int)
     }
 }
 
+int64_t Chip8VIP::executeFor(int64_t microseconds)
+{
+    if(_execMode != ePAUSED) {
+        auto cpuTime = _impl->_cpu.getTime();
+        auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
+        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.getTime() < endTime) {
+            executeInstruction();
+        }
+        return _impl->_cpu.getTime().difference_us(endTime);
+    }
+    return 0;
+}
+
 bool Chip8VIP::isDisplayEnabled() const
 {
     return _impl->_video.isDisplayEnabled();

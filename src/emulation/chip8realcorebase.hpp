@@ -81,6 +81,7 @@ public:
 
     int64_t getCycles() const override { return _cycles; }
     int64_t frames() const override { return _frames; }
+    const ClockedTime& getTime() const override { return getBackendCpu().getTime(); }
 
     virtual GenericCpu& getBackendCpu() = 0;
     const GenericCpu& getBackendCpu() const

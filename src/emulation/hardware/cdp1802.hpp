@@ -27,9 +27,9 @@
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
 #include <emulation/hardware/genericcpu.hpp>
-#endif
-
+#else
 #include <emulation/time.hpp>
+#endif
 
 #include <fmt/format.h>
 
@@ -39,7 +39,7 @@
 #include <iostream>
 
 #ifndef NDEBUG
-#define DIFFERENTIATE_CYCLES
+//#define DIFFERENTIATE_CYCLES
 #endif
 
 #define CASE_7(base) case base: case base+1: case base+2: case base+3: case base+4: case base+5: case base+6
@@ -140,6 +140,7 @@ public:
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
+    const ClockedTime& getTime() const override { return _systemTime; }
     int64_t getCycles() const GENERIC_OVERRIDE { return _cycles; }
 #ifdef DIFFERENTIATE_CYCLES
     int64_t getIdleCycles() const { return _idleCycles; }
@@ -356,12 +357,17 @@ public:
         }
     }
 
-    void executeFor(int milliseconds) override
+    int64_t executeFor(int64_t microseconds) override
     {
-        auto endTime = _systemTime + Time::fromMicroseconds(milliseconds*1000ull);
-        while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-            executeInstruction();
+        if(_execMode != GenericCpu::ePAUSED) {
+            auto startTime = _systemTime;
+            auto endTime = startTime + Time::fromMicroseconds(microseconds);
+            while (_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
+                executeInstruction();
+            }
+            return startTime.excessTime_us(_systemTime, microseconds);
         }
+        return 0;
     }
 
     void executeDMAIn(uint8_t data)

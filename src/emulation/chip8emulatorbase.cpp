@@ -294,6 +294,7 @@ void Chip8EmulatorBase::reset()
     _cycleCounter = 0;
     _frameCounter = 0;
     _clearCounter = 0;
+    _systemTime.reset();
     if(_options.optTraceLog)
         Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
     _rI = 0;
@@ -330,29 +331,40 @@ void Chip8EmulatorBase::reset()
     _mcSamplePos = 0;
 }
 
-void Chip8EmulatorBase::executeFor(int millis)
+int64_t Chip8EmulatorBase::executeFor(int64_t micros)
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {
         setExecMode(ePAUSED);
-        return;
+        return 0;
     }
     if(_options.instructionsPerFrame) {
-        auto endCycles = _cycleCounter + ((int64_t)_options.instructionsPerFrame * _options.frameRate * millis) / 1000;
-        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
-            if(_cycleCounter % _options.instructionsPerFrame == 0)
+        auto startTime = _cycleCounter;
+        auto microsPerCycle = 1000000.0 / ((int64_t)_options.instructionsPerFrame * _options.frameRate);
+        auto endCycles = startTime + int64_t(micros/microsPerCycle);
+        auto nextFrame = calcNextFrame();
+        while(_execMode != ePAUSED && nextFrame <= endCycles) {
+            executeInstructions(nextFrame - _cycleCounter);
+            if(_cycleCounter == nextFrame) {
                 handleTimer();
+                nextFrame += _options.instructionsPerFrame;
+            }
+        }
+        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
             executeInstruction();
         }
+        auto excessTime = int64_t((endCycles - _cycleCounter) * microsPerCycle);
+        return excessTime;// > 0 ? excessTime : 0;
     }
     else {
         using namespace std::chrono;
         handleTimer();
-        auto endTime = steady_clock::now() + milliseconds(millis - 1);
+        auto endTime = steady_clock::now() + microseconds(micros - 1000);
         do {
             executeInstructions(487);
         }
         while(_execMode != ePAUSED && steady_clock::now() < endTime);
     }
+    return 0;
 }
 
 void Chip8EmulatorBase::tick(int instructionsPerFrame)

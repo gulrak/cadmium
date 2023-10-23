@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 #include <variant>
+#include <emulation/time.hpp>
 
 namespace emu
 {
@@ -54,7 +55,7 @@ public:
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
 
-    virtual void executeFor(int milliseconds) = 0;
+    virtual int64_t executeFor(int64_t microseconds) = 0;
     virtual ExecMode getExecMode() const { return _execMode; }
     virtual void setExecMode(ExecMode mode) { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = getSP(); }
     virtual bool inErrorState() const = 0;
@@ -75,6 +76,7 @@ public:
     virtual uint32_t getSP() const = 0;
     virtual uint32_t getPC() const = 0;
     virtual int64_t getCycles() const = 0;
+    virtual const ClockedTime& getTime() const = 0;
     virtual uint8_t getMemoryByte(uint32_t addr) const = 0;
 
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
