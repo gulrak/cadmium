@@ -48,6 +48,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eSCHIP10: return Chip8Variant::SCHIP_1_0;
         case eSCHIP11: return Chip8Variant::SCHIP_1_1;
         case eSCHPC: return Chip8Variant::SCHIPC_GCHIPC;
+        case eSCHIP_MODERN: return Chip8Variant::SCHIPC_GCHIPC;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
         case eCHIP8VIP: return Chip8Variant::CHIP_8;
@@ -74,6 +75,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eSCHIP10: return "SUPER-CHIP 1.0";
         case eSCHIP11: return "SUPER-CHIP 1.1";
         case eSCHPC: return "SUPER-CHIP-COMPATIBILITY";
+        case eSCHIP_MODERN: return "SUPER-CHIP-OCTO";
         case eMEGACHIP: return "MEGACHIP8";
         case eXOCHIP: return "XO-CHIP";
         case eCHIP8VIP: return "VIP-CHIP-8";
@@ -101,6 +103,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eSCHIP10: return "SCHIP10";
         case eSCHIP11: return "SCHIP11";
         case eSCHPC: return "SCHIPC";
+        case eSCHIP_MODERN: return "SCHIPOCTO";
         case eMEGACHIP: return "MCHIP8";
         case eXOCHIP: return "XOCHIP";
         case eCHIP8VIP: return "VIPCHIP8";
@@ -137,6 +140,11 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"schipcomp", Opts::eSCHPC},
     {"schpc", Opts::eSCHPC},
     {"gchpc", Opts::eSCHPC},
+    {"schipm", Opts::eSCHIP_MODERN},
+    {"schipmodern", Opts::eSCHIP_MODERN},
+    {"schipocto", Opts::eSCHIP_MODERN},
+    {"modernschip", Opts::eSCHIP_MODERN},
+    {"modernsuperchip", Opts::eSCHIP_MODERN},
     {"mchip", Opts::eMEGACHIP},
     {"mchip8", Opts::eMEGACHIP},
     {"megachip8", Opts::eMEGACHIP},
@@ -187,6 +195,7 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15,"frameRate":64})"},
     {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optSC11Collision":true,"optHalfPixelScroll":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30,"frameRate":64})"},
     {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eSCHIP_MODERN, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optJump0Bxnn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
     {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optModeChangeClear":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000})"},
     {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
     {Opts::eCHICUEYI, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optChicueyiSound":true,"instructionsPerFrame":1000})"},

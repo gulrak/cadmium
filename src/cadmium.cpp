@@ -470,10 +470,17 @@ template <size_t N, typename ValueType = uint64_t, typename SumType = uint64_t>
 class SMA
 {
 public:
+    void reset()
+    {
+        _fill = _index = 0;
+        _sum = 0;
+    }
     void add(ValueType nextVal)
     {
-        if(_fill < N) ++_fill;
-        _sum -= _history[_index];
+        if(_fill < N)
+            ++_fill;
+        else
+            _sum -= _history[_index];
         _sum += nextVal;
         _history[_index] = nextVal;
         if (++_index == N)
@@ -951,21 +958,22 @@ public:
     void updateScreen() override
     {
         auto* pixel = (uint32_t*)_screen.data;
-        const auto* screen = _chipEmu->getScreen();
-        if(screen) {
-            if(!_renderCrt) {
+        if(pixel) {
+            const auto* screen = _chipEmu->getScreen();
+            if (screen) {
+                if (!_renderCrt) {
+                    screen->convert(pixel, _screen.width);
+                    UpdateTexture(_screenTexture, _screen.data);
+                }
+                else {
+                }
+            }
+            else {
+                // TraceLog(LOG_INFO, "Updating MC8 screen!");
+                const auto* screen = _chipEmu->getScreenRGBA();
                 screen->convert(pixel, _screen.width);
                 UpdateTexture(_screenTexture, _screen.data);
             }
-            else {
-
-            }
-        }
-        else {
-            //TraceLog(LOG_INFO, "Updating MC8 screen!");
-            const auto* screen = _chipEmu->getScreenRGBA();
-            screen->convert(pixel, _screen.width);
-            UpdateTexture(_screenTexture, _screen.data);
         }
     }
 
@@ -1104,7 +1112,7 @@ public:
             DrawText(TextFormat("Window resized: %dx%d, fb: %dx%d, rzc: %d", GetScreenWidth(), GetScreenHeight(), width, height, resizeCount), 10,30,10,GREEN);
 #endif
             // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
-            DrawFPS(10,45);
+            // DrawFPS(10,45);
         }
         EndDrawing();
     }
@@ -1418,6 +1426,7 @@ public:
                 SetTooltip("STEP OUT");
                 if (iconButton(ICON_RESTART)) {
                     reloadRom();
+                    resetStats();
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
@@ -1550,7 +1559,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("CHIP-8 variant / Core:");
-                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;SCHIP-MODERN;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -2201,6 +2210,15 @@ public:
         _editor.updateCompilerOptions(_options.startAddress);
         reloadRom();
         _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
+        resetStats();
+    }
+
+    void resetStats()
+    {
+        _ipfAverage.reset();
+        _frameTimeAverage_us.reset();
+        _frameDelta.reset();
+        updateScreen();
     }
 
     void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) override
@@ -2213,6 +2231,7 @@ public:
         _editor.setText(source);
         _editor.setFilename(filename);
 #endif
+        resetStats();
         if(compiler)
             _debugger.updateOctoBreakpoints(*compiler);
         saveConfig();

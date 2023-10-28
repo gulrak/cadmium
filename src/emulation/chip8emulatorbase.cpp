@@ -358,11 +358,14 @@ int64_t Chip8EmulatorBase::executeFor(int64_t micros)
     else {
         using namespace std::chrono;
         handleTimer();
-        auto endTime = steady_clock::now() + microseconds(micros - 1000);
+        auto start = _cycleCounter;
+        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros - 2000 : 0);
         do {
             executeInstructions(487);
         }
         while(_execMode != ePAUSED && steady_clock::now() < endTime);
+        uint32_t actualIPF = _cycleCounter - start;
+        _systemTime.setFrequency((_systemTime.getClockFreq() + actualIPF)>>1);
     }
     return 0;
 }

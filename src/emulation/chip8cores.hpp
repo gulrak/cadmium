@@ -646,6 +646,12 @@ public:
             }
             else
             {
+                if constexpr ((quirks&SChip1xLoresDraw) != 0) {
+                    if(_options.instructionsPerFrame && _cycleCounter % _options.instructionsPerFrame != 0) {
+                        _rPC -= 2;
+                        return;
+                    }
+                }
                 int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH / 2 - 1);
                 int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT / 2 - 1);
                 int lines = opcode & 0xF;
@@ -681,6 +687,10 @@ public:
             }
         }
         else {
+            if(_options.instructionsPerFrame && _cycleCounter % _options.instructionsPerFrame != 0) {
+                _rPC -= 2;
+                return;
+            }
             int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
             int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
             int lines = opcode & 0xF;

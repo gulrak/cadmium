@@ -276,6 +276,7 @@ public:
     static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font = Chip8BigFont::C8F10_SCHIP11);
 
 protected:
+    inline int instructionsPerFrame() const { return _options.instructionsPerFrame ? _options.instructionsPerFrame : _systemTime.getClockFreq() / _options.frameRate; }
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     CpuState _cpuState{eNORMAL};

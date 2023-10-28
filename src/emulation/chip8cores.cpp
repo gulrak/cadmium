@@ -166,6 +166,7 @@ void Chip8EmulatorFP::setHandler()
             break;
         case Chip8EmulatorOptions::eSCHIP11:
         case Chip8EmulatorOptions::eSCHPC:
+        case Chip8EmulatorOptions::eSCHIP_MODERN:
             on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
             on(0xFFFF, 0x00C0, &Chip8EmulatorFP::opInvalid);
             on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
@@ -321,11 +322,11 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
     }
     else {
         for (int i = 0; i < numInstructions; ++i) {
-            if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000) {
-                _cycleCounter = calcNextFrame();
-                _systemTime.addCycles(_cycleCounter - start);
-                return;
-            }
+            //if (i && (((_memory[_rPC] << 8) | _memory[_rPC + 1]) & 0xF000) == 0xD000) {
+            //    _cycleCounter = calcNextFrame();
+            //    _systemTime.addCycles(_cycleCounter - start);
+            //    return;
+            //}
             if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
                 Chip8EmulatorFP::executeInstructionNoBreakpoints();
             else
