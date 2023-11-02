@@ -2691,7 +2691,14 @@ int main(int argc, char* argv[])
 #ifdef WEB_WITH_FETCHING
     cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
 #endif
-    cli.parse();
+    try {
+        cli.parse();
+    }
+    catch(std::exception& ex)
+    {
+        std::cerr << "ERROR: " << ex.what() << std::endl;
+        exit(1);
+    }
     if(!presetName.empty()) {
         try {
             preset = emu::Chip8EmulatorOptions::presetForName(presetName);
