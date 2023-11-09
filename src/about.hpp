@@ -43,15 +43,15 @@ Currently supported CHIP-8 variants are:
   * SUPER-CHIP 1.0
   * SUPER-CHIP 1.1
   * SUPER-CHIP COMP
+  * MODERN-SUPER-CHIP
   * MegaChip 8
   * XO-CHIP
   * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
   * VIP-CHIP-8 TPD (same, but with 64x64 display)
   * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
   * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
-  * CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
-
-  * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
+  * VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
+  * VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)
   * CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
 
 Besides selecting a CHIP-8 variant it is possible to configure various

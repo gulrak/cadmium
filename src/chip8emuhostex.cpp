@@ -141,7 +141,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
     auto fileData = std::vector<uint8_t>(data, data + size);
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
     bool wasFromSource = false;
-    //TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
+    TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
     auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
     if(endsWith(filename, ".8o")) {
         c8c = std::make_unique<emu::OctoCompiler>();
@@ -283,6 +283,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         }
     }
     if (valid) {
+        //TraceLog(LOG_INFO, "Found a valid rom.");
         _romImage = std::move(romImage);
         _romSha1Hex = romSha1Hex.empty() ? calculateSha1Hex(_romImage.data(), _romImage.size()) : romSha1Hex;
         _romName = filename;
@@ -302,22 +303,31 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             _options.updateColors(_colorPalette);
             _chipEmu->setPalette(_colorPalette);
         }
+        //TraceLog(LOG_INFO, "Done with palette.");
         auto p = fs::path(_romName).parent_path();
         if(fs::exists(p) && fs::is_directory(p))  {
             _currentDirectory = fs::path(_romName).parent_path().string();
             _librarian.fetchDir(_currentDirectory);
         }
         std::string source;
+        //TraceLog(LOG_INFO, "Done with directory change.");
         if(wasFromSource) {
             source.assign((const char*)fileData.data(), fileData.size());
+            //TraceLog(LOG_INFO, "Assigned source.");
         }
         else if(_romImage.size() < 65536) {
+            //TraceLog(LOG_INFO, "Setting up decompiler.");
             std::stringstream os;
+            //TraceLog(LOG_INFO, "Setting instance.");
             emu::Chip8Decompiler decomp;
             decomp.setVariant(_options.presetAsVariant(), true);
+            //TraceLog(LOG_INFO, "Setting variant.");
+            //decomp.setVariant(Chip8Variant::CHIP_8, true);
+            //TraceLog(LOG_INFO, "About to decompile...");
             decomp.decompile(filename, _romImage.data(), _options.startAddress, _romImage.size(), _options.startAddress, &os, false, true);
             source = os.str();
         }
+        //TraceLog(LOG_INFO, "About to callback whenRomLoaded.");
         whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), andRun, c8c.get(), source);
     }
     return valid;

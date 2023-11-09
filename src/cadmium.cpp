@@ -514,10 +514,19 @@ public:
         , _screenHeight(MIN_SCREEN_HEIGHT)
     {
         SetTraceLogCallback(LogHandler);
-#ifdef RESIZABLE_GUI
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
+
+#ifdef WITH_FLAG_COCOA_GRAPHICS_SWITCHING
+    #ifdef RESIZABLE_GUI
+            SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
+    #else
+           // SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
+    #endif
 #else
-        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
+    #ifdef RESIZABLE_GUI
+            SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    #else
+            // SetConfigFlags(FLAG_VSYNC_HINT);
+    #endif
 #endif
 
         InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 variant environment");
@@ -529,6 +538,7 @@ public:
 #else
         _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
 #endif
+
         SetExitKey(0);
 
         _instance = this;
@@ -543,11 +553,7 @@ public:
         SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
         _styleManager.setDefaultTheme();
-        /*
-        for (auto chip8StyleProp : chip8StyleProps) {
-            GuiSetStyle(chip8StyleProp.controlId, chip8StyleProp.propertyId, chip8StyleProp.propertyValue);
-        }
-         */
+
         generateFont();
         if(chip8options) {
             _options = *chip8options;
@@ -1033,6 +1039,7 @@ public:
         if (IsFileDropped()) {
             auto files = LoadDroppedFiles();
             if (files.count > 0) {
+                //TraceLog(LOG_INFO, "About to load one of %d dropped files.", (int)files.count);
                 loadRom(files.paths[0], false);
             }
             UnloadDroppedFiles(files);
@@ -1083,7 +1090,8 @@ public:
 
         BeginDrawing();
         {
-            ClearBackground(CADMIUM_VERSION_DECIMAL & 1 ? RED : BLACK);
+            ClearBackground(CADMIUM_VERSION_DECIMAL & 1 ? Color{16,0,0,255} : BLACK);
+            //ClearBackground(BLACK);
 #ifdef RESIZABLE_GUI
             Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
             if(guiOffset.x < 0) guiOffset.x = 0;

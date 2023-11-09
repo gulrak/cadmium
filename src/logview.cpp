@@ -29,6 +29,7 @@
 #include <rlguipp/rlguipp4.hpp>
 #include <ghc/utf8.hpp>
 #include <fmt/format.h>
+//#include <iostream>
 
 #if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
 #include <iostream>
@@ -71,6 +72,9 @@ void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frame
 #if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
     auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
     std::cout << content << std::endl;
+#else
+    //auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    //std::cout << content << std::endl;
 #endif
 }
 
