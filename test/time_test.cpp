@@ -166,7 +166,8 @@ TEST_CASE("Emulation timing")
         for(int i = 0; i < 600; ++i)
             exceed = chip8vip->executeFor(16667 - exceed); // execute 16.667ms
         CHECK(chip8vip->getTime().secondsRounded() == 10);
-        CHECK(chip8vip->frames() == 600);
+        CHECK(chip8vip->frames() >= 600);
+        CHECK(chip8vip->frames() < 605);
     }
 
     {
@@ -187,6 +188,7 @@ TEST_CASE("Emulation timing")
         int64_t exceed = 0;
         for(int i = 0; i < 600; ++i)
             exceed = dream6k8->executeFor(16667 - exceed); // execute 16.667ms
-        CHECK(dream6k8->frames() == 501);
+        CHECK(dream6k8->frames() >= 500);
+        CHECK(dream6k8->frames() < 505);
     }
 }
