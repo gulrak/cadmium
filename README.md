@@ -80,20 +80,23 @@ those interpreter variants where published.
 The Supported presets are:
 
 * CHIP-8
-* CHIP-8-STRICT
+* CHIP-8-STRICT (cycle exact HLE VIP CHIP-8)
 * CHIP-8X
 * CHIP-10
 * CHIP-48
 * SUPER-CHIP 1.0
 * SUPER-CHIP 1.1
 * SUPER-CHIP COMP
+* MODERN-SUPER-CHIP
 * MegaChip 8
 * XO-CHIP
-* VIP-CHIP-8
-* VIP-CHIP-8 TPD
-* VIP-HI-RES-CHIP-8
-* VIP-CHIP-8X
-* CHIP-8-DREAM
+* VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
+* VIP-CHIP-8 TPD (same, but with 64x64 display)
+* VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
+* VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
+* VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
+* VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)
+* CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
 
 Whith `CHIP-8-STRICT` Cadmium might be the first high-level emulator that has
 a core that can execute CHIP-8 with the behavior and timing of the initial
@@ -110,13 +113,17 @@ to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
 quirks that, while correct for the original SCHIP1.1, are not common in modern
 programs.
 
+The `MODERN-SUPER-CHIP` is more or less Octo's interpretation of SUSER-CHIP
+and what Timendus test suite v4.1 checks for as modern SCHIP.
+
 The `VIP-CHIP-8` variant presets activate a core that is emulating a COSMAC
 VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
 allow hybrid roms (`.hc8`) that contain CDP1802 parts to execute on Cadmium.
 The currently available behaviors are classic CHIP-8, CHIP-8 Two Page Display (TPD),
 HI-RES-CHIP-8 (four page display, FPD), and CHIP-8X with the _VP-590 Color Board_
-and the _VP-595 Simple Sound Board_ attached.
+and the _VP-595 Simple Sound Board_ attached, as well as a TDP and a HI-RES
+version of 8X using that hardware.
 
 The `CHIP-8-DREAM` preset activates a core that is emulating a DREAM6800
 driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS
