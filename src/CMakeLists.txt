@@ -39,6 +39,9 @@ elseif(APPLE)
     set(CADMIUM_ICON "${PROJECT_BINARY_DIR}/resources/cadmium.icns")
     set_source_files_properties(${CADMIUM_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources" GENERATED 1)
     add_executable(cadmium MACOSX_BUNDLE ${CADMIUM_SOURCE} ${CADMIUM_ICON})
+    if(WITH_FLAG_COCOA_GRAPHICS_SWITCHING)
+        target_compile_definitions(cadmium PRIVATE WITH_FLAG_COCOA_GRAPHICS_SWITCHING)
+    endif()
     set_target_properties(cadmium PROPERTIES
         BUNDLE True
         MACOSX_BUNDLE_GUI_IDENTIFIER "net.gulrak.cadmium"

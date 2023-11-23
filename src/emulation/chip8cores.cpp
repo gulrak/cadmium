@@ -294,14 +294,17 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
         return;
     auto start = _cycleCounter;
     if(_isMegaChipMode) {
-        for (int i = 0; i < numInstructions; ++i) {
-            if (i && ((_memory[_rPC] << 8) | _memory[_rPC + 1]) == 0x00E0) {
-                _systemTime.addCycles(_cycleCounter - start);
-                return;
+        if(_execMode == eRUNNING) {
+            auto end = _cycleCounter + numInstructions;
+            while (_execMode == eRUNNING && _cycleCounter < end) {
+                if (_breakpoints.empty() && !_options.optTraceLog)
+                    Chip8EmulatorFP::executeInstructionNoBreakpoints();
+                else
+                    Chip8EmulatorFP::executeInstruction();
             }
-            if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
-                Chip8EmulatorFP::executeInstructionNoBreakpoints();
-            else
+        }
+        else {
+            for (int i = 0; i < numInstructions; ++i)
                 Chip8EmulatorFP::executeInstruction();
         }
     }
@@ -370,8 +373,12 @@ uint8_t Chip8EmulatorFP::getNextMCSample()
     if(_isMegaChipMode && _sampleLength>0 && _execMode == eRUNNING) {
         auto val = _memory[(_sampleStart + uint32_t(_mcSamplePos)) & ADDRESS_MASK];
         double pos = _mcSamplePos + _sampleStep;
-        if(pos >= _sampleLength)
-            pos -= _sampleLength;
+        if(pos >= _sampleLength) {
+            if(_sampleLoop)
+                pos -= _sampleLength;
+            else
+                pos = _sampleLength = 0, val = 127;
+        }
         _mcSamplePos.store(pos);
         return val;
     }
@@ -427,6 +434,7 @@ void Chip8EmulatorFP::op00Bn(uint16_t opcode)
 { // Scroll UP
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
+        _screen.scrollUp(n);
         _screenRGBA.scrollUp(n);
         _host.updateScreen();
     }
@@ -441,6 +449,7 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
 { // Scroll DOWN
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
+        _screen.scrollDown(n);
         _screenRGBA.scrollDown(n);
         _host.updateScreen();
     }
@@ -509,6 +518,7 @@ void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
     _host.updateScreen();
     clearScreen();
     ++_clearCounter;
+    _cycleCounter = calcNextFrame() - 1;
 }
 
 void Chip8EmulatorFP::op00EE(uint16_t opcode)
@@ -530,6 +540,7 @@ void Chip8EmulatorFP::op00EE_cyclic(uint16_t opcode)
 void Chip8EmulatorFP::op00FB(uint16_t opcode)
 { // Scroll right 4 pixel
     if(_isMegaChipMode) {
+        _screen.scrollRight(4);
         _screenRGBA.scrollRight(4);
         _host.updateScreen();
     }
@@ -559,6 +570,7 @@ void Chip8EmulatorFP::op00FB_masked(uint16_t opcode)
 void Chip8EmulatorFP::op00FC(uint16_t opcode)
 { // Scroll left 4 pixel
     if(_isMegaChipMode) {
+        _screen.scrollLeft(4);
         _screenRGBA.scrollLeft(4);
         _host.updateScreen();
     }
@@ -672,6 +684,8 @@ void Chip8EmulatorFP::op02nn(uint16_t opcode)
         auto g = _memory[address++ & ADDRESS_MASK];
         auto b = _memory[address++ & ADDRESS_MASK];
         _mcPalette[i + 1] = be32((r << 24) | (g << 16) | (b << 8) | a);
+        if(i == 250)
+            std::cout << "i: " << i << " - " << std::endl;
         cols.push_back(be32((r << 24) | (g << 16) | (b << 8) | a));
     }
     _host.updatePalette(cols, 1);
@@ -703,6 +717,7 @@ void Chip8EmulatorFP::op060n(uint16_t opcode)
     _sampleStart.store(_rI + 6);
     _sampleStep.store(frequency / 44100.0f);
     _sampleLength.store(length);
+    _sampleLoop = (opcode & 0xf) == 0;
     _mcSamplePos.store(0);
 }
 
@@ -1013,12 +1028,6 @@ void Chip8EmulatorFP::opBxnn(uint16_t opcode)
     _rPC = (_rV[(opcode >> 8) & 0xF] + (opcode & 0xFFF)) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opBxyn(uint16_t opcode)
-{
-    // TODO: CHIP-8X
-}
-
-
 inline uint8_t classicRand(uint32_t& state)
 {
     state = ((state * 1103515245) + 12345) & 0x7FFFFFFF;
@@ -1102,36 +1111,59 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
         _rV[0xF] = 0;
         if(ypos >= 192)
             return;
-        for(int y = 0; y < _spriteHeight && ypos + y < 192; ++y) {
-            uint8_t* pixelBuffer = &_screen.getPixelRef(xpos, ypos + y);
-            uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos, ypos + y);
-            for(int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer, ++pixelBuffer32) {
-                auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
-                if(col) {
-                    if(*pixelBuffer == _collisionColor)
-                        _rV[0xF] = 1;
-                    *pixelBuffer = col;
-                    switch (_blendMode) {
-                        case Chip8EmulatorBase::eBLEND_ALPHA_25:
-                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 63);
-                            break;
-                        case Chip8EmulatorBase::eBLEND_ALPHA_50:
-                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 127);
-                            break;
-                        case Chip8EmulatorBase::eBLEND_ALPHA_75:
-                            blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 191);
-                            break;
-                        case Chip8EmulatorBase::eBLEND_ADD:
-                            blendColorsAdd(pixelBuffer32, &_mcPalette[col]);
-                            break;
-                        case Chip8EmulatorBase::eBLEND_MUL:
-                            blendColorsMul(pixelBuffer32, &_mcPalette[col]);
-                            break;
-
-                        case Chip8EmulatorBase::eBLEND_NORMAL:
-                        default:
-                            *pixelBuffer32 = _mcPalette[col];
-                            break;
+        if(_rI < 0x100) {
+            int lines = opcode & 0xf;
+            auto byteOffset = _rI;
+            for (int l = 0; l < lines && ypos + l < 192; ++l) {
+                auto value = _memory[byteOffset++];
+                for (unsigned b = 0; b < 8 && xpos + b < 256 && value; ++b, value <<= 1) {
+                    if (value & 0x80) {
+                        uint8_t* pixelBuffer = &_screen.getPixelRef(xpos + b, ypos + l);
+                        uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos + b, ypos + l);
+                        if (*pixelBuffer) {
+                            _rV[0xf] = 1;
+                            *pixelBuffer = 0;
+                            *pixelBuffer32 = 0;
+                        }
+                        else {
+                            *pixelBuffer = 254;
+                            *pixelBuffer32 = 0xffffffff;
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            for (int y = 0; y < _spriteHeight && ypos + y < 192; ++y) {
+                uint8_t* pixelBuffer = &_screen.getPixelRef(xpos, ypos + y);
+                uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos, ypos + y);
+                for (int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer, ++pixelBuffer32) {
+                    auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
+                    if (col) {
+                        if (*pixelBuffer == _collisionColor)
+                            _rV[0xF] = 1;
+                        *pixelBuffer = col;
+                        switch (_blendMode) {
+                            case Chip8EmulatorBase::eBLEND_ALPHA_25:
+                                blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 63);
+                                break;
+                            case Chip8EmulatorBase::eBLEND_ALPHA_50:
+                                blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 127);
+                                break;
+                            case Chip8EmulatorBase::eBLEND_ALPHA_75:
+                                blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 191);
+                                break;
+                            case Chip8EmulatorBase::eBLEND_ADD:
+                                blendColorsAdd(pixelBuffer32, &_mcPalette[col]);
+                                break;
+                            case Chip8EmulatorBase::eBLEND_MUL:
+                                blendColorsMul(pixelBuffer32, &_mcPalette[col]);
+                                break;
+                            case Chip8EmulatorBase::eBLEND_NORMAL:
+                            default:
+                                *pixelBuffer32 = _mcPalette[col];
+                                break;
+                        }
                     }
                 }
             }

@@ -517,15 +517,15 @@ public:
 
 #ifdef WITH_FLAG_COCOA_GRAPHICS_SWITCHING
     #ifdef RESIZABLE_GUI
-            SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
     #else
-           // SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
+        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
     #endif
 #else
     #ifdef RESIZABLE_GUI
-            SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     #else
-            // SetConfigFlags(FLAG_VSYNC_HINT);
+        // SetConfigFlags(FLAG_VSYNC_HINT);
     #endif
 #endif
 
@@ -1060,24 +1060,27 @@ public:
         for(uint8_t key = 0; key < 16; ++key) {
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
-        static int cntx = 0;
-        static int64_t excessTime = 0;
-        //if(!(cntx++ & 0x7f))
-        //    std::clog << fmt::format("Frame time: rl: {}ms, chrono: {}ms, excessTime_us: {}", deltaT, deltaTC, excessTime) << std::endl;
-        if(excessTime < deltaTC * 1000000) {
-            excessTime = _chipEmu->executeFor(deltaTC * 1000000 - excessTime);
+        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
+            auto fb = getFrameBoost();
+            for(int i = 0; i < fb; ++i) {
+                _chipEmu->tick(getInstrPerFrame());
+                g_soundTimer.store(_chipEmu->soundTimer());
+            }
+            pushAudio(deltaT);
         }
         else {
-            excessTime = 0;
+            static int cntx = 0;
+            static int64_t excessTime = 0;
+            if (!(cntx++ & 0x7f) && deltaTC > 0.02)
+                std::clog << fmt::format("Frame time: rl: {}s, chrono: {}s, excessTime_us: {}", deltaT, deltaTC, excessTime) << std::endl;
+            if (excessTime < deltaTC * 1000000) {
+                excessTime = _chipEmu->executeFor(deltaTC * 1000000 - excessTime);
+            }
+            else {
+                excessTime = 0;
+            }
+            pushAudio(deltaT);
         }
-        /*
-        auto fb = getFrameBoost();
-        for(int i = 0; i < fb; ++i) {
-            _chipEmu->tick(getInstrPerFrame());
-            g_soundTimer.store(_chipEmu->soundTimer());
-        }
-         */
-        pushAudio(deltaT);
 
         if(_chipEmu->needsScreenUpdate())
             updateScreen();

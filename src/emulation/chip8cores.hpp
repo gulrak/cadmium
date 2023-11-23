@@ -596,7 +596,6 @@ public:
     void opBxy0_c8x(uint16_t opcode);
     void opBxyn_c8x(uint16_t opcode);
     void opBxnn(uint16_t opcode);
-    void opBxyn(uint16_t opcode);
     void opCxnn(uint16_t opcode);
     void opCxnn_randLCG(uint16_t opcode);
     void opCxnn_counting(uint16_t opcode);

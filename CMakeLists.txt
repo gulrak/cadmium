@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(cadmium VERSION 1.1.5 LANGUAGES C CXX)
+project(cadmium VERSION 1.1.7 LANGUAGES C CXX)
 cmake_policy(VERSION 3.16)
 
 include(cmake/BuildSettings.cmake)

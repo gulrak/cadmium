@@ -262,6 +262,10 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
             case 16:
                 DrawTextEx(font, TextFormat("%2s:%04X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
+            case 24:
+                DrawTextEx(font, TextFormat("%2s:", cpu.getRegisterNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%06X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                break;
             default:
                 DrawTextEx(font, TextFormat("%2s:%X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
                 break;

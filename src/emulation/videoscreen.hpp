@@ -141,7 +141,7 @@ public:
     }
     void scrollDown(int n)
     {
-        std::memmove(_screenBuffer.data() + n * _stride, _screenBuffer.data(), _screenBuffer.size() - n * _stride);
+        std::memmove(_screenBuffer.data() + n * _stride, _screenBuffer.data(), (_screenBuffer.size() - n * _stride) * sizeof(PixelType));
         if constexpr (isRGBA())
             for(unsigned i = 0; i < n*_stride; ++i) _screenBuffer[i] = _black;
         else
@@ -149,7 +149,7 @@ public:
     }
     void scrollUp(int n)
     {
-        std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * _stride, _screenBuffer.size() - n * _stride);
+        std::memmove(_screenBuffer.data(), _screenBuffer.data() + n * _stride, (_screenBuffer.size() - n * _stride) * sizeof(PixelType));
         if constexpr (isRGBA())
             for(unsigned i = 0; i < n*_stride; ++i) _screenBuffer[_screenBuffer.size() - n * _stride + i] = _black;
         else
@@ -158,7 +158,7 @@ public:
     void scrollLeft(int n)
     {
         for(int y = 0; y < Height; ++y) {
-            std::memmove(_screenBuffer.data() + y * _stride, _screenBuffer.data() + y * _stride + n, _stride - n);
+            std::memmove(_screenBuffer.data() + y * _stride, _screenBuffer.data() + y * _stride + n, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + _stride - n + i] = _black;
             else
@@ -169,7 +169,7 @@ public:
     void scrollRight(int n)
     {
         for(int y = 0; y < Height; ++y) {
-            std::memmove(_screenBuffer.data() + y * _stride + n, _screenBuffer.data() + y * _stride, _stride - n);
+            std::memmove(_screenBuffer.data() + y * _stride + n, _screenBuffer.data() + y * _stride, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + i] = _black;
             else
