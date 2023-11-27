@@ -315,7 +315,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             source.assign((const char*)fileData.data(), fileData.size());
             //TraceLog(LOG_INFO, "Assigned source.");
         }
-        else if(_romImage.size() < 65536) {
+        else if(_romImage.size() < 8192*1024) {
             //TraceLog(LOG_INFO, "Setting up decompiler.");
             std::stringstream os;
             //TraceLog(LOG_INFO, "Setting instance.");

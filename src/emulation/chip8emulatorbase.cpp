@@ -380,7 +380,7 @@ int64_t Chip8EmulatorBase::executeFor(int64_t micros)
         using namespace std::chrono;
         handleTimer();
         auto start = _cycleCounter;
-        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros - 2000 : 0);
+        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros * 3 / 4 : 0);
         do {
             executeInstructions(487);
         }

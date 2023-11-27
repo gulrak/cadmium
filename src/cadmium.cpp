@@ -1060,7 +1060,7 @@ public:
         for(uint8_t key = 0; key < 16; ++key) {
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
-        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
+        if(_options.frameRate == 60 || _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
             auto fb = getFrameBoost();
             for(int i = 0; i < fb; ++i) {
                 _chipEmu->tick(getInstrPerFrame());
