@@ -706,6 +706,7 @@ public:
     void renderAudio(int16_t *samples, unsigned int frames)
     {
         std::scoped_lock lock(_audioMutex);
+        _audioCallbackAvgFrames = _audioCallbackAvgFrames ? (_audioCallbackAvgFrames + frames)/2 : frames;
         if(_chipEmu) {
             if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
                 while(frames--) {
@@ -715,22 +716,23 @@ public:
             }
             else {
                 auto st = _chipEmu->soundTimer();
-                if(st && _chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
-                    auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
-                    float phase = _chipEmu->getAudioPhase();
-                    if (!_options.optXOChipSound) {
-                        const float step = _chipEmu->getAudioFrequency() / 44100;
-                        for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
-                            *samples++ = (phase > 0.5f) ? 16384 : -16384;
-                            phase = std::fmod(phase + step, 1.0f);
+                if(_audioBuffer.dataAvailable() > frames && st && _chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
+                    auto len = _audioBuffer.read(samples, frames);
+                    frames -= len;
+#if 0
+                    if (frames > 10000000000) {
+                        auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
+                        float phase = _chipEmu->getAudioPhase();
+                        if (!_options.optXOChipSound) {
+                            const float step = _chipEmu->getAudioFrequency() / 44100;
+                            for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
+                                *samples++ = (phase > 0.5f) ? 16384 : -16384;
+                                phase = std::fmod(phase + step, 1.0f);
+                            }
+                            _chipEmu->setAudioPhase(phase);
                         }
-                        _chipEmu->setAudioPhase(phase);
-                    }
-                    else {
-                        auto len = _audioBuffer.read(samples, frames);
-                        frames -= len;
-                        if (frames > 0) {
-                            //TraceLog(LOG_WARNING, "AudioBuffer underrun: %d frames", frames);
+                        else {
+                            // TraceLog(LOG_WARNING, "AudioBuffer underrun: %d frames", frames);
                             auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
                             for (; frames > 0; --frames) {
                                 auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
@@ -740,6 +742,7 @@ public:
                             _chipEmu->setAudioPhase(phase);
                         }
                     }
+#endif
                 }
             }
         }
@@ -748,23 +751,45 @@ public:
         }
     }
 
-    void pushAudio(float deltaT = 1.0f/60)
+    void pushAudio(int frames)
     {
         static int16_t sampleBuffer[44100];
-        auto st = _chipEmu->soundTimer();
-        if(_chipEmu->getExecMode() == emu::IChip8Emulator::eRUNNING && st && _options.optXOChipSound) {
-            auto samples = int(44100 * deltaT + 0.75f);
-            if(samples > 44100) samples = 44100;
-            auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
-            float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
-            auto* dest = sampleBuffer;
-            for (int i = 0; i < samples; ++i) {
-                auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
-                *dest++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
-                phase = std::fmod(phase + step, 1.0f);
+        if(_chipEmu->getExecMode() == emu::IChip8Emulator::eRUNNING) {
+            if(_audioBuffer.dataAvailable() < _audioCallbackAvgFrames) ++frames;
+            auto st = _chipEmu->soundTimer();
+            if(!st) {
+                for (int i = 0; i < frames; ++i) {
+                    sampleBuffer[i] = 0;
+                }
+                _audioBuffer.write(sampleBuffer, frames);
+                _chipEmu->setAudioPhase(0.0f);
+                return;
             }
-            _audioBuffer.write(sampleBuffer, samples);
-            _chipEmu->setAudioPhase(phase);
+            //auto samples = int(44100 * deltaT + 0.75f);
+            auto samples = frames;
+            if(samples > 44100) samples = 44100;
+            auto* dest = sampleBuffer;
+            if (st && _options.optXOChipSound) {
+                auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
+                float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
+                for (int i = 0; i < samples; ++i) {
+                    auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
+                    *dest++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
+                    phase = std::fmod(phase + step, 1.0f);
+                }
+                _audioBuffer.write(sampleBuffer, samples);
+                _chipEmu->setAudioPhase(phase);
+            }
+            else {
+                const float step = _chipEmu->getAudioFrequency() / 44100;
+                float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
+                for (int i = 0; i < samples; ++i) {
+                    *dest++ = (phase > 0.5f) ? 16384 : -16384;
+                    phase = std::fmod(phase + step, 1.0f);
+                }
+                _audioBuffer.write(sampleBuffer, samples);
+                _chipEmu->setAudioPhase(phase);
+            }
         }
     }
 
@@ -1066,7 +1091,7 @@ public:
                 _chipEmu->tick(getInstrPerFrame());
                 g_soundTimer.store(_chipEmu->soundTimer());
             }
-            pushAudio(deltaT);
+            pushAudio(44100 / 60);
         }
         else {
             static int cntx = 0;
@@ -2311,6 +2336,7 @@ private:
     int _frameBoost{1};
     int _memoryOffset{-1};
     int _instructionOffset{-1};
+    int _audioCallbackAvgFrames{};
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;

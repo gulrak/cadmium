@@ -1387,7 +1387,7 @@ void Chip8EmulatorFP::opFx85(uint16_t opcode)
 void Chip8EmulatorFP::opFxF8_c8x(uint16_t opcode)
 {
     uint8_t val = _rV[(opcode >> 8) & 0xF];
-    _vp595Frequency = val ? val : 0x80;
+    _vp595Frequency = 80;//val ? val : 0x80;
 }
 
 void Chip8EmulatorFP::opFxFB_c8x(uint16_t opcode)
