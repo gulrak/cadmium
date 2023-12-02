@@ -798,10 +798,13 @@ public:
             return (bool)collision;
     }
 
-    float getAudioFrequency() const override
+    /*float getAudioFrequency() const override
     {
         return _options.behaviorBase == Chip8EmulatorOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1400.0f;
-    }
+    }*/
+
+    void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
+
 private:
     inline uint16_t readWord(uint32_t addr) const
     {
@@ -825,6 +828,7 @@ public:
     bool isKeyDown(uint8_t key) override { return false; }
     const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
     void updateScreen() override {}
+    void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
     Chip8EmulatorOptions options;

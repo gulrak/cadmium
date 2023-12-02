@@ -183,6 +183,8 @@ protected:
     int _cursorY{0};
     uint32_t _visibleLines{0};
     uint32_t _visibleCols{0};
+    int _lineNumberWidth{6*COLUMN_WIDTH};
+    uint32_t _lineNumberCols{6};
     uint32_t _selectionStart{0};
     uint32_t _selectionEnd{0};
     uint32_t _editId{0};

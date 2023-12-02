@@ -61,8 +61,9 @@ public:
     const VideoType* getScreen() const override;
 
     uint8_t soundTimer() const override;
-    float getAudioPhase() const override;
-    void setAudioPhase(float phase) override;
+    //float getAudioPhase() const override;
+    //void setAudioPhase(float phase) override;
+    void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
     // M6800-Bus
     uint8_t readByte(uint16_t addr) const override;

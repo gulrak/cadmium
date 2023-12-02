@@ -399,7 +399,7 @@ void Chip8EmulatorBase::tick(int instructionsPerFrame)
         do {
             executeInstructions(487);
         }
-        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 14);
+        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
     }
     else {
         executeInstructions(instructionsPerFrame);
