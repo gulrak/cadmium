@@ -377,12 +377,12 @@ uint8_t Chip8EmulatorFP::getNextMCSample()
             if(_sampleLoop)
                 pos -= _sampleLength;
             else
-                pos = _sampleLength = 0, val = 127;
+                pos = _sampleLength = 0, val = 128;
         }
         _mcSamplePos.store(pos);
         return val;
     }
-    return 127;
+    return 128;
 }
 
 void Chip8EmulatorFP::on(uint16_t mask, uint16_t opcode, OpcodeHandler handler)
@@ -684,8 +684,6 @@ void Chip8EmulatorFP::op02nn(uint16_t opcode)
         auto g = _memory[address++ & ADDRESS_MASK];
         auto b = _memory[address++ & ADDRESS_MASK];
         _mcPalette[i + 1] = be32((r << 24) | (g << 16) | (b << 8) | a);
-        if(i == 250)
-            std::cout << "i: " << i << " - " << std::endl;
         cols.push_back(be32((r << 24) | (g << 16) | (b << 8) | a));
     }
     _host.updatePalette(cols, 1);
@@ -1397,7 +1395,12 @@ void Chip8EmulatorFP::opFxFB_c8x(uint16_t opcode)
 
 void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
-    if(_rST) {
+    if(_isMegaChipMode && _sampleLength) {
+        while(frames--) {
+            *samples++ = ((int16_t)getNextMCSample() - 128) * 256;
+        }
+    }
+    else if(_rST) {
         if (_options.optXOChipSound) {
             auto step = 4000 * std::pow(2.0f, (float(_xoPitch) - 64) / 48.0f) / 128 / sampleFrequency;
             for (int i = 0; i < frames; ++i) {
@@ -1405,12 +1408,6 @@ void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFre
                 *samples++ = _xoAudioPattern[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
                 _wavePhase = std::fmod(_wavePhase + step, 1.0f);
             }
-        }
-        else if(_isMegaChipMode) {
-            while(frames--) {
-                *samples++ = ((int16_t)getNextMCSample() - 128) * 256;
-            }
-            return;
         }
         else {
             auto audioFrequency = _options.behaviorBase == Chip8EmulatorOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1400.0f;
@@ -1423,6 +1420,7 @@ void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFre
     }
     else {
         // Default is silence
+        _wavePhase = 0;
         IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
     }
 }

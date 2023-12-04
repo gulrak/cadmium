@@ -519,7 +519,7 @@ public:
     #ifdef RESIZABLE_GUI
         SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
     #else
-        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
+        //SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
     #endif
 #else
     #ifdef RESIZABLE_GUI
@@ -708,9 +708,14 @@ public:
         std::scoped_lock lock(_audioMutex);
         _audioCallbackAvgFrames = _audioCallbackAvgFrames ? (_audioCallbackAvgFrames + frames)/2 : frames;
         if(_chipEmu) {
-            if(_audioBuffer.dataAvailable() > frames && _chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
+            if(_chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
                 auto len = _audioBuffer.read(samples, frames);
                 frames -= len;
+                samples += len;
+                if(frames) {
+                    _chipEmu->renderAudio(samples, frames, 44100);
+                    frames = 0;
+                }
             }
         }
         while(frames--) {
@@ -1517,7 +1522,7 @@ public:
                             SetRowHeight(20);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiDisable();
-                            Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                            Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 1000000);
                             Spinner("Frame rate", &_options.frameRate, 10, 120);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();

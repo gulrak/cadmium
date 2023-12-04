@@ -64,7 +64,7 @@ static Chip8EmulatorOptions optionsFromOctoOptions(const octo_options& octo)
 
 OctoCartridge emu::OctoCartridge::load(std::string filename)
 {
-    auto data = loadFile(filename);
+    auto data = loadFile(filename, 65536);
     octo_options options;
     octo_default_options(&options);
     octo_str source;

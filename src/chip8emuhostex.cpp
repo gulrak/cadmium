@@ -125,7 +125,7 @@ bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
         _editor.setText("");
         _editor.setFilename("");
 #endif
-        auto fileData = loadFile(filename);
+        auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
         return loadBinary(filename, fileData.data(), fileData.size(), andRun);
         //memory[0x1FF] = 3;
     }

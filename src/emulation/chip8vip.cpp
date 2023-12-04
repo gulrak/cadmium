@@ -613,12 +613,12 @@ void Chip8VIP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
         const float step = audioFrequency / sampleFrequency;
         for (int i = 0; i < frames; ++i) {
             *samples++ = (_impl->_wavePhase > 0.5f) ? 16384 : -16384;
-            _impl->_wavePhase += _impl->_wavePhase + step;
-            while (_impl->_wavePhase >= 1.0) _impl->_wavePhase -= 1.0;
+            _impl->_wavePhase = std::fmod(_impl->_wavePhase + step, 1.0f);
         }
     }
     else {
         // Default is silence
+        _impl->_wavePhase = 0;
         IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
     }
 }
