@@ -28,6 +28,7 @@
 #include <array>
 #include <cstdint>
 #include <stdendian/stdendian.h>
+#include <set>
 
 namespace emu {
 
@@ -39,10 +40,11 @@ public:
     static constexpr int HEIGHT = Height;
     VideoScreen()
     {
-        _palette[0] = be32(0x000000FF);
+        _palette[0] = be32(0x00000000);
         _palette[1] = be32(0xFFFFFFFF);
         _palette[2] = be32(0xCCCCCCFF);
         _palette[3] = be32(0x888888FF);
+        _palette[254] = be32(0xFFFFFFFF);
     }
     void setMode(int width, int height, int ratio = -1)
     {
@@ -91,18 +93,37 @@ public:
         if(_overlayCellHeight > 0)
             _colorOverlay[((y * _overlayCellHeight)&31) * 8 + (x & 7)] = value & 0xF;
     }
-    void convert(uint32_t* destination, int destinationStride) const
+    void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen<PixelType,Width,Height>* background = nullptr) const
     {
         if(isRGBA() || !_overlayCellHeight) {
-            for (unsigned row = 0; row < _height; ++row) {
-                auto srcPtr = _screenBuffer.data() + row * _stride;
-                auto dstPtr = destination + row * destinationStride;
-                for (unsigned x = 0; x < _width; ++x) {
-                    if constexpr (isRGBA()) {
-                        *dstPtr++ = *srcPtr++;
+            if(!background) {
+                for (unsigned row = 0; row < _height; ++row) {
+                    auto srcPtr = _screenBuffer.data() + row * _stride;
+                    auto dstPtr = destination + row * destinationStride;
+                    for (unsigned x = 0; x < _width; ++x) {
+                        if constexpr (isRGBA()) {
+                            *dstPtr++ = blend(*srcPtr++,alpha);
+                        }
+                        else {
+                            *dstPtr++ = blend(_palette[*srcPtr++],alpha);
+                        }
                     }
-                    else {
-                        *dstPtr++ = _palette[*srcPtr++];
+                }
+            }
+            else {
+                for (unsigned row = 0; row < _height; ++row) {
+                    auto srcPtr = _screenBuffer.data() + row * _stride;
+                    auto backPtr = background->_screenBuffer.data() + row * _stride;
+                    auto dstPtr = destination + row * destinationStride;
+                    for (unsigned x = 0; x < _width; ++x) {
+                        auto srcCol = *srcPtr++;
+                        auto backCol = *backPtr++;
+                        if((srcCol & be32(0x000000FF)) == 0) {
+                            *dstPtr++ = blend(backCol, alpha);
+                        }
+                        else {
+                            *dstPtr++ = blend(srcCol, alpha);
+                        }
                     }
                 }
             }
@@ -250,13 +271,18 @@ public:
         _screenBuffer[y * _stride + x] &= ~mask;
     }
 protected:
+    static inline uint32_t blend(uint32_t color, uint8_t  alpha)
+    {
+        auto newAlpha = (color >> 24) * alpha / 255;
+        return (color & 0x00ffffff) | (newAlpha << 24);
+    }
     const int _stride{Width};
     int _width{Width};
     int _height{Height};
     int _ratio{1};
     int _overlayCellHeight{0};
     int _overlayBackground{0};
-    PixelType _black{isRGBA() ? be32(0x000000FF) : 0};
+    PixelType _black{isRGBA() ? be32(0x00000000) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
     std::array<PixelType, Width*Height> _screenBuffer;
     std::array<uint32_t, 256> _palette{};

@@ -335,6 +335,7 @@ void Chip8EmulatorBase::reset()
     std::memset(_xoAudioPattern.data(), 0, 16);
     _xoPitch = 64;
     _planes = 0xff;
+    _screenAlpha = 0xff;
     clearScreen();
     //_host.updatePalette(_xxoPalette);
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
@@ -350,6 +351,8 @@ void Chip8EmulatorBase::reset()
     _sampleLength = 0;
     _sampleStep = 0;
     _mcSamplePos = 0;
+    _screenRGBA = &_screenRGBA1;
+    _workRGBA = &_screenRGBA2;
 }
 
 int64_t Chip8EmulatorBase::executeFor(int64_t micros)

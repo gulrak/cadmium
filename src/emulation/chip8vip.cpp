@@ -695,7 +695,7 @@ void Chip8VIP::writeByte(uint16_t addr, uint8_t val)
             _impl->_video.setSubMode(Cdp186x::eVP590_LORES);
         }
         else {
-            std::cout << fmt::format("color {:04x} = {:02x}", addr, val) << std::endl;
+            //std::cout << fmt::format("color {:04x} = {:02x}", addr, val) << std::endl;
             _impl->_colorRam[addr & _impl->_colorRamMask] = val & 7;
             _impl->_video.setSubMode(Cdp186x::eVP590_HIRES);
         }

@@ -939,7 +939,7 @@ public:
             const auto* screen = _chipEmu->getScreen();
             if (screen) {
                 if (!_renderCrt) {
-                    screen->convert(pixel, _screen.width);
+                    screen->convert(pixel, _screen.width, _chipEmu->getScreenAlpha());
                     UpdateTexture(_screenTexture, _screen.data);
                 }
                 else {
@@ -948,7 +948,7 @@ public:
             else {
                 // TraceLog(LOG_INFO, "Updating MC8 screen!");
                 const auto* screen = _chipEmu->getScreenRGBA();
-                screen->convert(pixel, _screen.width);
+                screen->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
                 UpdateTexture(_screenTexture, _screen.data);
             }
         }

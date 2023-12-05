@@ -116,6 +116,8 @@ public:
         }
         _isMegaChipMode = (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP && other && other->_isMegaChipMode);
         _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
+        _screenRGBA = &_screenRGBA1;
+        _workRGBA = &_screenRGBA2;
     }
     ~Chip8EmulatorBase() override = default;
 
@@ -189,8 +191,8 @@ public:
         else {
             _screen.setAll(0);
             if (_options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP) {
-                const auto black = be32(0x000000FF);
-                _screenRGBA.setAll(black);
+                const auto blackTransparent = be32(0x00000000);
+                _workRGBA->setAll(blackTransparent);
             }
         }
     }
@@ -263,7 +265,8 @@ public:
     uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : 64; }
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
-    const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? &_screenRGBA : nullptr; }
+    const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
+    const uint8_t getScreenAlpha() const override { return _screenAlpha; }
     void setPalette(std::array<uint32_t,256>& palette) override { _screen.setPalette(palette); }
 
     //float getAudioPhase() const override { return _wavePhase; }
@@ -283,6 +286,9 @@ protected:
     inline int instructionsPerFrame() const { return _options.instructionsPerFrame ? _options.instructionsPerFrame : _systemTime.getClockFreq() / _options.frameRate; }
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
     void fixupSafetyPad() { memory()[memSize()] = *memory(); }
+    void swapMegaSchreens() {
+        std::swap(_screenRGBA, _workRGBA);
+    }
     CpuState _cpuState{eNORMAL};
     std::string _errorMessage;
     bool _isHires{false};
@@ -290,6 +296,7 @@ protected:
     bool _isMegaChipMode{false};
     bool _screenNeedsUpdate{false};
     uint8_t _planes{1};
+    uint8_t _screenAlpha{255};
     int64_t _cycleCounter{0};
     int64_t _nextFrame{0};
     int _frameCounter{0};
@@ -303,7 +310,10 @@ protected:
     uint8_t _rST{};
     float _wavePhase{0};
     VideoScreen<uint8_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screen;
-    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA{};
+    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA1{};
+    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA2{};
+    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT>* _screenRGBA{};
+    VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT>* _workRGBA{};
     std::array<uint8_t,16> _xoAudioPattern{};
     std::atomic_uint8_t _xoPitch{};
     std::atomic<float> _sampleStep{0};
