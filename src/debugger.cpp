@@ -213,15 +213,20 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     const auto& prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
     BeginScissorMode(area.x, area.y, area.width, area.height);
     auto pcColor = cpu.inErrorState() ? RED : YELLOW;
+    bool inIf = false;
     for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
+        auto [addr, line] = prefix[prefix.size() - 1 - i];
+        inIf = i < prefix.size()-2 && prefix[prefix.size() - 2 - i].second.find(" if ") != std::string::npos;
         if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC - (i+1)*lineSpacing, area.width, 8}))
-            toggleBreakpoint(cpu, prefix[prefix.size() - 1 - i].first);
-        const auto* bpi = cpu.findBreakpoint(prefix[prefix.size() - 1 - i].first);
-        DrawTextEx(font, prefix[prefix.size() - 1 - i].second.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == prefix[prefix.size() - 1 - i].first ? pcColor : LIGHTGRAY);
+            toggleBreakpoint(cpu, addr);
+        const auto* bpi = cpu.findBreakpoint(addr);
+        if(inIf)
+            line.insert(_backend ? 12 : 16, "  ");
+        DrawTextEx(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == addr ? pcColor : LIGHTGRAY);
         if(bpi)
             GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
     }
-    bool inIf = !prefix.empty() && prefix.back().second.find(" if ") != std::string::npos;
+    inIf = !prefix.empty() && prefix.back().second.find(" if ") != std::string::npos;
     uint32_t addr = insOff;
     for (int i = 0; i <= extraLines && addr < /*cpu.memSize()*/ 0x10000; ++i) {
         if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC + i * lineSpacing, area.width, 8}))
