@@ -68,9 +68,10 @@ public:
 
     bool isDisplayEnabled() const override;
 
-    float getAudioPhase() const override;
-    void setAudioPhase(float phase) override;
-    float getAudioFrequency() const override;
+    //float getAudioPhase() const override;
+    //void setAudioPhase(float phase) override;
+    //float getAudioFrequency() const override;
+    void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;

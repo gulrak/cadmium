@@ -333,6 +333,7 @@ void Chip8EmulatorBase::reset()
         std::memcpy(_memory.data() + 16*5, bigFont, bigSize);
     std::memcpy(_xxoPalette.data(), defaultPalette, 16);
     std::memset(_xoAudioPattern.data(), 0, 16);
+    _xoSilencePattern = true;
     _xoPitch = 64;
     _planes = 0xff;
     clearScreen();
@@ -399,7 +400,7 @@ void Chip8EmulatorBase::tick(int instructionsPerFrame)
         do {
             executeInstructions(487);
         }
-        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 14);
+        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
     }
     else {
         executeInstructions(instructionsPerFrame);

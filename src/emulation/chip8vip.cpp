@@ -39,7 +39,7 @@ public:
     uint16_t _initialChip8SP{0};
     uint16_t _colorRamMask{0xff};
     uint16_t _colorRamMaskLores{0xe7};
-    std::atomic<float> _wavePhase{0};
+    float _wavePhase{0};
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,1024> _colorRam{};
     std::array<uint8_t,512> _rom{};
@@ -375,6 +375,7 @@ void Chip8VIP::reset()
     _impl->_lastOpcode = 0;
     _impl->_initialChip8SP = 0;
     _impl->_frequencyLatch = 0x80;
+    _impl->_wavePhase = 0;
     _cpuState = eNORMAL;
     setExecMode(eRUNNING);
     while(_impl->_cpu.getExecMode() == eRUNNING && (!executeCdp1802() || getPC() != _options.startAddress)); // fast-forward to fetch/decode loop
@@ -441,7 +442,9 @@ bool Chip8VIP::executeCdp1802()
 {
     static int lastFC = 0;
     static int endlessLoops = 0;
-    auto fc = _impl->_video.executeStep();
+    auto [fc,vsync] = _impl->_video.executeStep();
+    if(vsync)
+        _host.vblank();
     if(_options.optTraceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
     if(_impl->_cpu.PC() == Private::FETCH_LOOP_ENTRY) {
@@ -589,6 +592,7 @@ int64_t Chip8VIP::frames() const
     return _impl->_video.frames();
 }
 
+/*
 float Chip8VIP::getAudioPhase() const
 {
     return _impl->_wavePhase;
@@ -602,6 +606,23 @@ void Chip8VIP::setAudioPhase(float phase)
 float Chip8VIP::getAudioFrequency() const
 {
     return _impl->_video.getType() == Cdp186x::eVP590 ? 27535.0f / ((unsigned)_impl->_frequencyLatch + 1) : 1400.0f;
+}
+*/
+void Chip8VIP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
+{
+    if(_impl->_cpu.getQ()) {
+        auto audioFrequency = _impl->_video.getType() == Cdp186x::eVP590 ? 27535.0f / ((unsigned)_impl->_frequencyLatch + 1) : 1400.0f;
+        const float step = audioFrequency / sampleFrequency;
+        for (int i = 0; i < frames; ++i) {
+            *samples++ = (_impl->_wavePhase > 0.5f) ? 16384 : -16384;
+            _impl->_wavePhase = std::fmod(_impl->_wavePhase + step, 1.0f);
+        }
+    }
+    else {
+        // Default is silence
+        _impl->_wavePhase = 0;
+        IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+    }
 }
 
 uint16_t Chip8VIP::getCurrentScreenWidth() const

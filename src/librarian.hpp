@@ -36,6 +36,7 @@
 class Librarian
 {
 public:
+    static constexpr size_t MAX_ROM_SIZE = 16 * 1024 * 1024 - 512;
     struct Info
     {
         enum Type { eDIRECTORY, eUNKNOWN_FILE, eROM_FILE, eOCTO_SOURCE };

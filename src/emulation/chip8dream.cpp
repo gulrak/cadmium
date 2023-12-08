@@ -280,6 +280,7 @@ int Chip8Dream::executeVDG()
         _impl->_pia.pinCB1(true);
         _impl->_pia.pinCB1(false);
         _impl->_keyMatrix.updateKeys(_host.getKeyStates());
+        _host.vblank();
     }
     lastFC = fc;
     return fc;
@@ -416,7 +417,7 @@ uint8_t Chip8Dream::soundTimer() const
     return (_impl->_pia.portB() & 64) ? _state.st : 0;
 }
 
-float Chip8Dream::getAudioPhase() const
+/*float Chip8Dream::getAudioPhase() const
 {
     return _impl->_wavePhase;
 }
@@ -424,6 +425,21 @@ float Chip8Dream::getAudioPhase() const
 void Chip8Dream::setAudioPhase(float phase)
 {
     _impl->_wavePhase = phase;
+}*/
+
+void Chip8Dream::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
+{
+    if(_state.st) {
+        const float step = 1000.0f / sampleFrequency;
+        for (int i = 0; i < frames; ++i) {
+            *samples++ = (_impl->_wavePhase > 0.5f) ? 16384 : -16384;
+            _impl->_wavePhase = std::fmod(_impl->_wavePhase + step, 1.0f);
+        }
+    }
+    else {
+        // Default is silence
+        IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+    }
 }
 
 uint16_t Chip8Dream::getCurrentScreenWidth() const

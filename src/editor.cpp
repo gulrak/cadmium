@@ -271,7 +271,7 @@ void Editor::update()
         setFocus();
         if(_mouseDownInText || IsMouseButtonPressed(0)) {
             auto clickPos = GetMousePosition();
-            auto cx = (clickPos.x - _textArea.x - 6 * COLUMN_WIDTH) / COLUMN_WIDTH;
+            auto cx = (clickPos.x - _textArea.x - _lineNumberWidth) / COLUMN_WIDTH;
             auto cy = (clickPos.y - _textArea.y - 4) / LINE_SIZE;
             if (cx > 0 && cy + _tosLine >= 0) {
                 _cursorX = cx + _losCol;
@@ -423,11 +423,14 @@ void Editor::update()
             }
         }
     }
+    _lineNumberCols = _lines.empty() ? 5 : std::max(3,int(std::log10(_lines.size())) + 3);
+    _lineNumberWidth = _lineNumberCols * COLUMN_WIDTH;
 }
 
 void Editor::recompile()
 {
     try {
+        auto start = std::chrono::steady_clock::now();
         _compiler.reset();
         if(_text.empty() || _text.back() != '\n') {
             auto text = _text + '\n';
@@ -436,6 +439,8 @@ void Editor::recompile()
         else {
             _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
         }
+        auto time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        TraceLog(LOG_INFO, "Recompilation took %dms", (int)time_ms);
     }
     catch(std::exception& ex)
     {}
@@ -457,17 +462,18 @@ void Editor::draw(Font& font, Rectangle rect)
     _textArea = {_totalArea.x, _totalArea.y + _toolArea.height, _totalArea.width, _totalArea.height - _toolArea.height - _messageArea.height};
     float ypos = _textArea.y - 4;
     _visibleLines = uint32_t((_textArea.height - 6) / LINE_SIZE);
-    _visibleCols = uint32_t(_textArea.width - 6*COLUMN_WIDTH - 6) / COLUMN_WIDTH;
+    _visibleCols = uint32_t(_textArea.width - _lineNumberWidth - 6) / COLUMN_WIDTH;
     _scrollPos = {-(float)_losCol * COLUMN_WIDTH, -(float)_tosLine * LINE_SIZE};
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 0);
     gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
-    DrawRectangle(5*COLUMN_WIDTH, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
+    DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
+    std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
-            DrawTextEx(font, TextFormat("%4d", lineNumber + 1), {_textArea.x, ypos}, 8, 0, LIGHTGRAY);
-            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + 6 * COLUMN_WIDTH, ypos}, _textArea.width - 6 * COLUMN_WIDTH, _losCol);
+            DrawTextEx(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, 8, 0, LIGHTGRAY);
+            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol);
         }
         ++lineNumber;
         ypos += LINE_SIZE;
@@ -478,8 +484,8 @@ void Editor::draw(Font& font, Rectangle rect)
     if(hasFocus() && _blinkTimer >= BLINK_RATE/2) {
         auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
         auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
-        if(cx >= 0 && cx < _textArea.width - 6*COLUMN_WIDTH - 3 && cy >= 0 && cy + 8 < _textArea.height)
-            DrawRectangle(_textArea.x + 6*COLUMN_WIDTH + cx, _textArea.y + cy - 2, 2, LINE_SIZE, WHITE);
+        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height)
+            DrawRectangle(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, WHITE);
     }
 
     auto handle = verticalScrollHandle();

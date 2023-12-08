@@ -71,8 +71,8 @@ public:
             std::memcpy(_stack.data(), iother->getStackElements(), sizeof(uint16_t) * iother->stackSize());
             _rSP = iother->getSP();
             _rDT = iother->delayTimer();
-            _rST.store(iother->soundTimer());
-            _wavePhase.store(iother->getAudioPhase());
+            _rST = iother->soundTimer();
+            _wavePhase =  0; //iother->getAudioPhase();
             for (int i = 0; i < 16; ++i) {
                 _rV[i] = iother->getV(i);
             }
@@ -91,6 +91,7 @@ public:
             _screenRGBA = other->_screenRGBA;
             _xoAudioPattern = other->_xoAudioPattern;
             _xoPitch.store(other->_xoPitch);
+            _xoSilencePattern = other->_xoSilencePattern;
             _sampleStep.store(other->_sampleStep);
             _sampleStart.store(other->_sampleStart);
             _sampleLength.store(other->_sampleLength);
@@ -246,8 +247,11 @@ public:
                 --_rST;
             if (!_rST)
                 _wavePhase = 0;
-            if(_screenNeedsUpdate)
+            if(_screenNeedsUpdate) {
                 _host.updateScreen();
+                _screenNeedsUpdate = false;
+            }
+            _host.vblank();
         }
     }
 
@@ -264,8 +268,8 @@ public:
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? &_screenRGBA : nullptr; }
     void setPalette(std::array<uint32_t,256>& palette) override { _screen.setPalette(palette); }
 
-    float getAudioPhase() const override { return _wavePhase; }
-    void setAudioPhase(float phase) override { _wavePhase = phase; }
+    //float getAudioPhase() const override { return _wavePhase; }
+    //void setAudioPhase(float phase) override { _wavePhase = phase; }
     const uint8_t* getXOAudioPattern() const override { return _xoAudioPattern.data(); }
     uint8_t getXOPitch() const override { return _xoPitch; }
 
@@ -298,11 +302,12 @@ protected:
     std::array<uint16_t,16> _stack{};
     uint8_t _rSP{};
     uint8_t _rDT{};
-    std::atomic_uint8_t _rST{};
-    std::atomic<float> _wavePhase{0};
+    uint8_t _rST{};
+    float _wavePhase{0};
     VideoScreen<uint8_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screen;
     VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA{};
     std::array<uint8_t,16> _xoAudioPattern{};
+    bool _xoSilencePattern{true};
     std::atomic_uint8_t _xoPitch{};
     std::atomic<float> _sampleStep{0};
     std::atomic_uint32_t _sampleStart{0};

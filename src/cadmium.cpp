@@ -514,12 +514,11 @@ public:
         , _screenHeight(MIN_SCREEN_HEIGHT)
     {
         SetTraceLogCallback(LogHandler);
-
 #ifdef WITH_FLAG_COCOA_GRAPHICS_SWITCHING
     #ifdef RESIZABLE_GUI
         SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
     #else
-        SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
+        //SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
     #endif
 #else
     #ifdef RESIZABLE_GUI
@@ -632,7 +631,12 @@ public:
 */
 #ifdef PLATFORM_WEB
         JsClipboard_AddJsHook();
+#else
+        _volume = _volumeSlider = _cfg.volume;
 #endif
+        if(_volume > 1.0f)
+            _volume = _volumeSlider = 1.0f;
+        SetMasterVolume(_volume);
     }
 
     ~Cadmium() override
@@ -706,40 +710,15 @@ public:
     void renderAudio(int16_t *samples, unsigned int frames)
     {
         std::scoped_lock lock(_audioMutex);
+        _audioCallbackAvgFrames = _audioCallbackAvgFrames ? (_audioCallbackAvgFrames + frames)/2 : frames;
         if(_chipEmu) {
-            if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
-                while(frames--) {
-                    *samples++ = ((int16_t)_chipEmu->getNextMCSample() - 128) * 256;
-                }
-                return;
-            }
-            else {
-                auto st = _chipEmu->soundTimer();
-                if(st && _chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
-                    auto samplesLeftToPlay = std::min(st * (44100 / 60) / g_frameBoost, (int)frames);
-                    float phase = _chipEmu->getAudioPhase();
-                    if (!_options.optXOChipSound) {
-                        const float step = _chipEmu->getAudioFrequency() / 44100;
-                        for (int i = 0; i < samplesLeftToPlay; ++i, --frames) {
-                            *samples++ = (phase > 0.5f) ? 16384 : -16384;
-                            phase = std::fmod(phase + step, 1.0f);
-                        }
-                        _chipEmu->setAudioPhase(phase);
-                    }
-                    else {
-                        auto len = _audioBuffer.read(samples, frames);
-                        frames -= len;
-                        if (frames > 0) {
-                            //TraceLog(LOG_WARNING, "AudioBuffer underrun: %d frames", frames);
-                            auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
-                            for (; frames > 0; --frames) {
-                                auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
-                                *samples++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
-                                phase = std::fmod(phase + step, 1.0f);
-                            }
-                            _chipEmu->setAudioPhase(phase);
-                        }
-                    }
+            if(_chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
+                auto len = _audioBuffer.read(samples, frames);
+                frames -= len;
+                samples += len;
+                if(frames) {
+                    _chipEmu->renderAudio(samples, frames, 44100);
+                    frames = 0;
                 }
             }
         }
@@ -748,24 +727,20 @@ public:
         }
     }
 
-    void pushAudio(float deltaT = 1.0f/60)
+    void pushAudio(int frames)
     {
         static int16_t sampleBuffer[44100];
-        auto st = _chipEmu->soundTimer();
-        if(_chipEmu->getExecMode() == emu::IChip8Emulator::eRUNNING && st && _options.optXOChipSound) {
-            auto samples = int(44100 * deltaT + 0.75f);
-            if(samples > 44100) samples = 44100;
-            auto step = 4000 * std::pow(2.0f, (float(_chipEmu->getXOPitch()) - 64) / 48.0f) / 128 / 44100;
-            float phase = st ? _chipEmu->getAudioPhase() : 0.0f;
-            auto* dest = sampleBuffer;
-            for (int i = 0; i < samples; ++i) {
-                auto pos = int(std::clamp(phase * 128.0f, 0.0f, 127.0f));
-                *dest++ = _chipEmu->getXOAudioPattern()[pos >> 3] & (1 << (7 - (pos & 7))) ? 16384 : -16384;
-                phase = std::fmod(phase + step, 1.0f);
-            }
-            _audioBuffer.write(sampleBuffer, samples);
-            _chipEmu->setAudioPhase(phase);
+        if(_chipEmu->getExecMode() == emu::IChip8Emulator::eRUNNING) {
+            //if(_audioBuffer.dataAvailable() < _audioCallbackAvgFrames) ++frames;
+            if(frames > _audioBuffer.spaceAvailable()) frames = _audioBuffer.spaceAvailable();
+            _chipEmu->renderAudio(sampleBuffer, frames, 44100);
+            _audioBuffer.write(sampleBuffer, frames);
         }
+    }
+
+    void vblank() override
+    {
+        pushAudio(44100 / _options.frameRate);
     }
 
     uint8_t getKeyPressed() override
@@ -1066,7 +1041,6 @@ public:
                 _chipEmu->tick(getInstrPerFrame());
                 g_soundTimer.store(_chipEmu->soundTimer());
             }
-            pushAudio(deltaT);
         }
         else {
             static int cntx = 0;
@@ -1079,7 +1053,6 @@ public:
             else {
                 excessTime = 0;
             }
-            pushAudio(deltaT);
         }
 
         if(_chipEmu->needsScreenUpdate())
@@ -1214,6 +1187,7 @@ public:
         static uint32_t* selectedColor = nullptr;
         static std::string colorText;
         static uint32_t previousColor{};
+        static std::chrono::steady_clock::time_point volumeClick{};
 
 #ifdef RESIZABLE_GUI
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
@@ -1443,7 +1417,7 @@ public:
                     }
                 }
                 SetTooltip("RESTART");
-                int buttonsRight = 6;
+                int buttonsRight = 7;
 #ifdef WITH_EDITOR
                 ++buttonsRight;
 #endif
@@ -1479,6 +1453,9 @@ public:
                 if (iconButton(ICON_GEAR, _mainView == eSETTINGS))
                     _mainView = eSETTINGS;
                 SetTooltip("SETTINGS");
+                if (iconButton(ICON_AUDIO, false))
+                    volumeClick = std::chrono::steady_clock::now();
+                SetTooltip("VOLUME");
 
                 static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
                 DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
@@ -1551,11 +1528,11 @@ public:
                             SetRowHeight(20);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiDisable();
-                            Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 500000);
+                            Spinner("Instructions per frame", &_options.instructionsPerFrame, 0, 1000000);
                             Spinner("Frame rate", &_options.frameRate, 10, 120);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
-                            if (!_options.instructionsPerFrame) {
+                            if (true/*!_options.instructionsPerFrame*/) {
                                 static int _fb1{1};
                                 GuiDisable();
                                 Spinner("Frame boost", &_fb1, 1, 100000);
@@ -1881,6 +1858,27 @@ public:
                 }
                 EndColumns();
                 EndWindowBox();
+            }
+            if(IsKeyDown(KEY_ESCAPE))
+                volumeClick = std::chrono::steady_clock::time_point{};
+            if(volumeClick != std::chrono::steady_clock::time_point{}) {
+                if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
+                    Rectangle bounds{430.0, 21.0f, 80.0f, 14.0f};
+                    DrawRectangleRec({bounds.x-56, bounds.y-2, bounds.width+58, bounds.height+4}, {0,0,0,128});
+                    GuiSliderBar(bounds, "Volume: ", "", &_volumeSlider, 0.0001f, 1.0f);
+                    if (_volumeSlider != _volume)
+                        SetMasterVolume(_volumeSlider);
+                    if (CheckCollisionPointRec(GetMousePosition(), bounds)) {
+                        volumeClick = std::chrono::steady_clock::now();
+                    }
+                }
+                else {
+                    if (_volumeSlider != _volume) {
+                        _volume = _volumeSlider;
+                        _cfg.volume = _volume;
+                        saveConfig();
+                    }
+                }
             }
             EndGui();
         }
@@ -2291,12 +2289,15 @@ private:
     std::string _screenShotSha1sum;
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
+    int64_t _audioGaps{};
     bool _shouldClose{false};
     bool _showKeyMap{false};
     int _screenWidth{};
     int _screenHeight{};
     RenderTexture _renderTexture{};
     AudioStream _audioStream{};
+    float _volumeSlider{0.5f};
+    float _volume{0.5f};
     SMA<60,uint64_t> _ipfAverage;
     SMA<120,uint32_t> _frameTimeAverage_us;
     SMA<120,int> _frameDelta;
@@ -2311,6 +2312,7 @@ private:
     int _frameBoost{1};
     int _memoryOffset{-1};
     int _instructionOffset{-1};
+    std::atomic_int _audioCallbackAvgFrames{};
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;

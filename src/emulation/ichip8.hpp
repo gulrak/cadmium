@@ -119,9 +119,10 @@ public:
     virtual void setPalette(std::array<uint32_t,256>& palette) {}
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties
-    virtual float getAudioPhase() const { return 0.0f; }
-    virtual void setAudioPhase(float) { }
-    virtual float getAudioFrequency() const { return 1400.0f; }
+    //virtual float getAudioPhase() const { return 0.0f; }
+    //virtual void setAudioPhase(float) { }
+    //virtual float getAudioFrequency() const { return 1400.0f; }
+    virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
     virtual uint8_t getXOPitch() const { return 0; }
     virtual uint8_t getNextMCSample() { return 0; }

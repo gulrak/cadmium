@@ -33,6 +33,7 @@
 
 struct CadmiumConfiguration
 {
+    float volume;
     std::string workingDirectory;
     std::string databaseDirectory;
     emu::Chip8EmulatorOptions emuOptions;

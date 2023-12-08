@@ -42,6 +42,7 @@ public:
     virtual bool isKeyUp(uint8_t key) { return !isKeyDown(key); }
     virtual const std::array<bool,16>& getKeyStates() const = 0;
     virtual void updateScreen() = 0;
+    virtual void vblank() = 0;
     virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual void preClear() {}

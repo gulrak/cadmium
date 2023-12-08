@@ -461,6 +461,21 @@ public:
         _screenNeedsUpdate = true;
         return collision;
     }
+
+    void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override
+    {
+        if(_rST) {
+            const float step = 1000.0f / 44100;
+            for (int i = 0; i < frames; ++i) {
+                *samples++ = (_wavePhase > 0.5f) ? 16384 : -16384;
+                _wavePhase = std::fmod(_wavePhase + step, 1.0f);
+            }
+        }
+        else {
+            // Default is silence
+            IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+        }
+    }
 protected:
     void wait(int instructionCycles = 0)
     {
@@ -500,8 +515,10 @@ protected:
             --_rST;
         if (!_rST)
             _wavePhase = 0;
-        if(_screenNeedsUpdate)
+        if(_screenNeedsUpdate) {
             _host.updateScreen();
+        }
+        _host.vblank();
     }
     inline void addCycles(emu::cycles_t cycles)
     {

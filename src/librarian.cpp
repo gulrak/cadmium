@@ -76,7 +76,7 @@ static KnownRomInfo g_knownRoms[] = {
     //{"044021b046cf207c0b555ea884d61a726f7a3c22", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"044021b046cf207c0b555ea884d61a726f7a3c22", emu::chip8::Variant::SCHIPC, "Ded-Lok (parityb1t, 2015)", nullptr, nullptr},
     {"048659b97e0cf9506eba85ef7baaf21ada22c6f2", emu::chip8::Variant::CHIP_8, "Astro Dodge (Revival Studios)", nullptr, nullptr},
-    {"04e18ff4ae42e3056c502e0c99d4740ecea65966", emu::chip8::Variant::XO_CHIP, "Nyan Cat (Kouzerumatsu, 2022)", nullptr, nullptr},
+    {"04e18ff4ae42e3056c502e0c99d4740ecea65966", emu::chip8::Variant::XO_CHIP, "Nyan Cat 2 (Kouzerumatsu, 2022)", R"({"instructionsPerFrame": 10000})", nullptr},
     {"050f07a54371da79f924dd0227b89d07b4f2aed0", emu::chip8::Variant::CHIP_8, "Hidden (David Winter, 1996)", nullptr, nullptr},
     {"0572f188fc25ccda14b0c306c4156fe4b1d21ae1", emu::chip8::Variant::GENERIC_CHIP_8, "4-Flags (Timendus, 2023-04-12)", nullptr, "@GH/Timendus/chip8-test-suite/v4.0/bin/4-flags.ch8"},
     {"064492173cf4ccac3cce8fe307fc164b397013b9", emu::chip8::Variant::CHIP_8, "Division Test (Sergey Naydenov, 2010)", nullptr, nullptr},
@@ -520,6 +520,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"a9bf29597674c39b4e11d964b352b1e52c4ebb2f", emu::chip8::Variant::SCHIPC, "Line Demo (unknown aauthor)", nullptr, nullptr},
     {"a9d3c975a5e733646a04f6e61deebcd0ad50f700", emu::chip8::Variant::CHIP_8, "Outlaw (JohnEarnest, 2014-07-17)", R"({"instructionsPerFrame": 15, "optWrapSprites": true, "advanced": {"col0": "#664400", "col1": "#AA4400", "buzzColor": "#FF7F50", "quietColor": "#000000"}})", nullptr},
     {"aa4f1a282bd64a2364102abf5737a4205365a2b4", emu::chip8::Variant::CHIP_8, "Space Flight", nullptr, nullptr},                    // Space Flight.ch8
+    {"aae22735122c1e15df1dde4ef19e7b4968d88f6f", emu::chip8::Variant::XO_CHIP, "Nyan Cat 1 (Kouzerumatsu, 2022)", R"({"instructionsPerFrame": 100000})", nullptr},
     {"ab36ced6e34affacd57b2874ede3f95b669a424c", emu::chip8::Variant::XO_CHIP, "Jub8 Song 1 (your name here, 2016-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#000000", "col2": "#FDFFD5", "col3": "#BA5A1A", "col0": "#353C41", "buzzColor": "#353C41", "quietColor": "#353C41", "screenRotation": 0}})", nullptr},
     {"ab5cbf267d74c168e174041b9594ae856cbd671d", emu::chip8::Variant::CHIP_8, "Chipwar (JohnEarnest, 2014-06-06)", R"({"instructionsPerFrame": 15, "advanced": {"col0": "#6699FF", "col1": "#000066", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
     {"abfce04ddd0f72838dd887f3db3106066fd675b3", emu::chip8::Variant::SCHIP_1_1, "Squad (JohnEarnest, 2020-10-25)", R"({"instructionsPerFrame": 500, "advanced": {"col1": "#FFAF00", "col2": "#FD8100", "col3": "#FD8100", "col0": "#663300", "buzzColor": "#F9FFB3", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
