@@ -336,7 +336,12 @@ void Chip8EmulatorBase::reset()
     _xoSilencePattern = true;
     _xoPitch = 64;
     _planes = 0xff;
-    clearScreen();
+    _screenAlpha = 0xff;
+    _screenRGBA = &_screenRGBA1;
+    _workRGBA = &_screenRGBA2;
+    _screen.setAll(0);
+    _screenRGBA1.setAll(0);
+    _screenRGBA2.setAll(0);
     //_host.updatePalette(_xxoPalette);
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
@@ -351,6 +356,10 @@ void Chip8EmulatorBase::reset()
     _sampleLength = 0;
     _sampleStep = 0;
     _mcSamplePos = 0;
+    _blendMode = eBLEND_NORMAL;
+    _mcPalette.fill(0x00);
+    _mcPalette[1] = 0xffffffff;
+    _mcPalette[254] = 0xffffffff;
 }
 
 int64_t Chip8EmulatorBase::executeFor(int64_t micros)

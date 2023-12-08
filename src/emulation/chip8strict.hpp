@@ -476,6 +476,7 @@ public:
             IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
         }
     }
+
 protected:
     void wait(int instructionCycles = 0)
     {

@@ -1,3 +1,21 @@
+## v1.2
+* Cadmium editor allows multi megabyte sources
+* Embedded Chiplet assembler now supports MegaChip with up to 16MB address space
+* MegaChip emulation now supports wrapping quirk and Mega8 scroll blending
+* Reworked audio rendering for less risk of artifacts
+* Support for non-60 fps variants (CHIP-48 and SCHIP1.x are now running at 64fps,
+  Dream6800 is now running at 50fps)
+* Web version now can load programs from new `url` parameter but the source needs
+  to support the CORS mechanism (e.g. `raw.githubusercontent.com`) and the url
+  needs to be url-encoded
+* New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
+  and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
+  behavior of Chromatophores SCHIPC
+* SCHIP1.x/SCHIPC now have display wait on lores as does the original SCHIP on the
+  HP-48 calculators
+* Backend updated to stock raylib 5.0
+* Lots of small fixes I missed to note
+
 ## v1.0.9 (wip)
 * Cadmium now as an embedded list of known programs that it detects by SHA1 hash and
   automatically configures platform, quirks and colors for, if any of that is known;

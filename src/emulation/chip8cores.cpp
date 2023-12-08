@@ -41,7 +41,8 @@ Chip8EmulatorFP::Chip8EmulatorFP(Chip8EmulatorHost& host, Chip8EmulatorOptions& 
 , _opcodeHandler(0x10000, &Chip8EmulatorFP::opInvalid)
 {
     _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
-    _screenRGBA.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
+    _screenRGBA1.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
+    _screenRGBA2.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     setHandler();
     if(!other) {
         reset();
@@ -435,7 +436,7 @@ void Chip8EmulatorFP::op00Bn(uint16_t opcode)
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
         _screen.scrollUp(n);
-        _screenRGBA.scrollUp(n);
+        _screenRGBA->scrollUp(n);
         _host.updateScreen();
     }
     else {
@@ -450,7 +451,7 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
         _screen.scrollDown(n);
-        _screenRGBA.scrollDown(n);
+        _screenRGBA->scrollDown(n);
         _host.updateScreen();
     }
     else {
@@ -515,6 +516,7 @@ void Chip8EmulatorFP::op00E0(uint16_t opcode)
 void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
 {
     _host.preClear();
+    swapMegaSchreens();
     _host.updateScreen();
     clearScreen();
     ++_clearCounter;
@@ -541,7 +543,7 @@ void Chip8EmulatorFP::op00FB(uint16_t opcode)
 { // Scroll right 4 pixel
     if(_isMegaChipMode) {
         _screen.scrollRight(4);
-        _screenRGBA.scrollRight(4);
+        _screenRGBA->scrollRight(4);
         _host.updateScreen();
     }
     else {
@@ -571,7 +573,7 @@ void Chip8EmulatorFP::op00FC(uint16_t opcode)
 { // Scroll left 4 pixel
     if(_isMegaChipMode) {
         _screen.scrollLeft(4);
-        _screenRGBA.scrollLeft(4);
+        _screenRGBA->scrollLeft(4);
         _host.updateScreen();
     }
     else {
@@ -705,7 +707,7 @@ void Chip8EmulatorFP::op04nn(uint16_t opcode)
 
 void Chip8EmulatorFP::op05nn(uint16_t opcode)
 {
-
+    _screenAlpha = opcode & 0xFF;
 }
 
 void Chip8EmulatorFP::op060n(uint16_t opcode)
@@ -1107,8 +1109,6 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
         int xpos = _rV[(opcode >> 8) & 0xF];
         int ypos = _rV[(opcode >> 4) & 0xF];
         _rV[0xF] = 0;
-        if(ypos >= 192)
-            return;
         if(_rI < 0x100) {
             int lines = opcode & 0xf;
             auto byteOffset = _rI;
@@ -1117,7 +1117,7 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
                 for (unsigned b = 0; b < 8 && xpos + b < 256 && value; ++b, value <<= 1) {
                     if (value & 0x80) {
                         uint8_t* pixelBuffer = &_screen.getPixelRef(xpos + b, ypos + l);
-                        uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos + b, ypos + l);
+                        uint32_t* pixelBuffer32 = &_workRGBA->getPixelRef(xpos + b, ypos + l);
                         if (*pixelBuffer) {
                             _rV[0xf] = 1;
                             *pixelBuffer = 0;
@@ -1132,10 +1132,31 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
             }
         }
         else {
-            for (int y = 0; y < _spriteHeight && ypos + y < 192; ++y) {
-                uint8_t* pixelBuffer = &_screen.getPixelRef(xpos, ypos + y);
-                uint32_t* pixelBuffer32 = &_screenRGBA.getPixelRef(xpos, ypos + y);
-                for (int x = 0; x < _spriteWidth && xpos + x < 256; ++x, ++pixelBuffer, ++pixelBuffer32) {
+            for (int y = 0; y < _spriteHeight; ++y) {
+                int yy = ypos + y;
+                if(_options.optWrapSprites) {
+                    yy = (uint8_t)yy;
+                    if(yy >= 192)
+                        continue;
+                }
+                else {
+                    if(yy >= 192)
+                        break;
+                }
+                uint8_t* pixelBuffer = &_screen.getPixelRef(xpos, yy);
+                uint32_t* pixelBuffer32 = &_workRGBA->getPixelRef(xpos, yy);
+                for (int x = 0; x < _spriteWidth; ++x, ++pixelBuffer, ++pixelBuffer32) {
+                    int xx = xpos + x;
+                    if(xx > 255) {
+                        if(_options.optWrapSprites) {
+                            xx &= 0xff;
+                            pixelBuffer = &_screen.getPixelRef(xx, yy);
+                            pixelBuffer32 = &_workRGBA->getPixelRef(xx, yy);
+                        }
+                        else {
+                            continue;
+                        }
+                    }
                     auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
                     if (col) {
                         if (*pixelBuffer == _collisionColor)

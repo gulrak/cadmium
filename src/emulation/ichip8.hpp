@@ -116,6 +116,8 @@ public:
     virtual bool isDoublePixel() const { return false; }
     virtual const VideoType* getScreen() const { return nullptr; }
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
+    virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }
+    virtual const uint8_t getScreenAlpha() const { return 255; }
     virtual void setPalette(std::array<uint32_t,256>& palette) {}
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties

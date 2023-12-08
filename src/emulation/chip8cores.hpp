@@ -518,6 +518,8 @@ public:
 
     uint8_t getNextMCSample() override;
 
+    const VideoRGBAType* getWorkRGBA() const override { return _isMegaChipMode && _options.optWrapSprites ? _workRGBA : nullptr; }
+
     void on(uint16_t mask, uint16_t opcode, OpcodeHandler handler);
 
     void setHandler();

@@ -125,11 +125,12 @@ static KnownRomInfo g_knownRoms[] = {
     {"1830eb401ba8789a477dfcf294873a5479ebcfe8", emu::chip8::Variant::CHIP_8, "Pong 2 (David Winter, 1997)", nullptr, nullptr},
     {"18aef6d2d3b560681038d0dda2273d780dc1daa5", emu::chip8::Variant::CHIP_8, "Octojam 6 Title (JohnEarnest, 2019-09-07)", R"({"instructionsPerFrame": 7, "optWrapSprites": true, "advanced": {"col1": "#330033", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#AAAAFF", "buzzColor": "#990099", "quietColor": "#330033", "screenRotation": 0}})", nullptr},
     {"18b9d15f4c159e1f0ed58c2d8ec1d89325d3a3b6", emu::chip8::Variant::CHIP_8, "Tank Battle", nullptr, nullptr},                     // Tank.ch8
+    {"18fdb6728fc74be08859b27195ec289ea9d132d4", emu::chip8::Variant::MEGA_CHIP, "Mega Test Demo (Ready4Next, 2014)", R"({"optWrapSprites": true})"},
     {"19279f8cfbb58a925a80b52e690ad71ee0907134", emu::chip8::Variant::XO_CHIP, "Truck Simul8Or (buffi, 2015-07-28)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#FFCC00", "col2": "#FF6600", "col3": "#662200", "col0": "#996600", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
     {"193915dcde1365ae054c4eaa21a35baa27cd3356", emu::chip8::Variant::CHIP_8, "Breakout (Carmelo Cortez0(1979)", nullptr, nullptr},
     {"19c64fc12bfdefb8c3c608a37b433ceff4286e52", emu::chip8::Variant::CHIP_8, "Gem Catcher (Dakota Hernandez, 2017)", nullptr, nullptr},
     {"1b6dcf8c02ea0b89a4f04ce28e7c39a5e7a513d6", emu::chip8::Variant::XO_CHIP, "Sk8 H8 1988 (Willfor, 2015-10-28)", R"({"instructionsPerFrame": 20, "advanced": {"col1": "#7B0201", "col2": "#F2FAF7", "col3": "#E7ED3E", "col0": "#D4D4D4", "buzzColor": "#990099", "quietColor": "#330033"}})", nullptr},
-    {"1ba58656810b67fd131eb9af3e3987863bf26c90", emu::chip8::Variant::CHIP_8, "Ibm Logo", nullptr, nullptr},                        // IBM Logo.ch8
+    {"1ba58656810b67fd131eb9af3e3987863bf26c90", emu::chip8::Variant::CHIP_8, "IBM Logo", nullptr, nullptr},                        // IBM Logo.ch8
     {"1bd92042717c3bc4f7f34cab34be2887145a6704", emu::chip8::Variant::CHIP_8, "Spooky Spot (Joseph Weisbecker)", nullptr, nullptr},
     {"1bdb4ddaa7049266fa3226851f28855a365cfd12", emu::chip8::Variant::CHIP_8, "Syzygy (Roy Trevino, 1990)", nullptr, nullptr},
     {"1e3be162480380b6276d0848e1c71576b4c041f2", emu::chip8::Variant::CHIP_8, "Ghost Escape (TomRintjema, 2016-10-29)", R"({"instructionsPerFrame": 7, "optWrapSprites": true, "advanced": {"col1": "#FF00FF", "col2": "#FF6600", "col3": "#662200", "col0": "#00FFFF", "buzzColor": "#990099", "quietColor": "#330033", "screenRotation": 0}})", nullptr},
@@ -869,7 +870,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
         for (auto& entry : _directoryEntries) {
             if (!entry.analyzed) {
                 foundOne = true;
-                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 4) {
+                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 8) {
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
