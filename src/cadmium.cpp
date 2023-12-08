@@ -943,7 +943,7 @@ public:
             const auto* screen = _chipEmu->getScreen();
             if (screen) {
                 if (!_renderCrt) {
-                    screen->convert(pixel, _screen.width);
+                    screen->convert(pixel, _screen.width, 255, nullptr);
                     UpdateTexture(_screenTexture, _screen.data);
                 }
                 else {
@@ -952,7 +952,7 @@ public:
             else {
                 // TraceLog(LOG_INFO, "Updating MC8 screen!");
                 const auto* screen = _chipEmu->getScreenRGBA();
-                screen->convert(pixel, _screen.width);
+                screen->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
                 UpdateTexture(_screenTexture, _screen.data);
             }
         }
@@ -1112,7 +1112,10 @@ public:
         auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScale : videoScale/4;
         auto videoX = crt ? (dest.width - scrWidth * videoScale) / 2 + dest.x : (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
         auto videoY = crt ? (dest.height - scrHeight * videoScaleY) / 2 + dest.y : (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
-        DrawRectangleRec(dest, {0,12,24,255});
+        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP)
+            DrawRectangleRec(dest, {0,0,0,255});
+        else
+            DrawRectangleRec(dest, {0,12,24,255});
         if(crt)
             DrawTexturePro(_crtTexture, {1, 1, (float)scrWidth-2, (float)scrHeight-2}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
         else
