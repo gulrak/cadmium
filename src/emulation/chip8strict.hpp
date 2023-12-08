@@ -476,6 +476,7 @@ public:
             IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
         }
     }
+
 protected:
     void wait(int instructionCycles = 0)
     {
@@ -518,6 +519,7 @@ protected:
         if(_screenNeedsUpdate) {
             _host.updateScreen();
         }
+        _host.vblank();
     }
     inline void addCycles(emu::cycles_t cycles)
     {

@@ -442,7 +442,9 @@ bool Chip8VIP::executeCdp1802()
 {
     static int lastFC = 0;
     static int endlessLoops = 0;
-    auto fc = _impl->_video.executeStep();
+    auto [fc,vsync] = _impl->_video.executeStep();
+    if(vsync)
+        _host.vblank();
     if(_options.optTraceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
     if(_impl->_cpu.PC() == Private::FETCH_LOOP_ENTRY) {

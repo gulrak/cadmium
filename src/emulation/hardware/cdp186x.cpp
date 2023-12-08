@@ -89,7 +89,7 @@ const Cdp186x::VideoType& Cdp186x::getScreen() const
     return _screen;
 }
 
-int Cdp186x::executeStep()
+std::pair<int,bool> Cdp186x::executeStep()
 {
     auto fc = (_cpu.getCycles() >> 3) % 3668;
     bool vsync = false;
@@ -106,7 +106,7 @@ int Cdp186x::executeStep()
             Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- HSYNC ---", _cpu.dumpStateLine()).c_str());
     }
     if(_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
-        return _frameCycle;
+        return {_frameCycle,vsync};
     if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
         _displayEnabledLatch = _displayEnabled;
         if(_displayEnabled) {
@@ -138,7 +138,7 @@ int Cdp186x::executeStep()
             }
         }
     }
-    return (_cpu.getCycles() >> 3) % 3668;
+    return {(_cpu.getCycles() >> 3) % 3668, vsync};
 }
 
 void Cdp186x::incrementBackground()

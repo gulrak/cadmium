@@ -1250,9 +1250,12 @@ void Chip8EmulatorFP::opF000(uint16_t opcode)
 
 void Chip8EmulatorFP::opF002(uint16_t opcode)
 {
+    uint8_t anyBit = 0;
     for(int i = 0; i < 16; ++i) {
         _xoAudioPattern[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        anyBit |= _xoAudioPattern[i];
     }
+    _xoSilencePattern = anyBit != 0;
 }
 
 void Chip8EmulatorFP::opFx01(uint16_t opcode)
