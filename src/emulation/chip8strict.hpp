@@ -518,6 +518,7 @@ protected:
         if(_screenNeedsUpdate) {
             _host.updateScreen();
         }
+        _host.vblank();
     }
     inline void addCycles(emu::cycles_t cycles)
     {

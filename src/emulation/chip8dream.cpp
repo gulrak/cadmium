@@ -280,6 +280,7 @@ int Chip8Dream::executeVDG()
         _impl->_pia.pinCB1(true);
         _impl->_pia.pinCB1(false);
         _impl->_keyMatrix.updateKeys(_host.getKeyStates());
+        _host.vblank();
     }
     lastFC = fc;
     return fc;

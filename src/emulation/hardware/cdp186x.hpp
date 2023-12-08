@@ -30,6 +30,7 @@
 #include <emulation/videoscreen.hpp>
 
 #include <array>
+#include <utility>
 
 namespace emu {
 
@@ -48,7 +49,7 @@ public:
     void reset();
     bool getNEFX() const;
     Type getType() const { return _type; }
-    int executeStep();
+    std::pair<int,bool> executeStep();
     void enableDisplay();
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }

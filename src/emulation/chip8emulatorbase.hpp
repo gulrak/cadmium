@@ -91,6 +91,7 @@ public:
             _screenRGBA = other->_screenRGBA;
             _xoAudioPattern = other->_xoAudioPattern;
             _xoPitch.store(other->_xoPitch);
+            _xoSilencePattern = other->_xoSilencePattern;
             _sampleStep.store(other->_sampleStep);
             _sampleStart.store(other->_sampleStart);
             _sampleLength.store(other->_sampleLength);
@@ -250,6 +251,7 @@ public:
                 _host.updateScreen();
                 _screenNeedsUpdate = false;
             }
+            _host.vblank();
         }
     }
 
@@ -305,6 +307,7 @@ protected:
     VideoScreen<uint8_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screen;
     VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA{};
     std::array<uint8_t,16> _xoAudioPattern{};
+    bool _xoSilencePattern{true};
     std::atomic_uint8_t _xoPitch{};
     std::atomic<float> _sampleStep{0};
     std::atomic_uint32_t _sampleStart{0};
