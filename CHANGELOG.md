@@ -1,22 +1,42 @@
-## v1.2
-* Cadmium editor allows multi megabyte sources
-* Embedded Chiplet assembler now supports MegaChip with up to 16MB address space
-* MegaChip emulation now supports wrapping quirk and Mega8 scroll blending
-* Reworked audio rendering for less risk of artifacts
-* Support for non-60 fps variants (CHIP-48 and SCHIP1.x are now running at 64fps,
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [v1.1.8]
+
+### Added
+
+- MegaChip emulation now supports wrapping quirk and Mega8 scroll blending
+- Support for non-60 fps variants (CHIP-48 and SCHIP1.x are now running at 64fps,
   Dream6800 is now running at 50fps)
-* Web version now can load programs from new `url` parameter but the source needs
+- Web version now can load programs from new `url` parameter but the source needs
   to support the CORS mechanism (e.g. `raw.githubusercontent.com`) and the url
   needs to be url-encoded
-* New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
+- New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
   and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
   behavior of Chromatophores SCHIPC
-* SCHIP1.x/SCHIPC now have display wait on lores as does the original SCHIP on the
-  HP-48 calculators
-* Backend updated to stock raylib 5.0
-* Lots of small fixes I missed to note
 
-## v1.0.9 (wip)
+### Changed
+
+- Cadmium editor allows multi megabyte sources
+- Embedded Chiplet assembler now supports MegaChip with up to 16MB address space
+- Reworked audio rendering for less risk of artifacts
+- Backend updated to stock raylib 5.0
+- Lots of small fixes I missed to note
+
+### Fixed
+
+- SCHIP1.x/SCHIPC now have display wait on lores as does the original SCHIP on the
+  HP-48 calculators
+
+
+## [v1.0.9] - web preview only
+
 * Cadmium now as an embedded list of known programs that it detects by SHA1 hash and
   automatically configures platform, quirks and colors for, if any of that is known;
   This data is based on the combined efforts of John Earnest, Tobias Langhoff,
@@ -46,7 +66,7 @@
 * Fix: The `clear` opcode (`00E0`) didn't respect the plane mask in XO-CHIP mode
 * Fix: The scrolling was not respecting the plane mask in XO-CHIP mode
 
-## v1.0.6
+## [v1.0.6] - 2923-02-17
 
 * Real-Dream support, this is a CHIP-8 mode that runs the CHIPOS CHIP-8 interpreter from
   Michael J Bauer on an emulated M6800 driven 2k RAM equipped DREAM 6800 computer. It is
@@ -61,7 +81,7 @@
   the DREAM6800 emulations. The debugger controls are controlling the CPU that is selected
   in the disassembly panel.
 
-## v1.0.3 (wip)
+## [v1.0.3] - web preview only
 
 * Real-VIP support, this is a CHIP-8 mode that runs the actual CHIP-8 interpreter from
   Joseph Weisbecker on an emulated CDP1802 driven 4k RAM equipped COSMAC VIP. It is
@@ -71,7 +91,7 @@
   instruction there. The emulation needs significant more resources in that mode, so it
   is off by default but useful for debugging roms.
 
-## v1.0.1 (wip)
+## [v1.0.1] - web preview only
 
 * MegaChip8 support (Shoutout to @NinjaWeedle to his help on figuring out details of MegaChip8!)
     * able to run `*.mc8` roms
@@ -107,7 +127,7 @@
   in handling backwards disassembly upwards from the PC
 * Bugfix: Dxy0 was not behaving correct in lores on SCHIP
 
-## v1.0.0 (2022-10-03) Initial public release
+## [v1.0.0] - 2022-10-03 - Initial public release
 
 * Execute CHIP-8, CHIP-10, CHIP-48, SCHIP 1.0, SCHIP 1.1 and XO-CHIP
 * Support for buzzer sound or XO-CHIP 1-bit-sample sound patterns

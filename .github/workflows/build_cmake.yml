@@ -156,8 +156,13 @@ jobs:
           message(FATAL_ERROR "Running tests failed!")
         endif()
 
-    - name: Pack
-      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack --config CPackConfig.cmake
+    - name: Pack Linux
+      if: ${{ runner.os == 'Linux' }}
+      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -G ZIP
+
+    - name: Pack Others
+      if: ${{ runner.os != 'Linux' }}
+      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -G TGZ
 
     - name: Get package name (win)
       if: ${{ runner.os == 'Windows' }}
@@ -174,6 +179,7 @@ jobs:
                     m = p.match(line)
                     if m:
                       print(entry.format(m.group(1)), file=env)
+
     - name: Get package name (non-win)
       if: ${{ runner.os != 'Windows' }}
       run: |
