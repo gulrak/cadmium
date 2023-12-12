@@ -156,21 +156,35 @@ jobs:
           message(FATAL_ERROR "Running tests failed!")
         endif()
 
-
-    - name: Install Strip
-      run: ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cmake --install build --prefix instdir --strip
-
-
     - name: Pack
-      working-directory: instdir
-      run: ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cmake -E tar cJfv ../${{ matrix.config.artifact }} .
+      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack --config CPackConfig.cmake
 
+    - name: Get package name (win)
+      if: ${{ runner.os == 'Windows' }}
+      run: |
+        import os
+        import re
+        p = re.compile(r"project\(cadmium VERSION (\d+.\d+.\d+) LANGUAGES C CXX\)")
+        env_file = os.getenv('GITHUB_ENV')
+        entry = "VERSION={}"
+        with open(env_file, "a") as env:
+            with open('CMakeLists.txt') as f:
+                for line in f:
+                    m = p.match(line)
+                    if m:
+                      env.write(entry.format(m.group(1)))
+
+    - name: Get package name (non-win)
+      if: ${{ runner.os != 'Windows' }}
+      run: |
+        version=$(grep "project("  CMakeLists.txt | cut -d ' ' -f3)
+        echo "VERSION=$version" >> "$GITHUB_ENV"
 
     - name: Upload
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v3
       with:
-        path: ./${{ matrix.config.artifact }}
-        name: ${{ matrix.config.artifact }}
+        path: build/cadmium-*
+        name: cadmium-${{env.VERSION}}
 
   release:
     if: contains(github.ref, 'tags/v')
