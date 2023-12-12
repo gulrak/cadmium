@@ -11,17 +11,17 @@ jobs:
       matrix:
         config:
         - {
-            name: "Windows Latest MinGW", artifact: "Windows-MinGW.tar.xz",
+            name: "Windows Latest MinGW", artifact_suffix: "Win64",
             os: windows-latest,
             build_type: "Release", cc: "gcc", cxx: "g++"
           }
         - {
-            name: "Ubuntu Latest GCC", artifact: "Linux.tar.xz",
+            name: "Ubuntu Latest GCC", artifact_suffix: "Linux",
             os: ubuntu-latest,
             build_type: "Release", cc: "gcc", cxx: "g++"
           }
         - {
-            name: "macOS Latest Clang", artifact: "macOS.tar.xz",
+            name: "macOS Latest Clang", artifact_suffix: "macOS",
             os: macos-latest,
             build_type: "Release", cc: "clang", cxx: "clang++"
           }
@@ -73,7 +73,8 @@ jobs:
 
         # Save the path for other steps
         file(TO_CMAKE_PATH "$ENV{GITHUB_WORKSPACE}/${cmake_dir}" cmake_dir)
-        message("::set-output name=cmake_dir::${cmake_dir}")
+        file(APPEND $ENV{GITHUB_OUTPUT} "cmake_dir=${cmake_dir}")
+        #message("::set-output name=cmake_dir::${cmake_dir}")
 
         if (NOT "${{ runner.os }}" STREQUAL "Windows")
           execute_process(
@@ -183,84 +184,42 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         path: build/cadmium-*
-        name: cadmium-${{env.VERSION}}
+        name: cadmium-${{env.VERSION}}-${{matrix.config.artifact_suffix}}
 
-  release:
-    if: contains(github.ref, 'tags/v')
+  create_release:
+    name: Create release
+    if: startsWith( github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    needs: build
-
+    needs: [build]
     steps:
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1.0.0
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
-        draft: false
-        prerelease: false
-
-    - name: Store Release url
-      run: |
-        echo "${{ steps.create_release.outputs.upload_url }}" > ./upload_url
-
-    - uses: actions/upload-artifact@v1
-      with:
-        path: ./upload_url
-        name: upload_url
-
-  publish:
-    if: contains(github.ref, 'tags/v')
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-        - {
-            name: "Windows Latest MSVC", artifact: "Windows-MSVC.tar.xz",
-            os: ubuntu-latest
-          }
-        - {
-            name: "Windows Latest MinGW", artifact: "Windows-MinGW.tar.xz",
-            os: ubuntu-latest
-          }
-        - {
-            name: "Ubuntu Latest GCC", artifact: "Linux.tar.xz",
-            os: ubuntu-latest
-          }
-        - {
-            name: "macOS Latest Clang", artifact: "macOS.tar.xz",
-            os: ubuntu-latest
-          }
-    needs: release
-
-    steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v1
-      with:
-        name: ${{ matrix.config.artifact }}
-        path: ./
-
-    - name: Download URL
-      uses: actions/download-artifact@v1
-      with:
-        name: upload_url
-        path: ./
-    - id: set_upload_url
-      run: |
-        upload_url=`cat ./upload_url`
-        echo "{upload_url}=$upload_url" >> $GITHUB_OUTPUT
-
-    - name: Upload to Release
-      id: upload_to_release
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.set_upload_url.outputs.upload_url }}
-        asset_path: ./${{ matrix.config.artifact }}
-        asset_name: ${{ matrix.config.artifact }}
-        asset_content_type: application/x-gtar
+      - uses: actions/checkout@v3
+      - name: Extract release notes
+        id: extract-release-notes
+        uses: ffurrer2/extract-release-notes@v1
+        with:
+          changelog_file: CHANGELOG.md
+      - name: Get release name
+        run: |
+          version=$(grep "project("  CMakeLists.txt | cut -d ' ' -f3)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+      - name: Create release
+        id: create_release
+        uses: thomaseizinger/create-release@1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.extract-release-notes.outputs.release_notes }}
+          prerelease: false
+          draft: false
+      - name: Upload release artifacts
+        uses: pyTooling/Actions/releaser@r0
+        with:
+          tag: ${{ github.ref }}
+          rm: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            ./artifacts/cadmium-${{env.VERSION}}/cadmium-*.zip
