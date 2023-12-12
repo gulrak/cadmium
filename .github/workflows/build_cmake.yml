@@ -27,8 +27,7 @@ jobs:
           }
 
     steps:
-    - uses: actions/checkout@v1
-
+    - uses: actions/checkout@v3
 
     - name: Install dependencies
       run: |
@@ -161,6 +160,7 @@ jobs:
 
     - name: Get package name (win)
       if: ${{ runner.os == 'Windows' }}
+      shell: python
       run: |
         import os
         import re
@@ -172,8 +172,7 @@ jobs:
                 for line in f:
                     m = p.match(line)
                     if m:
-                      env.write(entry.format(m.group(1)))
-
+                      print(entry.format(m.group(1)), file=env)
     - name: Get package name (non-win)
       if: ${{ runner.os != 'Windows' }}
       run: |
