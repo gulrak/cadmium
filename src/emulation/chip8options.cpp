@@ -54,6 +54,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eCHIP8VIP: return Chip8Variant::CHIP_8;
         case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
         case eCHIP8VIP_FPD: return Chip8Variant::HI_RES_CHIP_8;
+        case eCHIP8EVIP: return Chip8Variant::CHIP_8E;
         case eCHIP8XVIP: return Chip8Variant::CHIP_8X;
         case eCHIP8XVIP_TPD: return Chip8Variant::CHIP_8X_TPD;
         case eCHIP8XVIP_FPD: return Chip8Variant::HI_RES_CHIP_8X;
@@ -81,6 +82,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eCHIP8VIP: return "VIP-CHIP-8";
         case eCHIP8VIP_TPD: return "VIP-CHIP-8 64x64";
         case eCHIP8VIP_FPD: return "VIP-HI-RES-CHIP-8";
+        case eCHIP8EVIP: return "VIP-CHIP-8E";
         case eCHIP8XVIP: return "VIP-CHIP-8X";
         case eCHIP8XVIP_TPD: return "VIP-CHIP-8X-TPD";
         case eCHIP8XVIP_FPD: return "VIP-HI-RES-CHIP-8X";
@@ -109,6 +111,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eCHIP8VIP: return "VIPCHIP8";
         case eCHIP8VIP_TPD: return "VIPCHIP8TPD";
         case eCHIP8VIP_FPD: return "VIPCHIP8FPD";
+        case eCHIP8EVIP: return "VIPCHIP8E";
         case eCHIP8XVIP: return "VIPCHIP8X";
         case eCHIP8XVIP_TPD: return "VIPCHIP8XTPD";
         case eCHIP8XVIP_FPD: return "VIPCHIP8XFPD";
@@ -129,6 +132,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"chip8te", Opts::eCHIP8TE},
     {"chip8timing", Opts::eCHIP8TE},
     {"chip10", Opts::eCHIP10},
+    {"chip8e", Opts::eCHIP8EVIP},
     {"chip8x", Opts::eCHIP8X},
     {"chip48", Opts::eCHIP48},
     {"schip10", Opts::eSCHIP10},
@@ -168,6 +172,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"viphireschip8", Opts::eCHIP8VIP_FPD},
     {"hireschip8vip", Opts::eCHIP8VIP_FPD},
     {"vipchip8x", Opts::eCHIP8XVIP},
+    {"chip8evip", Opts::eCHIP8EVIP},
     {"chip8xvip", Opts::eCHIP8XVIP},
     {"chip8vipx", Opts::eCHIP8XVIP},
     {"chip8xtpdvip", Opts::eCHIP8XVIP_TPD},
@@ -202,6 +207,7 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eCHIP8VIP, R"({})"},
     {Opts::eCHIP8VIP_TPD, R"({"startAddress":608,"advanced":{"interpreter":"CHIP8TPD"}})"},
     {Opts::eCHIP8VIP_FPD, R"({"startAddress":580,"advanced":{"interpreter":"CHIP8FPD"}})"},
+    {Opts::eCHIP8EVIP, R"({"advanced":{"interpreter":"CHIP8E"}})"},
     {Opts::eCHIP8XVIP, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8X"}})"},
     {Opts::eCHIP8XVIP_TPD, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8XTPD"}})"},
     {Opts::eCHIP8XVIP_FPD, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8XFPD"}})"},
