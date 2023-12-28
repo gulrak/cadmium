@@ -448,8 +448,8 @@ void Editor::recompile()
 
 void Editor::updateCompilerOptions(int startAddress)
 {
-    _compiler.setStartAddress(startAddress);
-    recompile();
+    if(_compiler.setStartAddress(startAddress))
+        recompile();
 }
 
 void Editor::draw(Font& font, Rectangle rect)

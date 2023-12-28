@@ -837,6 +837,8 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP;
                 else if(ext == ".c8h")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8VIP_TPD;
+                else if(ext == ".c8e")
+                    type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8EVIP;
                 else if(ext == ".c8x")
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eCHIP8XVIP;
                 else if(ext == ".sc8")

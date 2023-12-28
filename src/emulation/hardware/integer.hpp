@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/hpsaturnl2.hpp
+// src/emulation/integer.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -55,7 +55,7 @@ public:
     using safe_type = typename detail::next_safe<value_type>::type;
 
     Integer() : _value{0} {}
-    explicit Integer(value_type val) : _value(val) {}
+    explicit constexpr Integer(value_type val) : _value(val) {}
     Integer(Self other) : _value(other._value) {}
 
     PodType asNative() const { return _value; }
@@ -100,6 +100,11 @@ public:
     Self operator-(const Integer<Other>& other) const
     {
         return Self(value_type(safe_type(_value) - other._value));
+    }
+    template<typename T = PodType, typename std::enable_if_t<std::is_signed_v<T>, Self>>
+    constexpr Self operator-() const
+    {
+        return Self(-_value);
     }
     template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator*(const Integer<Other>& other) const
@@ -170,6 +175,13 @@ using RI16 = Integer<int16_t>;
 using RU16 = Integer<uint16_t>;
 using RI32 = Integer<int32_t>;
 using RU32 = Integer<uint32_t>;
+
+constexpr RI8 operator ""_ri8(unsigned long long int val) { return val > std::numeric_limits<int8_t>::max() ? throw std::exception() : RI8(val); }
+constexpr RU8 operator ""_ru8(unsigned long long int val) { return val > std::numeric_limits<uint8_t>::max() ? throw std::exception() : RU8(val); }
+constexpr RI16 operator ""_ri16(unsigned long long int val) { return val > std::numeric_limits<int16_t>::max() ? throw std::exception() : RI16(val); }
+constexpr RU16 operator ""_ru16(unsigned long long int val) { return val > std::numeric_limits<uint16_t>::max() ? throw std::exception() : RU16(val); }
+constexpr RI32 operator ""_ri32(unsigned long long int val) { return val > std::numeric_limits<int32_t>::max() ? throw std::exception() : RI32(val); }
+constexpr RU32 operator ""_ru32(unsigned long long int val) { return val > std::numeric_limits<uint32_t>::max() ? throw std::exception() : RU32(val); }
 
 template<typename ValueType = uint8_t>
 class Bitfield {

@@ -80,6 +80,7 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
     if(_previousOptions != options || !_chipEmu) {
         _previousOptions = _options = options;
         if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_FPD ||
+            _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8EVIP ||
             _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
         else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
@@ -189,6 +190,13 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             valid = true;
         }
         updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP_TPD));
+    }
+    else if(endsWith(filename, ".c8e")) {
+        if (size < _chipEmu->memSize() - _options.startAddress) {
+            romImage = fileData;
+            valid = true;
+        }
+        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8EVIP));
     }
     else if(endsWith(filename, ".c8x")) {
         if (size < _chipEmu->memSize() - _options.startAddress) {
