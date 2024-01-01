@@ -243,6 +243,7 @@ public:
         if(_execMode != ePAUSED) {
             ++_frameCounter;
             ++_randomSeed;
+            _host.vblank();
             if (_rDT > 0)
                 --_rDT;
             if (_rST > 0)
@@ -253,7 +254,6 @@ public:
                 _host.updateScreen();
                 _screenNeedsUpdate = false;
             }
-            _host.vblank();
         }
     }
 
