@@ -16,10 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Dream6800 is now running at 50fps)
 - Web version now can load programs from new `url` parameter but the source needs
   to support the CORS mechanism (e.g. `raw.githubusercontent.com`) and the url
-  needs to be url-encoded
+  needs to be url-encoded, for programs it knows am url for, the SHA1 number works too
 - New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
   and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
   behavior of Chromatophores SCHIPC
+- Added support for CHIP-8E on the VIP core
 
 ### Changed
 
@@ -33,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SCHIP1.x/SCHIPC now have display wait on lores as does the original SCHIP on the
   HP-48 calculators
+- SCHIP Dxy0 didn't draw 16x16 in hires due to some refactoring errors
+- CHIP-10 did accidentally draw on Dxy0
+- The new vblank system caused sounds to be one timer interval shorter than expected
 
 
 ## [v1.0.9] - web preview only

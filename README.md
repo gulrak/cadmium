@@ -56,7 +56,7 @@ Emscripten builds are available here for testing:
 * https://games.gulrak.net/cadmium - This is the most current release version
 * https://games.gulrak.net/cadmium-wip/?p=xochip - this is the current work in progress
 
-Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8x`, `.sc8`, `.mc8`, `.xo8`) or
+Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`) or
 Octo sources (`.8o`) onto the window to load them.
 
 ## Features
@@ -91,6 +91,7 @@ The Supported presets are:
 * MegaChip 8
 * XO-CHIP
 * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
+* VIP-CHIP-8E (CHIP-8E on an emulated COSMAC VIP)
 * VIP-CHIP-8 TPD (same, but with 64x64 display)
 * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
 * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
