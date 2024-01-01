@@ -695,7 +695,7 @@ public:
             int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
             int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
             int lines = opcode & 0xF;
-            if(!_isInstantDxyn && _cpuState != eWAITING) {
+            if(!_isInstantDxyn && _options.optExtendedVBlank && _cpuState != eWAITING) {
                 auto s = lines + (x & 7);
                 if(lines > 4 && s > 9) {
                     _rPC -= 2;
@@ -737,10 +737,12 @@ public:
         y %= scrHeight;
         if(height == 0) {
             height = 16;
-            if(_options.optLoresDxy0Is16x16)
+            if(_options.optLoresDxy0Is16x16 || (_isHires && !_options.optOnlyHires))
                 width = 16;
-            else if(!_options.optLoresDxy0Is8x16)
+            else if(!_options.optLoresDxy0Is8x16) {
                 width = 0;
+                height = 0;
+            }
         }
         uint8_t planes;
         if constexpr ((quirks&MultiColor) != 0) planes = _planes; else planes = 1;
