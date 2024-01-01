@@ -510,6 +510,7 @@ protected:
     {
         ++_frameCounter;
         ++_randomSeed;
+        _host.vblank();
         if (_rDT > 0)
             --_rDT;
         if (_rST > 0)
@@ -519,7 +520,6 @@ protected:
         if(_screenNeedsUpdate) {
             _host.updateScreen();
         }
-        _host.vblank();
     }
     inline void addCycles(emu::cycles_t cycles)
     {
