@@ -59,6 +59,7 @@ struct Chip8EmulatorOptions {
     bool optHas16BitAddr{false};
     bool optXOChipSound{false};
     bool optChicueyiSound{false};
+    bool optExtendedVBlank{true};
     bool optTraceLog{false};
     int instructionsPerFrame{15};
     int frameRate{60};
