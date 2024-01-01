@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.1.8]
+## [1.1.8]
 
 ### Added
 
@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The new vblank system caused sounds to be one timer interval shorter than expected
 
 
-## [v1.0.9] - web preview only
+## [1.0.9] - web preview only
 
 * Cadmium now as an embedded list of known programs that it detects by SHA1 hash and
   automatically configures platform, quirks and colors for, if any of that is known;
@@ -70,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix: The `clear` opcode (`00E0`) didn't respect the plane mask in XO-CHIP mode
 * Fix: The scrolling was not respecting the plane mask in XO-CHIP mode
 
-## [v1.0.6] - 2923-02-17
+## [1.0.6] - 2923-02-17
 
 * Real-Dream support, this is a CHIP-8 mode that runs the CHIPOS CHIP-8 interpreter from
   Michael J Bauer on an emulated M6800 driven 2k RAM equipped DREAM 6800 computer. It is
@@ -85,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the DREAM6800 emulations. The debugger controls are controlling the CPU that is selected
   in the disassembly panel.
 
-## [v1.0.3] - web preview only
+## [1.0.3] - web preview only
 
 * Real-VIP support, this is a CHIP-8 mode that runs the actual CHIP-8 interpreter from
   Joseph Weisbecker on an emulated CDP1802 driven 4k RAM equipped COSMAC VIP. It is
@@ -95,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instruction there. The emulation needs significant more resources in that mode, so it
   is off by default but useful for debugging roms.
 
-## [v1.0.1] - web preview only
+## [1.0.1] - web preview only
 
 * MegaChip8 support (Shoutout to @NinjaWeedle to his help on figuring out details of MegaChip8!)
     * able to run `*.mc8` roms
@@ -131,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in handling backwards disassembly upwards from the PC
 * Bugfix: Dxy0 was not behaving correct in lores on SCHIP
 
-## [v1.0.0] - 2022-10-03 - Initial public release
+## [1.0.0] - 2022-10-03 - Initial public release
 
 * Execute CHIP-8, CHIP-10, CHIP-48, SCHIP 1.0, SCHIP 1.1 and XO-CHIP
 * Support for buzzer sound or XO-CHIP 1-bit-sample sound patterns
