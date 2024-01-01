@@ -468,7 +468,7 @@ void Editor::draw(Font& font, Rectangle rect)
     gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
-    DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(0x2f7486ff));
+    DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
     std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {

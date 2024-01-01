@@ -48,6 +48,77 @@ static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 19, 0x00222bff},  // DEFAULT_BACKGROUND_COLOR
 };
 
+static const StyleManager::Entry chip8DarkStyleProps[] = {
+    /*
+    { 0, 0, 0x878787ff },    // DEFAULT_BORDER_COLOR_NORMAL
+    //{ 0, 1, 0x2c2c2cff },    // DEFAULT_BASE_COLOR_NORMAL
+    { 0, 1, 0x3c3c40ff },    // DEFAULT_BASE_COLOR_NORMAL
+    { 0, 2, 0xc3c3d0ff },    // DEFAULT_TEXT_COLOR_NORMAL
+    { 0, 3, 0xe1e1f0ff },    // DEFAULT_BORDER_COLOR_FOCUSED
+    { 0, 4, 0x84848cff },    // DEFAULT_BASE_COLOR_FOCUSED
+    { 0, 5, 0x18181cff },    // DEFAULT_TEXT_COLOR_FOCUSED
+    { 0, 6, 0x000000ff },    // DEFAULT_BORDER_COLOR_PRESSED
+    { 0, 7, 0xefeffeff },    // DEFAULT_BASE_COLOR_PRESSED
+    { 0, 8, 0x202024ff },    // DEFAULT_TEXT_COLOR_PRESSED
+    { 0, 9, 0x6a6a70ff },    // DEFAULT_BORDER_COLOR_DISABLED
+    { 0, 10, 0x818188ff },    // DEFAULT_BASE_COLOR_DISABLED
+    { 0, 11, 0x606066ff },    // DEFAULT_TEXT_COLOR_DISABLED
+    { 0, 16, 0x0000000e },    // DEFAULT_TEXT_SIZE
+    { 0, 17, 0x00000000 },    // DEFAULT_TEXT_SPACING
+    { 0, 18, 0x9d9da4ff },    // DEFAULT_LINE_COLOR
+    //{ 0, 19, 0x3c3c3cff },    // DEFAULT_BACKGROUND_COLOR
+    { 0, 19, 0x2c2c30ff },    // DEFAULT_BACKGROUND_COLOR
+
+    { 0, 20, 0x00000018 },    // DEFAULT_TEXT_LINE_SPACING
+    { 1, 5, 0xf7f7ffff },    // LABEL_TEXT_COLOR_FOCUSED
+    { 1, 8, 0x898990ff },    // LABEL_TEXT_COLOR_PRESSED
+    { 4, 5, 0xb0b0bbff },    // SLIDER_TEXT_COLOR_FOCUSED
+    { 5, 5, 0x84848cff },    // PROGRESSBAR_TEXT_COLOR_FOCUSED
+    { 9, 5, 0xf5f5ffff },    // TEXTBOX_TEXT_COLOR_FOCUSED
+    { 10, 5, 0xf6f6ffff },    // VALUEBOX_TEXT_COLOR_FOCUSED
+    */
+    { 0, 0, 0x787c86ff },    // DEFAULT_BORDER_COLOR_NORMAL
+    //{ 0, 1, 0x27282bff },    // DEFAULT_BASE_COLOR_NORMAL
+    { 0, 1, 0x36383cff },    // DEFAULT_BASE_COLOR_NORMAL
+    { 0, 2, 0xafb4c3ff },    // DEFAULT_TEXT_COLOR_NORMAL
+    { 0, 3, 0xc9cfe0ff },    // DEFAULT_BORDER_COLOR_FOCUSED
+    { 0, 4, 0x7c808aff },    // DEFAULT_BASE_COLOR_FOCUSED
+    { 0, 5, 0x151617ff },    // DEFAULT_TEXT_COLOR_FOCUSED
+    { 0, 6, 0x000000ff },    // DEFAULT_BORDER_COLOR_PRESSED
+    { 0, 7, 0xd8deefff },    // DEFAULT_BASE_COLOR_PRESSED
+    { 0, 8, 0x1e1f21ff },    // DEFAULT_TEXT_COLOR_PRESSED
+    { 0, 9, 0x60636bff },    // DEFAULT_BORDER_COLOR_DISABLED
+    { 0, 10, 0x757882ff },    // DEFAULT_BASE_COLOR_DISABLED
+    { 0, 11, 0x55585eff },    // DEFAULT_TEXT_COLOR_DISABLED
+    { 0, 16, 0x00000010 },    // DEFAULT_TEXT_SIZE
+    { 0, 17, 0x00000000 },    // DEFAULT_TEXT_SPACING
+    { 0, 18, 0x8e929dff },    // DEFAULT_LINE_COLOR
+    //{ 0, 19, 0x36383cff },    // DEFAULT_BACKGROUND_COLOR
+    { 0, 19, 0x1c1d1eff },    // DEFAULT_BACKGROUND_COLOR
+    { 0, 20, 0x00000018 },    // DEFAULT_TEXT_LINE_SPACING
+
+    { 9, 5, 0xf5f5ffff }    // TEXTBOX_TEXT_COLOR_FOCUSED
+};
+
+static const StyleManager::Entry chip8BluishStyleProps[] = {
+    { 0, 0, 0x5ca6a6ff },    // DEFAULT_BORDER_COLOR_NORMAL
+    { 0, 1, 0xb4e8f3ff },    // DEFAULT_BASE_COLOR_NORMAL
+    { 0, 2, 0x447e77ff },    // DEFAULT_TEXT_COLOR_NORMAL
+    { 0, 3, 0x5f8792ff },    // DEFAULT_BORDER_COLOR_FOCUSED
+    { 0, 4, 0xcdeff7ff },    // DEFAULT_BASE_COLOR_FOCUSED
+    { 0, 5, 0x4c6c74ff },    // DEFAULT_TEXT_COLOR_FOCUSED
+    { 0, 6, 0x3b5b5fff },    // DEFAULT_BORDER_COLOR_PRESSED
+    { 0, 7, 0xeaffffff },    // DEFAULT_BASE_COLOR_PRESSED
+    { 0, 8, 0x275057ff },    // DEFAULT_TEXT_COLOR_PRESSED
+    { 0, 9, 0x96aaacff },    // DEFAULT_BORDER_COLOR_DISABLED
+    { 0, 10, 0xc8d7d9ff },    // DEFAULT_BASE_COLOR_DISABLED
+    { 0, 11, 0x8c9c9eff },    // DEFAULT_TEXT_COLOR_DISABLED
+    { 0, 16, 0x0000000e },    // DEFAULT_TEXT_SIZE
+    { 0, 17, 0x00000000 },    // DEFAULT_TEXT_SPACING
+    { 0, 18, 0x84adb7ff },    // DEFAULT_LINE_COLOR
+    { 0, 19, 0xe8eef1ff },    // DEFAULT_BACKGROUND_COLOR
+};
+
 static const std::pair<int,int> styleMapping[] = {
     {DEFAULT, BORDER_COLOR_NORMAL},
     {DEFAULT, BASE_COLOR_NORMAL},
@@ -64,7 +135,15 @@ static const std::pair<int,int> styleMapping[] = {
     {DEFAULT, TEXT_SIZE},
     {DEFAULT, TEXT_SPACING},
     {DEFAULT, LINE_COLOR},
-    {DEFAULT, BACKGROUND_COLOR}
+    {DEFAULT, BACKGROUND_COLOR},
+
+    {DEFAULT, TEXT_LINE_SPACING},
+    {LABEL, TEXT_COLOR_FOCUSED},
+    {LABEL, TEXT_COLOR_PRESSED},
+    {SLIDER, TEXT_COLOR_FOCUSED},
+    {PROGRESSBAR, TEXT_COLOR_FOCUSED},
+    {TEXTBOX, TEXT_COLOR_FOCUSED},
+    {VALUEBOX, TEXT_COLOR_FOCUSED}
 };
 
 

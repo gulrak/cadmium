@@ -45,7 +45,9 @@ enum class Style {
     TEXT_SIZE,
     TEXT_SPACING,
     LINE_COLOR,
-    BACKGROUND_COLOR
+    BACKGROUND_COLOR,
+    TOOL_BUTTON_COLOR_NORMAL,
+    TOOL_BUTTON_COLOR_ACTIVE
 };
 
 struct Color;

@@ -1151,9 +1151,13 @@ public:
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
     {
         StyleManager::Scope guard;
-        if (isPressed)
-            guard.setStyle(Style::BASE_COLOR_NORMAL, color);
-        guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
+        auto fg = guard.getStyle(Style::TEXT_COLOR_NORMAL);
+        auto bg = guard.getStyle(Style::BASE_COLOR_NORMAL);
+        if(isPressed) {
+            guard.setStyle(Style::BASE_COLOR_NORMAL, fg);
+            guard.setStyle(Style::TEXT_COLOR_NORMAL, bg);
+        }
+        //guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
         gui::SetNextWidth(20);
         auto result = gui::Button(GuiIconText(iconId, ""));
         return result;
@@ -1371,14 +1375,14 @@ public:
                 bool chip8Control = _debugger.isControllingChip8();
                 Color controlBack = {3, 127, 161};
                 Color controlColor = Color{0x51, 0xbf, 0xd3, 0xff}; //chip8Control ? Color{0x51, 0xbf, 0xd3, 0xff} : Color{0x51, 0xff, 0xbf, 0xff};
-                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->getExecMode() == ExecMode::ePAUSED, controlBack, controlColor)) {
+                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->getExecMode() == ExecMode::ePAUSED/*, controlBack, controlColor*/)) {
                     _chipEmu->setExecMode(ExecMode::ePAUSED);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eVIDEO;
                     }
                 }
                 SetTooltip("PAUSE");
-                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING, controlBack, controlColor)) {
+                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING/*, controlBack, controlColor*/)) {
                     _debugger.setExecMode(ExecMode::eRUNNING);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eVIDEO;
@@ -1387,7 +1391,7 @@ public:
                 SetTooltip("RUN");
                 if(!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OVER, _chipEmu->getExecMode() == ExecMode::eSTEPOVER, controlBack, controlColor)) {
+                if (iconButton(ICON_STEP_OVER, _chipEmu->getExecMode() == ExecMode::eSTEPOVER/*, controlBack, controlColor*/)) {
                     _debugger.setExecMode(ExecMode::eSTEPOVER);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
@@ -1395,7 +1399,7 @@ public:
                 }
                 GuiEnable();
                 SetTooltip("STEP OVER");
-                if (iconButton(ICON_STEP_INTO, _chipEmu->getExecMode() == ExecMode::eSTEP, controlBack, controlColor)) {
+                if (iconButton(ICON_STEP_INTO, _chipEmu->getExecMode() == ExecMode::eSTEP/*, controlBack, controlColor*/)) {
                     _debugger.setExecMode(ExecMode::eSTEP);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
@@ -1404,7 +1408,7 @@ public:
                 SetTooltip("STEP INTO");
                 if(!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OUT, _chipEmu->getExecMode() == ExecMode::eSTEPOUT, controlBack, controlColor)) {
+                if (iconButton(ICON_STEP_OUT, _chipEmu->getExecMode() == ExecMode::eSTEPOUT/*, controlBack, controlColor*/)) {
                     _debugger.setExecMode(ExecMode::eSTEPOUT);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
@@ -2599,6 +2603,7 @@ int main(int argc, char* argv[])
     bool opcodeJSON = false;
     bool startRom = false;
     bool screenDump = false;
+    bool drawDump = false;
     std::string dumpInterpreter;
     emu::Chip8EmulatorOptions options;
     int64_t execSpeed = -1;
@@ -2606,6 +2611,7 @@ int main(int argc, char* argv[])
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName;
+    int64_t testSuiteMenuVal = 0;
     cli.category("General Options");
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
@@ -2628,6 +2634,8 @@ int main(int argc, char* argv[])
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
     cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
+    cli.option({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
+    cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
     cli.option({"--trace-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
     //cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
     cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
@@ -2644,12 +2652,16 @@ int main(int argc, char* argv[])
     cli.option({"--lores-dxy0-width-8"}, options.optLoresDxy0Is8x16, "If true, draw Dxy0 sprites have width 8");
     cli.option({"--lores-dxy0-width-16"}, options.optLoresDxy0Is16x16, "If true, draw Dxy0 sprites have width 16");
     cli.option({"--sc11-collision"}, options.optSC11Collision, "If true, use SCHIP1.1 collision logic");
+    cli.option({"--half-pixel-scroll"}, options.optHalfPixelScroll, "If true, use SCHIP1.1 lores half pixel scrolling");
+    cli.option({"--mode-change-clear"}, options.optModeChangeClear, "If true, clear screen on lores/hires changes");
     cli.option({"--jump0-bxnn"}, options.optJump0Bxnn, "If true, use Vx as offset for Bxnn");
     cli.option({"--allow-hires"}, options.optAllowHires, "If true, support for hires (128x64) is enabled");
     cli.option({"--only-hires"}, options.optOnlyHires, "If true, emulation has hires mode only");
     cli.option({"--allow-color"}, options.optAllowColors, "If true, support for multi-plane drawing is enabled");
+    cli.option({"--cyclic-stack"}, options.optCyclicStack, "If true, stack operations wrap around, overwriting used slots");
     cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
+    cli.option({"--extended-display-wait"}, options.optExtendedVBlank, "If true, Dxyn might even wait 2 screens depending on size and position");
     cli.positional(romFile, "ROM file or source to load");
     cli.parse();
     if(showHelp) {
@@ -2745,6 +2757,15 @@ int main(int argc, char* argv[])
             Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
 #ifdef WEB_WITH_FETCHING
             if(!urlLoad.empty()) {
+                auto ri = Librarian::findKnownRom(urlLoad);
+                if(ri && ri->url) {
+                    if(startsWith(ri->url, "@GH")) {
+                        urlLoad = "https://raw.githubusercontent.com" + std::string(ri->url + 3);
+                    }
+                    else {
+                        urlLoad = ri->url;
+                    }
+                }
                 emscripten_fetch_attr_t attr;
                 emscripten_fetch_attr_init(&attr);
                 strcpy(attr.requestMethod, "GET");
@@ -2772,6 +2793,7 @@ int main(int argc, char* argv[])
         //chip8options.optLoadStoreDontIncI = false;
         //chip8options.optDontResetVf = true;
         //chip8options.optInstantDxyn = true;
+        options.optExtendedVBlank = false;
         if(!randomGen.empty()) {
             options.advanced = nlohmann::ordered_json::object({
                 {"random", randomGen},
@@ -2848,12 +2870,24 @@ int main(int argc, char* argv[])
             std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8->getCycles())/durationChip8.count()) << "MIPS" << std::endl;
         }
         else if(traceLines >= 0) {
+            chip8->memory()[0x1ff] = testSuiteMenuVal & 0xff;
+            size_t waits = 0;
             do {
-                std::cout << i << "/" << chip8->getCycles() << ": " << chip8->dumpStateLine() << std::endl;
-                if ((i % options.instructionsPerFrame) == 0) {
+                bool isDraw = (chip8->opcode() & 0xF000) == 0xD000;
+                bool isWait = !(!isDraw || options.optInstantDxyn || (chip8->getCycles() % options.instructionsPerFrame == 0));
+                if ((chip8->getCycles() % options.instructionsPerFrame) == 0) {
+                    std::cout << "--- handle timer ---" << std::endl;
                     chip8->handleTimer();
                 }
+                std::cout << (i - waits) << "/" << chip8->getCycles() << ": " << chip8->dumpStateLine() << (isWait ? " (WAIT)" : "") << std::endl;
+                if(isWait) ++waits;
+                uint16_t opcode = chip8->opcode();
                 chip8->executeInstruction();
+                if(chip8->needsScreenUpdate()) {
+                    std::cout << chip8EmuScreen(*chip8);
+                }
+                else if((opcode & 0xF0FF) == 0xF00A)
+                    break;
                 ++i;
             } while (i <= traceLines && chip8->getExecMode() == emu::IChip8Emulator::ExecMode::eRUNNING);
             if(screenDump) {
