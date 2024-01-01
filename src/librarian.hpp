@@ -33,6 +33,14 @@
 #include <string>
 #include <vector>
 
+struct KnownRomInfo {
+    const char* sha1;
+    emu::chip8::Variant variant;
+    const char* name;
+    const char* options;
+    const char* url;
+};
+
 class Librarian
 {
 public:
@@ -73,13 +81,18 @@ public:
     void select(int index) { _activeEntry = index; }
     int getSelectedIndex() const { return _activeEntry; }
     bool isKnownFile(const uint8_t* data, size_t size) const;
+    bool isKnownFile(const std::string& sha1sum) const;
     emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum) const;
     emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size) const;
     emu::Chip8EmulatorOptions::SupportedPreset getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const;
     emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
+    emu::Chip8EmulatorOptions getOptionsForFile(const std::string& sha1sum) const;
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
     static bool isPrefixedTPDRom(const uint8_t* data, size_t size);
     static bool isPrefixedRSTDPRom(const uint8_t* data, size_t size);
+    static size_t numKnownRoms();
+    static const KnownRomInfo* getKnownRoms();
+    static const KnownRomInfo* findKnownRom(const std::string sha1);
 private:
     int _activeEntry{-1};
     std::string _currentPath;

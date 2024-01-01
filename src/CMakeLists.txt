@@ -25,6 +25,7 @@ set(CADMIUM_SOURCE
     stylemanager.cpp
     stylemanager.hpp
     rlguippimpl.cpp
+    c8db/database.hpp
 )
 
 if(WIN32)

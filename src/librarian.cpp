@@ -44,13 +44,6 @@ inline std::chrono::system_clock::time_point convertClock(TP tp)
     return time_point_cast<system_clock::duration>(tp - TP::clock::now() + system_clock::now());
 }
 
-struct KnownRomInfo {
-    const char* sha1;
-    emu::chip8::Variant variant;
-    const char* name;
-    const char* options;
-    const char* url;
-};
 
 static KnownRomInfo g_knownRoms[] = {
     //{"18418563acd5c64ff410fdede56ffd80c139888a", {emu::Chip8EmulatorOptions::eCHIP8X}},
@@ -82,7 +75,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"064492173cf4ccac3cce8fe307fc164b397013b9", emu::chip8::Variant::CHIP_8, "Division Test (Sergey Naydenov, 2010)", nullptr, nullptr},
     //{"0663449e1cc8d79ee38075fe86d6b9439a7e43d7", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"0663449e1cc8d79ee38075fe86d6b9439a7e43d7", emu::chip8::Variant::SCHIPC, "Super Sierp Chaos (Marco Varesio, 2015)", nullptr, nullptr},
-    {"066e7a84efde433e4d937d8aa41518666955086c", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Astro Dodge Hires (Revival-Studios, 2008)", nullptr, nullptr},  // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"066e7a84efde433e4d937d8aa41518666955086c", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Astro Dodge Hires (Revival-Studios, 2008)", nullptr, nullptr},  // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"06a6692c92eb8077329b6d4e59d55479d60574a8", emu::chip8::Variant::SCHIPC, "Snake (TimoTriisa, 2014-10-11)", R"({"instructionsPerFrame": 15, "advanced": {"col1": "#84a174", "col0": "#30283e", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
     {"082c71b67e36e033c2e615ad89ba4ed5d55a56d0", emu::chip8::Variant::CHIP_8, "Delay Timer Test (Matthew Mikolay, 2010)", nullptr, nullptr},
     //{"085394b959f03a0e525b404d8a68a36e56d6446a", {emu::Chip8EmulatorOptions::eXOCHIP}},
@@ -112,7 +105,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"12572c9e957cace53076d1656ea1b12cd0f331af", emu::chip8::Variant::SCHIPC, "Ultimate Tic-Tac-Toe (your name here, 2014-09-01)", R"({"instructionsPerFrame": 7, "advanced": {"col1": "#553300", "col0": "#FFFFFF", "buzzColor": "#FFAA00", "quietColor": "#FFFFFF"}})", nullptr},
     {"1261b79da4d25792c05eaed47a0285b48dd7b7f4", emu::chip8::Variant::CHIP_8, "Jackpot (Joyce Weisbecker, 1978)", nullptr, nullptr},
     {"1293db0ccccbe7dd3fc5a09a2abc5d7b175e18e0", emu::chip8::Variant::CHIP_8, "Puzzle", nullptr, nullptr},                  // Puzzle.ch8
-    {"12d3bf6c28ebf07b49524f38d6436f814749d4c0", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"12d3bf6c28ebf07b49524f38d6436f814749d4c0", emu::chip8::Variant::SCHIP_1_1, "Field!, alt (Al Roland)", nullptr, nullptr},
     {"12e053d66be67836deff1c07af93fe1d33a8eec5", emu::chip8::Variant::XO_CHIP, "Jub8 Song 2 (your name here, 2016-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#000000", "col2": "#FDFFD5", "col3": "#BA5A1A", "col0": "#353C41", "buzzColor": "#353C41", "quietColor": "#353C41", "screenRotation": 0}})", nullptr},
     {"12fccf60004f685c112fe3db3d3bcfba104cbcb1", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Video Display Drawing Game (Joseph Weisbecker)", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms)
     {"1368d7eae124661aacaf3411819ca9c113c0c10c", emu::chip8::Variant::CHIP_8, "Down8 (tinaun, 2015-10-28)", R"({"instructionsPerFrame": 15, "advanced": {"col1": "#27130F", "col0": "#3DBDFA", "buzzColor": "#FF6600", "quietColor": "#000000"}})", nullptr},
@@ -136,13 +129,13 @@ static KnownRomInfo g_knownRoms[] = {
     {"1e3be162480380b6276d0848e1c71576b4c041f2", emu::chip8::Variant::CHIP_8, "Ghost Escape (TomRintjema, 2016-10-29)", R"({"instructionsPerFrame": 7, "optWrapSprites": true, "advanced": {"col1": "#FF00FF", "col2": "#FF6600", "col3": "#662200", "col0": "#00FFFF", "buzzColor": "#990099", "quietColor": "#330033", "screenRotation": 0}})", nullptr},
     //{"1e981dac636d88d26a3fc056a53b28175f1d9b82", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"1e981dac636d88d26a3fc056a53b28175f1d9b82", emu::chip8::Variant::XO_CHIP, "Modem Dialing (sound)", nullptr, nullptr},
-    {"1ebcb2ec0be2ec9fa209d5c73be19b2d408399bf", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Particle Demo (zeroZshadow, 2008)", nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"1ebcb2ec0be2ec9fa209d5c73be19b2d408399bf", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Particle Demo (zeroZshadow, 2008)", nullptr, nullptr}, // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     //{"1f386e1ae47957dec485d3e4034dff706d316d15", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"1f386e1ae47957dec485d3e4034dff706d316d15", emu::chip8::Variant::SCHIPC, "Traffic (Christian Kosman, 2018)", nullptr, nullptr},
-    {"1fe935d48dabe516f5119cc4c12e2edab36de8ec", emu::chip8::Variant::CHIP_8_TPD, nullptr, nullptr, nullptr}, // CHIP-8 VIP TPD (two page display, 64x64)
+    {"1fe935d48dabe516f5119cc4c12e2edab36de8ec", emu::chip8::Variant::CHIP_8_TPD, "VIP TPD Test (Viper vol.1, issue 3)", nullptr, nullptr}, // CHIP-8 VIP TPD (two page display, 64x64)
     //{"1ff6e2a8920c5b48def34348df65226285f39ce9", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"1ff6e2a8920c5b48def34348df65226285f39ce9", emu::chip8::Variant::SCHIPC, "Octovore (Pangasaurus Rex, 2015)", nullptr, nullptr},
-    {"200b313e4d4c1970641142cc7ff578d7956b93da", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr},  // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"200b313e4d4c1970641142cc7ff578d7956b93da", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Self patching VIP TPD test (Revival Studios)", nullptr, nullptr},  // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"2079134ecaaaa356724d1f856b2a00153b176cc7", emu::chip8::Variant::XO_CHIP, "Jeff Quest (Jason DuPertuis, 2020)", nullptr, nullptr},
     {"20c2b4baf40c2c30c7db91107d4b5af980626f1c", emu::chip8::Variant::CHIP_8, "Chip8Stein 3D (demo)", nullptr, nullptr},
     //{"2229606a59bbcdeb81408f75e8646ea05553a580", {emu::Chip8EmulatorOptions::eXOCHIP}},
@@ -156,7 +149,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"244c746b4f81c9c3df9cea69389387da67589bb8", emu::chip8::Variant::SCHIPC, "C-Tetris (Klaus von Sengbusch, 1994)", nullptr, nullptr},
     {"24960090b2afc9de2a4cb3ee7daf6a21456bb49b", emu::chip8::Variant::CHIP_8, "Russian Roulette (Carmelo Cortez)", nullptr, nullptr},
     {"2498050e4f5645574daefaa8a679576374c55973", emu::chip8::Variant::CHIP_8, "Shooth3Rd Ii Plus (Beholder, 2018)", nullptr, nullptr},
-    {"24ef21009527ee674de44ccb37e37081654883f9", emu::chip8::Variant::XO_CHIP, "Alien-Inv8Sion", nullptr, nullptr},                 // Alien-Inv8sion.xo8
+    {"24ef21009527ee674de44ccb37e37081654883f9", emu::chip8::Variant::XO_CHIP, "Alien-Inv8sion (Timendus, 2021)", R"({"instructionsPerFrame": 200000, "advanced": {"palette": ["#000000", "#ffffff", "#aaaaaa", "#555555", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#880000", "#008800", "#000088", "#888800", "#ff00ff", "#00ffff", "#880088", "#008888"]}})", nullptr}, // Alien-Inv8sion.xo8
     //{"24fd50a95b84e3a42e336a06567a9752f17b9979", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"24fd50a95b84e3a42e336a06567a9752f17b9979", emu::chip8::Variant::SCHIPC, "Matches (unknown author)", nullptr, nullptr},
     {"27868be46213718792ab3b8415855a1975366dbe", emu::chip8::Variant::CHIP_8, "Chip-8 Snake (steveRoll, 2020)", nullptr, nullptr},
@@ -242,11 +235,11 @@ static KnownRomInfo g_knownRoms[] = {
     {"442eb1cead3a3467d0e7fe9d557fb6eadc662094", emu::chip8::Variant::CHIP_8X, "CHIP-8x Test 1", nullptr, nullptr},
     {"443550abf646bc7f475ef0466f8e1232ec7474f3", emu::chip8::Variant::CHIP_8, "Shooting Stars (Philip Baltzer, 1978)", nullptr, nullptr},
     {"448f9d30d2157ab42679b809d4fb0b43d145f74f", emu::chip8::Variant::CHIP_8, "Sequence Shoot (Joyce Weisbecker)", nullptr, nullptr},
-    {"453545dc5e6079e9d9be9d3775d2615c4b60724f", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"453545dc5e6079e9d9be9d3775d2615c4b60724f", emu::chip8::Variant::SCHIP_1_1, "Scroll Test, modified (Garstyciuks)", nullptr, nullptr},
     //{"4564a1bf149e5ab9777d33813a92cfd6ffc7a0bb", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"4564a1bf149e5ab9777d33813a92cfd6ffc7a0bb", emu::chip8::Variant::XO_CHIP, "Kesha Was Niiinja (Kesha, 2017-10-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#b22d10", "col2": "#10b258", "col3": "#ffffff", "col0": "#283593", "buzzColor": "#182583", "quietColor": "#182583", "screenRotation": 0}})", nullptr},
     //{"45f7c33b284b0f3e1393f0dd97e4b3b9fd9c63c9", {emu::Chip8EmulatorOptions::eSCHIP11}},
-    {"45f7c33b284b0f3e1393f0dd97e4b3b9fd9c63c9", emu::chip8::Variant::SCHIPC, "Horsey Jump (Team Horse, 2015)", nullptr, nullptr},
+    {"45f7c33b284b0f3e1393f0dd97e4b3b9fd9c63c9", emu::chip8::Variant::SCHIP_1_1, "Horsey Jump (Team Horse, 2015)", R"({"optJustShiftVx": false, "optLoadStoreDontIncI": false})", nullptr},
     {"4639f86beb0a203ae512b85d3b56d813b2dea7b4", emu::chip8::Variant::CHIP_8, "Rush Hour (Hap, 2006-12-17)", nullptr, nullptr},
     {"466ce147503c536b23a7548d6adf027c26d28df3", emu::chip8::Variant::XO_CHIP, "Rocket (Jason DuPertuis, 2020)", nullptr, nullptr},
     {"46b281516a3e9d1526bea224b79cc18ddd71833d", emu::chip8::Variant::XO_CHIP, "Computer Simulator", nullptr, nullptr},                     // Computer Simulator.xo8
@@ -258,7 +251,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"4a4123320d841ed04d8c1cd2ad6132a06b83dfa0", emu::chip8::Variant::CHIP_8, "Minimal Game (Revival Studios, 2007)", nullptr, nullptr},
     {"4a4c47e886d576c8e5172d797a276601084004bb", emu::chip8::Variant::CHIP_8, "Patterns (SystemLogoff, 2019)", nullptr, nullptr},
     {"4a68389601eafe3adf014576681eb30232acdac9", emu::chip8::Variant::CHIP_8, "Classic Snek (Andrew James, 2021)", nullptr, nullptr},
-    {"4a89a66cfe78f788f45598d69f975d470229df0b", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"4a89a66cfe78f788f45598d69f975d470229df0b", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Video Display Draw, hybrid (TCNJ S572.2)", nullptr, nullptr}, // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"4ac6414b1fd502074a6aab4de4b206a7273dcfb8", emu::chip8::Variant::CHIP_8, "Chip2048 (Lime, 2014)", nullptr, nullptr},
     {"4cb8bc4ddcfd23822c4a38990ac7e4225a323cec", emu::chip8::Variant::CHIP_8, "No_Rom_Selected (MissMuffin, 2019)", nullptr, nullptr},
     {"4cc4eff70802ac7a3b374a442411a13415f5e4d8", emu::chip8::Variant::XO_CHIP, "No Internet (pushfoo, 2020)", nullptr, nullptr},
@@ -284,7 +277,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"58b4865fec81427fd3c52bdc62b2230d412c12ea", emu::chip8::Variant::CHIP_8, "Monty Hall (blinky, 2016)", nullptr, nullptr},
     //{"58f7ce407aedf456dc8992342f4a6f9f0647383b", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"58f7ce407aedf456dc8992342f4a6f9f0647383b", emu::chip8::Variant::SCHIP_1_1, "Sens8Tion (Chromatophore, 2016-11-01)", R"({"instructionsPerFrame": 20, "optWrapSprites": true, "advanced": {"col1": "#1a3279", "col2": "#FF6600", "col3": "#662200", "col0": "#bad9b6", "buzzColor": "#fff6d6", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
-    {"599135c0a9bb33ce1bc5396fd30abef2df1cb2ed", emu::chip8::Variant::MEGA_CHIP, nullptr, nullptr, nullptr},
+    {"599135c0a9bb33ce1bc5396fd30abef2df1cb2ed", emu::chip8::Variant::MEGA_CHIP, "Mega Sirpinski (Sergey Naydenov, 2010)", nullptr, nullptr},
     {"59aca79b4b18e1bfbc71065bb34448fed5e1db1e", emu::chip8::Variant::CHIP_8, "Laser Defence (Kyle Saburao, 2019)", nullptr, nullptr},
     //{"59bdc7f990322d274d711b6b6982c7e8c9098e9e", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"59bdc7f990322d274d711b6b6982c7e8c9098e9e", emu::chip8::Variant::XO_CHIP, "Music Player (TomR, 2015)", nullptr, nullptr},
@@ -294,7 +287,7 @@ static KnownRomInfo g_knownRoms[] = {
     //{"5abf3dcf4ce0e396a3a5bf977b1ea988535d35d5", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"5abf3dcf4ce0e396a3a5bf977b1ea988535d35d5", emu::chip8::Variant::SCHIPC, "00Schip8 Life Demo (Henry de Jongh, 2016)", nullptr, nullptr},
     {"5b29263763be401c31d805bc35a4cd211d552881", emu::chip8::Variant::CHIP_8, "Jumping X And O (Harry Kleinberg, 1977)", nullptr, nullptr},
-    {"5b66aa248b3a0b6fffa6a72fdbee5e14e05d3f77", emu::chip8::Variant::MEGA_CHIP, nullptr, nullptr, nullptr},
+    {"5b66aa248b3a0b6fffa6a72fdbee5e14e05d3f77", emu::chip8::Variant::MEGA_CHIP, "Mega Twister Demo (Revival Studios, 2007)", nullptr, nullptr},
     //{"5b733a60e7208f6aa0d15c99390ce4f670b2b886", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"5b733a60e7208f6aa0d15c99390ce4f670b2b886", emu::chip8::Variant::SCHIPC, "Blinky (Hans Christian Egeberg, 1991)", nullptr, nullptr},
     //{"5c0fff21df64f3fe8683a115353c293d435ca01a", {emu::Chip8EmulatorOptions::eSCHIP11}},
@@ -318,10 +311,9 @@ static KnownRomInfo g_knownRoms[] = {
     {"63458c204bd24234a33d263d965ea8d16dd5c9e8", emu::chip8::Variant::CHIP_8, "Tank-Viper (Demo)", nullptr, nullptr},
     //{"63e787fc3e78e5fb3a394cf1bc654ad9633d8907", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"63e787fc3e78e5fb3a394cf1bc654ad9633d8907", emu::chip8::Variant::SCHIPC, "Mondri8 (JohnEarnest, 2014-09-25)", R"({"instructionsPerFrame": 100, "advanced": {"col0": "#996600", "col1": "#FFCC00", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
-    {"64176ff030ebff27f483db5a16f38f2383d0026e", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"64176ff030ebff27f483db5a16f38f2383d0026e", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Chip-48 Rainmeter Edition Splash Screen (Christian Kosman, 2018)", nullptr, nullptr},
     //{"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", emu::chip8::Variant::XO_CHIP, "Replicator (Björn Kempen, 2015)", nullptr, nullptr},
-    {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
     {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::SCHIPC, "Sub-Terr8Nia (your name here, 2017-08-31)", R"({"instructionsPerFrame": 60, "optWrapSprites": true, "advanced": {"col1": "#ffffff", "col2": "#FF6600", "col3": "#662200", "col0": "#000000", "buzzColor": "#FFAA00", "quietColor": "#111111", "screenRotation": 270}})", nullptr},
     {"659cb966e976fcbcae76f6a8a07c65be4d18aae8", emu::chip8::Variant::CHIP_8, "Space Racer (WilliamDonnelly, 2017-10-30)", R"({"instructionsPerFrame": 20, "optWrapSprites": true, "advanced": {"col1": "#FCFCFC", "col2": "#FF6600", "col3": "#662200", "col0": "#111111", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"65e3432c942df6ce18db2c2d01d3260e56dd1e53", emu::chip8::Variant::CHIP_8, "Lady Runner (noodulz, 2020)", nullptr, nullptr},
@@ -338,7 +330,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"680e265a128870091ed71410891b64d5ead303fb", emu::chip8::Variant::CHIP_8, "Jumping Sprite (lingib, 2020)", nullptr, nullptr},
     //{"681eaf2c6422cdd0e0ca0cf9f4c3a436b7b6f292", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"681eaf2c6422cdd0e0ca0cf9f4c3a436b7b6f292", emu::chip8::Variant::SCHIPC, "Binding Of Cosmac (buffi, 2016)", nullptr, nullptr},
-    {"683cbb00d59e48fa34c3bbd2fd2b10775b22178a", emu::chip8::Variant::MEGA_CHIP, nullptr, nullptr, nullptr},
+    {"683cbb00d59e48fa34c3bbd2fd2b10775b22178a", emu::chip8::Variant::MEGA_CHIP, "Mega Maze (David Winter, 2007)", nullptr, nullptr},
     {"6881684726d8bf97379d8eb988a9cdfb373c1698", emu::chip8::Variant::CHIP_8, "Snake (Tyson Decker, 2016)", nullptr, nullptr},
     {"68b6f9336c1bdc4dcaf7fca78c3a719894bdd376", emu::chip8::Variant::CHIP_8, "Super Block (Joshua Barretto, 2019)", nullptr, nullptr},
     {"693ba52f822c2e2713c5329ae77ff3271e5b954f", emu::chip8::Variant::CHIP_8, "Pixlar (Ethan Pini, 2019)", nullptr, nullptr},
@@ -363,15 +355,15 @@ static KnownRomInfo g_knownRoms[] = {
     {"6f6509f38220e057a7e32ebb22dd353c1078e3e7", emu::chip8::Variant::CHIP_8, "Blitz (David Winter)", nullptr, nullptr},
     //{"6f8e85158be98f30bf3cd5df60d7a7ad71c5f3e1", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"6f8e85158be98f30bf3cd5df60d7a7ad71c5f3e1", emu::chip8::Variant::SCHIPC, "Mr (Ryan Hitchman, 2014)", nullptr, nullptr},
-    {"702066d7248dfa81d5535942e7c6ed3a32ebc84c", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"702066d7248dfa81d5535942e7c6ed3a32ebc84c", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Google (IQ_132, 20xx)", nullptr, nullptr},
     //{"709328365147967f434d1bf78430e9ec160cc24f", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"709328365147967f434d1bf78430e9ec160cc24f", emu::chip8::Variant::SCHIPC, "Worms Demo (unknown author)", nullptr, nullptr},
-    {"70aa0e7f25f0f0fd6ec7c59e427bf1d03ee95617", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"70aa0e7f25f0f0fd6ec7c59e427bf1d03ee95617", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Maze (David Winter, 199x)", nullptr, nullptr}, // (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"70ccd390c90f586bcd75bbbc1c89e53e67179ff1", emu::chip8::Variant::CHIP_8, "Flipflipboom (Ian J Sikes, 2016)", nullptr, nullptr},
     {"7143cb2e8c895eccbc1d768417c932bde8337b94", emu::chip8::Variant::XO_CHIP, "Skellespresso", nullptr, nullptr},                  // Skellespresso.xo8
     {"716fc9634c39f73afe795004589d353448a6c8e3", emu::chip8::Variant::CHIP_8, "Labyrinthine (TempVar Studios, 2020)", nullptr, nullptr},
     {"7171deb1dabdf37d7f87507a11d4c07d11690b97", emu::chip8::Variant::CHIP_8, "Walking Dog (John Earnest, 2015)", nullptr, nullptr},
-    {"71d06da9e605804d2099b808c02548ab2b3511b2", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"71d06da9e605804d2099b808c02548ab2b3511b2", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Worm V4 (Revival Studios, 2007)", nullptr, nullptr},
     {"726cb39afa7e17725af7fab37d153277d86bff77", emu::chip8::Variant::CHIP_8, "Programmable Spacefighters (Jef Winsor)", nullptr, nullptr},
     {"72c2cbfea48000e25891dd4968ae9f1adef1e7e3", emu::chip8::Variant::CHIP_8, "Bmp Viewer (Hap, 2005)", R"({"optJustShiftVx": true})", nullptr},
     {"72e8f3a10a32bd7fb91322ecab87249f95e81e57", emu::chip8::Variant::CHIP_8, "Lunar Lander (Udo Pernisz, 1979)", nullptr, nullptr},
@@ -414,7 +406,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"80d8baefbc2c2c2eab78a7b09c621f7618357b84", emu::chip8::Variant::CHIP_8, "Minesweep8R (James Kohli aka Hottie Pippen, 2014)", nullptr, nullptr},
     {"80feda2028aa31788d3d1d9e062d77d2fd9308cc", emu::chip8::Variant::XO_CHIP, "Octoma (Cratmang, 2021-10-25)", R"({"instructionsPerFrame": 10000, "optLoadStoreDontIncI": true, "advanced": {"col1": "#FF00FF", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#000000", "buzzColor": "#000000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "fish"}})", nullptr},
     {"80ffa819cfa42f2f5f9f836b67c666d01a915970", emu::chip8::Variant::CHIP_8, "Tower Of Hanoi (Joel Yliluoma, 2015)", nullptr, nullptr},
-    {"8109e5f502a624ce6c96b8aa4b44b3f7dc0ef968", emu::chip8::Variant::CHIP_10, nullptr, nullptr, nullptr},
+    {"8109e5f502a624ce6c96b8aa4b44b3f7dc0ef968", emu::chip8::Variant::CHIP_10, "Kaleidoscope patched for CHIP-10 (Joseph Weisbecker, 1978)", nullptr, nullptr},
     {"8166328ddd1deb0df718323c0c63c76b267cec4a", emu::chip8::Variant::CHIP_8, "Arrows (Ashton Harding, 2018)", nullptr, nullptr},
     {"817c7c8429c82ecbdb3c57ab68c449c2e4c447b9", emu::chip8::Variant::HI_RES_CHIP_8X, "CHIP-8x Four Page Display", nullptr, nullptr},
     {"8198311054b6cd440dde42d6efed0eda1b1e461d", emu::chip8::Variant::XO_CHIP, "D8Gn (SystemLogoff, 2020)", nullptr, nullptr},
@@ -444,7 +436,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"8c404dc15f854456cafe9b22fcdbaf16830ffde5", emu::chip8::Variant::CHIP_8, "Tick-Tack-Toe (Joseph Weisbecker, 1977)", nullptr, nullptr},
     {"8c7f101c61f82cacaacc45f8c11c1a00c8cc451e", emu::chip8::Variant::GENERIC_CHIP_8, "6-Keypad (Timendus, 2023-04-12)", nullptr, "@GH/Timendus/chip8-test-suite/v4.0/bin/6-keypad.ch8"},
     {"8cf29db367b7db4760dee8252dfc88066a45ce4a", emu::chip8::Variant::CHIP_8, "Jumpfill (Bj”rn Kempen, 2015)", nullptr, nullptr},
-    {"8d56a781bf16acccb307177b80ff326f62aabbdc", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"8d56a781bf16acccb307177b80ff326f62aabbdc", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Test (Tom Swan, 1979)", nullptr, nullptr}, // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"8e5f19d8ae9f3346779613359610967a5ed95fa8", emu::chip8::Variant::CHIP_8, "Deflection (John Fort)", nullptr, nullptr},
     {"8e96555ee62ed3c4dcd082fdef5d16450dcb99af", emu::chip8::Variant::GENERIC_CHIP_8, "1-chip8-logo (Timendus, 2023-11-13)", nullptr,"@GH/Timendus/chip8-test-suite/v4.1/bin/1-chip8-logo.ch8"},
     //{"8ebf74e790e58a8d5a7beff598bb32ed7eeeabf7", {emu::Chip8EmulatorOptions::eXOCHIP}},
@@ -460,11 +452,11 @@ static KnownRomInfo g_knownRoms[] = {
     {"945fa6dd1ac72f1ede1cb829ef31b5328a32f67a", emu::chip8::Variant::CHIP_8, "Etch-A-Sketch (KrzysztofJeszke, 2020)", nullptr, nullptr},
     {"9468a94294997009a2c50c1a18376947d3d3d3bb", emu::chip8::Variant::CHIP_8, "Driving Simulator (Team 15 Chipotle, 2019)", nullptr, nullptr},
     {"949b661091efe706a32fb0d89991005783243bb9", emu::chip8::Variant::GENERIC_CHIP_8, "3-Corax+ (Timendus, 2023-04-12)", nullptr, "@GH/Timendus/chip8-test-suite/v4.0/bin/3-corax%2B.ch8"},
-    {"9514e9e2ab7e1ddc91265823e7e895de6c8dd303", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"9514e9e2ab7e1ddc91265823e7e895de6c8dd303", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Internet Janitor (Sly DC, 2016)", nullptr, nullptr},
     {"95384fbb895b6420da690bc06cb16739c9a5d800", emu::chip8::Variant::CHIP_8, "Maze276 (Firas Fakih, 2019)", nullptr, nullptr},
-    {"9593099c1fe1be31cbaea526aa04fd492ff90382", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"9593099c1fe1be31cbaea526aa04fd492ff90382", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Let's Chip-8! (Koppepan, 2005)", nullptr, nullptr},
     {"959ed7d6b61e667bb59d1b497401258463f88454", emu::chip8::Variant::CHIP_8, "Octojam 8 Title (JohnEarnest, 2021-10-01)", R"({"instructionsPerFrame": 7, "optWrapSprites": true, "optInstantDxyn": true, "optDontResetVf": true, "advanced": {"col1": "#FFAA00", "col2": "#FF6600", "col3": "#662200", "col0": "#AA4400", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "fish"}})", nullptr},
-    {"96bc31f23c7f917dab4a082d2c7fd7c69820e6a4", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"96bc31f23c7f917dab4a082d2c7fd7c69820e6a4", emu::chip8::Variant::SCHIP_1_1, "SuperChipFontTest (Henry de Jongh, 2016)", nullptr, nullptr},
     {"96c0ae3b45839a570d180760835ceab9ed503fd0", emu::chip8::Variant::CHIP_8, "Deflap (hitcherland, 2015)", nullptr, nullptr},
     //{"9797a7eaf1e80ec19c085c60bb37991420f54678", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"9797a7eaf1e80ec19c085c60bb37991420f54678", emu::chip8::Variant::SCHIPC, "Grad School Simulator 2014 (JohnEarnest, 2014-09-15)", R"({"instructionsPerFrame": 20, "advanced": {"col0": "#808080", "col1": "#000000", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
@@ -473,14 +465,14 @@ static KnownRomInfo g_knownRoms[] = {
     {"9909082230fd33218ac374acaeaaefbb786e3194", emu::chip8::Variant::GENERIC_CHIP_8, "6-keypad (Timendus, 2023-11-13)", nullptr,"@GH/Timendus/chip8-test-suite/v4.1/bin/6-keypad.ch8"},
     //{"99a97c772fc93d669b73016761ea6fee0210497e", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"99a97c772fc93d669b73016761ea6fee0210497e", emu::chip8::Variant::SCHIPC, "Minesweeper (AKouZ1, 2017)", nullptr, nullptr},
-    {"9a09cdfa7b0820310043dd0f098384c1c9b325a3", emu::chip8::Variant::MEGA_CHIP, nullptr, nullptr, nullptr},
+    {"9a09cdfa7b0820310043dd0f098384c1c9b325a3", emu::chip8::Variant::MEGA_CHIP, "Mega Particle Demo (zeroZshadow, 2008)", nullptr, nullptr},
     {"9a9c341571ace516c9789b1eb92590833af13239", emu::chip8::Variant::CHIP_8, "Octojam 7 Title (JohnEarnest, 2020-08-07)", R"({"instructionsPerFrame": 30, "optWrapSprites": true, "optInstantDxyn": true, "optDontResetVf": true, "advanced": {"col1": "#ff8c1f", "col2": "#FF6600", "col3": "#662200", "col0": "#662200", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
     {"9b72b6656cb714cd64de00ac78dc7bf8374adec6", emu::chip8::Variant::CHIP_8, "Hidden (David Winter)", nullptr, nullptr},
-    {"9b7faac49c44c1194a3283c2ef89eabfca76fe38", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"9b7faac49c44c1194a3283c2ef89eabfca76fe38", emu::chip8::Variant::SCHIP_1_1, "Scroll Test (unknown author)", nullptr, nullptr},
     {"9be0cc119f8e3c18b7f0203c54b30c50b8f438a9", emu::chip8::Variant::CHIP_8, "Sierpchaos (Marco Varesio, 2015)", nullptr, nullptr},
     //{"9bf96e23963995c6d702ae21c9b8741cbb688f47", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"9bf96e23963995c6d702ae21c9b8741cbb688f47", emu::chip8::Variant::XO_CHIP, "Jub8 Song 3 (your name here, 2016-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#000000", "col2": "#FDFFD5", "col3": "#BA5A1A", "col0": "#353C41", "buzzColor": "#353C41", "quietColor": "#353C41", "screenRotation": 0}})", nullptr},
-    {"9bfae01da1a94f99aba692da1a7a2148eb8561b4", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Pinball (Andrew Modla)", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms)
+    {"9bfae01da1a94f99aba692da1a7a2148eb8561b4", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Pinball (Andrew Modla), defect", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms, incomplete but out there)
     {"9c05f5295282abfd89483790191ea59f9d031de5", emu::chip8::Variant::XO_CHIP, "Tapeworm", nullptr, nullptr},                       // Tapeworm.xo8
     {"9d834860f455aec7e95fb886984497e5be501610", emu::chip8::Variant::CHIP_8, "Slippery Slope (JohnEarnest, 2018-10-31)", R"({"instructionsPerFrame": 30, "optWrapSprites": true, "advanced": {"col1": "#000080", "col2": "#FF6600", "col3": "#662200", "col0": "#B0E0E6", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     //{"9d9f88509b5033152b7b49d2c7ea3c3c5fce2bd6", {emu::Chip8EmulatorOptions::eSCHIP11}},
@@ -499,7 +491,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"a168709fcf09b28cd9b9519698d3d8a383944f43", emu::chip8::Variant::XO_CHIP, "Lan8Ton'S Ant (Faffochip, 2015)", nullptr, nullptr},
     {"a18f1e3897416180b32e47ddc82cba9aca2c8d52", emu::chip8::Variant::CHIP_8, "Paddles", nullptr, nullptr},                 // Paddles.ch8
     {"a1c1e0e7b01004be3ee77c69030e6b536cb316e6", emu::chip8::Variant::CHIP_8, "Superworm V4 (RB-Revival Studios, Martijn Wenting, 2007)", nullptr, nullptr},
-    {"a1ec824285a593cd1ca84dc6c732c61b0fe96330", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"a1ec824285a593cd1ca84dc6c732c61b0fe96330", emu::chip8::Variant::SCHIP_1_1, "SuperChip Test (unknown author)", nullptr, nullptr},
     //{"a2788177b820a28cd27e6d2d180340cb7f4948fb", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"a2788177b820a28cd27e6d2d180340cb7f4948fb", emu::chip8::Variant::SCHIPC, "Loopz (hap, 2006)", nullptr, nullptr},
     {"a27dcf88a931f70c3ccf3c01a5410b263bac48bc", emu::chip8::Variant::CHIP_8, "Animal Race (Brian Astle)", nullptr, nullptr},
@@ -510,7 +502,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"a4a9351775b2a64bbd14e3980968db19c254a988", emu::chip8::Variant::XO_CHIP, "Flutter By (TomRintjema, 2019-10-08)", R"({"instructionsPerFrame": 7, "advanced": {"col1": "#9BBC0F", "col2": "#8BAC0F", "col3": "#306230", "col0": "#0F380F", "buzzColor": "#333333", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     //{"a4c8e14b43dc75bc960a42a5300f64dc6e52cf32", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"a4c8e14b43dc75bc960a42a5300f64dc6e52cf32", emu::chip8::Variant::SCHIPC, "Stars (Sergey Naydenov, 2010)", nullptr, nullptr},
-    {"a558e24022e30dd5206909eeca074949f3fb6f59", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"a558e24022e30dd5206909eeca074949f3fb6f59", emu::chip8::Variant::SCHIP_1_1, "SC Test (unknown author)", nullptr, nullptr},
     //{"a56c09537df0f32e2d49fb68cb2ba8216b38f632", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"a56c09537df0f32e2d49fb68cb2ba8216b38f632", emu::chip8::Variant::SCHIPC, "Ant - In Search Of Coke (Erin S. Catto, 199x)", nullptr, nullptr},
     {"a58ec7cc63707f9e7274026de27c15ec1d9945bd", emu::chip8::Variant::CHIP_8, "Squash (David Winter, 19xx)", nullptr, nullptr},
@@ -524,6 +516,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"a82ca5c53e1dcedfab4f65efef02229145771b7d", emu::chip8::Variant::CHIP_8, "Chip8 Picture", nullptr, nullptr},                   // Chip8 Picture.ch8
     {"a8d6e9b1976c99ddc0c4818828a6d3cb3ae6f348", emu::chip8::Variant::CHIP_8, "Wdl (JohnEarnest, 2022-10-10)", R"({"instructionsPerFrame": 15, "advanced": {"col1": "#808080", "col2": "#FF6600", "col3": "#662200", "col0": "#D3D3D3", "buzzColor": "#FF0000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
     {"a8ed3c25c00130838b3ee36cc82fbf32ce6cea83", emu::chip8::Variant::CHIP_8, "Hello World (Tim Franssen, 2020)", nullptr, nullptr},
+    {"a8fa6ac84059c1c255383c12eb1880a3cb13ad0d", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Pinball (Andrew Modla)", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms)
     {"a902480e6e18c5287388b6797da36d640db9992b", emu::chip8::Variant::XO_CHIP, "Joust (Jason DuPertuis, 2017)", nullptr, nullptr},
     {"a98ed56f88f11156871d871d9200fc4bb45190a4", emu::chip8::Variant::XO_CHIP, "Super Octo Track Xo (TomRintjema, 2015-10-15)", R"({"instructionsPerFrame": 100, "optLoadStoreDontIncI": true, "advanced": {"col1": "#FF00FF", "col2": "#00FFFF", "col3": "#FFFFFF", "col0": "#000000", "buzzColor": "#990099", "quietColor": "#330033"}})", nullptr},
     //{"a9bf29597674c39b4e11d964b352b1e52c4ebb2f", {emu::Chip8EmulatorOptions::eSCHIP11}},
@@ -543,7 +536,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"adcfece2c527a68d8d74e6cfe7e84a8a04ad8182", emu::chip8::Variant::XO_CHIP, "Duel Of The F8S (Chromatophore, 2019)", nullptr, nullptr},
     {"ade839585ddeb0e3633177df03c1d91589e629eb", emu::chip8::Variant::CHIP_8, "Vers (JMN, 1991)", nullptr, nullptr},
     {"ae71a7b081a947f1760cdc147759803aea45e751", emu::chip8::Variant::CHIP_8, "Filter", nullptr, nullptr},                  // Filter.ch8
-    {"af98ee11adae28a6153cae8e4c16afa00f861907", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"af98ee11adae28a6153cae8e4c16afa00f861907", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Hires Stars (Sergey Naydenov, 2010)", nullptr, nullptr}, // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     {"afd9fee7565c54970b6bd7758aa8aa7843dd2e86", emu::chip8::Variant::XO_CHIP, "An Evening To Die For (JohnEarnest, 2019-10-22)", R"({"instructionsPerFrame": 500, "advanced": {"col1": "#000000", "col2": "#FF0000", "col3": "#FF0000", "col0": "#FFFFFF", "buzzColor": "#808080", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"b05dfd6bc0dca5106fb51ebc185406d633c96b44", emu::chip8::Variant::XO_CHIP, "Chip-8 Snake", nullptr, nullptr},                   // CHIP-8 Snake.xo8
     {"b0eec238f877ad6b17f2be33454353ab95584c79", emu::chip8::Variant::CHIP_8, "Flaps (Phillip Wagner, 2014)", nullptr, nullptr},
@@ -555,7 +548,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"b274ab30ed7678400dc2283431a45f7d98d9fced", emu::chip8::Variant::XO_CHIP, "Jub8 Song 5 (your name here, 2016-08-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#000000", "col2": "#FDFFD5", "col3": "#BA5A1A", "col0": "#353C41", "buzzColor": "#353C41", "quietColor": "#353C41", "screenRotation": 0}})", nullptr},
     {"b277c053b5b4ff9e40cd52cd4125a35ec22ccd0a", emu::chip8::Variant::SCHIP_1_1, "Bulb (JohnEarnest, 2020-10-15)", R"({"instructionsPerFrame": 100, "advanced": {"col1": "#1E90FF", "col2": "#ABCC47", "col3": "#00131A", "col0": "#F9FFB3", "buzzColor": "#F9FFB3", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
     {"b2abb5312f0ad28421c1190a65a73d98d4ebf401", emu::chip8::Variant::CHIP_8, "Pumpkin 'Dreess' Up (SystemLogoff, 2015-11-01)", R"({"instructionsPerFrame": 7, "advanced": {"col0": "#FFA500", "col1": "#111122", "buzzColor": "#FFFF00", "quietColor": "#222222"}})", nullptr},
-    {"b2c55b6aba3e2910036d5b5bc3956cf7493e0221", emu::chip8::Variant::CHIP_8_COSMAC_VIP, nullptr, nullptr, nullptr}, // Reveal Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
+    {"b2c55b6aba3e2910036d5b5bc3956cf7493e0221", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Trip8 Hires Demo (Revival Studios, 2008)", nullptr, nullptr}, // Revival Studios HIRES-CHIP-8 programs (actually self patching "Two page display CHIP-8", VIPER vol. 1, issue 3)
     //{"b3dcfd85a76a678960359e1ce9f742a4f9c35ed8", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"b3dcfd85a76a678960359e1ce9f742a4f9c35ed8", emu::chip8::Variant::SCHIPC, "Knight (Simon Klit-Johnson, 2016)", nullptr, nullptr},
     {"b3fed4ed1eb0ed693c9731dbe53b29a76236c781", emu::chip8::Variant::CHIP_8, "Bowling (Gooitzen van der Wal)", nullptr, nullptr},
@@ -584,18 +577,17 @@ static KnownRomInfo g_knownRoms[] = {
     {"bcbf36a68cf389e87dd54a9707cf35c4436dcb92", emu::chip8::Variant::SCHIP_1_1, "Applejak (JohnEarnest, 2020-10-07)", R"({"instructionsPerFrame": 100, "advanced": {"col1": "#B00000", "col2": "#FF6600", "col3": "#662200", "col0": "#001000", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"bdb92475acfe11bc7814a2f5eade13fcd09b756a", emu::chip8::Variant::CHIP_8, "Ufo (Lutz V, 1992)", nullptr, nullptr},
     {"c05d1316bbb8acb1ba425c3ebdd0123632a73fd8", emu::chip8::Variant::CHIP_8, "Asphyxiation (Verisimilitudes, 2020)", nullptr, nullptr},
-    {"c1b605040e29cce2a6fc52334fb09b0985340314", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"c1b605040e29cce2a6fc52334fb09b0985340314", emu::chip8::Variant::SCHIP_1_1, "Test 128 (unknown author)", nullptr, nullptr},
     //{"c2a361700209116a300457eacbf33a8c40c01b83", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"c2a361700209116a300457eacbf33a8c40c01b83", emu::chip8::Variant::SCHIPC, "Super Astro Dodge (Revival Studios, 2008)", nullptr, nullptr},
     {"c314300d1630a479678167e4e786cce2c17831cd", emu::chip8::Variant::CHIP_8, "Starfield (Joel Yliluoma, 2015)", nullptr, nullptr},
     {"c32175db0c0508065709fc9cb42b233b24dad7fe", emu::chip8::Variant::CHIP_8, "2048 (Andrew James, 2021)", nullptr, nullptr},
     {"c33af07674dbbec5365bd91954c8bfed4a7467bd", emu::chip8::Variant::CHIP_8, "Ghost Escape! (TomR, 2016)", nullptr, nullptr},
-    {"c5a2e40a381086e7d2064f9836c57224e27ec7ed", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Message Center  (Andrew-Modla)", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms)
+    {"c5a2e40a381086e7d2064f9836c57224e27ec7ed", emu::chip8::Variant::CHIP_8_COSMAC_VIP, "Message Center (Andrew-Modla)", nullptr, nullptr}, // CHIP-8 VIP (hybrid roms)
     {"c606d52970b86edcca4e87e9f6fae4b1ccbbbb0f", emu::chip8::Variant::XO_CHIP, "Chicken Scratch (JohnEarnest, 2020-10-28)", R"({"instructionsPerFrame": 500, "advanced": {"col1": "#7C4300", "col2": "#FD8100", "col3": "#FD8100", "col0": "#D5A08C", "buzzColor": "#3C2300", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
     {"c617cd419bb3b51c2224b247782d73c46bc075c8", emu::chip8::Variant::CHIP_8, "Chip-Otto Logo 1 (Marco Varesio, 2015)", nullptr, nullptr},
     //{"c7c59b38129fdcec5bb0775a9a141b6ba936e706", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"c7c59b38129fdcec5bb0775a9a141b6ba936e706", emu::chip8::Variant::SCHIPC, "Sokoban (hap, 2006)", nullptr, nullptr},
-    {"c8375d6a626ea21532cde178a7a0a22b7e511414", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
     {"c8375d6a626ea21532cde178a7a0a22b7e511414", emu::chip8::Variant::SCHIPC, "Super Gem Catcher (Dakota Hernandez, 2018)", nullptr, nullptr},
     {"c8a3ccbdde2a289992077779cb02f1200cfed4bb", emu::chip8::Variant::CHIP_8, "Rule 30 (Verisimilitudes, 2029)", nullptr, nullptr},
     {"c8d2ebbc16551a4bee1f0e2b33f0510e4170afcf", emu::chip8::Variant::CHIP_8, "Connect 4 (David Winter)", nullptr, nullptr},
@@ -603,7 +595,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"c9a13c00d8391f352488661fc3b15217f0e8d9fd", emu::chip8::Variant::CHIP_8, "Br8Kout (SharpenedSpoon, 2014)", nullptr, nullptr},
     {"c9eb637f750e7ca11e5ab1f30b7a69db475e5e23", emu::chip8::Variant::CHIP_8, "Warshaws Revenge (Ethan Pini, 2019)", nullptr, nullptr},
     {"cbbbc76a440b4020ecb9a6c95e95e636a8b23214", emu::chip8::Variant::CHIP_8, "Lainchain (Ashton Harding, 2018)", nullptr, nullptr},
-    {"cc8db4b4ce858b0255ade64b1b8ea9d7c9d7d7fb", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"cc8db4b4ce858b0255ade64b1b8ea9d7c9d7d7fb", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Flip-8 logo (Newsdee, 2006)", nullptr, nullptr},
     //{"ccec955da264cd92fdbb18c4971419497513ae42", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"ccec955da264cd92fdbb18c4971419497513ae42", emu::chip8::Variant::XO_CHIP, "Pizza Topping Panic! (Tom Rintjema, 2019)", nullptr, nullptr},
     {"cda3f758c2566c2067cfe6dd984747f6d24ca759", emu::chip8::Variant::CHIP_8, "Whack-A-Mole (unfinished game)", nullptr, nullptr},
@@ -624,9 +616,9 @@ static KnownRomInfo g_knownRoms[] = {
     {"d52c2f85f56c963ff5e48a096afc61d3c8a71c11", emu::chip8::Variant::XO_CHIP, "Octo Party Mix! (Cratmang, 2020-10-29)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#55ff55", "col2": "#ff7700", "col3": "#ffffff", "col0": "#000000", "buzzColor": "#000000", "quietColor": "#000000", "screenRotation": 0, "fontStyle": "octo"}})", nullptr},
     {"d54aaedefbf74f56b7446a5108885ddc33fb6fa1", emu::chip8::Variant::CHIP_8, "Death Star Vs Yoda (TodPunk, 2018)", nullptr, nullptr},
     {"d5ddd7d5071951c682cd4214474acbdd852234c4", emu::chip8::Variant::XO_CHIP, "Fest (Jacoboco, 2020)", nullptr, nullptr},
-    {"d60314d126dd2aab429d2299dfc8740323adfae4", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"d60314d126dd2aab429d2299dfc8740323adfae4", emu::chip8::Variant::SCHIP_1_1, "Sokoban, alt (hap, 2006)", nullptr, nullptr},
     {"d666688a8fce468a7d88b536bc1ef5f35ba12031", emu::chip8::Variant::CHIP_8, "Wipe Off (Joseph Weisbecker, 19xx)", nullptr, nullptr},
-    {"d68352857be1e44086aa0163eef8aad8251e0817", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"d68352857be1e44086aa0163eef8aad8251e0817", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Jughead (Sly DC, 2016)", nullptr, nullptr},
     //{"d6cbd3af85b4c55b83c4e01f3a17c66fcebe9ccc", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"d6cbd3af85b4c55b83c4e01f3a17c66fcebe9ccc", emu::chip8::Variant::SCHIPC, "Single Dragon (David Nurser, 199x)", nullptr, nullptr},
     {"d6d8efef811350e7fba6197024c4973b360749b8", emu::chip8::Variant::CHIP_8, "Octojam 5 Title (JohnEarnest, 2018-09-24)", R"({"instructionsPerFrame": 7, "optWrapSprites": true, "advanced": {"col1": "#000080", "col2": "#FF6600", "col3": "#662200", "col0": "#FF69B4", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
@@ -649,26 +641,26 @@ static KnownRomInfo g_knownRoms[] = {
     {"dd6ef80cadef1e7b42f71ad99573b1af2299e27d", emu::chip8::Variant::SCHIPC, "Robot (unknown author)", nullptr, nullptr},
     {"de259351c65f790af035a4607a508c366bf4eaf2", emu::chip8::Variant::CHIP_8, "Nonogram (Verisimilitudes, 2021)", nullptr, nullptr},
     {"dea204fbfda4ed63fe2a2be255617bb9ee770a61", emu::chip8::Variant::CHIP_8, "3D Vip'R Maze (Tim Franssen, 2021)", nullptr, nullptr},
-    {"debfea355f5737be394d3e62d4970e733ec3b6fc", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
-    {"df5ced9c20d00bf7be7d3361d76f27d0d577abfb", emu::chip8::Variant::SCHIPC, "Horsey Jump (LarissaR, 2015-10-30)", R"({"instructionsPerFrame": 20, "advanced": {"col1": "#C3C3C3", "col2": "#FF6600", "col3": "#662200", "col0": "#006C00", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
+    {"debfea355f5737be394d3e62d4970e733ec3b6fc", emu::chip8::Variant::SCHIP_1_1, "Character Test (A-KouZ1, 2016)", nullptr, nullptr},
+    {"df5ced9c20d00bf7be7d3361d76f27d0d577abfb", emu::chip8::Variant::SCHIP_1_1, "Horsey Jump (LarissaR, 2015-10-30)", R"({"instructionsPerFrame": 20, "optJustShiftVx": false, "optLoadStoreDontIncI": false, "advanced": {"col1": "#C3C3C3", "col2": "#FF6600", "col3": "#662200", "col0": "#006C00", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
     {"e0596d264ead3c71cf76b352f71959c82c748519", emu::chip8::Variant::GENERIC_CHIP_8, "4-Flags (Timendus, 2023-11-13)", nullptr, "@GH/Timendus/chip8-test-suite/v4.1/bin/4-flags.ch8"},
     //{"e14350d3b19443e5ad2848172bef9719a8680b01", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"e14350d3b19443e5ad2848172bef9719a8680b01", emu::chip8::Variant::XO_CHIP, "Red October V (Kesha, 2018-10-31)", R"({"instructionsPerFrame": 10000, "advanced": {"col1": "#000000", "col2": "#ffff00", "col3": "#808000", "col0": "#b22d10", "buzzColor": "#400000", "quietColor": "#400000", "screenRotation": 0}})", nullptr},
     {"e2005db6391f589534dd2d63a95b429338bd667c", emu::chip8::Variant::CHIP_8, "Rocket Launcher", nullptr, nullptr},                 // Rocket Launcher.ch8
-    {"e234c3781f9b65d2c1940976d10bf06ce7742b8d", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"e234c3781f9b65d2c1940976d10bf06ce7742b8d", emu::chip8::Variant::SCHIP_1_1, "H.Piper v2.0, alt (Paul Raines, 1995)", nullptr, nullptr},
     //{"e251b6132b15d411a9fe5d1e91a6579e3e057527", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"e251b6132b15d411a9fe5d1e91a6579e3e057527", emu::chip8::Variant::XO_CHIP, "I'Ll Be Back (sound)", nullptr, nullptr},
     //{"e2cf46c544bee2ef8a8b21dba1c583d5121b1b96", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"e2cf46c544bee2ef8a8b21dba1c583d5121b1b96", emu::chip8::Variant::XO_CHIP, "Octo Crawl (taqueso, 2016)", nullptr, nullptr},
     //{"e2d86d6c70877e99ed4253c9a83d4da42e5a14ee", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"e2d86d6c70877e99ed4253c9a83d4da42e5a14ee", emu::chip8::Variant::XO_CHIP, "Bustin (Tom Rintjema, 2019)", nullptr, nullptr},
-    {"e46f333cd95785b554f8dda5690e165959dfb4be", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"e46f333cd95785b554f8dda5690e165959dfb4be", emu::chip8::Variant::SCHIP_1_1, "Alien 8, alt, (Jonas Lindstedt, 199x)", nullptr, nullptr},
     //{"e4ef6fff9813c43bd7ad2ecaf02d1a3135d68418", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"e4ef6fff9813c43bd7ad2ecaf02d1a3135d68418", emu::chip8::Variant::SCHIPC, "Magic Square (David Winter, 199x)", nullptr, nullptr},
     {"e5564c1662d3f144507782784ae4e2f79eaf66d7", emu::chip8::Variant::SCHIPC, "Pich8-Logo (Philw07, 2020)", nullptr, nullptr},
     {"e55f36b9ecd6fbbeb626a78f222011bddd5e5197", emu::chip8::Variant::CHIP_8, "Love8 Intro (Athir Saleem, 2019)", nullptr, nullptr},
     {"e60257f0718aa6aab249667bd90af598d21b97bc", emu::chip8::Variant::CHIP_8, "Vip Demo - King Kong (unknown author)", nullptr, nullptr},
-    {"e62d9d26d2d1b65e6aafb8331cae333fbadcaebf", emu::chip8::Variant::MEGA_CHIP, nullptr, nullptr, nullptr},
+    {"e62d9d26d2d1b65e6aafb8331cae333fbadcaebf", emu::chip8::Variant::MEGA_CHIP, "Mega Minimal (Revival Studios, 2007)", nullptr, nullptr},
     {"e670ac22abbfe46a3bcf98e36ac5a34074c43693", emu::chip8::Variant::GENERIC_CHIP_8, "2-Ibm-Logo (Timendus, 2023-11-13)", nullptr, "@GH/Timendus/chip8-test-suite/v4.1/bin/2-ibm-logo.ch8"},
     //{"e6a027d00c524ab7ae00b720f64a06ad1137836c", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"e6a027d00c524ab7ae00b720f64a06ad1137836c", emu::chip8::Variant::CHIP_8, "Letter Scroll (Michael Wales, 2014)", nullptr, nullptr},
@@ -680,9 +672,9 @@ static KnownRomInfo g_knownRoms[] = {
     {"e6d910b7c9f9680df462662ce16336ebcb0eab1e", emu::chip8::Variant::SCHIPC, "Super Maze (David Winter, 199x)", nullptr, nullptr},
     {"e74f20f234753e0cc2f58e29dc02d6128a6a3d97", emu::chip8::Variant::SCHIPC, "The Binding Of Cosmac (buffi, 2016-10-21)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#FFCC00", "col2": "#FF6600", "col3": "#662200", "col0": "#996600", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"e78144bb9bdf7b48b096e1cdd0f4db430bfd731e", emu::chip8::Variant::CHIP_8, "Shooth3Rd (Beholder, 2016)", nullptr, nullptr},
-    {"e8477fad78863714c508c046d2419248c5f89690", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"e8477fad78863714c508c046d2419248c5f89690", emu::chip8::Variant::SCHIP_1_1, "Emutest (Hap, 2006)", nullptr, nullptr},
     {"e85ade7412e8affc4a8590fc0c928f1f00c5eb6b", emu::chip8::Variant::XO_CHIP, "Angle Of Death (Chromatophore, 2020)", nullptr, nullptr},
-    {"e9488cc1878ba9c0042d576cc1b3679ea1632098", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"e9488cc1878ba9c0042d576cc1b3679ea1632098", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Project Cherry Logo (Blyss Sarania, 2014)", nullptr, nullptr},
     {"e99657c8a3bfbfb5a9cb70e7d330346802ce20ce", emu::chip8::Variant::CHIP_8, "Asphyxiation Advanced (Verisimilitudes, 2020)", nullptr, nullptr},
     {"e9ce37041ac752ef910bb5c47ee9a031403223be", emu::chip8::Variant::CHIP_8, "Animal Race (Brian_Astle, fixed)", nullptr, nullptr},
     {"ea4ec4c07c97e1ad77eb9bfe237d2a1578795fbf", emu::chip8::Variant::CHIP_8, "Seconds Counter (Michael Wales, 2014)", nullptr, nullptr},
@@ -695,7 +687,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"eb412becb086d3cbccce4e3e370b9149b969cff9", emu::chip8::Variant::CHIP_8, "Flashing 1 Demo (Yahia Farghaly, 2019)", nullptr, nullptr},
     {"eb548f0a0ceca4da0475112ab14e223a63350c89", emu::chip8::Variant::CHIP_8, "C-Zero (Ethan Pini, 2019)", nullptr, nullptr},
     {"eb72a25bd58e122e65a540807e7a1816abaa4f41", emu::chip8::Variant::CHIP_8, "Framed Mk2 (GV Samways, 1980)", nullptr, nullptr},
-    {"eba3b6ac5539452d1dd0c7c045d69e6096c457dd", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"eba3b6ac5539452d1dd0c7c045d69e6096c457dd", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Kyori (Hap, 2005)", nullptr, nullptr},
     //{"ebada8eb97ce40a91554386696f7daa33023cc8c", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"ebada8eb97ce40a91554386696f7daa33023cc8c", emu::chip8::Variant::SCHIPC, "Chip-84 Scratch (Christian Kosman, 2018)", nullptr, nullptr},
     {"ec00e355117ed6385b51c0819f85954c3b765ed0", emu::chip8::Variant::CHIP_8, "Ball Breaker (Verisimilitudes, 2020)", nullptr, nullptr},
@@ -723,7 +715,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"f2e9c480af31a4039af02dd7a2b8d5d1f859704d", emu::chip8::Variant::CHIP_8, "Zeropong (zeroZshadow, 2007)", nullptr, nullptr},
     //{"f31a8912ffb8a2920eb7ad5d645aa65a413b6ae9", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"f31a8912ffb8a2920eb7ad5d645aa65a413b6ae9", emu::chip8::Variant::SCHIPC, "Laser (unknown author)", nullptr, nullptr},
-    {"f3f2d91e4cb8886b5af2f556827574bf1fd8967c", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"f3f2d91e4cb8886b5af2f556827574bf1fd8967c", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Blyss (Blyss Sarania, 2014)", nullptr, nullptr},
     {"f4392681b1fa38d7ad0a7d7a59cecf247ac1457a", emu::chip8::Variant::CHIP_8, "Chipquarium (mattmik, 2016-10-31)", R"({"instructionsPerFrame": 15, "advanced": {"col1": "#FFFFFF", "col2": "#FF6600", "col3": "#662200", "col0": "#0072ff", "buzzColor": "#FFAA00", "quietColor": "#0000FF", "screenRotation": 0}})", nullptr},
     //{"f4e50d6e209324906b7899ed785a0d849a397abc", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"f4e50d6e209324906b7899ed785a0d849a397abc", emu::chip8::Variant::SCHIPC, "Alien Hunter (Hans, 2015)", nullptr, nullptr},
@@ -740,7 +732,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"f64e87b8a4161806b4dad9bfc317d4341b410beb", emu::chip8::Variant::XO_CHIP, "Heh, I Chipped Your Mom'S Eight Last Night (sound)", nullptr, nullptr},
     {"f6ee978a1dfded9262f08dc95bfb3071c5767e78", emu::chip8::Variant::CHIP_8, "Prads Demo (Pradipna Nepal, 2010)", nullptr, nullptr},
     {"f7510be8f3299f8e350626ef5cb88041a5c95f3c", emu::chip8::Variant::CHIP_8, "Falling (Verisimilitudes, 2019)", nullptr, nullptr},
-    {"f7a3e2e3272b03631efa561976f981bac351a603", emu::chip8::Variant::SCHIP_1_1, nullptr, nullptr, nullptr},
+    {"f7a3e2e3272b03631efa561976f981bac351a603", emu::chip8::Variant::SCHIP_1_1, "SCHIP Test (IQ_132, 20xx)", nullptr, nullptr},
     //{"f8008875a4b35dc7188eeca2a05535116371eaf0", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"f8008875a4b35dc7188eeca2a05535116371eaf0", emu::chip8::Variant::SCHIPC, "Superworm V3 (RB, 1992)", nullptr, nullptr},
     {"f84ad99d0095ef1281b55c779783b99cb53d2ade", emu::chip8::Variant::CHIP_8, "Bullet Patterns (buffi, 2015)", nullptr, nullptr},
@@ -770,6 +762,26 @@ static KnownRomInfo g_knownRoms[] = {
 };
 
 static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]);
+
+size_t Librarian::numKnownRoms()
+{
+    return g_knownRomNum;
+}
+
+const KnownRomInfo* Librarian::getKnownRoms()
+{
+    return g_knownRoms;
+}
+
+const KnownRomInfo* Librarian::findKnownRom(const std::string sha1)
+{
+    for(int i = 0; i < g_knownRomNum; ++i) {
+        if(sha1 == g_knownRoms[i].sha1) {
+            return &g_knownRoms[i];
+        }
+    }
+    return nullptr;
+}
 
 std::string Librarian::Info::minimumOpcodeProfile() const
 {
@@ -939,20 +951,15 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
     return foundOne;
 }
 
-const KnownRomInfo* findRom(const std::string& sha1)
-{
-    for(int i = 0; i < g_knownRomNum; ++i) {
-        if(sha1 == g_knownRoms[i].sha1) {
-            return &g_knownRoms[i];
-        }
-    }
-    return nullptr;
-}
-
 bool Librarian::isKnownFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
-    return _cfg.romConfigs.count(sha1sum) || findRom(sha1sum) != nullptr;
+    return _cfg.romConfigs.count(sha1sum) || findKnownRom(sha1sum) != nullptr;
+}
+
+bool Librarian::isKnownFile(const std::string& sha1sum) const
+{
+    return _cfg.romConfigs.count(sha1sum) || findKnownRom(sha1sum) != nullptr;
 }
 
 emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum) const
@@ -960,7 +967,7 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::stri
     auto cfgIter = _cfg.romConfigs.find(sha1sum);
     if(cfgIter != _cfg.romConfigs.end())
         return cfgIter->second.behaviorBase;
-    const auto* romInfo = findRom(sha1sum);
+    const auto* romInfo = findKnownRom(sha1sum);
     return romInfo ? emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant) : emu::Chip8EmulatorOptions::eCHIP8;
 }
 
@@ -999,18 +1006,23 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getEstimatedPresetForFile(
 emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size) const
 {
     auto sha1sum = calculateSha1Hex(data, size);
+    return getOptionsForFile(sha1sum);
+}
+
+emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const std::string& sha1sum) const
+{
     auto cfgIter = _cfg.romConfigs.find(sha1sum);
     if(cfgIter != _cfg.romConfigs.end()) {
         return cfgIter->second;
     }
-    const auto* romInfo = findRom(sha1sum);
+    const auto* romInfo = findKnownRom(sha1sum);
     if (romInfo) {
         auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
         auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
         if(romInfo->options) {
             emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
-            options.behaviorBase = preset;
         }
+        options.behaviorBase = preset;
         return options;
     }
     return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
