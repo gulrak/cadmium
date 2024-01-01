@@ -162,7 +162,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         }
     }
     else if(isKnown) {
-        if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE)
+        if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
             updateEmulatorOptions(knownOptions);
         if(_options.hasColors()) {
             _options.updateColors(_colorPalette);
@@ -296,7 +296,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         _romSha1Hex = romSha1Hex.empty() ? calculateSha1Hex(_romImage.data(), _romImage.size()) : romSha1Hex;
         _romName = filename;
         _romIsWellKnown = isKnown;
-        if(isKnown)
+        if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
             _romWellKnownOptions = _options;
         _chipEmu->reset();
         if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
