@@ -296,10 +296,10 @@ public:
             case 0x79: return {1, "MARK"};
             case 0x7A: return {1, "REQ"};
             case 0x7B: return {1, "SEQ"};
-            case 0x7C: return {1, "ADCI"};
-            case 0x7D: return {1, "SDBI"};
+            case 0x7C: return {2, fmt::format("ADCI #0x{:02X}", *code)};
+            case 0x7D: return {2, fmt::format("SDBI #0x{:02X}", *code)};
             case 0x7E: return {1, "SHLC"};
-            case 0x7f: return {1, "SMBI"};
+            case 0x7F: return {2, fmt::format("SMBI #0x{:02X}", *code)};
             CASE_16(0x80): return {1, fmt::format("GLO R{:X}", n)};
             CASE_16(0x90): return {1, fmt::format("GHI R{:X}", n)};
             CASE_16(0xA0): return {1, fmt::format("PLO R{:X}", n)};
