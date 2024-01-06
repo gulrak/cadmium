@@ -535,6 +535,7 @@ public:
     void op00Dn_masked(uint16_t opcode);
     void op00E0(uint16_t opcode);
     void op00E0_megachip(uint16_t opcode);
+    void op00ED_c8e(uint16_t opcode);
     void op00EE(uint16_t opcode);
     void op00EE_cyclic(uint16_t opcode);
     void op00FB(uint16_t opcode);
@@ -549,6 +550,8 @@ public:
     void op00FF_withClear(uint16_t opcode);
     void op00FF_megachip(uint16_t opcode);
     void op01nn(uint16_t opcode);
+    void op0151_c8e(uint16_t opcode);
+    void op0188_c8e(uint16_t opcode);
     void op02A0_c8x(uint16_t opcode);
     void op02nn(uint16_t opcode);
     void op03nn(uint16_t opcode);
@@ -570,9 +573,12 @@ public:
     void op5xy0(uint16_t opcode);
     void op5xy0_with_F000(uint16_t opcode);
     void op5xy0_with_01nn(uint16_t opcode);
+    void op5xy1_c8e(uint16_t opcode);
     void op5xy1_c8x(uint16_t opcode);
     void op5xy2(uint16_t opcode);
+    void op5xy2_c8e(uint16_t opcode);
     void op5xy3(uint16_t opcode);
+    void op5xy3_c8e(uint16_t opcode);
     void op5xy4(uint16_t opcode);
     void op6xnn(uint16_t opcode);
     void op7xnn(uint16_t opcode);
@@ -595,6 +601,8 @@ public:
     void op9xy0_with_01nn(uint16_t opcode);
     void opAnnn(uint16_t opcode);
     void opBnnn(uint16_t opcode);
+    void opBBnn_c8e(uint16_t opcode);
+    void opBFnn_c8e(uint16_t opcode);
     void opBxy0_c8x(uint16_t opcode);
     void opBxyn_c8x(uint16_t opcode);
     void opBxnn(uint16_t opcode);
@@ -617,12 +625,14 @@ public:
     void opFx0A(uint16_t opcode);
     void opFx15(uint16_t opcode);
     void opFx18(uint16_t opcode);
+    void opFx1B_c8e(uint16_t opcode);
     void opFx1E(uint16_t opcode);
     void opFx29(uint16_t opcode);
     void opFx29_ship10Beta(uint16_t opcode);
     void opFx30(uint16_t opcode);
     void opFx33(uint16_t opcode);
     void opFx3A(uint16_t opcode);
+    void opFx4F_c8e(uint16_t opcode);
     void opFx55(uint16_t opcode);
     void opFx55_loadStoreIncIByX(uint16_t opcode);
     void opFx55_loadStoreDontIncI(uint16_t opcode);

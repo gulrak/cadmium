@@ -1,0 +1,238 @@
+:macro stop { :byte 0x00 :byte 0xed }
+:macro nop-8e { :byte 0x00 :byte 0xf2 }
+:macro wait-dt { :byte 0x01 :byte 0x51 }
+:macro skip-next { :byte 0x01 : byte 0x88 }
+:macro skip-bytes reg { :calc FX { 0xF0 + ( reg & 0xF ) } :byte FX :byte 0x1b }
+:macro wait-for reg { :calc FX { 0xF0 + ( reg & 0xF ) } :byte FX :byte 0x4f }
+:macro input3-wait reg { :calc FX { 0xF0 + ( reg & 0xF ) } :byte FX :byte 0xe3 }
+:macro input3 reg { :calc FX { 0xF0 + ( reg & 0xF ) } :byte FX :byte 0xe7 }
+
+:include "inc/font-header.8o"
+
+: main
+    clear
+    setFont font-4-pix-low
+    drawText chip-8e-test-str 32 21 64 32
+    va := 1
+    vb := 18
+    vc := 1
+
+: test-nop
+    drawText nop-str va vc 64 32
+
+    v0 := 3
+    v1 := 0
+    delay := v0
+    loop
+            v0 := delay
+            if v0 != 2 then
+    again
+    loop
+        v1 += 1
+        v0 := delay
+        if v0 != 1 then
+    again
+    loop
+        nop-8e
+        v1 -= 1
+        v0 := delay
+        if v0 != 0 then
+    again
+    i := check-mark
+    if v1 > 2 then
+        i := fail-mark
+    sprite vb vc 5
+
+
+: test-wait-dt
+    vc += 5
+    drawText wait-dt-str va vc 64 32
+
+    v0 := 10
+    delay := v0
+    wait-dt
+    v0 := delay
+    i := check-mark
+    if v0 != 0 then
+        i := fail-mark
+    sprite vb vc 5
+
+
+: test-skip-next
+    vc += 5
+    drawText skip-next-str va vc 64 32
+    i := check-mark
+    skip-next
+    i := fail-mark
+    sprite vb vc 5
+
+
+: test-vx-gz-vy
+    vc += 5
+    drawText vx-gt-vy-str va vc 64 32
+    v0 := 5
+    v1 := 0x8f
+    i := fail-mark
+    0x50 0x11
+    i := check-mark
+    0x51 0x01
+    i := fail-mark
+    sprite vb vc 5
+
+
+: test-save-vx-vy
+    vc += 5
+    drawText save-vx-vy-str va vc 64 32
+    v2 := 42
+    v3 := 23
+    i := scratchpad
+    save v2 - v3
+    load v0
+    if v0 != 0x22 then
+        jump save-vx-vy-fail
+    i := scratchpad
+    load v1
+    if v0 != v2 then
+        jump save-vx-vy-fail
+    if v1 != v3 then
+        jump save-vx-vy-fail
+    v0 := 0
+    v1 := 0
+    i := reverse-scratchpad
+    save v3 - v2
+    i := reverse-scratchpad
+    load v1
+    if v1 == v2 then
+        jump save-vx-vy-fail
+    i := check-mark
+    jump save-vx-vy-result
+: save-vx-vy-fail
+    i := fail-mark
+: save-vx-vy-result
+    sprite vb vc 5
+
+
+: test-load-vx-vy
+    vc += 5
+    drawText load-vx-vy-str va vc 64 32
+    v0 := 11
+    v1 := 22
+    v2 := 33
+    v4 := 44
+    i := scratchpad
+    save v4
+    i := scratchpad
+    load v5 - v6
+    if v0 != v5 then
+        jump load-vx-vy-fail
+    if v1 != v6 then
+        jump load-vx-vy-fail
+    load v0
+    if v0 != 33 then
+        jump load-vx-vy-fail
+    i := check-mark
+    jump load-vx-vy-result
+: load-vx-vy-fail
+    i := fail-mark
+: load-vx-vy-result
+    sprite vb vc 5
+
+
+: test-jump-back
+    va := 32
+    vb := 48
+    vc := 1
+    drawText jump-forward-str va vc 64 32
+    i := check-mark
+    0xbf 0x04
+    i := fail-mark
+    jump jump-forward-result
+    i := fail-mark
+: jump-forward-result
+    sprite vb vc 5
+
+
+: test-jump-forward
+    vc += 5
+    drawText jump-back-str va vc 64 32
+    jump jump-back-target
+    0x00
+    i := check-mark
+    jump jump-back-result
+: jump-back-target
+    i := fail-mark
+    0xbb 0x06
+: jump-back-result
+    sprite vb vc 5
+
+
+: test-skip-bytes
+    vc += 5
+    drawText skip-bytes-str va vc 64 32
+    v0 := 5
+    skip-bytes v0
+    i := fail-mark
+    jump skip-bytes-label
+    0x00
+    i := check-mark
+: skip-bytes-label
+    sprite vb vc 5
+
+
+: test-wait-for
+    vc += 5
+    drawText wait-for-str va vc 64 32
+    v0 := 10
+    delay := v0
+    v0 := 5
+    wait-for v0
+    i := fail-mark
+    v0 := delay
+    if v0 == 0 then
+        i := check-mark
+    sprite vb vc 5
+
+
+    v0 := 10
+    wait-for v0
+    loop again
+
+: scratchpad
+    0x00 0x00 0x22 0x33 0x00 0x00 0x00 0x00
+
+: chip-8e-test-str
+    str "C8E-Test" str-newline str "        v1.0" str-end
+
+: nop-str
+    str "00F2" str-end
+: wait-dt-str
+    str "0151" str-end
+: skip-next-str
+    str "0188" str-end
+: vx-gt-vy-str
+    str "5xy1" str-end
+: save-vx-vy-str
+    str "5xy2" str-end
+: load-vx-vy-str
+    str "5xy3" str-end
+: jump-back-str
+    str "BBnn" str-end
+: jump-forward-str
+    str "BFnn" str-end
+: skip-bytes-str
+    str "Fx1B" str-end
+: wait-for-str
+    str "Fx4F" str-end
+
+: check-mark
+    0x00 0x10 0xa0 0x40 0x00
+: fail-mark
+    0x00 0xa0 0x40 0xa0 0x00
+
+# Include the font library anywhere you like
+:include "inc/font-library.8o"
+
+:include "inc/fonts/4-pix-low.8o"
+
+: reverse-scratchpad
+    0x00 0x00 0x00 0x00

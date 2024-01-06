@@ -1554,7 +1554,7 @@ public:
                             //SetNextWidth(_screenWidth - 383);
                             Begin();
                             Label("CHIP-8 variant / Core:");
-                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;SCHIP-MODERN;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8E;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
+                            if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8E;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;SCHIP-MODERN;MEGACHIP8;XO-CHIP;VIP-CHIP-8;VIP-CHIP-8 64x64;VIP-HI-RES-CHIP-8;VIP-CHIP-8E;VIP-CHIP-8X;VIP-CHIP-8X-64x64;VIP-HI-RES-CHIP-8X;CHIP-8 DREAM6800", &_behaviorSel)) {
                                 auto preset = static_cast<emu::Chip8EmulatorOptions::SupportedPreset>(_behaviorSel);
                                 _frameBoost = 1;
                                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -2673,7 +2673,7 @@ int main(int argc, char* argv[])
         exit(0);
     }
     if(opcodeJSON) {
-        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
+        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_8E|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
     }
     if(!dumpInterpreter.empty()) {

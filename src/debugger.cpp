@@ -151,7 +151,6 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     EndPanel();
     static Vector2 memScroll{0,0};
     static uint8_t memPage{0};
-    SetNextWidth(163);
     BeginPanel(memPage ? TextFormat("Memory [%02X....]", memPage) : "Memory", {0,0});
     {
         auto pos = GetCurrentPos();

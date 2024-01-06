@@ -155,6 +155,22 @@ void Chip8EmulatorFP::setHandler()
             on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
             on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
             break;
+        case Chip8EmulatorOptions::eCHIP8E:
+            on(0xFFFF, 0x00ED, &Chip8EmulatorFP::op00ED_c8e);
+            on(0xFFFF, 0x00F2, &Chip8EmulatorFP::opNop);
+            on(0xFFFF, 0x0151, &Chip8EmulatorFP::op0151_c8e);
+            on(0xFFFF, 0x0188, &Chip8EmulatorFP::op0188_c8e);
+            on(0xF00F, 0x5001, &Chip8EmulatorFP::op5xy1_c8e);
+            on(0xF00F, 0x5002, &Chip8EmulatorFP::op5xy2_c8e);
+            on(0xF00F, 0x5003, &Chip8EmulatorFP::op5xy3_c8e);
+            on(0xFF00, 0xBB00, &Chip8EmulatorFP::opBBnn_c8e);
+            on(0xFF00, 0xBF00, &Chip8EmulatorFP::opBFnn_c8e);
+            on(0xF0FF, 0xF003, &Chip8EmulatorFP::opNop);
+            on(0xF0FF, 0xF01B, &Chip8EmulatorFP::opFx1B_c8e);
+            on(0xF0FF, 0xF04F, &Chip8EmulatorFP::opFx4F_c8e);
+            on(0xF0FF, 0xF0E3, &Chip8EmulatorFP::opNop);
+            on(0xF0FF, 0xF0E7, &Chip8EmulatorFP::opNop);
+            break;
         case Chip8EmulatorOptions::eCHIP8X:
             on(0xFFFF, 0x02A0, &Chip8EmulatorFP::op02A0_c8x);
             on(0xF00F, 0x5001, &Chip8EmulatorFP::op5xy1_c8x);
@@ -523,6 +539,11 @@ void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
     _cycleCounter = calcNextFrame() - 1;
 }
 
+void Chip8EmulatorFP::op00ED_c8e(uint16_t opcode)
+{
+    halt();
+}
+
 void Chip8EmulatorFP::op00EE(uint16_t opcode)
 {
     if(!_rSP)
@@ -660,6 +681,22 @@ void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
         _screenNeedsUpdate = true;
         ++_clearCounter;
     }
+}
+
+void Chip8EmulatorFP::op0151_c8e(uint16_t opcode)
+{
+    if(_rDT) {
+        _rPC -= 2;
+        _cpuState = eWAITING;
+    }
+    else {
+        _cpuState = eNORMAL;
+    }
+}
+
+void Chip8EmulatorFP::op0188_c8e(uint16_t opcode)
+{
+    _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
 void Chip8EmulatorFP::op01nn(uint16_t opcode)
@@ -824,6 +861,13 @@ void Chip8EmulatorFP::op5xy0_with_01nn(uint16_t opcode)
     }
 }
 
+void Chip8EmulatorFP::op5xy1_c8e(uint16_t opcode)
+{
+    if (_rV[(opcode >> 8) & 0xF] > _rV[(opcode >> 4) & 0xF]) {
+        _rPC = (_rPC + 2) & ADDRESS_MASK;
+    }
+}
+
 void Chip8EmulatorFP::op5xy1_c8x(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = ((_rV[(opcode >> 8) & 0xF] & 0x77) + (_rV[(opcode >> 4) & 0xF] & 0x77)) & 0x77;
@@ -840,12 +884,38 @@ void Chip8EmulatorFP::op5xy2(uint16_t opcode)
         fixupSafetyPad();
 }
 
+void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
+{
+    auto x = (opcode >> 8) & 0xF;
+    auto y = (opcode >> 4) & 0xF;
+    if(x < y) {
+        auto l = y - x;
+        for(int i=0; i <= l; ++i)
+            _memory[(_rI + i) & ADDRESS_MASK] = _rV[x + i];
+        if(_rI + l >= ADDRESS_MASK)
+            fixupSafetyPad();
+        _rI = (_rI + l + 1) & ADDRESS_MASK;
+    }
+}
+
 void Chip8EmulatorFP::op5xy3(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
     for(int i=0; i <= std::abs(x-y); ++i)
         _rV[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+}
+
+void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
+{
+    auto x = (opcode >> 8) & 0xF;
+    auto y = (opcode >> 4) & 0xF;
+    if(x < y) {
+        auto l = y - x;
+        for(int i=0; i <= l; ++i)
+            _rV[x + i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _rI = (_rI + l + 1) & ADDRESS_MASK;
+    }
 }
 
 void Chip8EmulatorFP::op5xy4(uint16_t opcode)
@@ -983,6 +1053,16 @@ void Chip8EmulatorFP::op9xy0_with_01nn(uint16_t opcode)
 void Chip8EmulatorFP::opAnnn(uint16_t opcode)
 {
     _rI = opcode & 0xFFF;
+}
+
+void Chip8EmulatorFP::opBBnn_c8e(uint16_t opcode)
+{
+    _rPC = (_rPC - 2 - (opcode & 0xff)) & ADDRESS_MASK;
+}
+
+void Chip8EmulatorFP::opBFnn_c8e(uint16_t opcode)
+{
+    _rPC = (_rPC - 2 + (opcode & 0xff)) & ADDRESS_MASK;
 }
 
 void Chip8EmulatorFP::opBxy0_c8x(uint16_t opcode)
@@ -1296,6 +1376,11 @@ void Chip8EmulatorFP::opFx18(uint16_t opcode)
     if(!_rST) _wavePhase = 0;
 }
 
+void Chip8EmulatorFP::opFx1B_c8e(uint16_t opcode)
+{
+    _rPC = (_rPC + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
+}
+
 void Chip8EmulatorFP::opFx1E(uint16_t opcode)
 {
     _rI = (_rI + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
@@ -1328,6 +1413,20 @@ void Chip8EmulatorFP::opFx33(uint16_t opcode)
 void Chip8EmulatorFP::opFx3A(uint16_t opcode)
 {
     _xoPitch.store(_rV[(opcode >> 8) & 0xF]);
+}
+
+void Chip8EmulatorFP::opFx4F_c8e(uint16_t opcode)
+{
+    if(_cpuState != eWAITING) {
+        _rDT = _rV[(opcode >> 8) & 0xF];
+        _cpuState = eWAITING;
+    }
+    if(_rDT && (_cpuState == eWAITING)) {
+        _rPC -= 2;
+    }
+    else {
+        _cpuState = eNORMAL;
+    }
 }
 
 void Chip8EmulatorFP::opFx55(uint16_t opcode)

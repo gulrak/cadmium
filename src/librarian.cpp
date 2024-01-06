@@ -388,6 +388,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"788661c6a49c4e081492416bf2ce86342116bb1d", emu::chip8::Variant::CHIP_8, "Crack Me (Pawel Lukasik, 2017)", nullptr, nullptr},
     //{"7a4a89870f2ab23c28024dd1c3dd52cf1af1ad00", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"7a4a89870f2ab23c28024dd1c3dd52cf1af1ad00", emu::chip8::Variant::SCHIPC, "Octopeg (Chromatophore, 2015-10-29)", R"({"instructionsPerFrame": 200, "advanced": {"col1": "#acd5ff", "col2": "#FF6600", "col3": "#662200", "col0": "#113152", "buzzColor": "#264c74", "quietColor": "#000000"}})", nullptr},
+    {"7ad8b4814c37eb7b84d002a2b7e7ae64ec6fed5f", emu::chip8::Variant::CHIP_8E, "CHIP-8E Test (Gulrak, 2024)", nullptr, nullptr},
     {"7b6f54169a9511c976fdaa85db3822d9c707077f", emu::chip8::Variant::GENERIC_CHIP_8, "6-keypad (Timendus, 2023-04-12)", nullptr,"@GH/Timendus/chip8-test-suite/v4.0/bin/6-keypad.ch8"},
     {"7c680cd427c2d0eecde208ebbce667707c0f13a2", emu::chip8::Variant::CHIP_8, "Simple Snek (John Earnest, 2021)", nullptr, nullptr},
     {"7cd0334fc30cbbb21d3c5a909fa2c69927ec4a6c", emu::chip8::Variant::CHIP_8, "Alternate (TCNJ S.572.3)", nullptr, nullptr},

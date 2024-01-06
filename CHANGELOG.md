@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.8]
+## [1.1.9] (wip)
+
+### Added
+
+- New test for CHIP-8E in `test-roms`
+- New high-level variant `CHIP-8E`, the emulator will by default still use the real `VIP-CHIP-8E`
+  due to more accurate timing, but the generic one will take up less resources for more constrained
+  platforms
+
+### Fixed
+
+- The VIP-CHIP-8E interpreter had a typo leading to `BBnn` not working ([#12](https://github.com/gulrak/cadmium/issues/12))
+- Disassembling 0x7C, 0x7D or 0x7F generated single byte opcodes instead two byte ones ([#13](https://github.com/gulrak/cadmium/issues/12))
+- Octo-Assembler would hang on macro definitions without name or parameter
+
+## [1.1.8] - 2024-01-01
 
 ### Added
 
@@ -21,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
   behavior of Chromatophores SCHIPC
 - Added support for CHIP-8E on the VIP core
+- Realistic buzzer sound from HP48 based variants (CHIP-48, SCHIP1.x, SCHIPC)
 
 ### Changed
 
