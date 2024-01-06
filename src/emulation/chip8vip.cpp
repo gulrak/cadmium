@@ -16,7 +16,7 @@ namespace emu {
 class Chip8VIP::Private {
 public:
     uint16_t FETCH_LOOP_ENTRY{0x01B};
-    static const uint64_t CPU_CLOCK_FREQUENCY = 1760640;
+    static const uint64_t CPU_CLOCK_FREQUENCY = 1760900;
     explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus, const Chip8EmulatorOptions& options)
         : _host(host)
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
