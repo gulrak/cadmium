@@ -761,7 +761,7 @@ public:
         }
         waitKeyUp = 0;
         auto key = GetKeyPressed();
-        if (key) {
+        if (!gui::IsSysKeyDown() && key) {
             for (int i = 0; i < 16; ++i) {
                 if (key == _keyMapping[i]) {
                     instruction = _chipEmu->getPC();
@@ -777,7 +777,7 @@ public:
     bool isKeyDown(uint8_t key) override
     {
         _keyScanTime[key & 0xF] = GetTime();
-        return IsKeyDown(_keyMapping[key & 0xF]);
+        return !gui::IsSysKeyDown() && IsKeyDown(_keyMapping[key & 0xF]);
     }
 
     const std::array<bool, 16>& getKeyStates() const override
@@ -1270,7 +1270,7 @@ public:
                 static Vector2 aboutScroll{};
                 if(Button(GuiIconText(ICON_BURGER_MENU, "")))
                     menuOpen = true;
-                if(menuOpen) {
+                if(menuOpen || (IsSysKeyDown() && (IsKeyDown(KEY_N) || IsKeyDown(KEY_O) ||IsKeyDown(KEY_S) || IsKeyDown(KEY_K) || IsKeyDown(KEY_Q)))) {
 #ifndef PLATFORM_WEB
                     Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 84};
 #else
@@ -1282,7 +1282,7 @@ public:
                     if(LabelButton(" About Cadmium..."))
                         aboutOpen = true, aboutScroll = {0,0}, menuOpen = false;
                     Space(3);
-                    if(LabelButton(" New...")) {
+                    if(LabelButton(" New...  [^N]") || (IsSysKeyDown() && IsKeyPressed(KEY_N))) {
                         _mainView = eEDITOR;
                         menuOpen = false;
                         _editor.setText(": main\n    jump main");
@@ -1290,7 +1290,7 @@ public:
                         _editor.setFilename("");
                         _chipEmu->removeAllBreakpoints();
                     }
-                    if(LabelButton(" Open...")) {
+                    if(LabelButton(" Open... [^O]") || (IsSysKeyDown() && IsKeyPressed(KEY_O))) {
 #ifdef PLATFORM_WEB
                         loadFileWeb();
 #else
@@ -1299,20 +1299,20 @@ public:
 #endif
                         menuOpen = false;
                     }
-                    if(LabelButton(" Save...")) {
+                    if(LabelButton(" Save... [^S]") || (IsSysKeyDown() && IsKeyPressed(KEY_S))) {
                         _mainView = eROM_EXPORT;
 #ifndef PLATFORM_WEB
                         _librarian.fetchDir(_currentDirectory);
 #endif
                         menuOpen = false;
                     }
-                    if(LabelButton(" Key Map")) {
+                    if(LabelButton(" Key Map [^M]") || (IsSysKeyDown() && IsKeyPressed(KEY_K))) {
                         _showKeyMap = !_showKeyMap;
                         menuOpen = false;
                     }
 #ifndef PLATFORM_WEB
                     Space(3);
-                    if(LabelButton(" Quit"))
+                    if(LabelButton(" Quit    [^Q]") || (IsSysKeyDown() && IsKeyPressed(KEY_Q)))
                         menuOpen = false, _shouldClose = true;
 #endif
                     EndPopup();
@@ -1375,47 +1375,47 @@ public:
                 bool chip8Control = _debugger.isControllingChip8();
                 Color controlBack = {3, 127, 161};
                 Color controlColor = Color{0x51, 0xbf, 0xd3, 0xff}; //chip8Control ? Color{0x51, 0xbf, 0xd3, 0xff} : Color{0x51, 0xff, 0xbf, 0xff};
-                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->getExecMode() == ExecMode::ePAUSED/*, controlBack, controlColor*/)) {
+                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->getExecMode() == ExecMode::ePAUSED/*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F5))) {
                     _chipEmu->setExecMode(ExecMode::ePAUSED);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eVIDEO;
                     }
                 }
-                SetTooltip("PAUSE");
-                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING/*, controlBack, controlColor*/)) {
+                SetTooltip("PAUSE [Shift+F5]");
+                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F5))) {
                     _debugger.setExecMode(ExecMode::eRUNNING);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eVIDEO;
                     }
                 }
-                SetTooltip("RUN");
+                SetTooltip("RUN [F5]");
                 if(!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OVER, _chipEmu->getExecMode() == ExecMode::eSTEPOVER/*, controlBack, controlColor*/)) {
+                if (iconButton(ICON_STEP_OVER, _chipEmu->getExecMode() == ExecMode::eSTEPOVER/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F8))) {
                     _debugger.setExecMode(ExecMode::eSTEPOVER);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
                 GuiEnable();
-                SetTooltip("STEP OVER");
-                if (iconButton(ICON_STEP_INTO, _chipEmu->getExecMode() == ExecMode::eSTEP/*, controlBack, controlColor*/)) {
+                SetTooltip("STEP OVER [F8]");
+                if (iconButton(ICON_STEP_INTO, _chipEmu->getExecMode() == ExecMode::eSTEP/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F7))) {
                     _debugger.setExecMode(ExecMode::eSTEP);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
-                SetTooltip("STEP INTO");
+                SetTooltip("STEP INTO [F7]");
                 if(!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OUT, _chipEmu->getExecMode() == ExecMode::eSTEPOUT/*, controlBack, controlColor*/)) {
+                if (iconButton(ICON_STEP_OUT, _chipEmu->getExecMode() == ExecMode::eSTEPOUT/*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F7))) {
                     _debugger.setExecMode(ExecMode::eSTEPOUT);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
                 GuiEnable();
-                SetTooltip("STEP OUT");
+                SetTooltip("STEP OUT [Shift+F7]");
                 if (iconButton(ICON_RESTART)) {
                     reloadRom();
                     resetStats();
@@ -2662,7 +2662,7 @@ int main(int argc, char* argv[])
     cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
     cli.option({"--extended-display-wait"}, options.optExtendedVBlank, "If true, Dxyn might even wait 2 screens depending on size and position");
-    cli.positional(romFile, "ROM file or source to load");
+    cli.positional(romFile, "ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, or `.8o`)");
     cli.parse();
     if(showHelp) {
         cli.usage();

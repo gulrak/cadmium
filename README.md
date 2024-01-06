@@ -10,9 +10,12 @@ A CHIP-8 emulation environment written in C++ with a raylib backend.
 <!-- TOC -->
 * [Cadmium](#cadmium)
   * [Introduction](#introduction)
+  * [Online Version](#online-version)
   * [Features](#features)
     * [Supported CHIP-8 variants](#supported-chip-8-variants)
+    * [Multi Architecture Debugging](#multi-architecture-debugging)
     * [Quirks](#quirks)
+    * [Keyboard Shortcuts](#keyboard-shortcuts)
   * [Command-line](#command-line)
   * [Versioning](#versioning)
   * [Compiling from Source](#compiling-from-source)
@@ -81,6 +84,7 @@ The Supported presets are:
 
 * CHIP-8
 * CHIP-8-STRICT (cycle exact HLE VIP CHIP-8)
+* CHIP-8E
 * CHIP-8X
 * CHIP-10
 * CHIP-48
@@ -88,7 +92,7 @@ The Supported presets are:
 * SUPER-CHIP 1.1
 * SUPER-CHIP COMP
 * MODERN-SUPER-CHIP
-* MegaChip 8
+* MegaChip 8 (with Mega8 wrapping/scrolling support if wrapping is enabled)
 * XO-CHIP
 * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
 * VIP-CHIP-8E (CHIP-8E on an emulated COSMAC VIP)
@@ -158,10 +162,38 @@ following options gives a basic VIP CHIP-8:
 * `Dxyn` doesn't wait for vsync
 * Lores `Dxy0` draws with 0(classic CHIP-8)/8/16 pixel width
 * `Dxyn` uses SCHIP1.1 collision logic
+* SCHIP lores drawing
+* Half-pixel lores scroll
+* Mode change clears screen
 * 128x64 hires support
 * only 128x64 mode
 * multicolor support
+* Cyclic stack
+* Extended display wait
 * XO-CHIP sound engine
+
+
+### Keyboard Shortcuts
+
+| Function      |          Windows/Linux           |              macOS               |
+|:--------------|:--------------------------------:|:--------------------------------:|
+| New           |  <kbd>Ctrl</kbd> + <kbd>O</kbd>  |  <kbd>Cmd</kbd> + <kbd>O</kbd>   |
+| Open File     |  <kbd>Ctrl</kbd> + <kbd>O</kbd>  |  <kbd>Cmd</kbd> + <kbd>O</kbd>   |
+| Save File     |  <kbd>Ctrl</kbd> + <kbd>S</kbd>  |  <kbd>Cmd</kbd> + <kbd>S</kbd>   |
+| Key Map       |  <kbd>Ctrl</kbd> + <kbd>K</kbd>  |  <kbd>Cmd</kbd> + <kbd>K</kbd>   |
+| Quit          |  <kbd>Ctrl</kbd> + <kbd>Q</kbd>  |  <kbd>Cmd</kbd> + <kbd>Q</kbd>   |
+| **Execution** |                                  |                                  |
+| Run/Play      |          <kbd>F5</kbd>           |          <kbd>F5</kbd>           |
+| Stop/Pause    | <kbd>Shift</kbd> + <kbd>F5</kbd> | <kbd>Shift</kbd> + <kbd>F5</kbd> |
+| Step Over     |          <kbd>F8</kbd>           |          <kbd>F8</kbd>           |
+| Step Into     |          <kbd>F7</kbd>           |          <kbd>F7</kbd>           |
+| Step Out      | <kbd>Shift</kbd> + <kbd>F7</kbd> | <kbd>Shift</kbd> + <kbd>F7</kbd> |
+| **Editor**    |                                  |                                  |
+| Find          |  <kbd>Ctrl</kbd> + <kbd>F</kbd>  |  <kbd>Cmd</kbd> + <kbd>F</kbd>   |
+| Replace       |  <kbd>Ctrl</kbd> + <kbd>R</kbd>  |  <kbd>Cmd</kbd> + <kbd>R</kbd>   |
+| Copy          |  <kbd>Ctrl</kbd> + <kbd>C</kbd>  |  <kbd>Cmd</kbd> + <kbd>C</kbd>   |
+| Cut           |  <kbd>Ctrl</kbd> + <kbd>X</kbd>  |  <kbd>Cmd</kbd> + <kbd>X</kbd>   |
+| Paste         |  <kbd>Ctrl</kbd> + <kbd>X</kbd>  |  <kbd>Cmd</kbd> + <kbd>X</kbd>   |
 
 
 ## Command-line
@@ -174,11 +206,15 @@ them with an optional `true`, `on`, `yes`  for activating the quirk or `false`, 
 classic CHIP-8 that does not wait for vertical blank on sprite draws. 
 
 ```
-USAGE: cadmium [options] file
+USAGE: bin/cadmium.app/Contents/MacOS/cadmium [options] ...
+OPTIONS:
 
 General Options:
-  --opcode-table
-    Dump an opcode table to stdout
+  --draw-dump
+    Dump screen after every draw when in trace mode.
+
+  --opcode-json
+    Dump opcode information as JSON to stdout
 
   --random-gen <arg>
     Select a predictable random generator used for trace log mode (rand-lgc or counting)
@@ -188,6 +224,9 @@ General Options:
 
   --screen-dump
     When in trace mode, dump the final screen content to the console
+
+  --test-suite-menu <arg>
+    Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.
 
   --trace-log
     If true, enable trace logging into log-view
@@ -220,8 +259,17 @@ Quirks:
   --allow-hires
     If true, support for hires (128x64) is enabled
 
+  --cyclic-stack
+    If true, stack operations wrap around, overwriting used slots
+
   --dont-reset-vf
     If true, Vf will not be reset by 8xy1/8xy2/8xy3
+
+  --extended-display-wait
+    If true, Dxyn might even wait 2 screens depending on size and position
+
+  --half-pixel-scroll
+    If true, use SCHIP1.1 lores half pixel scrolling
 
   --has-16bit-addr
     If true, address space is 16bit (64k ram)
@@ -247,6 +295,9 @@ Quirks:
   --lores-dxy0-width-8
     If true, draw Dxy0 sprites have width 8
 
+  --mode-change-clear
+    If true, clear screen on lores/hires changes
+
   --only-hires
     If true, emulation has hires mode only
 
@@ -260,7 +311,7 @@ Quirks:
     If true, use XO-CHIP sound instead of buzzer
 
 ...
-    ROM file ('.ch8', '.ch10', '.hc8', '.sc8', '.mc8', '.xo8') or Octo ('.8o') source to load
+    ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, or `.8o`)
 ```
 
 ## Versioning

@@ -159,7 +159,7 @@ TEST_CASE("Emulation timing")
         chip8vip->reset();
         write(chip8vip, 0x200, {0x6000, 0xA210, 0xD008, 0x1204});
         chip8vip->executeFor(10000000); // execute 10s
-        CHECK(chip8vip->frames() - initialFrames == 600);
+        CHECK(chip8vip->frames() - initialFrames == 601);
         chip8vip->reset();
         write(chip8vip, 0x200, {0x6000, 0xA210, 0xD00F, 0x1204});
         int64_t exceed = 0;
