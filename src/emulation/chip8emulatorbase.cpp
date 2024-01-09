@@ -405,8 +405,8 @@ int64_t Chip8EmulatorBase::executeFor(int64_t micros)
 
 void Chip8EmulatorBase::tick(int instructionsPerFrame)
 {
-    handleTimer();
     if(!instructionsPerFrame) {
+        handleTimer();
         auto start = std::chrono::steady_clock::now();
         do {
             executeInstructions(487);
@@ -414,7 +414,11 @@ void Chip8EmulatorBase::tick(int instructionsPerFrame)
         while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
     }
     else {
-        executeInstructions(instructionsPerFrame);
+        auto instructionsLeft = calcNextFrame() - _cycleCounter;
+        if(instructionsLeft == instructionsPerFrame) {
+            handleTimer();
+        }
+        executeInstructions(instructionsLeft);
     }
 }
 

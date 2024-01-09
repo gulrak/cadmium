@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The VIP-CHIP-8E interpreter had a typo leading to `BBnn` not working ([#12](https://github.com/gulrak/cadmium/issues/12))
 - Disassembling 0x7C, 0x7D or 0x7F generated single byte opcodes instead two byte ones ([#13](https://github.com/gulrak/cadmium/issues/12))
 - Octo-Assembler would hang on macro definitions without name or parameter
+- High-level emulation didn't finish a frame with the right amount of cycles if part of it was
+  single stepped or breakpoints involved.
 
 ## [1.1.8] - 2024-01-01
 

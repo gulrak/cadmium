@@ -1037,25 +1037,26 @@ public:
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
 
-        _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
-        if(_partialFrameTime > 10000) {
-            _fps.reset();
-            _partialFrameTime = 1000;
-        }
-        if(_partialFrameTime >= 1000) {
-            while (_partialFrameTime >= 1000) {
-                _partialFrameTime -= 1000;
-                for(int i = 0; i < getFrameBoost(); ++i) {
-                    _chipEmu->tick(getInstrPerFrame());
-                }
-                _fps.add(GetTime()*1000);
+        if(_chipEmu->getExecMode() != ExecMode::ePAUSED) {
+            _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
+            if(_partialFrameTime > 10000) {
+                _fps.reset();
+                _partialFrameTime = 1000;
             }
+            if(_partialFrameTime >= 1000) {
+                while (_partialFrameTime >= 1000) {
+                    _partialFrameTime -= 1000;
+                    for(int i = 0; i < getFrameBoost(); ++i) {
+                        _chipEmu->tick(getInstrPerFrame());
+                    }
+                    _fps.add(GetTime()*1000);
+                }
+            }
+            if(_chipEmu->needsScreenUpdate())
+                updateScreen();
+            if(_showKeyMap)
+                updateKeyboardOverlay();
         }
-
-        if(_chipEmu->needsScreenUpdate())
-            updateScreen();
-        if(_showKeyMap)
-            updateKeyboardOverlay();
 
         BeginTextureMode(_renderTexture);
         drawGui();
