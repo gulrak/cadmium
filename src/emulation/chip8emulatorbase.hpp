@@ -259,6 +259,7 @@ public:
 
     int64_t executeFor(int64_t microseconds) override;
     void tick(int instructionsPerFrame) override;
+    int frameRate() const override { return _options.frameRate; };
 
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
     uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }

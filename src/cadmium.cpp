@@ -43,6 +43,7 @@ extern "C" {
 #include <emulation/chip8cores.hpp>
 #include <emulation/chip8dream.hpp>
 #include <emulation/time.hpp>
+#include <emulation/timecontrol.hpp>
 #include <chiplet/utility.hpp>
 #include <ghc/cli.hpp>
 #include <chip8emuhostex.hpp>
@@ -1035,23 +1036,19 @@ public:
         for(uint8_t key = 0; key < 16; ++key) {
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
-        if(_options.frameRate == 60 || _options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP) {
-            auto fb = getFrameBoost();
-            for(int i = 0; i < fb; ++i) {
-                _chipEmu->tick(getInstrPerFrame());
-                g_soundTimer.store(_chipEmu->soundTimer());
-            }
+
+        _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
+        if(_partialFrameTime > 10000) {
+            _fps.reset();
+            _partialFrameTime = 1000;
         }
-        else {
-            static int cntx = 0;
-            static int64_t excessTime = 0;
-            if (!(cntx++ & 0x7f) && deltaTC > 0.02)
-                std::clog << fmt::format("Frame time: rl: {}s, chrono: {}s, excessTime_us: {}", deltaT, deltaTC, excessTime) << std::endl;
-            if (excessTime < deltaTC * 1000000) {
-                excessTime = _chipEmu->executeFor(deltaTC * 1000000 - excessTime);
-            }
-            else {
-                excessTime = 0;
+        if(_partialFrameTime >= 1000) {
+            while (_partialFrameTime >= 1000) {
+                _partialFrameTime -= 1000;
+                for(int i = 0; i < getFrameBoost(); ++i) {
+                    _chipEmu->tick(getInstrPerFrame());
+                }
+                _fps.add(GetTime()*1000);
             }
         }
 
@@ -1234,27 +1231,27 @@ public:
             else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
                 StatusBar({{0.55f, _chipEmu->errorMessage().c_str()},
                            {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
+                           {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else if(getFrameBoost() > 1) {
                 StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->getCycles()).c_str()},
                            {0.2f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "eFPS").c_str()},
+                           {0.15f, formatUnit(_fps.getFps() * getFrameBoost(), "eFPS").c_str()},
                            {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
             }
             else {
                 if(_chipEmu->getCycles() != _chipEmu->getMachineCycles()) {
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), _chipEmu->getMachineCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                               {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
+                               {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
                 else {
                     StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                //{0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
-                               {0.15f, formatUnit(fdAvg * 1000000 / ftAvg_us, "FPS").c_str()},
+                               {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
                                {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
                 }
             }
@@ -1539,14 +1536,14 @@ public:
                             Spinner("Frame rate", &_options.frameRate, 10, 120);
                             if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
                                 GuiEnable();
-                            if (true/*!_options.instructionsPerFrame*/) {
+                            if (!_options.instructionsPerFrame) {
                                 static int _fb1{1};
                                 GuiDisable();
-                                Spinner("Frame boost", &_fb1, 1, 100000);
+                                Spinner("Frame boost", &_fb1, 1, 1000);
                                 GuiEnable();
                             }
                             else {
-                                Spinner("Frame boost", &_frameBoost, 1, 100000);
+                                Spinner("Frame boost", &_frameBoost, 1, 1000);
                             }
                             g_frameBoost = getFrameBoost();
                             EndGroupBox();
@@ -2308,6 +2305,8 @@ private:
     SMA<60,uint64_t> _ipfAverage;
     SMA<120,uint32_t> _frameTimeAverage_us;
     SMA<120,int> _frameDelta;
+    emu::FpsMeasure _fps;
+    int _partialFrameTime{0};
 #ifndef RESIZABLE_GUI
     bool _scaleBy2{false};
 #endif

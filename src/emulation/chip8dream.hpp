@@ -47,6 +47,7 @@ public:
     void executeInstruction() override;
     void executeInstructions(int numInstructions) override;
     void tick(int instructionsPerFrame) override;
+    int frameRate() const override { return 50; }
     int64_t getMachineCycles() const override;
 
     uint8_t* memory() override;

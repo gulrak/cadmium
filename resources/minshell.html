@@ -29,7 +29,7 @@
 
   <!-- Favicon -->
   <link rel="shortcut icon" href="https://gulrak.net/favicon.ico">
-
+  <script src="cash.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -110,6 +110,16 @@
       return canvas;
     })()
   };
+  function disableFunctionKeys(e) {
+    const functionKeys = [112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 123];
+    if (functionKeys.indexOf(e.keyCode) > -1 || functionKeys.indexOf(e.which) > -1) {
+      e.preventDefault();
+    }
+  }
+
+  $(document).ready(function() {
+    $(document).on('keydown', disableFunctionKeys);
+  });
 </script>
 {{{ SCRIPT }}}
 </body>

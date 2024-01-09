@@ -74,6 +74,7 @@ public:
     virtual void executeInstruction() = 0;
     virtual void executeInstructions(int numInstructions) = 0;
     virtual void tick(int instructionsPerFrame) = 0;
+    virtual int frameRate() const = 0;
 
     virtual uint8_t getV(uint8_t index) const = 0;
     virtual uint32_t getI() const = 0;
