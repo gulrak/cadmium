@@ -68,7 +68,7 @@ public:
         return "Chip-8-TS";
     }
 
-    inline uint16_t readWord(uint32_t addr) const
+    uint16_t readWord(uint32_t addr) const
     {
         return (_memory[addr] << 8) | _memory[addr + 1];
     }
@@ -149,23 +149,21 @@ public:
                         auto y = (opcode >> 4) & 0xF;
                         auto l = std::abs(x-y);
                         for(int i=0; i <= l; ++i)
-                            _memory[(_rI + i) & ADDRESS_MASK] = _rV[x < y ? x + i : x - i];
-                        if(_rI + l >= ADDRESS_MASK)
-                            fixupSafetyPad();
+                            write(_rI + i, _rV[x < y ? x + i : x - i]);
                         break;
                     }
                     case 3: {  // 5xy3 - load vx - vy
                         auto x = (opcode >> 8) & 0xF;
                         auto y = (opcode >> 4) & 0xF;
                         for(int i=0; i <= std::abs(x-y); ++i)
-                            _rV[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            _rV[x < y ? x + i : x - i] = _memory[_rI + i];
                         break;
                     }
                     case 4: { // palette x y
                         auto x = (opcode >> 8) & 0xF;
                         auto y = (opcode >> 4) & 0xF;
                         for(int i=0; i <= std::abs(x-y); ++i)
-                            _xxoPalette[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            _xxoPalette[x < y ? x + i : x - i] = _memory[_rI + i];
                         _host.updatePalette(_xxoPalette);
                         break;
                     }
@@ -315,7 +313,7 @@ public:
                         if(opcode != 0xF000)
                             errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
                         if constexpr (addressLines == 16) {
-                            _rI = ((_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
+                            _rI = ((_memory[_rPC] << 8) | _memory[_rPC + 1]) & ADDRESS_MASK;
                             _rPC = (_rPC + 2) & ADDRESS_MASK;
                         }
                         else {
@@ -368,9 +366,9 @@ public:
                         break;
                     case 0x33: {  // Fx33 - bcd vX
                         uint8_t val = _rV[(opcode >> 8) & 0xF];
-                        _memory[_rI & ADDRESS_MASK] = val / 100;
-                        _memory[(_rI + 1) & ADDRESS_MASK] = (val / 10) % 10;
-                        _memory[(_rI + 2) & ADDRESS_MASK] = val % 10;
+                        write(_rI, val / 100);
+                        write(_rI + 1, (val / 10) % 10);
+                        write(_rI + 2, val % 10);
                         break;
                     }
                     case 0x3A: // Fx3A - pitch vx
@@ -379,10 +377,8 @@ public:
                     case 0x55: {  // Fx55 - save vX
                         uint8_t upto = (opcode >> 8) & 0xF;
                         for (int i = 0; i <= upto; ++i) {
-                            _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+                            write(_rI + i, _rV[i]);
                         }
-                        if(_rI + upto > ADDRESS_MASK)
-                            fixupSafetyPad();
                         if (_options.optLoadStoreIncIByX) {
                             _rI = (_rI + upto) & ADDRESS_MASK;
                         }
@@ -394,7 +390,7 @@ public:
                     case 0x65: {  // Fx65 - load vX
                         uint8_t upto = (opcode >> 8) & 0xF;
                         for (int i = 0; i <= upto; ++i) {
-                            _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+                            _rV[i] = _memory[_rI + i];
                         }
                         if (_options.optLoadStoreIncIByX) {
                             _rI = (_rI + upto) & ADDRESS_MASK;
@@ -485,6 +481,12 @@ public:
         }
         _screenNeedsUpdate = true;
         return collision;
+    }
+private:
+    void write(const uint32_t addr, uint8_t val)
+    {
+        if(addr <= ADDRESS_MASK)
+            _memory[addr] = val;
     }
 };
 
@@ -812,17 +814,13 @@ public:
             return (bool)collision;
     }
 
-    /*float getAudioFrequency() const override
-    {
-        return _options.behaviorBase == Chip8EmulatorOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1400.0f;
-    }*/
-
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
 private:
-    inline uint16_t readWord(uint32_t addr) const
+    void write(const uint32_t addr, uint8_t val)
     {
-        return (_memory[addr] << 8) | (addr == ADDRESS_MASK ? _memory[0] : _memory[addr + 1]);
+        if(addr <= ADDRESS_MASK)
+            _memory[addr] = val;
     }
     std::vector<OpcodeHandler> _opcodeHandler;
     uint32_t _simpleRandSeed{12345};

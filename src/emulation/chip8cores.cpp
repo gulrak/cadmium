@@ -803,7 +803,7 @@ void Chip8EmulatorFP::op3xnn(uint16_t opcode)
     }
 }
 
-#define CONDITIONAL_SKIP_DISTANCE(ifOpcode,mask) ((_memory[_rPC & ADDRESS_MASK]&(mask>>8)) == (ifOpcode>>8) && (_memory[(_rPC + 1) & ADDRESS_MASK]&(mask&0xff)) == (ifOpcode&0xff) ? 4 : 2)
+#define CONDITIONAL_SKIP_DISTANCE(ifOpcode,mask) ((_memory[_rPC]&(mask>>8)) == (ifOpcode>>8) && (_memory[(_rPC + 1)]&(mask&0xff)) == (ifOpcode&0xff) ? 4 : 2)
 
 void Chip8EmulatorFP::op3xnn_with_F000(uint16_t opcode)
 {
@@ -879,9 +879,7 @@ void Chip8EmulatorFP::op5xy2(uint16_t opcode)
     auto y = (opcode >> 4) & 0xF;
     auto l = std::abs(x-y);
     for(int i=0; i <= l; ++i)
-        _memory[(_rI + i) & ADDRESS_MASK] = _rV[x < y ? x + i : x - i];
-    if(_rI + l >= ADDRESS_MASK)
-        fixupSafetyPad();
+        write(_rI + i, _rV[x < y ? x + i : x - i]);
 }
 
 void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
@@ -891,9 +889,7 @@ void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
     if(x < y) {
         auto l = y - x;
         for(int i=0; i <= l; ++i)
-            _memory[(_rI + i) & ADDRESS_MASK] = _rV[x + i];
-        if(_rI + l >= ADDRESS_MASK)
-            fixupSafetyPad();
+            _memory[_rI + i] = _rV[x + i];
         _rI = (_rI + l + 1) & ADDRESS_MASK;
     }
 }
@@ -903,7 +899,7 @@ void Chip8EmulatorFP::op5xy3(uint16_t opcode)
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
     for(int i=0; i <= std::abs(x-y); ++i)
-        _rV[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _rV[x < y ? x + i : x - i] = _memory[_rI + i];
 }
 
 void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
@@ -913,7 +909,7 @@ void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
     if(x < y) {
         auto l = y - x;
         for(int i=0; i <= l; ++i)
-            _rV[x + i] = _memory[(_rI + i) & ADDRESS_MASK];
+            _rV[x + i] = _memory[_rI + i];
         _rI = (_rI + l + 1) & ADDRESS_MASK;
     }
 }
@@ -923,7 +919,7 @@ void Chip8EmulatorFP::op5xy4(uint16_t opcode)
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
     for(int i=0; i <= std::abs(x-y); ++i)
-        _xxoPalette[x < y ? x + i : x - i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _xxoPalette[x < y ? x + i : x - i] = _memory[_rI + i];
     _host.updatePalette(_xxoPalette);
 }
 
@@ -1237,7 +1233,7 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
                             continue;
                         }
                     }
-                    auto col = _memory[(_rI + y * _spriteWidth + x) & ADDRESS_MASK];
+                    auto col = _memory[_rI + y * _spriteWidth + x];
                     if (col) {
                         if (*pixelBuffer == _collisionColor)
                             _rV[0xF] = 1;
@@ -1405,9 +1401,9 @@ void Chip8EmulatorFP::opFx30(uint16_t opcode)
 void Chip8EmulatorFP::opFx33(uint16_t opcode)
 {
     uint8_t val = _rV[(opcode >> 8) & 0xF];
-    _memory[_rI & ADDRESS_MASK] = val / 100;
-    _memory[(_rI + 1) & ADDRESS_MASK] = (val / 10) % 10;
-    _memory[(_rI + 2) & ADDRESS_MASK] = val % 10;
+    write(_rI, val / 100);
+    write(_rI + 1, (val / 10) % 10);
+    write(_rI + 2, val % 10);
 }
 
 void Chip8EmulatorFP::opFx3A(uint16_t opcode)
@@ -1433,10 +1429,8 @@ void Chip8EmulatorFP::opFx55(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+        write(_rI + i, _rV[i]);
     }
-    if(_rI + upto > ADDRESS_MASK)
-        fixupSafetyPad();
     _rI = (_rI + upto + 1) & ADDRESS_MASK;
 }
 
@@ -1444,10 +1438,8 @@ void Chip8EmulatorFP::opFx55_loadStoreIncIByX(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+        write(_rI + i, _rV[i]);
     }
-    if(_rI + upto > ADDRESS_MASK)
-        fixupSafetyPad();
     _rI = (_rI + upto) & ADDRESS_MASK;
 }
 
@@ -1455,17 +1447,15 @@ void Chip8EmulatorFP::opFx55_loadStoreDontIncI(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _memory[(_rI + i) & ADDRESS_MASK] = _rV[i];
+        write(_rI + i, _rV[i]);
     }
-    if(_rI + upto > ADDRESS_MASK)
-        fixupSafetyPad();
 }
 
 void Chip8EmulatorFP::opFx65(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _rV[i] = _memory[_rI + i];
     }
     _rI = (_rI + upto + 1) & ADDRESS_MASK;
 }
@@ -1474,7 +1464,7 @@ void Chip8EmulatorFP::opFx65_loadStoreIncIByX(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _rV[i] = _memory[_rI + i];
     }
     _rI = (_rI + upto) & ADDRESS_MASK;
 }
@@ -1483,7 +1473,7 @@ void Chip8EmulatorFP::opFx65_loadStoreDontIncI(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        _rV[i] = _memory[_rI + i];
     }
 }
 

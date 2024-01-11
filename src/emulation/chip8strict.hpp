@@ -46,7 +46,7 @@ public:
     constexpr static uint32_t MEMORY_SIZE = 4096;
     constexpr static int SCREEN_WIDTH = 64;
     constexpr static int SCREEN_HEIGHT = 32;
-    static const uint64_t CPU_CLOCK_FREQUENCY = 1760640;
+    static const uint64_t CPU_CLOCK_FREQUENCY = 1760900;
 
     Chip8StrictEmulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
         : Chip8EmulatorBase(host, options, other)

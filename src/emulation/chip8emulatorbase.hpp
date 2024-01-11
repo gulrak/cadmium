@@ -59,7 +59,8 @@ public:
         : Chip8OpcodeDisassembler(options)
         , _systemTime(options.instructionsPerFrame ? options.instructionsPerFrame * options.frameRate : 1000000)
         , _host(host)
-        , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000001 : options.optHas16BitAddr ? 0x10001 : 0x1001, 0)
+        , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1010000 : options.optHas16BitAddr ? 0x10100 : 0x1100, 0)
+        , _memSize(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1000000 : options.optHas16BitAddr ? 0x10000 : 0x1000)
     {
         _mcPalette[0] = be32(0x000000FF);
         _mcPalette[1] = be32(0xFFFFFFFF);
@@ -167,7 +168,7 @@ public:
     }
     uint8_t getMemoryByte(uint32_t addr) const override
     {
-        return _memory[addr % _memory.size()];
+        return addr < _memory.size() ? _memory[addr] : 0;
     }
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
     {
@@ -215,7 +216,7 @@ public:
     uint8_t delayTimer() const override { return _rDT; }
     uint8_t soundTimer() const override { return _rST; }
     uint8_t* memory() override { return _memory.data(); }
-    int memSize() const override { return _memory.size() - 1; }
+    int memSize() const override { return _memSize; }
     void reset() override;
     int64_t getCycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
@@ -288,7 +289,6 @@ public:
 protected:
     inline int instructionsPerFrame() const { return _options.instructionsPerFrame ? _options.instructionsPerFrame : _systemTime.getClockFreq() / _options.frameRate; }
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
-    void fixupSafetyPad() { memory()[memSize()] = *memory(); }
     void swapMegaSchreens() {
         std::swap(_screenRGBA, _workRGBA);
     }
@@ -336,6 +336,7 @@ protected:
     Chip8EmulatorHost& _host;
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
+    int _memSize{};
     inline static const uint8_t _chip8_cosmac_vip[0x200] = {
         0x91, 0xbb, 0xff, 0x01, 0xb2, 0xb6, 0xf8, 0xcf, 0xa2, 0xf8, 0x81, 0xb1, 0xf8, 0x46, 0xa1, 0x90, 0xb4, 0xf8, 0x1b, 0xa4, 0xf8, 0x01, 0xb5, 0xf8, 0xfc, 0xa5, 0xd4, 0x96, 0xb7, 0xe2, 0x94, 0xbc, 0x45, 0xaf, 0xf6, 0xf6, 0xf6, 0xf6, 0x32, 0x44,
         0xf9, 0x50, 0xac, 0x8f, 0xfa, 0x0f, 0xf9, 0xf0, 0xa6, 0x05, 0xf6, 0xf6, 0xf6, 0xf6, 0xf9, 0xf0, 0xa7, 0x4c, 0xb3, 0x8c, 0xfc, 0x0f, 0xac, 0x0c, 0xa3, 0xd3, 0x30, 0x1b, 0x8f, 0xfa, 0x0f, 0xb3, 0x45, 0x30, 0x40, 0x22, 0x69, 0x12, 0xd4, 0x00,
