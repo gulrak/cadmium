@@ -128,6 +128,7 @@ TEST_CASE("Emulation timing")
         CHECK(chip8fp->frames() < 602);
     }
 
+
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
         emu::Chip8HeadlessHost host(opts);
