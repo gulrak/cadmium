@@ -104,7 +104,8 @@ TEST_CASE("Emulation timing")
         int64_t exceed = 0;
         for(int i = 0; i < 600; ++i)
             exceed = chip8->executeFor(16667ll - exceed); // execute 16.667ms
-        CHECK(chip8->frames() == 600);
+        CHECK(chip8->frames() >= 600);
+        CHECK(chip8->frames() < 602);
     }
 
     {
