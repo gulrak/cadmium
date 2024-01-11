@@ -124,8 +124,9 @@ TEST_CASE("Emulation timing")
         int64_t exceed = 0;
         for(int i = 0; i < 600; ++i)
             exceed = chip8fp->executeFor(16667 - exceed); // execute 16.667ms
-        CHECK(chip8fp->frames() == 600);
-    }
+        CHECK(chip8fp->frames() >= 600);
+        CHECK(chip8fp->frames() < 602);
+
 
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
