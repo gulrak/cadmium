@@ -26,6 +26,7 @@
 
 #include "icons.h"
 #include <rlguipp/rlguipp4.hpp>
+#include <stylemanager.hpp>
 #include "debugger.hpp"
 
 void Debugger::setExecMode(ExecMode mode)
@@ -72,6 +73,10 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     const bool megaChipVideo = _core->getMaxScreenHeight() == 192;
     Rectangle video;
     bool showChipCPU = true;
+    auto grayCol = StyleManager::mappedColor(GRAY);
+    auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
+    auto yellowCol = StyleManager::mappedColor(YELLOW);
+    auto brownCol = StyleManager::mappedColor(BROWN);
     if(_core->getExecMode() != emu::GenericCpu::ePAUSED) {
         _instructionOffset[CHIP8_CORE] = -1;
         _instructionOffset[BACKEND_CORE] = -1;
@@ -145,7 +150,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         const auto* stack = _core->getStackElements();
         bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
         for (int i = 0; i < stackSize; ++i) {
-            DrawTextEx(font, fourDigitStack  ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? LIGHTGRAY : YELLOW);
+            DrawTextEx(font, fourDigitStack  ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
         }
     }
     EndPanel();
@@ -165,13 +170,13 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         memPage = addr < 0 ? 0 : addr >> 16;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * 8 >= 0 && addr + i * 8 < _core->memSize()) {
-                DrawTextEx(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, LIGHTGRAY);
+                DrawTextEx(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, lightgrayCol);
                 for (int j = 0; j < 8; ++j) {
                     if (!showChipCPU || _core->getI() + i * 8 + j > 65535 || _core->memory()[_core->getI() + i * 8 + j] == _memBackup[_core->getI() + i * 8 + j]) {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? LIGHTGRAY : GRAY);
+                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? lightgrayCol : grayCol);
                     }
                     else {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? YELLOW : BROWN);
+                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? yellowCol : brownCol);
                     }
                 }
             }
@@ -187,6 +192,8 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
 void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing)
 {
     using namespace gui;
+    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
+    auto yellowCol = StyleManager::mappedColor(YELLOW);
     auto area = GetContentAvailable();
     Space(area.height);
     bool mouseInPanel = false;
@@ -211,7 +218,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     auto yposPC = area.y + int(area.height / 2) - 4;
     const auto& prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
     BeginScissorMode(area.x, area.y, area.width, area.height);
-    auto pcColor = cpu.inErrorState() ? RED : YELLOW;
+    auto pcColor = cpu.inErrorState() ? RED : yellowCol;
     bool inIf = false;
     for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
         auto [addr, line] = prefix[prefix.size() - 1 - i];
@@ -221,7 +228,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         const auto* bpi = cpu.findBreakpoint(addr);
         if(inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == addr ? pcColor : LIGHTGRAY);
+        DrawTextEx(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
         if(bpi)
             GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
     }
@@ -235,7 +242,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         const auto* bpi = cpu.findBreakpoint(addr);
         if(inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, 8, 0, pc == addr ? pcColor : LIGHTGRAY);
+        DrawTextEx(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
         if(bpi)
             GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC + i * lineSpacing - 5, 1, RED);
         inIf = line.find(" if ") != std::string::npos;
@@ -246,12 +253,14 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
 
 void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const
 {
+    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
+    auto yellowCol = StyleManager::mappedColor(YELLOW);
     int i, line = 0, lastSize = 0;
     for (i = 0; i < cpu.getNumRegisters(); ++i, ++line) {
         const auto& reg = regs[i];
         if(i && reg.size != lastSize)
             ++line;
-        auto col = reg.value == oldRegs[i].value ? LIGHTGRAY : YELLOW;
+        auto col = reg.value == oldRegs[i].value ? lightgrayCol : yellowCol;
         switch(reg.size) {
             case 1:
             case 4:

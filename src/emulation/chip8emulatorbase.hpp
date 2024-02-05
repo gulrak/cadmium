@@ -41,6 +41,7 @@
 #include <fmt/format.h>
 #include <stdendian/stdendian.h>
 
+//#define EMU_AUDIO_DEBUG
 
 namespace emu {
 
@@ -245,6 +246,9 @@ public:
             ++_frameCounter;
             ++_randomSeed;
             _host.vblank();
+#ifdef EMU_AUDIO_DEBUG
+            std::clog << "handle-timer" << std::endl;
+#endif
             if (_rDT > 0)
                 --_rDT;
             if (_rST > 0)
@@ -310,7 +314,7 @@ protected:
     std::array<uint16_t,16> _stack{};
     uint8_t _rSP{};
     uint8_t _rDT{};
-    uint8_t _rST{};
+    std::atomic<uint8_t> _rST{};
     float _wavePhase{0};
     VideoScreen<uint8_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screen;
     VideoScreen<uint32_t, MAX_SCREEN_WIDTH, MAX_SCREEN_HEIGHT> _screenRGBA1{};

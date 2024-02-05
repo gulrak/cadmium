@@ -34,6 +34,8 @@
 struct CadmiumConfiguration
 {
     float volume{};
+    uint16_t guiHue{200};
+    uint8_t guiSat{80};
     std::string workingDirectory;
     std::string databaseDirectory;
     emu::Chip8EmulatorOptions emuOptions;

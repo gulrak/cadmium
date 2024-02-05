@@ -61,7 +61,7 @@ target_link_libraries(variantset-tests PUBLIC doctest emulation fmt::fmt)
 doctest_discover_tests(variantset-tests)
 
 add_executable(time-tests main.cpp time_test.cpp)
-target_link_libraries(time-tests PUBLIC doctest emulation fmt::fmt)
+target_link_libraries(time-tests PUBLIC doctest emulation)
 doctest_discover_tests(time-tests)
 
 if (${PLATFORM} MATCHES "Web")

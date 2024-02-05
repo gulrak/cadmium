@@ -83,7 +83,7 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
             _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8EVIP ||
             _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
-        else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM)
+        else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM ||_options.behaviorBase == emu::Chip8EmulatorOptions::eC8D68CHIPOSLO)
             _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
         else if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
             _chipEmu = std::make_unique<emu::Chip8StrictEmulator>(*this, _options, _chipEmu.get());

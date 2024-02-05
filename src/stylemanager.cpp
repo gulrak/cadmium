@@ -27,25 +27,72 @@
 #include <stylemanager.hpp>
 
 #include <rlguipp/rlguipp4.hpp>
+#include <fmt/format.h>
+
+#if 0
+static const uint32_t cadmiumPalette[7] = {
+    0x00222bff, //E = 0!
+    0x134b5aff, //D = 1!
+    0x2f7486ff, //F = 2!
+    0x3299b4ff, //B = 3!
+    0x51bfd3ff, //G = 4!
+    0x82cde0ff, //A = 5!
+    0xeff8ffff  //C = 6!
+};
+#else
+static const uint32_t cadmiumPalette[7] = {
+    0x00222bff, //E = 0!
+    0x134b5aff, //D = 1!
+    0x2f7486ff, //F = 2!
+    0x3299b4ff, //B = 3!
+    0x51bfd3ff, //G = 4!
+    0x85d2e6ff, //A = 5!
+    0xeff8ffff  //C = 6!
+};
+#endif
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
-    {0, 0, 0x2f7486ff},   // DEFAULT_BORDER_COLOR_NORMAL
-    {0, 1, 0x024658ff},   // DEFAULT_BASE_COLOR_NORMAL
-    {0, 2, 0x51bfd3ff},   // DEFAULT_TEXT_COLOR_NORMAL
-    {0, 3, 0x82cde0ff},   // DEFAULT_BORDER_COLOR_FOCUSED
-    {0, 4, 0x3299b4ff},   // DEFAULT_BASE_COLOR_FOCUSED
-    {0, 5, 0xb6e1eaff},   // DEFAULT_TEXT_COLOR_FOCUSED
-    {0, 6, 0x82cde0ff},   // DEFAULT_BORDER_COLOR_PRESSED
-    {0, 7, 0x3299b4ff},   // DEFAULT_BASE_COLOR_PRESSED
-    {0, 8, 0xeff8ffff},   // DEFAULT_TEXT_COLOR_PRESSED
-    {0, 9, 0x134b5aff},   // DEFAULT_BORDER_COLOR_DISABLED
-    {0, 10, 0x0e273aff},  // DEFAULT_BASE_COLOR_DISABLED
-    {0, 11, 0x17505fff},  // DEFAULT_TEXT_COLOR_DISABLED
-    {0, 16, 0x0000000e},  // DEFAULT_TEXT_SIZE
+    {0, 0, 2},   // F! DEFAULT_BORDER_COLOR_NORMAL
+    {0, 1, 1},   // D! DEFAULT_BASE_COLOR_NORMAL
+    {0, 2, 4},   // G! DEFAULT_TEXT_COLOR_NORMAL
+    {0, 3, 5},   // A! DEFAULT_BORDER_COLOR_FOCUSED
+    {0, 4, 3},   // B! DEFAULT_BASE_COLOR_FOCUSED
+    {0, 5, 6},   // C! DEFAULT_TEXT_COLOR_FOCUSED
+    {0, 6, 5},   // A! DEFAULT_BORDER_COLOR_PRESSED
+    {0, 7, 3},   // B! DEFAULT_BASE_COLOR_PRESSED
+    {0, 8, 6},   // C! DEFAULT_TEXT_COLOR_PRESSED
+    {0, 9, 1},   // D! DEFAULT_BORDER_COLOR_DISABLED
+    {0, 10, 0},  // E! DEFAULT_BASE_COLOR_DISABLED
+    {0, 11, 1},  // D! DEFAULT_TEXT_COLOR_DISABLED
+    {0, 18, 5},  // A! DEFAULT_LINE_COLOR
+    {0, 19, 0},  // E! DEFAULT_BACKGROUND_COLOR
+    {0, 16, 0x00000008},  // DEFAULT_TEXT_SIZE
     {0, 17, 0x00000000},  // DEFAULT_TEXT_SPACING
-    {0, 18, 0x81c0d0ff},  // DEFAULT_LINE_COLOR
-    {0, 19, 0x00222bff},  // DEFAULT_BACKGROUND_COLOR
+};
+
+#if 0
+static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
+    {0, 0, 0x2f7486ff},   // F! DEFAULT_BORDER_COLOR_NORMAL
+    //{0, 1, 0x024658ff},   // DEFAULT_BASE_COLOR_NORMAL
+      {0, 1, 0x134b5aff},   // D! DEFAULT_BASE_COLOR_NORMAL
+    {0, 2, 0x51bfd3ff},   // G! DEFAULT_TEXT_COLOR_NORMAL
+      {0, 3, 0x82cde0ff},   // A! DEFAULT_BORDER_COLOR_FOCUSED
+      {0, 4, 0x3299b4ff},   // B! DEFAULT_BASE_COLOR_FOCUSED
+    //{0, 5, 0xb6e1eaff},   // DEFAULT_TEXT_COLOR_FOCUSED
+      {0, 5, 0xeff8ffff},   // C! DEFAULT_TEXT_COLOR_FOCUSED
+      {0, 6, 0x82cde0ff},   // A! DEFAULT_BORDER_COLOR_PRESSED
+      {0, 7, 0x3299b4ff},   // B! DEFAULT_BASE_COLOR_PRESSED
+      {0, 8, 0xeff8ffff},   // C! DEFAULT_TEXT_COLOR_PRESSED
+    //{0, 9, 0x134b5aff},   // DEFAULT_BORDER_COLOR_DISABLED
+      {0, 9, 0x134b5aff},   // D! DEFAULT_BORDER_COLOR_DISABLED
+      {0, 10, 0x00222bff},  // E! DEFAULT_BASE_COLOR_DISABLED
+    //{0, 11, 0x17505fff},  // DEFAULT_TEXT_COLOR_DISABLED
+      {0, 11, 0x134b5aff},  // D! DEFAULT_TEXT_COLOR_DISABLED
+      {0, 18, 0x82cde0ff},  // A! DEFAULT_LINE_COLOR
+      {0, 19, 0x00222bff},  // E! DEFAULT_BACKGROUND_COLOR
+    {0, 16, 0x00000008},  // DEFAULT_TEXT_SIZE
+    {0, 17, 0x00000000},  // DEFAULT_TEXT_SPACING
 };
 
 static const StyleManager::Entry chip8DarkStyleProps[] = {
@@ -118,6 +165,28 @@ static const StyleManager::Entry chip8BluishStyleProps[] = {
     { 0, 18, 0x84adb7ff },    // DEFAULT_LINE_COLOR
     { 0, 19, 0xe8eef1ff },    // DEFAULT_BACKGROUND_COLOR
 };
+#endif
+
+/*
+ * {0, 0, 0x2f7486ff},   // DEFAULT_BORDER_COLOR_NORMAL
+//{0, 1, 0x024658ff},   // DEFAULT_BASE_COLOR_NORMAL
+  {0, 1, 0x134b5aff},   // D! DEFAULT_BASE_COLOR_NORMAL
+{0, 2, 0x51bfd3ff},   // DEFAULT_TEXT_COLOR_NORMAL
+  {0, 3, 0x82cde0ff},   // A! DEFAULT_BORDER_COLOR_FOCUSED
+  {0, 4, 0x3299b4ff},   // B! DEFAULT_BASE_COLOR_FOCUSED
+//{0, 5, 0xb6e1eaff},   // DEFAULT_TEXT_COLOR_FOCUSED
+  {0, 5, 0xeff8ffff},   // C! DEFAULT_TEXT_COLOR_FOCUSED
+  {0, 6, 0x82cde0ff},   // A! DEFAULT_BORDER_COLOR_PRESSED
+  {0, 7, 0x3299b4ff},   // B! DEFAULT_BASE_COLOR_PRESSED
+  {0, 8, 0xeff8ffff},   // C! DEFAULT_TEXT_COLOR_PRESSED
+//{0, 9, 0x134b5aff},   // DEFAULT_BORDER_COLOR_DISABLED
+  {0, 9, 0x134b5aff},   // D! DEFAULT_BORDER_COLOR_DISABLED
+{0, 10, 0x0e273aff},  // DEFAULT_BASE_COLOR_DISABLED
+//{0, 11, 0x17505fff},  // DEFAULT_TEXT_COLOR_DISABLED
+  {0, 11, 0x134b5aff},  // D! DEFAULT_TEXT_COLOR_DISABLED
+  {0, 18, 0x82cde0ff},  // A! DEFAULT_LINE_COLOR
+{0, 19, 0x00222bff},  // DEFAULT_BACKGROUND_COLOR
+ */
 
 static const std::pair<int,int> styleMapping[] = {
     {DEFAULT, BORDER_COLOR_NORMAL},
@@ -132,10 +201,10 @@ static const std::pair<int,int> styleMapping[] = {
     {DEFAULT, BORDER_COLOR_DISABLED},
     {DEFAULT, BASE_COLOR_DISABLED},
     {DEFAULT, TEXT_COLOR_DISABLED},
-    {DEFAULT, TEXT_SIZE},
-    {DEFAULT, TEXT_SPACING},
     {DEFAULT, LINE_COLOR},
     {DEFAULT, BACKGROUND_COLOR},
+    {DEFAULT, TEXT_SIZE},
+    {DEFAULT, TEXT_SPACING},
 
     {DEFAULT, TEXT_LINE_SPACING},
     {LABEL, TEXT_COLOR_FOCUSED},
@@ -181,9 +250,19 @@ StyleManager::StyleManager()
 {
     _instance = this;
     _styleSets.push_back({"default", {}});
-    for (auto chip8StyleProp : chip8StyleProps) {
-        _styleSets.front().styles.push_back(chip8StyleProp);
+    for(auto color : cadmiumPalette) {
+        _styleSets.front().palette.push_back(color);
     }
+    /*
+    int idx = 0;
+    for (auto chip8StyleProp : chip8StyleProps) {
+        if(idx < (int)Style::COLOR_END) {
+            chip8StyleProp.val = cadmiumPalette[chip8StyleProp.val];
+        }
+        _styleSets.front().styles.push_back(chip8StyleProp);
+        idx++;
+    }
+     */
 }
 
 StyleManager::~StyleManager()
@@ -191,15 +270,130 @@ StyleManager::~StyleManager()
     _instance = nullptr;
 }
 
-void StyleManager::setTheme(size_t idx) const
+void StyleManager::addTheme(const std::string& name, float hue, float sat, bool invert)
 {
-    if(idx >= _styleSets.size()) idx = 0;
-    for(auto& [ctrl, prop, val] : _styleSets[idx].styles) {
-        gui::SetStyle(ctrl, prop, val);
+    _styleSets.push_back({name, invert, {}});
+    for(auto color : cadmiumPalette) {
+        auto col = GetColor(color);
+        auto hsv = gui::HsvFromColor(col);
+        hsv.x = hue;
+        hsv.y = sat;
+        if(invert)
+            hsv.z = 1.0f - hsv.z;
+        _styleSets.back().palette.push_back(ColorToInt(gui::ColorFromHsv(hsv)));
     }
 }
 
-void StyleManager::setDefaultTheme() const
+
+void StyleManager::updateStyle(uint16_t hue, uint8_t sat, bool invert)
+{
+    int idx = 0;
+    _guiHue = hue;
+    _guiSaturation = sat;
+    for(auto& color : _currentStyle.palette) {
+        color = cadmiumPalette[idx];
+        auto col = GetColor(color);
+        auto hsv = gui::HsvFromColor(col);
+        hsv.x = hue;
+        hsv.y *= sat / 100.0f;
+        if (invert)
+            hsv.z = 1.0f - hsv.z;
+        color = ColorToInt(gui::ColorFromHsv(hsv));
+        idx++;
+    }
+    idx = 0;
+    for(auto [ctrl, prop, val] : chip8StyleProps) {
+        if(idx < (int)Style::COLOR_END) {
+            val = _currentStyle.palette[val];
+            gui::SetStyle(ctrl, prop, val);
+        }
+        idx++;
+    }
+}
+
+void StyleManager::setTheme(size_t themeIndex)
+{
+    if(themeIndex >= _styleSets.size()) themeIndex = 0;
+    _currentStyle = _styleSets[themeIndex];
+    int idx = 0;
+    for(auto [ctrl, prop, val] : chip8StyleProps) {
+        if(idx < (int)Style::COLOR_END) {
+            val = _styleSets[themeIndex].palette[val];
+        }
+        gui::SetStyle(ctrl, prop, val);
+        idx++;
+    }
+}
+
+void StyleManager::setDefaultTheme()
 {
     setTheme(0);
+}
+
+Color StyleManager::getStyleColor(Style style)
+{
+    const auto& [control, property] = styleMapping[(int)style];
+    return GetColor(gui::GetStyle(control, property));
+}
+
+Color StyleManager::mappedColor(const Color& col)
+{
+    using namespace gui;
+    if(_instance && _instance->_currentStyle.isInverted) {
+        auto hsv = gui::HsvFromColor(col);
+        if(hsv.z > 0.9f && hsv.y > 0.9f) {
+            hsv.y = 1.0f;
+            hsv.z = 0.7f;
+        }
+        else {
+            hsv.y = 1.0f;
+            hsv.z = 1.0f - hsv.z;
+        }
+        return ColorFromHsv(hsv);
+    }
+    return col;
+}
+
+void StyleManager::renderAppearanceEditor()
+{
+    using namespace gui;
+    Space(4);
+    Begin();
+    SetSpacing(2);
+    SetIndent(90);
+    SetNextWidth(150);
+    Spinner("UI-Tint ", &_guiHue, 0, 360);
+    SetNextWidth(150);
+    Spinner("UI-Saturation ", &_guiSaturation, 0, 100);
+    SetIndent(26);
+    StyleManager::Scope guard;
+    auto pos = GetCurrentPos();
+    static Vector3 hsv{};
+    Color col;
+    //SetNextWidth(52.0f + 16*18);
+    Label("UI Colors ");
+    int xoffset = 64;
+    updateStyle(_guiHue, _guiSaturation, false);
+    for (int i = 0; i < 7; ++i) {
+        col = GetColor(_currentStyle.palette[i]);
+        DrawRectangle(pos.x + xoffset + i * 18 + 2, pos.y + 2 , 12, 12,col);
+        bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + xoffset + i * 18, pos.y, 16, 16});
+        if(hover) {
+            hsv = gui::HsvFromColor(col);
+        }
+        //if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
+            /*_selectedColor = &_colorPalette[i];
+            _previousColor = _colorPalette[i];
+            _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
+            _colorSelectOpen = true;
+             */
+        //}
+        DrawRectangleLines(pos.x + xoffset + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BORDER_COLOR_NORMAL)));
+    }
+    Label(fmt::format("H:{}, S:{}, V:{}", hsv.x, hsv.y, hsv.z).c_str());
+    SetNextWidth(120);
+    if(Button("Reset to Default")) {
+        updateStyle(200, 80, false); // 192,90?
+    }
+    End();
 }

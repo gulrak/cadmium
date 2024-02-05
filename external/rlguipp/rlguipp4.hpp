@@ -146,7 +146,7 @@ RLGUIPP_API bool Toggle(const char* text, bool active);                         
 RLGUIPP_API int ToggleGroup(const char* text, int active);                                                                // Toggle Group control, returns active toggle index
 RLGUIPP_API bool CheckBox(const char* text, bool checked);                                                                // Check Box control, returns true when active
 RLGUIPP_API int ComboBox(const char* text, int active);                                                                   // Combo Box control, returns selected item index
-RLGUIPP_API bool DropdownBox(const char* text, int* active);                                                              // Dropdown Box control, returns selected item
+RLGUIPP_API bool DropdownBox(const char* text, int* active, bool directionUp = false);                                    // Dropdown Box control, returns selected item
 RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                        // Spinner control, returns selected value
 RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                       // Value Box control, updates input text with numbers
 RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
@@ -171,6 +171,8 @@ RLGUIPP_API Color ColorPicker(Color color);                                     
 RLGUIPP_API Color ColorPanel(const char* text, Color color);                                                                                    // Color Panel control
 RLGUIPP_API float ColorBarAlpha(const char* text, float alpha);                                                                                 // Color Bar Alpha control
 RLGUIPP_API float ColorBarHue(const char* text, float value);                                                                                   // Color Bar Hue control
+RLGUIPP_API Color ColorFromHsv(Vector3 hsv);
+RLGUIPP_API Vector3 HsvFromColor(Color col);
 
 RLGUIPP_API const char* IconText(int icon, const char* text);
 
@@ -203,6 +205,8 @@ RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER)
 #include <vector>
 
 namespace gui {
+
+int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode);
 
 struct PopupContext
 {
@@ -365,6 +369,7 @@ struct GuiContext
     struct DropdownInfo
     {
         Rectangle rect{};
+        bool directionUp{false};
         bool clicked{false};
         std::string text;
         bool editMode{false};
@@ -380,7 +385,7 @@ struct GuiContext
     inline static std::string tooltipText;
     inline static Rectangle tooltipParentRect{};
     inline static float tooltipTimer{};
-    static bool deferDropdownBox(Rectangle rect, const char* text, int* active)
+    static bool deferDropdownBox(Rectangle rect, const char* text, int* active, bool directionUp)
     {
         auto iter = dropdownBoxes.find(active);
         if (iter != dropdownBoxes.end()) {
@@ -391,7 +396,7 @@ struct GuiContext
             return iter->second.clicked;
         }
         else {
-            iter = dropdownBoxes.emplace(active, DropdownInfo{rect, false, std::string(text), false, 0, 0, GetState()}).first;
+            iter = dropdownBoxes.emplace(active, DropdownInfo{rect, directionUp, false, std::string(text), false, 0, 0, GetState()}).first;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
@@ -416,7 +421,20 @@ struct GuiContext
                 for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                     SetStyle(DROPDOWNBOX, i, info.style[i]);
                 }
-                if (GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
+                /*auto r = info.rect;
+                auto r2 = r;
+                bool shifted = false;
+                if(info.editMode) {
+                    auto count = std::count_if( info.text.begin(), info.text.end(), []( char c ){return c ==';';}) + 2;
+                    if(r.y + count*r.height > 192*2+36) {
+                        r.y = 192*2+36 - count*r.height - 4;
+                        r2 = r;
+                        r2.height = 192*2+36 - count*r.height;
+                        shifted = true;
+                    }
+                }
+                bool wasEdit = info.editMode;*/
+                if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
                     if (openDropdownboxId != active) {
                         closeOpenDropdownBox();
                     }
@@ -442,7 +460,7 @@ struct GuiContext
                 auto size = MeasureTextEx(GuiGetFont(), GuiContext::tooltipText.c_str(), 8, 0);
                 Rectangle tipRect{
                     GuiContext::tooltipParentRect.x + GuiContext::tooltipParentRect.width/2 - size.x/2 - 3,
-                    GuiContext::tooltipParentRect.y + GuiContext::tooltipParentRect.height*2/3,
+                    GuiContext::tooltipParentRect.y + GuiContext::tooltipParentRect.height*3/4,
                     size.x + 6, size.y + 6
                 };
                 DrawRectangle(tipRect.x, tipRect.y, tipRect.width, tipRect.height, {0,0,0,128});
@@ -1342,9 +1360,126 @@ int ComboBox(const char* text, int active)
     return detail::defaultWidget(GuiComboBox, text, &active);
 }
 
-bool DropdownBox(const char* text, int* active)
+int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
 {
-    return detail::defaultWidget(GuiContext::deferDropdownBox, text, active);
+    int result = 0;
+    GuiState state = guiState;
+
+    int itemSelected = *active;
+    int itemFocused = -1;
+
+    // Get substrings items from text (items pointers, lengths and count)
+    int itemCount = 0;
+    const char **items = GuiTextSplit(text, ';', &itemCount, NULL);
+
+    Rectangle boundsOpen = bounds;
+    boundsOpen.height = (itemCount + 1)*(bounds.height + GuiGetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING));
+    boundsOpen.y -= itemCount*(bounds.height + GuiGetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING));
+
+    Rectangle itemBounds = bounds;
+
+    // Update control
+    //--------------------------------------------------------------------
+    if ((state != STATE_DISABLED) && (editMode || !guiLocked) && (itemCount > 1) && !guiSliderDragging)
+    {
+        Vector2 mousePoint = GetMousePosition();
+
+        if (editMode)
+        {
+            state = STATE_PRESSED;
+
+            // Check if mouse has been pressed or released outside limits
+            if (!CheckCollisionPointRec(mousePoint, boundsOpen))
+            {
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) || IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) result = 1;
+            }
+
+            // Check if already selected item has been pressed again
+            if (CheckCollisionPointRec(mousePoint, bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) result = 1;
+
+            // Check focused and selected item
+            for (int i = 0; i < itemCount; i++)
+            {
+                // Update item rectangle y position for next item
+                itemBounds.y -= (bounds.height + GuiGetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING));
+
+                if (CheckCollisionPointRec(mousePoint, itemBounds))
+                {
+                    itemFocused = i;
+                    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+                    {
+                        itemSelected = i;
+                        result = 1;         // Item selected
+                    }
+                    break;
+                }
+            }
+
+            itemBounds = bounds;
+        }
+        else
+        {
+            if (CheckCollisionPointRec(mousePoint, bounds))
+            {
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+                {
+                    result = 1;
+                    state = STATE_PRESSED;
+                }
+                else state = STATE_FOCUSED;
+            }
+        }
+    }
+    //--------------------------------------------------------------------
+
+    // Draw control
+    //--------------------------------------------------------------------
+    if (editMode) GuiPanel(boundsOpen, NULL);
+
+    GuiDrawRectangle(bounds, GuiGetStyle(DROPDOWNBOX, BORDER_WIDTH), GetColor(GuiGetStyle(DROPDOWNBOX, BORDER + state*3)), GetColor(GuiGetStyle(DROPDOWNBOX, BASE + state*3)));
+    GuiDrawText(items[itemSelected], GetTextBounds(DROPDOWNBOX, bounds), GuiGetStyle(DROPDOWNBOX, TEXT_ALIGNMENT), GetColor(GuiGetStyle(DROPDOWNBOX, TEXT + state*3)));
+
+    if (editMode)
+    {
+        // Draw visible items
+        for (int i = 0; i < itemCount; i++)
+        {
+            // Update item rectangle y position for next item
+            itemBounds.y -= (bounds.height + GuiGetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING));
+
+            if (i == itemSelected)
+            {
+                GuiDrawRectangle(itemBounds, GuiGetStyle(DROPDOWNBOX, BORDER_WIDTH), GetColor(GuiGetStyle(DROPDOWNBOX, BORDER_COLOR_PRESSED)), GetColor(GuiGetStyle(DROPDOWNBOX, BASE_COLOR_PRESSED)));
+                GuiDrawText(items[i], GetTextBounds(DROPDOWNBOX, itemBounds), GuiGetStyle(DROPDOWNBOX, TEXT_ALIGNMENT), GetColor(GuiGetStyle(DROPDOWNBOX, TEXT_COLOR_PRESSED)));
+            }
+            else if (i == itemFocused)
+            {
+                GuiDrawRectangle(itemBounds, GuiGetStyle(DROPDOWNBOX, BORDER_WIDTH), GetColor(GuiGetStyle(DROPDOWNBOX, BORDER_COLOR_FOCUSED)), GetColor(GuiGetStyle(DROPDOWNBOX, BASE_COLOR_FOCUSED)));
+                GuiDrawText(items[i], GetTextBounds(DROPDOWNBOX, itemBounds), GuiGetStyle(DROPDOWNBOX, TEXT_ALIGNMENT), GetColor(GuiGetStyle(DROPDOWNBOX, TEXT_COLOR_FOCUSED)));
+            }
+            else GuiDrawText(items[i], GetTextBounds(DROPDOWNBOX, itemBounds), GuiGetStyle(DROPDOWNBOX, TEXT_ALIGNMENT), GetColor(GuiGetStyle(DROPDOWNBOX, TEXT_COLOR_NORMAL)));
+        }
+    }
+
+    // Draw arrows (using icon if available)
+#if defined(RAYGUI_NO_ICONS)
+    GuiDrawText("^", RAYGUI_CLITERAL(Rectangle){ bounds.x + bounds.width - GuiGetStyle(DROPDOWNBOX, ARROW_PADDING), bounds.y + bounds.height/2 - 2, 10, 10 },
+                TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DROPDOWNBOX, TEXT + (state*3))));
+#else
+    GuiDrawText("#121#", RAYGUI_CLITERAL(Rectangle){ bounds.x + bounds.width - GuiGetStyle(DROPDOWNBOX, ARROW_PADDING), bounds.y + bounds.height/2 - 4, 10, 10 },
+                TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(DROPDOWNBOX, TEXT + (state*3))));   // ICON_ARROW_DOWN_FILL
+#endif
+    //--------------------------------------------------------------------
+
+    *active = itemSelected;
+
+    // TODO: Use result to return more internal states: mouse-press out-of-bounds, mouse-press over selected-item...
+    return result;   // Mouse click: result = 1
+}
+
+bool DropdownBox(const char* text, int* active, bool directionUp)
+{
+    return detail::defaultWidget(GuiContext::deferDropdownBox, text, active, directionUp);
 }
 
 bool Spinner(const char* text, int* value, int minValue, int maxValue)
@@ -1796,6 +1931,19 @@ bool IsSysKeyDown()
 #else
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 #endif
+}
+
+Color ColorFromHsv(Vector3 hsv)
+{
+    Vector3 rgbHue = ConvertHSVtoRGB(hsv);
+    Color col = { (unsigned char)(255.0f*rgbHue.x), (unsigned char)(255.0f*rgbHue.y), (unsigned char)(255.0f*rgbHue.z), 255 };
+    return col;
+}
+
+Vector3 HsvFromColor(Color col)
+{
+    Vector3 vcolor = { (float)col.r/255.0f, (float)col.g/255.0f, (float)col.b/255.0f };
+    return ConvertRGBtoHSV(vcolor);
 }
 
 }  // namespace gui

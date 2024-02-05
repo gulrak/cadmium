@@ -89,6 +89,9 @@ public:
         return const_cast<Chip8RealCoreBase*>(this)->getBackendCpu();
     }
 
+    virtual std::pair<std::string_view,std::string_view> romInfo() = 0;
+    virtual std::pair<std::string_view,std::string_view> interpreterInfo() = 0;
+
     std::string dumpStateLine() const override {
         uint16_t op = (getMemoryByte(getPC())<<8)|getMemoryByte(getPC() + 1);
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", getV(0), getV(1), getV(2),

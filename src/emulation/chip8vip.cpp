@@ -1,6 +1,7 @@
 #include <emulation/chip8vip.hpp>
 #include <emulation/logger.hpp>
 #include <emulation/hardware/cdp186x.hpp>
+#include <chiplet/utility.hpp>
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
@@ -16,7 +17,7 @@ namespace emu {
 class Chip8VIP::Private {
 public:
     uint16_t FETCH_LOOP_ENTRY{0x01B};
-    static const uint64_t CPU_CLOCK_FREQUENCY = 1760900;
+    static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
     explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus, const Chip8EmulatorOptions& options)
         : _host(host)
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
@@ -28,6 +29,10 @@ public:
         }
         if(options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP)
             FETCH_LOOP_ENTRY = 0x1f;
+        _romName = "COSMAC-VIP";
+        _romSHA1 = calculateSha1Hex(_rom_cvip, 512);
+        _interpreterName = "CHIP8";
+        _interpreterSHA1 = calculateSha1Hex(_chip8_cvip, 512);
     }
     Chip8EmulatorHost& _host;
     Cdp1802 _cpu;
@@ -46,6 +51,10 @@ public:
     std::array<uint8_t,1024> _colorRam{};
     std::array<uint8_t,512> _rom{};
     VideoType _screen;
+    std::string _romName;
+    std::string _romSHA1;
+    std::string _interpreterName;
+    std::string _interpreterSHA1;
 };
 
 
@@ -409,7 +418,9 @@ void Chip8VIP::reset()
     std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
     if(_options.advanced.contains("interpreter")) {
         auto name = _options.advanced.value("interpreter", "");
-        patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
+        auto size = patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
+        _impl->_interpreterName = name;
+        _impl->_interpreterSHA1 = calculateSha1Hex(_impl->_ram.data(), size);
     }
     _impl->_screen.setAll(0);
     _impl->_video.reset();
@@ -452,7 +463,7 @@ void Chip8VIP::fetchState()
     std::memcpy(_state.v.data(), &_impl->_ram[base + 0xF0], 16);
     _state.i = _impl->_cpu.getR(0xA);
     _state.pc = _impl->_cpu.getR(5);
-    _state.sp = (_impl->_initialChip8SP - _impl->_cpu.getR(2)) >> 1;
+    _state.sp = ((_impl->_initialChip8SP - _impl->_cpu.getR(2)) >> 1) & 0xffff;
     _state.dt = _impl->_cpu.getR(8) >> 8;
     _state.st = _impl->_cpu.getR(8) & 0xff;
     for(int i = 0; i < stackSize() && i < _state.sp; ++i) {
@@ -765,6 +776,16 @@ std::vector<uint8_t> Chip8VIP::getInterpreterCode(const std::string& name)
         return {};
     memory.resize(std::max(sizeof(_chip8_cvip), (size_t)used));
     return memory;
+}
+
+std::pair<std::string_view,std::string_view> Chip8VIP::romInfo()
+{
+    return {_impl->_romName, _impl->_romSHA1};
+}
+
+std::pair<std::string_view,std::string_view> Chip8VIP::interpreterInfo()
+{
+    return {_impl->_interpreterName, _impl->_interpreterSHA1};
 }
 
 }

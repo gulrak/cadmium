@@ -827,6 +827,9 @@ private:
     uint32_t _simpleRandState{12345};
     int _chip8xBackgroundColor{0};
     uint8_t _vp595Frequency{0x80};
+#ifdef GEN_OPCODE_STATS
+    std::map<uint16_t,int64_t> _opcodeStats;
+#endif
 };
 
 

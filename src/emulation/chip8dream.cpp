@@ -54,6 +54,10 @@ public:
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,1024> _rom{};
     IChip8Emulator::VideoType _screen;
+    std::string _romName;
+    std::string _romSHA1;
+    std::string _interpreterName;
+    std::string _interpreterSHA1;
 };
 
 
@@ -143,10 +147,16 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
     : Chip8RealCoreBase(host, options)
     , _impl(new Private(host, *this, options))
 {
-    if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo")
+    if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-    else
+        _impl->_romName = "CHIPOSLO";
+        _impl->_romSHA1 = calculateSha1Hex(dream6800ChipOslo, sizeof(dream6800ChipOslo));
+    }
+    else {
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
+        _impl->_romName = "CHIPOS";
+        _impl->_romSHA1 = calculateSha1Hex(dream6800Rom, sizeof(dream6800Rom));
+    }
     _impl->_pia.irqAOutputHandler = [this](bool level) {
         if(!level)
             _impl->_cpu.irq();
@@ -509,6 +519,16 @@ void Chip8Dream::writeByte(uint16_t addr, uint8_t val)
     else {
         _cpuState = eERROR;
     }
+}
+
+std::pair<std::string_view,std::string_view> Chip8Dream::romInfo()
+{
+    return {_impl->_romName, _impl->_romSHA1};
+}
+
+std::pair<std::string_view,std::string_view> Chip8Dream::interpreterInfo()
+{
+    return {"",""};
 }
 
 

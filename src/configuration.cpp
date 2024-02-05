@@ -31,6 +31,8 @@
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
     j = nlohmann::json{
         {"volume", cc.volume},
+        {"guiHue", cc.guiHue},
+        {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
         {"databaseDirectory", cc.databaseDirectory},
         {"emuOptions", cc.emuOptions},
@@ -42,6 +44,8 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     j.at("workingDirectory").get_to(cc.workingDirectory);
     cc.databaseDirectory = j.value("databaseDirectory", "");
     cc.volume = j.value("volume", 0.5f);
+    cc.guiHue = j.value("guiHue", 192);
+    cc.guiSat = j.value("guiSaturation", 90);
     try {
         j.at("emuOptions").get_to(cc.emuOptions);
     }

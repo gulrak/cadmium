@@ -102,7 +102,10 @@ public:
                     auto dstPtr = destination + row * destinationStride;
                     for (unsigned x = 0; x < _width; ++x) {
                         if constexpr (isRGBA()) {
-                            *dstPtr++ = blend(*srcPtr++,alpha);
+                            blendColorsAlpha(dstPtr, srcPtr, alpha);
+                            dstPtr++;
+                            srcPtr++;
+                            //*dstPtr++ = blend(*srcPtr++,alpha);
                         }
                         else {
                             *dstPtr++ = blend(_palette[*srcPtr++],alpha);
@@ -166,7 +169,7 @@ public:
         if constexpr (isRGBA())
             for(unsigned i = 0; i < n*_stride; ++i) _screenBuffer[i] = _black;
         else
-            std::memset(_screenBuffer.data(), _black, n * _stride);
+            std::memset(_screenBuffer.data(), 0, n * _stride);
     }
     void scrollUp(int n)
     {
@@ -275,6 +278,17 @@ protected:
     {
         auto newAlpha = (color >> 24) * alpha / 255;
         return (color & 0x00ffffff) | (newAlpha << 24);
+    }
+    static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
+    {
+        int a = alpha;
+        auto* dst = (uint8_t*)dest;
+        const auto* c1 = dst;
+        const auto* c2 = (const uint8_t*)col;
+        *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
+        *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
+        *dst++ = (a * *c2 + (255 - a) * *c1) >> 8;
+        *dst = 255;
     }
     const int _stride{Width};
     int _width{Width};

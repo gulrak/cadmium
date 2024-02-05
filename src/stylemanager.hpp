@@ -35,17 +35,18 @@ enum class Style {
     TEXT_COLOR_NORMAL,
     BORDER_COLOR_FOCUSED,
     BASE_COLOR_FOCUSED,
-    DEFAULT_TEXT_COLOR_FOCUSED,
+    TEXT_COLOR_FOCUSED,
     BORDER_COLOR_PRESSED,
     BASE_COLOR_PRESSED,
     TEXT_COLOR_PRESSED,
     BORDER_COLOR_DISABLED,
     BASE_COLOR_DISABLED,
     TEXT_COLOR_DISABLED,
-    TEXT_SIZE,
-    TEXT_SPACING,
     LINE_COLOR,
     BACKGROUND_COLOR,
+    COLOR_END,
+    TEXT_SIZE = COLOR_END,
+    TEXT_SPACING,
     TOOL_BUTTON_COLOR_NORMAL,
     TOOL_BUTTON_COLOR_ACTIVE
 };
@@ -71,15 +72,30 @@ public:
     StyleManager();
     ~StyleManager();
 
-    void setDefaultTheme() const;
-    void setTheme(size_t idx) const;
+    void setDefaultTheme();
+    void addTheme(const std::string& name, float hue, float sat, bool invert = false);
+    void updateStyle(uint16_t hue, uint8_t sat, bool invert = false);
+    void setTheme(size_t idx);
+    void renderAppearanceEditor();
+    uint16_t getGuiHue() const { return _guiHue; }
+    uint8_t getGuiSaturation() const { return _guiSaturation; }
+
+    static StyleManager& instance() { return *_instance; }
+    static Color getStyleColor(Style style);
+    static Color mappedColor(const Color& col);
+    bool isInvertedTheme() const { return _currentStyle.isInverted; }
 
 private:
     struct StyleSet {
         std::string name;
-        std::vector<Entry> styles;
+        bool isInverted{false};
+        std::vector<uint32_t> palette;
     };
+    int _guiHue{192};
+    int _guiSaturation{90};
+    StyleSet _currentStyle{};
     std::vector<StyleSet> _styleSets;
+
     static StyleManager* _instance;
 };
 

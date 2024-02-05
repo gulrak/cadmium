@@ -30,6 +30,8 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 
+//#define ALIEN_INV8SION_BENCH
+
 namespace emu
 {
 
@@ -285,6 +287,16 @@ void Chip8EmulatorFP::setHandler()
 
 Chip8EmulatorFP::~Chip8EmulatorFP()
 {
+#ifdef GEN_OPCODE_STATS
+    std::vector<std::pair<uint16_t,int64_t>> result;
+    for(const auto& p : _opcodeStats)
+        result.push_back(p);
+    std::sort(result.begin(), result.end(), [](const auto& p1, const auto& p2){ return p1.second < p2.second;});
+    std::cout << "Opcode statistics:" << std::endl;
+    for(const auto& p : result) {
+        std::cout << fmt::format("{:04X}: {}", p.first, p.second) << std::endl;
+    }
+#endif
 }
 
 void Chip8EmulatorFP::reset()
@@ -330,9 +342,19 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
             for (int i = 0; i < numInstructions; ++i) {
                 uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
                 _rPC = (_rPC + 2) & ADDRESS_MASK;
+#ifdef GEN_OPCODE_STATS
+                if((opcode & 0xF000) == 0xD000)
+                    _opcodeStats[opcode & 0xF00F]++;
+                else {
+                    const auto* info = _opcodeSet.getOpcodeInfo(opcode);
+                    if(info)
+                        _opcodeStats[info->opcode]++;
+                }
+#endif
                 (this->*_opcodeHandler[opcode])(opcode);
+                _cycleCounter++;
             }
-            _cycleCounter += numInstructions;
+            //_cycleCounter += numInstructions;
             //    Chip8EmulatorFP::executeInstructionNoBreakpoints();
         }
         else  {
@@ -363,6 +385,15 @@ inline void Chip8EmulatorFP::executeInstruction()
             Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         _rPC = (_rPC + 2) & ADDRESS_MASK;
+#ifdef GEN_OPCODE_STATS
+        if((opcode & 0xF000) == 0xD000)
+            _opcodeStats[opcode & 0xF00F]++;
+        else {
+            const auto* info = _opcodeSet.getOpcodeInfo(opcode);
+            if(info)
+                _opcodeStats[info->opcode]++;
+        }
+#endif
         (this->*_opcodeHandler[opcode])(opcode);
         ++_cycleCounter;
     }
@@ -775,11 +806,32 @@ void Chip8EmulatorFP::op09nn(uint16_t opcode)
     _collisionColor = opcode & 0xFF;
 }
 
+#ifdef ALIEN_INV8SION_BENCH
+std::chrono::time_point<std::chrono::steady_clock> loopStart{};
+int64_t loopCycles = 0;
+int64_t maxCycles = 0;
+int64_t minLoop = 1000000000;
+int64_t maxLoop = 0;
+double avgLoop = 0;
+#endif
+
 void Chip8EmulatorFP::op1nnn(uint16_t opcode)
 {
     if((opcode & 0xFFF) == _rPC - 2)
-        _execMode = ePAUSED; 
+        _execMode = ePAUSED;
     _rPC = opcode & 0xFFF;
+#ifdef ALIEN_INV8SION_BENCH
+    if(_rPC == 0x212) {
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - loopStart).count();
+        avgLoop = (avgLoop * 63 + duration) / 64.0;
+        if(minLoop > duration) minLoop = duration;
+        if(maxLoop < duration) maxLoop = duration;
+        auto lc = _cycleCounter - loopCycles;
+        if(lc > maxCycles)
+            maxCycles = lc;
+        std::cout << "Loop: " <<  duration << "us (min: " << minLoop << "us, avg: " << avgLoop << "us, max:" << maxLoop << "us), " << (_cycleCounter - loopCycles) << " cycles, max: " << maxCycles << ", ips: " << (lc * 1000000 / duration) << std::endl;
+    }
+#endif
 }
 
 void Chip8EmulatorFP::op2nnn(uint16_t opcode)
@@ -1324,24 +1376,40 @@ void Chip8EmulatorFP::opF000(uint16_t opcode)
     _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opF002(uint16_t opcode)
-{
-    uint8_t anyBit = 0;
-    for(int i = 0; i < 16; ++i) {
-        _xoAudioPattern[i] = _memory[(_rI + i) & ADDRESS_MASK];
-        anyBit |= _xoAudioPattern[i];
-    }
-    _xoSilencePattern = anyBit != 0;
-}
-
 void Chip8EmulatorFP::opFx01(uint16_t opcode)
 {
     _planes = (opcode >> 8) & 0xF;
 }
 
+void Chip8EmulatorFP::opF002(uint16_t opcode)
+{
+    uint8_t anyBit = 0;
+#ifndef EMU_AUDIO_DEBUG
+    for(int i = 0; i < 16; ++i) {
+        _xoAudioPattern[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        anyBit |= _xoAudioPattern[i];
+    }
+#else
+    std::clog << "pattern: ";
+    for(int i = 0; i < 16; ++i) {
+        _xoAudioPattern[i] = _memory[(_rI + i) & ADDRESS_MASK];
+        anyBit |= _xoAudioPattern[i];
+        std::clog << (i ? ", " : "") << fmt::format("0x{:02x}", _xoAudioPattern[i]);
+    }
+    std::clog << std::endl;
+#endif
+    _xoSilencePattern = anyBit != 0;
+}
+
 void Chip8EmulatorFP::opFx07(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = _rDT;
+#ifdef ALIEN_INV8SION_BENCH
+    if(!_rDT) {
+        loopCycles = _cycleCounter;
+        loopStart = std::chrono::steady_clock::now();
+    }
+#endif
 }
 
 void Chip8EmulatorFP::opFx0A(uint16_t opcode)
@@ -1370,6 +1438,9 @@ void Chip8EmulatorFP::opFx18(uint16_t opcode)
 {
     _rST = _rV[(opcode >> 8) & 0xF];
     if(!_rST) _wavePhase = 0;
+#ifdef EMU_AUDIO_DEBUG
+    std::clog << fmt::format("st := {}", (int)_rST) << std::endl;
+#endif
 }
 
 void Chip8EmulatorFP::opFx1B_c8e(uint16_t opcode)
@@ -1409,6 +1480,9 @@ void Chip8EmulatorFP::opFx33(uint16_t opcode)
 void Chip8EmulatorFP::opFx3A(uint16_t opcode)
 {
     _xoPitch.store(_rV[(opcode >> 8) & 0xF]);
+#ifdef EMU_AUDIO_DEBUG
+    std::clog << "pitch: " << (int)_xoPitch.load() << std::endl;
+#endif
 }
 
 void Chip8EmulatorFP::opFx4F_c8e(uint16_t opcode)
@@ -1534,6 +1608,9 @@ static uint16_t g_hp48Wave[] = {
 
 void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
+#ifdef EMU_AUDIO_DEBUG
+    std::clog << fmt::format("render {} (ST:{})", frames, _rST) << std::endl;
+#endif
     if(_isMegaChipMode && _sampleLength) {
         while(frames--) {
             *samples++ = ((int16_t)getNextMCSample() - 128) * 256;

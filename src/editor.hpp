@@ -48,8 +48,10 @@ public:
     static constexpr float INACTIVITY_DELAY{1.0f};
     enum FindReplaceMode { eNONE, eFIND, eFIND_REPLACE };
     enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
+    inline static Color _defaultColors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
+    inline static Color _defaultSelected{100, 100, 120, 255};
     inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color selected{100, 100, 120, 255};
+    inline static Color _selected{100, 100, 120, 255};
     Editor() : _alphabetKeys(26,0) { updateLineInfo(); }
 
     void setFilename(std::string filename) { _filename = filename; }
@@ -212,6 +214,7 @@ protected:
     bool _cursorChanged{false};
     bool _mouseDownInText{false};
     bool _messageWindowVisible{true};
+    bool _isInvertedTheme{};
     emu::OctoCompiler _compiler;
     uint32_t _lastEditId{~0u};
     std::string _editedTextSha1Hex;

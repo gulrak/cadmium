@@ -260,6 +260,13 @@ void Editor::update()
     _isRepeat = (_repeatTimer <= 0 && oldRepeat > 0);
     _cursorChanged = false;
     updateAlphaKeys();
+    if(StyleManager::instance().isInvertedTheme() != _isInvertedTheme) {
+        _isInvertedTheme = StyleManager::instance().isInvertedTheme();
+        for(int i = 0; i < 8; ++i) {
+            _colors[i] = StyleManager::mappedColor(_defaultColors[i]);
+        }
+        _selected = StyleManager::mappedColor(_defaultSelected);
+    }
     bool altPressed = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
     bool shiftPressed = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     //bool ctrlPressed = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
@@ -470,9 +477,10 @@ void Editor::draw(Font& font, Rectangle rect)
     //gui::Space(rect.height -50);
     DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
     std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
+    auto textColor = StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL);
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
-            DrawTextEx(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, 8, 0, LIGHTGRAY);
+            DrawTextEx(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, 8, 0, textColor);
             drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol);
         }
         ++lineNumber;
@@ -485,7 +493,7 @@ void Editor::draw(Font& font, Rectangle rect)
         auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
         auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
         if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height)
-            DrawRectangle(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, WHITE);
+            DrawRectangle(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
     }
 
     auto handle = verticalScrollHandle();
@@ -576,7 +584,7 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
         int codepoint = (int)utf8::fetchCodepoint(text, end);
         if(columnOffset <= 0) {
             if(offset >= selStart && offset < selEnd)
-                DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, selected);
+                DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, _selected);
             if ((codepoint != ' ') && (codepoint != '\t')) {
                 DrawTextCodepoint(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
             }
@@ -589,7 +597,7 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
     }
     uint32_t offset = text - _text.data();
     if(textOffsetX < width && offset >= selStart && offset < selEnd)
-        DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)LINE_SIZE}, selected);
+        DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)LINE_SIZE}, _selected);
 }
 
 void Editor::safeInsert(uint32_t offset, const std::string& text)
@@ -840,15 +848,15 @@ void Editor::drawMessageArea()
     BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
     const auto& compileResult = _compiler.compileResult();
     if(compileResult.resultType == emu::CompileResult::eOK) {
-        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
+        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
     }
     else {
         std::error_code ec;
         auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
         auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
         if(ec) relFile = compileResult.locations.back().file;
-        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, LIGHTGRAY);
-        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, ORANGE);
+        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, StyleManager::mappedColor(ORANGE));
     }
     EndScissorMode();
 }
