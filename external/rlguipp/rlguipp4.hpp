@@ -376,6 +376,7 @@ struct GuiContext
         int64_t lastUpdate{0};
         int64_t lastDraw{0};
         int state{0};
+        bool guiDisabled{false};
         unsigned int style[RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED];
     };
     inline static std::unordered_map<int*, DropdownInfo> dropdownBoxes;
@@ -393,6 +394,7 @@ struct GuiContext
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
+            iter->second.guiDisabled = GuiGetState() == STATE_DISABLED;
             return iter->second.clicked;
         }
         else {
@@ -400,6 +402,7 @@ struct GuiContext
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
+            iter->second.guiDisabled = GuiGetState() == STATE_DISABLED;
             return false;
         }
     }
@@ -434,6 +437,9 @@ struct GuiContext
                     }
                 }
                 bool wasEdit = info.editMode;*/
+                auto oldState = GuiGetState();
+                if(info.guiDisabled)
+                    GuiDisable();
                 if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
                     if (openDropdownboxId != active) {
                         closeOpenDropdownBox();
@@ -445,6 +451,8 @@ struct GuiContext
                 else {
                     info.clicked = false;
                 }
+                if(info.guiDisabled)
+                    GuiEnable();
                 info.lastDraw = info.lastUpdate;
             }
         }
@@ -1355,9 +1363,9 @@ bool CheckBox(const char* text, bool checked)
     return checked;
 }
 
-int ComboBox(const char* text, int active)
+int ComboBox(const char* text, int* active)
 {
-    return detail::defaultWidget(GuiComboBox, text, &active);
+    return detail::defaultWidget(GuiComboBox, text, active);
 }
 
 int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)

@@ -84,6 +84,13 @@ inline std::string toLower(std::string s)
     return result;
 }
 
+inline std::string toUpper(std::string s)
+{
+    auto result = s;
+    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c){ return std::toupper(c); });
+    return result;
+}
+
 template <typename OutIter>
 inline void split(const std::string& s, char delimiter, OutIter result)
 {
@@ -220,6 +227,8 @@ private:
 inline std::string formatUnit(double val, const std::string& suffix, int minScale = -1)
 {
     static const char* prefix[] = {"n", "u", "m", "", "k", "M", "G", "T"};
+    if(std::isnan(val))
+        return "";
     bool isNeg = val < 0;
     val = std::abs(val);
     if (val < 0.000000001)

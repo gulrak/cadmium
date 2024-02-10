@@ -91,8 +91,10 @@ public:
     static bool isPrefixedTPDRom(const uint8_t* data, size_t size);
     static bool isPrefixedRSTDPRom(const uint8_t* data, size_t size);
     static size_t numKnownRoms();
+    static const KnownRomInfo& getRomInfo(size_t index);
     static const KnownRomInfo* getKnownRoms();
     static const KnownRomInfo* findKnownRom(const std::string sha1);
+    static emu::Chip8EmulatorOptions getOptionsForSha1(const std::string_view& sha1);
 private:
     int _activeEntry{-1};
     std::string _currentPath;

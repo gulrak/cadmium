@@ -769,6 +769,11 @@ size_t Librarian::numKnownRoms()
     return g_knownRomNum;
 }
 
+const KnownRomInfo& Librarian::getRomInfo(size_t index)
+{
+    return index < g_knownRomNum ? g_knownRoms[index] : g_knownRoms[0];
+}
+
 const KnownRomInfo* Librarian::getKnownRoms()
 {
     return g_knownRoms;
@@ -901,7 +906,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                 foundOne = true;
                 if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 8) {
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
-                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string(), 16*1024*1024);
                         entry.isKnown = isKnownFile(file.data(), file.size());
                         entry.sha1sum = calculateSha1Hex(file.data(), file.size());
                         if(entry.isKnown) {
@@ -937,7 +942,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                         }
                     }
                     else {
-                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string(), 16*1024*1024);
                         entry.isKnown = isKnownFile(file.data(), file.size());
                         entry.sha1sum = calculateSha1Hex(file.data(), file.size());
                         entry.variant = getPresetForFile(entry.sha1sum);
@@ -1024,6 +1029,21 @@ emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const std::string& sha1su
             emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
         }
         options.behaviorBase = preset;
+        return options;
+    }
+    return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+}
+
+emu::Chip8EmulatorOptions Librarian::getOptionsForSha1(const std::string_view& sha1)
+{
+    const auto* romInfo = findKnownRom(std::string(sha1));
+    if (romInfo) {
+        auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
+        auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+        if(romInfo->options) {
+            emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
+            options.behaviorBase = preset;
+        }
         return options;
     }
     return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);

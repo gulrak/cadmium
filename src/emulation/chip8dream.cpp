@@ -39,10 +39,27 @@
 
 namespace emu {
 
+static const std::string PROP_CPU = "CPU";
+static const std::string PROP_CLOCK = "Clock Rate";
+static const std::string PROP_RAM = "Memory";
+static const std::string PROP_VIDEO = "Video";
+static const std::string PROP_ROM_NAME = "ROM Name";
+
 class Chip8Dream::Private {
 public:
     static constexpr uint16_t FETCH_LOOP_ENTRY = 0xC00C;
-    explicit Private(Chip8EmulatorHost& host, M6800Bus<>& bus, const Chip8EmulatorOptions& options) : _host(host), _cpu(bus)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/ {}
+    explicit Private(Chip8EmulatorHost& host, M6800Bus<>& bus, const Chip8EmulatorOptions& options)
+        : _host(host)
+        , _cpu(bus)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/
+        , _properties(Properties::getProperties("Dream6800"))
+    {
+        using namespace std::string_literals;
+        _properties.registerProperty({PROP_CPU, "M6800"s});
+        _properties.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, false});
+        _properties.registerProperty({PROP_RAM, Property::Combo{"2048"s,"4096"s}, false});
+        _properties.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}});
+        _properties.registerProperty({PROP_ROM_NAME, ""});
+    }
     Chip8EmulatorHost& _host;
     CadmiumM6800 _cpu;
     MC682x _pia;
@@ -54,10 +71,7 @@ public:
     std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
     std::array<uint8_t,1024> _rom{};
     IChip8Emulator::VideoType _screen;
-    std::string _romName;
-    std::string _romSHA1;
-    std::string _interpreterName;
-    std::string _interpreterSHA1;
+    Properties& _properties;
 };
 
 
@@ -149,13 +163,13 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
 {
     if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-        _impl->_romName = "CHIPOSLO";
-        _impl->_romSHA1 = calculateSha1Hex(dream6800ChipOslo, sizeof(dream6800ChipOslo));
+        _impl->_properties[PROP_ROM_NAME].setString("CHIPOSLO");
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800ChipOslo, sizeof(dream6800ChipOslo)).substr(0,8)));
     }
     else {
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
-        _impl->_romName = "CHIPOS";
-        _impl->_romSHA1 = calculateSha1Hex(dream6800Rom, sizeof(dream6800Rom));
+        _impl->_properties[PROP_ROM_NAME].setString("CHIPOS");
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800Rom, sizeof(dream6800Rom)).substr(0,8)));
     }
     _impl->_pia.irqAOutputHandler = [this](bool level) {
         if(!level)
@@ -238,6 +252,16 @@ void Chip8Dream::reset()
 std::string Chip8Dream::name() const
 {
     return "DREAM6800";
+}
+
+Properties& Chip8Dream::getProperties()
+{
+    return _impl->_properties;
+}
+
+void Chip8Dream::updateProperties(Property& changedProp)
+{
+
 }
 
 void Chip8Dream::fetchState()
@@ -519,16 +543,6 @@ void Chip8Dream::writeByte(uint16_t addr, uint8_t val)
     else {
         _cpuState = eERROR;
     }
-}
-
-std::pair<std::string_view,std::string_view> Chip8Dream::romInfo()
-{
-    return {_impl->_romName, _impl->_romSHA1};
-}
-
-std::pair<std::string_view,std::string_view> Chip8Dream::interpreterInfo()
-{
-    return {"",""};
 }
 
 

@@ -28,10 +28,16 @@
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/hardware/genericcpu.hpp>
+#include <emulation/properties.hpp>
 
 #include <fmt/format.h>
 
 namespace emu {
+
+struct RealCoreSetupInfo {
+    const char* name;
+    const char* propertiesJsonString;
+};
 
 class Chip8RealCoreBase : public Chip8OpcodeDisassembler
 {
@@ -89,8 +95,8 @@ public:
         return const_cast<Chip8RealCoreBase*>(this)->getBackendCpu();
     }
 
-    virtual std::pair<std::string_view,std::string_view> romInfo() = 0;
-    virtual std::pair<std::string_view,std::string_view> interpreterInfo() = 0;
+    virtual Properties& getProperties() = 0;
+    virtual void updateProperties(Property& changedProp) = 0;
 
     std::string dumpStateLine() const override {
         uint16_t op = (getMemoryByte(getPC())<<8)|getMemoryByte(getPC() + 1);

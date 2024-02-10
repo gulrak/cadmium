@@ -1712,13 +1712,14 @@ public:
         }
         Space(2);
         _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
-        Space((_behaviorSel != 12 && _behaviorSel != 13) ? 26 : 8);
+        Space((_behaviorSel != 12 && _behaviorSel != 13) ? 20 : 2);
         EndGroupBox();
         //Space(10);
         BeginGroupBox("Emulation Speed");
         Space(5);
         SetIndent(150);
-        SetRowHeight(20);
+        //SetRowHeight(20);
+        SetSpacing(2);
         if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
             GuiDisable();
         Spinner("Instructions per frame ", &_options.instructionsPerFrame, 0, 10000000);
@@ -1802,28 +1803,57 @@ public:
             End();
             EndColumns();
             auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used);
+            Space(quirksHeight - used - 2);
             EndGroupBox();
+            Space(4);
         }
         else if(!_chipEmu->isGenericEmulation()) {
             BeginGroupBox("System Configuration");
             auto startY = GetCurrentPos().y;
             Space(10);
+            SetSpacing(2);
             auto* rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
             if(rcb) {
-                auto romInfo = rcb->romInfo();
-                if(!romInfo.first.empty()) {
-                    Label(fmt::format("ROM: {}", romInfo.first.data()).c_str());
-                    Label(fmt::format("(SHA1:{})", romInfo.second.data()).c_str());
+                static emu::Properties propsMemento;
+                auto& props = rcb->getProperties();
+                if(props != propsMemento)
+                    props.copyInto(propsMemento);
+                for(size_t i = 0; i < props.numProperties(); ++i) {
+                    auto& prop = props[i];
+                    BeginColumns();
+                    SetSpacing(4);
+                    SetNextWidth(80);
+                    auto prevTextAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
+                    SetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
+                    Label(fmt::format("{}:", prop.getName()).c_str());
+                    SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
+                    SetNextWidth(150);
+                    if(prop.isReadonly())
+                        GuiDisable();
+                    std::visit(emu::visitor{
+                        [](nullptr_t) -> void { Label(""); },
+                        [](bool& val) -> void { val = CheckBox("", val); },
+                        [](emu::Property::Integer& val) -> void { Spinner("", &val.intValue, val.minValue, val.maxValue); },
+                        [](std::string& val) -> void {
+                            auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
+                            SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+                            TextBox(val, 4096);
+                            SetStyle(TEXTBOX, TEXT_ALIGNMENT, prevTextAlignment);
+                        },
+                        [](emu::Property::Combo& val) -> void { DropdownBox(val.rgCombo.c_str(), &val.index); }
+                    }, prop.getValue());
+                    if(prop.isReadonly())
+                        GuiEnable();
+                    EndColumns();
                 }
-                auto interpreterInfo = rcb->interpreterInfo();
-                if(!interpreterInfo.first.empty()) {
-                    Label(fmt::format("Interpreter: {}", interpreterInfo.first.data()).c_str());
-                    Label(fmt::format("(SHA1:{})", interpreterInfo.second.data()).c_str());
+                auto* changedProp = props.changedProperty(propsMemento);
+                if(changedProp) {
+                    // on change...
+                    rcb->updateProperties(*changedProp);
                 }
             }
             auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used);
+            Space(quirksHeight - used - 4);
             EndGroupBox();
         }
         Space(14);
@@ -2682,6 +2712,58 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
     os << root.dump() << std::endl;
 }
 
+void dumpLibraryNickel()
+{
+    std::set<std::pair<std::string,std::string>> variantSet;
+    size_t romCount = 0;
+    for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
+        const auto& rom = Librarian::getRomInfo(i);
+        auto options = Librarian::getOptionsForSha1(rom.sha1);
+        if ((options.behaviorBase != emu::Chip8EmulatorOptions::eCHIP8 &&
+            options.behaviorBase != emu::Chip8EmulatorOptions::eSCHIP11 &&
+            options.behaviorBase != emu::Chip8EmulatorOptions::eSCHIP_MODERN &&
+            options.behaviorBase != emu::Chip8EmulatorOptions::eSCHPC &&
+            options.behaviorBase != emu::Chip8EmulatorOptions::eXOCHIP) ||
+            options.optLoadStoreIncIByX || options.optOnlyHires || options.optCyclicStack) {
+            std::cout << fmt::format("    //{{0x{}, {{{}, {}, {}}}}},  // {}", std::string(rom.sha1, 8), emu::Chip8EmulatorOptions::shortNameOfPreset(options.behaviorBase), "???", options.instructionsPerFrame, rom.name ? rom.name : "") << std::endl;
+        }
+        else {
+            std::string variant = "CHIP8";
+            std::ostringstream quirks;
+            //{ LogicQuirk = 1, ShiftQuirk = 2, MemoryIUnchanged = 4, JumpQuirk = 8, BytePixel = 16, DisplayWait = 32, ColorSupport = 64, Lores16Pixel = 128, Wrapping = 256 };
+            if (!options.optDontResetVf)
+                quirks << "|LogicQuirk";
+            if (options.optJustShiftVx)
+                quirks << "|ShiftQuirk";
+            if (options.optLoadStoreDontIncI)
+                quirks << "|MemoryIUnchanged";
+            if (options.optJump0Bxnn)
+                quirks << "|JumpQuirk";
+            if (!options.optInstantDxyn)
+                quirks << "|DisplayWait";
+            if (options.optWrapSprites)
+                quirks << "|Wrapping";
+            if (options.optLoresDxy0Is16x16)
+                quirks << "|Lores16Pixel";
+            if (options.optAllowColors)
+                quirks << "|ColorSupport|BytePixel";
+            if (options.optSCLoresDrawing)
+                quirks << "|ColorSupport|BytePixel|SCLoresDraw";
+            if (options.optHas16BitAddr)
+                variant = "XOCHIP";
+            auto quirkStr = quirks.str();
+            quirkStr = quirkStr.empty() ? "0" : quirkStr.substr(1);
+            std::cout << fmt::format("    {{0x{}, {{{}, {}, {}}}}},  // {}: {}", std::string(rom.sha1, 16), variant, quirkStr, options.instructionsPerFrame, emu::Chip8EmulatorOptions::shortNameOfPreset(options.behaviorBase), rom.name ? rom.name : "") << std::endl;
+            variantSet.insert({variant, quirkStr});
+            ++romCount;
+        }
+    }
+    std::cout << "------ " << variantSet.size() << " variants in " << romCount << " roms" << std::endl;
+    for(auto vari : variantSet) {
+        std::cout << "VARIANT(" << vari.first << ", " << (vari.first == "XOCHIP" ? 65536 : 4096) << ", " << vari.second << ")" << std::endl;
+    }
+}
+
 int main(int argc, char* argv[])
 {
     auto preset = emu::Chip8EmulatorOptions::eXOCHIP;
@@ -2693,6 +2775,7 @@ int main(int argc, char* argv[])
     bool showHelp = false;
     bool opcodeTable = false;
     bool opcodeJSON = false;
+    bool dumpLibNickel = false;
     bool startRom = false;
     bool screenDump = false;
     bool drawDump = false;
@@ -2733,6 +2816,7 @@ int main(int argc, char* argv[])
     cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
 #ifndef NDEBUG
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
+    cli.option({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
 #endif
     cli.category("Quirks");
     cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
@@ -2766,6 +2850,10 @@ int main(int argc, char* argv[])
     }
     if(opcodeJSON) {
         dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_8E|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
+        exit(0);
+    }
+    if(dumpLibNickel) {
+        dumpLibraryNickel();
         exit(0);
     }
     if(!dumpInterpreter.empty()) {

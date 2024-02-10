@@ -29,7 +29,7 @@
 #include <chiplet/chip8decompiler.hpp>
 #include <emulation/chip8emulatorbase.hpp>
 #include <emulation/chip8strict.hpp>
-#include <emulation/utility.hpp>
+#include <chiplet/utility.hpp>
 #include <emulation/c8bfile.hpp>
 #include <systemtools.hpp>
 #include <configuration.hpp>

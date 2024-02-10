@@ -14,6 +14,27 @@
 
 namespace emu {
 
+static const std::string PROP_CPU = "CPU";
+static const std::string PROP_CLOCK = "Clock Rate";
+static const std::string PROP_RAM = "Memory";
+static const std::string PROP_VIDEO = "Video";
+static const std::string PROP_AUDIO = "Audio";
+static const std::string PROP_KEYBOARD = "Keyboard";
+static const std::string PROP_ROM_NAME = "ROM Name";
+static const std::string PROP_INTERPRETER = "Interpreter";
+
+static const RealCoreSetupInfo defaultSetups[] = {
+    {"CHIP8", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8")"},
+    {"CHIP10", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP10")"},
+    {"CHIP8RB", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8RB")"},
+    {"CHIP8TPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8TPD")"},
+    {"CHIP8FPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
+    {"CHIP8X", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8X")"},
+    {"CHIP8XTPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8XTPD")"},
+    {"CHIP8XFPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
+    {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
+};
+
 class Chip8VIP::Private {
 public:
     uint16_t FETCH_LOOP_ENTRY{0x01B};
@@ -22,17 +43,43 @@ public:
         : _host(host)
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
         , _video(options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP || options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_TPD || options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_FPD ? Cdp186x::eVP590 : Cdp186x::eCDP1861, _cpu, options)
+        , _properties(Properties::getProperties("CosmacVIP"))
     {
+        using namespace std::string_literals;
+        _properties.registerProperty({PROP_CPU, "CDP1802"s});
+        _properties.registerProperty({PROP_CLOCK, Property::Integer{(int)CPU_CLOCK_FREQUENCY, 100000, 20000000}, false});
+        _properties.registerProperty({PROP_RAM, Property::Combo{"2048"s,"4096"s,"8192"s,"12288"s,"16384"s,"32768"s}, false});
+        _properties.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861","CDP1861-C10-HIRES","VP-590","CDP1864"}});
+        _properties.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer","VP-595 Simple SB","VP-551 2x Super SB"}});
+        _properties.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex","VP-580 2x Hex","VP-601 VIP ASCII","VP-611 VIP A+NP"}});
+        _properties.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
+        _properties.registerProperty({PROP_INTERPRETER, Property::Combo{"CHIP8","CHIP10","CHIP8RB","CHIP8TPD","CHIP8FPD","CHIP8X","CHIP8XTPD","CHIP8XFPD","CHIP8E"}});
         if(_video.getType() == Cdp186x::eVP590 && options.behaviorBase != Chip8EmulatorOptions::eCHIP8XVIP) {
             _colorRamMask = 0x3ff;
             _colorRamMaskLores = 0x3e7;
         }
         if(options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP)
             FETCH_LOOP_ENTRY = 0x1f;
-        _romName = "COSMAC-VIP";
-        _romSHA1 = calculateSha1Hex(_rom_cvip, 512);
-        _interpreterName = "CHIP8";
-        _interpreterSHA1 = calculateSha1Hex(_chip8_cvip, 512);
+        _properties[PROP_RAM].setSelectedText(std::to_string(MAX_MEMORY_SIZE));
+        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_rom_cvip, 512).substr(0,8)));
+        _properties[PROP_INTERPRETER].setSelectedText("CHIP8");
+        _properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_chip8_cvip, 512).substr(0,8)));
+        switch(_video.getType()) {
+            case Cdp186x::eCDP1861_C10:
+                _properties[PROP_VIDEO].setSelectedIndex(1);
+                break;
+            case Cdp186x::eVP590:
+                _properties[PROP_VIDEO].setSelectedIndex(2);
+                _properties[PROP_AUDIO].setSelectedIndex(1);
+                break;
+            case Cdp186x::eCDP1864:
+                _properties[PROP_VIDEO].setSelectedIndex(3);
+                break;
+            case Cdp186x::eCDP1861:
+            default:
+                _properties[PROP_VIDEO].setSelectedIndex(0);
+                break;
+        }
     }
     Chip8EmulatorHost& _host;
     Cdp1802 _cpu;
@@ -51,10 +98,7 @@ public:
     std::array<uint8_t,1024> _colorRam{};
     std::array<uint8_t,512> _rom{};
     VideoType _screen;
-    std::string _romName;
-    std::string _romSHA1;
-    std::string _interpreterName;
-    std::string _interpreterSHA1;
+    Properties& _properties;
 };
 
 
@@ -315,6 +359,51 @@ static std::map<std::string,PatchSet> g_patchSets = {
             {0x1f6, {0xb5, 0x25, 0xd4, 0xf7, 0xa5, 0x95, 0x7f, 0x00, 0x30, 0xf6}}
         }}
     },
+    {
+        "CHIP8ELF",
+        {{
+            {0x000, {0xf8, 0x0e, 0xb1, 0xf8, 0x46, 0xa1}},
+            {0x007, {0x0f, 0xbb}},
+            {0x00a, {0x0e, 0xb2, 0xb6, 0xf8, 0xcf, 0xa2, 0xf8, 0x01, 0xb5, 0xf8, 0xfc, 0xa5, 0xf8, 0x00, 0xb4, 0xf8,
+                     0x1d, 0xa4, 0xd4, 0x96, 0xb7, 0xe2, 0x94, 0xbc, 0x45, 0xaf}},
+            {0x026, {0xf6, 0xf6, 0x32, 0x44, 0xf9, 0x50, 0xac, 0x8f}},
+            {0x043, {0x1d}},
+            {0x045, {0xb3, 0x45, 0x30, 0x40, 0x22, 0x69, 0x12, 0xd4, 0x00, 0x00}},
+            {0x056, {0x00}},
+            {0x061, {0x7f, 0x78, 0x86, 0x8e, 0x98, 0xfc, 0x00, 0xc2, 0x94, 0xf1, 0xb2, 0xdf}},
+            {0x06e, {0x9c}},
+            {0x071, {0xbe, 0xfa, 0x3f, 0xf6, 0xf6, 0xf6, 0x22, 0x52, 0x07, 0xfe, 0xfe, 0xfe, 0xf1, 0xac, 0x9b, 0xbc,
+                     0x45, 0xfa, 0x0f, 0xad, 0xa7, 0xf8, 0xd0, 0xa6, 0xf8, 0x00, 0xaf, 0x87, 0x32, 0xf3, 0x27, 0x4a,
+                     0xbd, 0x9e, 0xfa, 0x07, 0xae, 0x8e, 0x32, 0xa2, 0x9d, 0xf6, 0xbd, 0x8f, 0x76, 0xaf, 0x2e, 0x30,
+                     0x96, 0x9d, 0x56, 0x16, 0x8f, 0x56, 0x16, 0x30, 0x89, 0x00, 0xec, 0xf8, 0xd0, 0xa6, 0xf8, 0x00,
+                     0xa7, 0x8d, 0x32, 0xd8, 0x06, 0xf2, 0x2d, 0x32, 0xbd, 0xf8, 0x01, 0xa7, 0x46, 0xf3, 0x5c, 0x02,
+                     0xfb, 0x07, 0x32, 0xd1, 0x1c, 0x06, 0xf2, 0x32, 0xcd, 0xf8, 0x01, 0xa7, 0x06, 0xf3, 0x5c, 0x2c,
+                     0x16, 0x8c, 0xfc, 0x08, 0xac, 0x3b, 0xb2, 0xf8, 0xff, 0xa6, 0x87, 0x56, 0x12, 0xd4, 0x00}},
+            {0x0e5, {0xf8, 0x00, 0x5f, 0x8f, 0x32, 0xde, 0x2f, 0x30, 0xe5}},
+            {0x0f7, {0xaa}},
+            {0x0fc, {0x45, 0x56, 0xd4}},
+            {0x100, {0x45, 0xe6, 0xf4, 0x56, 0xd4}},
+            {0x10a, {0x3e, 0x0a, 0x36, 0x0c, 0x22, 0x6c, 0xfa, 0x0f}},
+            {0x129, {0x91, 0xba, 0x06, 0xfa, 0x0f, 0xaa, 0x0a, 0xaa, 0xd4, 0x00}},
+            {0x175, {0xe6, 0x64, 0xd4, 0x15, 0x85, 0x22, 0x73, 0x95, 0x52, 0x25, 0x45, 0xa5, 0x86, 0xfa, 0x0f, 0xb5,
+                     0xd4, 0x45, 0xe6, 0xf3, 0x3a, 0x8d, 0x15, 0x15, 0xd4, 0x45, 0xe6, 0xf3, 0x3a, 0x8b, 0xd4, 0x45,
+                     0x07, 0x30, 0x8f, 0x45, 0x07, 0x30, 0x87, 0x22, 0x6c, 0x06, 0xf3, 0xfa, 0x0f, 0x52, 0x45, 0xf6,
+                     0x42, 0x3b, 0xad, 0x3e, 0x8b, 0x3a, 0x8b, 0xd4, 0x3e, 0xb1, 0x32, 0x8b, 0xd4, 0xf8, 0xf0, 0xa7,
+                     0xe7, 0x45, 0xf4, 0xa5, 0x86, 0xfa, 0x0f, 0x3b, 0xc0, 0xfc, 0x01, 0xb5, 0xd4, 0x45, 0xfa, 0x0f,
+                     0x3a, 0xca, 0x07, 0x56, 0xd4, 0xaf, 0x22, 0xf8, 0xd3, 0x73, 0x8f, 0xf9, 0xf0, 0x52, 0xe6, 0x07,
+                     0xd2, 0x56, 0xf8, 0xff, 0xa6, 0xf8, 0x00, 0x7e, 0x56, 0xd4, 0x19, 0x89, 0xae, 0x93, 0xbe, 0x99,
+                     0xee, 0xf4, 0x56, 0x76, 0xe6, 0xf4, 0xb9, 0x56, 0x45, 0xf2, 0x56, 0xd4, 0x45, 0xaa, 0x86, 0xfa,
+                     0x0f, 0xba, 0xd4}},
+            {0x1ff, {0x49}},
+            {0xe00, {0x30, 0x39, 0x22, 0x2a, 0x3e, 0x20, 0x24, 0x34, 0x26, 0x28, 0x2e, 0x18, 0x14, 0x1c, 0x10, 0x12,
+                     0xf0, 0x80, 0xf0, 0x80, 0xf0, 0x80, 0x80, 0x80, 0xf0, 0x50, 0x70, 0x50, 0xf0, 0x50, 0x50, 0x50,
+                     0xf0, 0x80, 0xf0, 0x10, 0xf0, 0x80, 0xf0, 0x90, 0xf0, 0x90, 0xf0, 0x10, 0xf0, 0x10, 0xf0, 0x90,
+                     0xf0, 0x90, 0x90, 0x90, 0xf0, 0x10, 0x10, 0x10, 0x10, 0x60, 0x20, 0x20, 0x20, 0x70, 0xa0, 0xa0,
+                     0xf0, 0x20, 0x20, 0x7a, 0x42, 0x70, 0x22, 0x78, 0x22, 0x52, 0xc4, 0x19, 0xf8}},
+            {0xe4e, {0xa0, 0x9b, 0xb0, 0xe2, 0xe2, 0x80, 0xe2, 0xe2, 0x20, 0xa0, 0xe2, 0x20, 0xa0, 0xe2, 0x20, 0xa0,
+                     0x3c, 0x53, 0x98, 0x32, 0x67, 0xab, 0x2b, 0x8b, 0xb8, 0x88, 0x32, 0x43, 0x7b, 0x28, 0x30, 0x44}}
+        }}
+    }
 };
 
 
@@ -419,8 +508,9 @@ void Chip8VIP::reset()
     if(_options.advanced.contains("interpreter")) {
         auto name = _options.advanced.value("interpreter", "");
         auto size = patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
-        _impl->_interpreterName = name;
-        _impl->_interpreterSHA1 = calculateSha1Hex(_impl->_ram.data(), size);
+        _impl->_properties[PROP_INTERPRETER].setSelectedText(name);
+        _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0,8)));
+        //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
     }
     _impl->_screen.setAll(0);
     _impl->_video.reset();
@@ -451,6 +541,16 @@ uint16_t Chip8VIP::patchRAM(std::string name, uint8_t* ram, size_t size)
 std::string Chip8VIP::name() const
 {
     return "Chip-8-RVIP";
+}
+
+Properties& Chip8VIP::getProperties()
+{
+    return _impl->_properties;
+}
+
+void Chip8VIP::updateProperties(Property& changedProp)
+{
+
 }
 
 void Chip8VIP::fetchState()
@@ -778,14 +878,5 @@ std::vector<uint8_t> Chip8VIP::getInterpreterCode(const std::string& name)
     return memory;
 }
 
-std::pair<std::string_view,std::string_view> Chip8VIP::romInfo()
-{
-    return {_impl->_romName, _impl->_romSHA1};
-}
-
-std::pair<std::string_view,std::string_view> Chip8VIP::interpreterInfo()
-{
-    return {_impl->_interpreterName, _impl->_interpreterSHA1};
-}
 
 }

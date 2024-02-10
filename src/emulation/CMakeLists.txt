@@ -23,6 +23,8 @@ set(CHIP8_EMU_SOURCE
     chip8dream.cpp
     chip8dream.hpp
     utility.cpp
+    properties.cpp
+    properties.hpp
     #octocartridge.cpp
     #octocartridge.hpp
 )

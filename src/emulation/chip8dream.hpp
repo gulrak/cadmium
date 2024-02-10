@@ -76,8 +76,8 @@ public:
 
     GenericCpu& getBackendCpu() override;
 
-    std::pair<std::string_view,std::string_view> romInfo() override;
-    std::pair<std::string_view,std::string_view> interpreterInfo() override;
+    Properties& getProperties() override;
+    void updateProperties(Property& changedProp) override;
 
 private:
     int frameCycle() const;
