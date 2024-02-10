@@ -181,7 +181,6 @@ public:
                 throw std::runtime_error("Tried to overwrite an active property set with another active one!");
             props._valueMap = _valueMap;
         }
-        props._valueList = _valueList;
     }
     bool operator==(const Properties& other) const
     {
