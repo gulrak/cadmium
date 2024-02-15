@@ -68,19 +68,6 @@ static bool platformMatchesOptions(const c8db::Platform& platform, const emu::Ch
     return false;
 }
 
-template<typename Iter>
-std::string join(Iter first, Iter last, const std::string& delimiter)
-{
-    std::ostringstream result;
-    for (Iter i = first; i != last; ++i) {
-        if (i != first) {
-            result << delimiter;
-        }
-        result << *i;
-    }
-    return result.str();
-}
-
 
 int main(int argc, char* argv[])
 {

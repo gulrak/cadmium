@@ -417,43 +417,41 @@ struct GuiContext
             }
         }
     }
+    static void handleDeferredDropBox(int*const & active, DropdownInfo& info)
+    {
+        if (info.lastDraw < info.lastUpdate && info.lastUpdate == frameId) {
+            for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
+                SetStyle(DROPDOWNBOX, i, info.style[i]);
+            }
+            auto oldState = GuiGetState();
+            if(info.guiDisabled)
+                GuiDisable();
+            if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
+                if (openDropdownboxId != active) {
+                    closeOpenDropdownBox();
+                }
+                info.clicked = info.editMode;
+                info.editMode = !info.editMode;
+                openDropdownboxId = info.editMode ? active : nullptr;
+            }
+            else {
+                info.clicked = false;
+            }
+            if(info.guiDisabled)
+                GuiEnable();
+            info.lastDraw = info.lastUpdate;
+        }
+    }
     static void handleDeferredDropBoxes()
     {
         for (auto& [active, info] : dropdownBoxes) {
-            if (info.lastDraw < info.lastUpdate && info.lastUpdate == frameId) {
-                for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
-                    SetStyle(DROPDOWNBOX, i, info.style[i]);
-                }
-                /*auto r = info.rect;
-                auto r2 = r;
-                bool shifted = false;
-                if(info.editMode) {
-                    auto count = std::count_if( info.text.begin(), info.text.end(), []( char c ){return c ==';';}) + 2;
-                    if(r.y + count*r.height > 192*2+36) {
-                        r.y = 192*2+36 - count*r.height - 4;
-                        r2 = r;
-                        r2.height = 192*2+36 - count*r.height;
-                        shifted = true;
-                    }
-                }
-                bool wasEdit = info.editMode;*/
-                auto oldState = GuiGetState();
-                if(info.guiDisabled)
-                    GuiDisable();
-                if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
-                    if (openDropdownboxId != active) {
-                        closeOpenDropdownBox();
-                    }
-                    info.clicked = info.editMode;
-                    info.editMode = !info.editMode;
-                    openDropdownboxId = info.editMode ? active : nullptr;
-                }
-                else {
-                    info.clicked = false;
-                }
-                if(info.guiDisabled)
-                    GuiEnable();
-                info.lastDraw = info.lastUpdate;
+            if(!info.editMode) {
+                handleDeferredDropBox(active, info);
+            }
+        }
+        for (auto& [active, info] : dropdownBoxes) {
+            if(info.editMode) {
+                handleDeferredDropBox(active, info);
             }
         }
         if(!GuiContext::tooltipText.empty()) {

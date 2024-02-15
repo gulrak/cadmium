@@ -78,6 +78,7 @@ public:
             case Cdp186x::eCDP1861:
             default:
                 _properties[PROP_VIDEO].setSelectedIndex(0);
+                _properties[PROP_AUDIO].setSelectedIndex(0);
                 break;
         }
     }
