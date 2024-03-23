@@ -904,9 +904,9 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
         for (auto& entry : _directoryEntries) {
             if (!entry.analyzed) {
                 foundOne = true;
-                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 8) {
+                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 16) {
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
-                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string(), 16*1024*1024);
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
                         entry.sha1sum = calculateSha1Hex(file.data(), file.size());
                         if(entry.isKnown) {
@@ -942,7 +942,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                         }
                     }
                     else {
-                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string(), 16*1024*1024);
+                        auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
                         entry.sha1sum = calculateSha1Hex(file.data(), file.size());
                         entry.variant = getPresetForFile(entry.sha1sum);
