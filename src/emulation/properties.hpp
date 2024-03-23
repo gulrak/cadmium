@@ -76,25 +76,12 @@ public:
     };
     using Value = std::variant<nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true)
-    : _name(name)
-    , _value(val)
-    , _additionalInfo(additionalInfo)
-    , _isReadonly(isReadOnly)
-    {}
-    Property(std::string name, Value val, bool isReadOnly = true)
-        : _name(name)
-        , _value(val)
-        , _isReadonly(isReadOnly)
-    {}
-    Property(const Property& other)
-        : _name(other._name)
-        , _value(other._value)
-        , _additionalInfo(other._additionalInfo)
-        , _isReadonly(other._isReadonly)
-    {
-    }
+    Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true);
+    Property(std::string name, Value val, bool isReadOnly = true);
+    Property(const Property& other);
     const std::string& getName() const { return _name; }
+    const std::string& getJsonKey() const { return _jsonKey; }
+    void setJsonKey(const std::string& jsonKey) { _jsonKey = jsonKey; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
     bool isReadonly() const { return _isReadonly; }
@@ -139,6 +126,7 @@ public:
     }
 private:
     std::string _name;
+    std::string _jsonKey;
     Value _value;
     std::string _additionalInfo;
     bool _isReadonly{true};
@@ -152,7 +140,6 @@ public:
     {
         auto iter = _valueMap.find(prop.getName());
         if(iter == _valueMap.end()) {
-            registerKey(prop.getName());
             _valueList.push_back(prop.getName());
             _valueMap.emplace(prop.getName(), prop);
         }
@@ -244,12 +231,6 @@ public:
             }
         }
         return key;
-    }
-    inline static void registerKey(const std::string& key)
-    {
-        auto jsonKey = makeJsonKey(key);
-        registeredKeys[key] = jsonKey;
-        registeredJsonKeys[jsonKey] = key;
     }
 private:
     std::vector<std::string> _valueList;
