@@ -39,9 +39,6 @@ extern const uint8_t _rom_cvip[0x200];
 class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
 {
 public:
-    constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
-    constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
-
     Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8VIP() override;
 

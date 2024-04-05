@@ -363,10 +363,8 @@ void StyleManager::renderAppearanceEditor()
     SetIndent(90);
     SetNextWidth(150);
     Spinner("UI-Tint ", &_guiHue, 0, 360);
-    _guiHue = std::clamp(_guiHue, 0, 360);
     SetNextWidth(150);
     Spinner("UI-Saturation ", &_guiSaturation, 0, 100);
-    _guiSaturation = std::clamp(_guiSaturation, 0, 100);
     SetIndent(26);
     StyleManager::Scope guard;
     auto pos = GetCurrentPos();

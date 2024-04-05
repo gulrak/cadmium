@@ -5,7 +5,9 @@
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
+#include <ghc/random.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <fstream>
 
@@ -17,6 +19,7 @@ namespace emu {
 static const std::string PROP_CPU = "CPU";
 static const std::string PROP_CLOCK = "Clock Rate";
 static const std::string PROP_RAM = "Memory";
+static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_AUDIO = "Audio";
 static const std::string PROP_KEYBOARD = "Keyboard";
@@ -24,43 +27,50 @@ static const std::string PROP_ROM_NAME = "ROM Name";
 static const std::string PROP_INTERPRETER = "Interpreter";
 
 static const RealCoreSetupInfo defaultSetups[] = {
-    {"CHIP8", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8")"},
-    {"CHIP10", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP10")"},
-    {"CHIP8RB", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8RB")"},
-    {"CHIP8TPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8TPD")"},
-    {"CHIP8FPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
-    {"CHIP8X", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8X")"},
-    {"CHIP8XTPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8XTPD")"},
-    {"CHIP8XFPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
-    {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
+    {"CHIP8", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8")"},
+    {"CHIP10", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP10")"},
+    {"CHIP8RB", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8RB")"},
+    {"CHIP8TPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8TPD")"},
+    {"CHIP8FPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
+    {"CHIP8X", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8X")"},
+    {"CHIP8XTPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8XTPD")"},
+    {"CHIP8XFPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
+    {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
 };
 
 class Chip8VIP::Private {
 public:
     uint16_t FETCH_LOOP_ENTRY{0x01B};
     static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
-    explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus, const Chip8EmulatorOptions& options)
+    explicit Private(Chip8EmulatorHost& host, Cdp1802Bus& bus, Chip8EmulatorOptions& options)
         : _host(host)
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
         , _video(options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP || options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_TPD || options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_FPD ? Cdp186x::eVP590 : Cdp186x::eCDP1861, _cpu, options)
-        , _properties(Properties::getProperties("CosmacVIP"))
+        , _properties(options.properties)
     {
         using namespace std::string_literals;
-        _properties.registerProperty({PROP_CPU, "CDP1802"s});
-        _properties.registerProperty({PROP_CLOCK, Property::Integer{(int)CPU_CLOCK_FREQUENCY, 100000, 20000000}, false});
-        _properties.registerProperty({PROP_RAM, Property::Combo{"2048"s,"4096"s,"8192"s,"12288"s,"16384"s,"32768"s}, false});
-        _properties.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861","CDP1861-C10-HIRES","VP-590","CDP1864"}});
-        _properties.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer","VP-595 Simple SB","VP-551 2x Super SB"}});
-        _properties.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex","VP-580 2x Hex","VP-601 VIP ASCII","VP-611 VIP A+NP"}});
-        _properties.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
-        _properties.registerProperty({PROP_INTERPRETER, Property::Combo{"CHIP8","CHIP10","CHIP8RB","CHIP8TPD","CHIP8FPD","CHIP8X","CHIP8XTPD","CHIP8XFPD","CHIP8E"}});
+        if(!_properties || options.properties.propertyClass() != _properties.propertyClass()) {
+            auto& prop = Properties::getProperties("CosmacVIP");
+            if(!prop) {
+                prop.registerProperty({PROP_CPU, "CDP1802"s});
+                prop.registerProperty({PROP_CLOCK, Property::Integer{(int)CPU_CLOCK_FREQUENCY, 100000, 500000000}, false});
+                prop.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, false});
+                prop[PROP_RAM].setSelectedText(std::to_string(_memorySize));
+                prop.registerProperty({PROP_CLEAN_RAM, true, false});
+                prop.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}});
+                prop.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}});
+                prop.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}});
+                prop.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
+                prop.registerProperty({PROP_INTERPRETER, Property::Combo{"CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}});
+            }
+            _properties = prop;
+        }
         if(_video.getType() == Cdp186x::eVP590 && options.behaviorBase != Chip8EmulatorOptions::eCHIP8XVIP) {
             _colorRamMask = 0x3ff;
             _colorRamMaskLores = 0x3e7;
         }
         if(options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP)
             FETCH_LOOP_ENTRY = 0x1f;
-        _properties[PROP_RAM].setSelectedText(std::to_string(MAX_MEMORY_SIZE));
         _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_rom_cvip, 512).substr(0,8)));
         _properties[PROP_INTERPRETER].setSelectedText("CHIP8");
         _properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_chip8_cvip, 512).substr(0,8)));
@@ -81,8 +91,11 @@ public:
                 _properties[PROP_AUDIO].setSelectedIndex(0);
                 break;
         }
+        _memorySize = std::stoul(_properties[PROP_RAM].getSelectedText());
+        _ram.resize(_memorySize, 0);
     }
     Chip8EmulatorHost& _host;
+    uint32_t _memorySize{4096};
     Cdp1802 _cpu;
     Cdp186x _video;
     int64_t _irqStart{0};
@@ -94,8 +107,9 @@ public:
     uint16_t _initialChip8SP{0};
     uint16_t _colorRamMask{0xff};
     uint16_t _colorRamMaskLores{0xe7};
+    bool _mapRam{false};
     float _wavePhase{0};
-    std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
+    std::vector<uint8_t> _ram{};
     std::array<uint8_t,1024> _colorRam{};
     std::array<uint8_t,512> _rom{};
     VideoType _screen;
@@ -431,7 +445,11 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
     : Chip8RealCoreBase(host, options)
     , _impl(new Private(host, *this, options))
 {
+    //options.optTraceLog = true;
     std::memcpy(_impl->_rom.data(), _rom_cvip, sizeof(_rom_cvip));
+    if(_impl->_ram.size() > 4096) {
+        _impl->_rom[0x10] = (_impl->_ram.size() >> 8) - 1;
+    }
     _impl->_cpu.setInputHandler([this](uint8_t port) {
         if(port == 1)
             _impl->_video.enableDisplay();
@@ -447,6 +465,9 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
             break;
         case 3:
             _impl->_frequencyLatch = val ? val : 0x80;
+            break;
+        case 4:
+            _impl->_mapRam = true;
             break;
         case 5:
             if(_impl->_video.getType() == Cdp186x::eVP590)
@@ -503,7 +524,13 @@ void Chip8VIP::reset()
 {
     if(_options.optTraceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
-    std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
+    if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
+        std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
+    }
+    else {
+        ghc::RandomLCG rnd(42);
+        std::generate(_impl->_ram.begin(), _impl->_ram.end(), rnd);
+    }
     std::memset(_impl->_colorRam.data(), 0, _impl->_colorRam.size());
     std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
     if(_options.advanced.contains("interpreter")) {
@@ -522,8 +549,10 @@ void Chip8VIP::reset()
     _impl->_lastOpcode = 0;
     _impl->_initialChip8SP = 0;
     _impl->_frequencyLatch = 0x80;
+    _impl->_mapRam = false;
     _impl->_wavePhase = 0;
     _cpuState = eNORMAL;
+    _errorMessage.clear();
     setExecMode(eRUNNING);
     while(_impl->_cpu.getExecMode() == eRUNNING && (!executeCdp1802() || getPC() != _options.startAddress)); // fast-forward to fetch/decode loop
     setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
@@ -561,15 +590,22 @@ void Chip8VIP::fetchState()
     if(!_impl->_initialChip8SP)
         _impl->_initialChip8SP = _impl->_cpu.getR(2);
     auto base = _impl->_initialChip8SP & 0xFF00;
-    std::memcpy(_state.v.data(), &_impl->_ram[base + 0xF0], 16);
+    if(base + 0x100 <= _impl->_memorySize)
+        std::memcpy(_state.v.data(), &_impl->_ram[base + 0xF0], 16);
+    else
+        _impl->_cpu.setExecMode(GenericCpu::ePAUSED), _cpuState = eERROR, _errorMessage = "BASE ADDRESS OUT OF RAM";
     _state.i = _impl->_cpu.getR(0xA);
     _state.pc = _impl->_cpu.getR(5);
     _state.sp = ((_impl->_initialChip8SP - _impl->_cpu.getR(2)) >> 1) & 0xffff;
     _state.dt = _impl->_cpu.getR(8) >> 8;
     _state.st = _impl->_cpu.getR(8) & 0xff;
-    for(int i = 0; i < stackSize() && i < _state.sp; ++i) {
-        _state.s[i] = (_impl->_ram[_impl->_initialChip8SP - i*2 - 2] << 8) | _impl->_ram[_impl->_initialChip8SP - i*2 - 1];
+    if(_impl->_initialChip8SP < _impl->_memorySize && _impl->_initialChip8SP > stackSize() * 2) {
+        for (int i = 0; i < stackSize() && i < _state.sp; ++i) {
+            _state.s[i] = (_impl->_ram[_impl->_initialChip8SP - i * 2 - 2] << 8) | _impl->_ram[_impl->_initialChip8SP - i * 2 - 1];
+        }
     }
+    else
+        _impl->_cpu.setExecMode(GenericCpu::ePAUSED), _cpuState = eERROR, _errorMessage = "BASE ADDRESS OUT OF RAM";
 }
 
 void Chip8VIP::forceState()
@@ -741,7 +777,7 @@ uint8_t* Chip8VIP::memory()
 
 int Chip8VIP::memSize() const
 {
-    return 4096;
+    return _impl->_memorySize;
 }
 
 int64_t Chip8VIP::frames() const
@@ -814,8 +850,11 @@ GenericCpu& Chip8VIP::getBackendCpu()
 
 uint8_t Chip8VIP::readByte(uint16_t addr) const
 {
-    if(addr < 0x1000)
-        return _impl->_ram[addr];
+    if(addr < _impl->_memorySize) {
+        if(_impl->_mapRam || addr > _impl->_rom.size())
+            return _impl->_ram[addr];
+        return _impl->_rom[addr & (_impl->_rom.size() - 1)];
+    }
     if(addr >= 0xC000 && addr < 0xD000)
         return _impl->_colorRam[addr & _impl->_colorRamMaskLores];
     if(addr >= 0xD000 && addr < 0xE000)
@@ -828,7 +867,7 @@ uint8_t Chip8VIP::readByte(uint16_t addr) const
 
 uint8_t Chip8VIP::readByteDMA(uint16_t addr) const
 {
-    if(addr < 0x1000)
+    if(addr < _impl->_memorySize)
         return _impl->_ram[addr];
     if(addr >= 0xC000 && addr < 0xD000)
         return _impl->_colorRam[addr & _impl->_colorRamMaskLores];
@@ -846,7 +885,7 @@ uint8_t Chip8VIP::getMemoryByte(uint32_t addr) const
 
 void Chip8VIP::writeByte(uint16_t addr, uint8_t val)
 {
-    if(addr < 0x1000)
+    if(addr < _impl->_memorySize)
         _impl->_ram[addr] = val;
     else if(_impl->_video.getType() == Cdp186x::eVP590 && addr >= 0xC000 && addr < 0xE000) {
         if(addr < 0xD000) {
@@ -868,7 +907,7 @@ void Chip8VIP::writeByte(uint16_t addr, uint8_t val)
 std::vector<uint8_t> Chip8VIP::getInterpreterCode(const std::string& name)
 {
     std::vector<uint8_t> memory;
-    memory.resize(MAX_MEMORY_SIZE, 0);
+    memory.resize(4096, 0);
     std::memcpy(memory.data(), _chip8_cvip, sizeof(_chip8_cvip));
     uint16_t used = 512;
     if(name != "CHIP8")

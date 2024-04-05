@@ -147,8 +147,8 @@ RLGUIPP_API int ToggleGroup(const char* text, int active);                      
 RLGUIPP_API bool CheckBox(const char* text, bool checked);                                                                // Check Box control, returns true when active
 RLGUIPP_API int ComboBox(const char* text, int active);                                                                   // Combo Box control, returns selected item index
 RLGUIPP_API bool DropdownBox(const char* text, int* active, bool directionUp = false);                                    // Dropdown Box control, returns selected item
-RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                        // Spinner control, returns selected value
-RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                       // Value Box control, updates input text with numbers
+RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                                       // Spinner control, returns selected value
+RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                                      // Value Box control, updates input text with numbers
 RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
 RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
 RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
@@ -1490,7 +1490,9 @@ bool DropdownBox(const char* text, int* active, bool directionUp)
 
 bool Spinner(const char* text, int* value, int minValue, int maxValue)
 {
-    return detail::editableWidget(GuiSpinner, (void*)value, text, value, minValue, maxValue);
+    auto rc = detail::editableWidget(GuiSpinner, (void*)value, text, value, minValue, maxValue);
+    *value = std::clamp(*value, minValue, maxValue);
+    return rc;
 }
 
 bool ValueBox(const char* text, int* value, int minValue, int maxValue)

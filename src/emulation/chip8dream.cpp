@@ -29,6 +29,7 @@
 #include <emulation/hardware/mc682x.hpp>
 #include <emulation/hardware/keymatrix.hpp>
 #include <chiplet/utility.hpp>
+#include <ghc/random.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -42,25 +43,37 @@ namespace emu {
 static const std::string PROP_CPU = "CPU";
 static const std::string PROP_CLOCK = "Clock Rate";
 static const std::string PROP_RAM = "Memory";
+static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_ROM_NAME = "ROM Name";
 
 class Chip8Dream::Private {
 public:
     static constexpr uint16_t FETCH_LOOP_ENTRY = 0xC00C;
-    explicit Private(Chip8EmulatorHost& host, M6800Bus<>& bus, const Chip8EmulatorOptions& options)
+    explicit Private(Chip8EmulatorHost& host, M6800Bus<>& bus, Chip8EmulatorOptions& options)
         : _host(host)
         , _cpu(bus)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/
-        , _properties(Properties::getProperties("Dream6800"))
+        , _properties(options.properties)
     {
         using namespace std::string_literals;
-        _properties.registerProperty({PROP_CPU, "M6800"s});
-        _properties.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, false});
-        _properties.registerProperty({PROP_RAM, Property::Combo{"2048"s,"4096"s}, false});
-        _properties.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}});
-        _properties.registerProperty({PROP_ROM_NAME, ""});
+        if(!_properties || options.properties.propertyClass() != _properties.propertyClass()) {
+            auto& prop = Properties::getProperties("Dream6800");
+            if(!prop) {
+                prop.registerProperty({PROP_CPU, "M6800"s});
+                prop.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, false});
+                prop.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, false});
+                prop[PROP_RAM].setSelectedText(std::to_string(_memorySize));
+                prop.registerProperty({PROP_CLEAN_RAM, true, false});
+                prop.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}});
+                prop.registerProperty({PROP_ROM_NAME, ""});
+            }
+            _properties = prop;
+        }
+        _memorySize = std::stoul(_properties[PROP_RAM].getSelectedText());
+        _ram.resize(_memorySize, 0);
     }
     Chip8EmulatorHost& _host;
+    uint32_t _memorySize{4096};
     CadmiumM6800 _cpu;
     MC682x _pia;
     KeyMatrix<4,4> _keyMatrix;
@@ -68,7 +81,7 @@ public:
     int64_t _irqStart{0};
     int64_t _nextFrame{0};
     std::atomic<float> _wavePhase{0};
-    std::array<uint8_t,MAX_MEMORY_SIZE> _ram{};
+    std::vector<uint8_t> _ram{};
     std::array<uint8_t,1024> _rom{};
     IChip8Emulator::VideoType _screen;
     Properties& _properties;
@@ -223,7 +236,13 @@ void Chip8Dream::reset()
 {
     if(_options.optTraceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
-    std::memset(_impl->_ram.data(), 0, MAX_MEMORY_SIZE);
+    if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
+        std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
+    }
+    else {
+        ghc::RandomLCG rnd(42);
+        std::generate(_impl->_ram.begin(), _impl->_ram.end(), rnd);
+    }
     _impl->_screen.setAll(0);
     _impl->_cpu.reset();
     _impl->_ram[0x006] = 0xC0;
@@ -443,7 +462,7 @@ uint8_t* Chip8Dream::memory()
 
 int Chip8Dream::memSize() const
 {
-    return 4096;
+    return _impl->_memorySize;
 }
 
 uint8_t Chip8Dream::soundTimer() const

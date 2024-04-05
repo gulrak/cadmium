@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.9] (wip)
+## [1.1.9-1.1.11] (wip)
 
 ### Added
 
@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New high-level variant `CHIP-8E`, the emulator will by default still use the real `VIP-CHIP-8E`
   due to more accurate timing, but the generic one will take up less resources for more constrained
   platforms
+- Programs that are loaded from source are now also checked for their assembled binary being known
+  and options set accordingly. 
+- COSMAC VIP now supports up to 32k RAM, the interpreters will still put their screen data at
+  the end of the actual memory, theoretically expanding the CHIP-8 space (even if the max. 12
+  bit operands limit usability quite a bit)
 
 ### Fixed
 
@@ -22,7 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Disassembling 0x7C, 0x7D or 0x7F generated single byte opcodes instead two byte ones ([#13](https://github.com/gulrak/cadmium/issues/12))
 - Octo-Assembler would hang on macro definitions without name or parameter
 - High-level emulation didn't finish a frame with the right amount of cycles if part of it was
-  single stepped or breakpoints involved.
+  single stepped or breakpoints involved
+- Wrong initial cycles after a reset for the COSMAC VIP and the CHIP-8 strict timing core, the
+  time in ROM was not counted in
+  
 
 ## [1.1.8] - 2024-01-01
 

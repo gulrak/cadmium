@@ -112,6 +112,7 @@ FetchContent_GetProperties(Chiplet)
 if(NOT chiplet_POPULATED)
     FetchContent_Populate(Chiplet)
     add_subdirectory(${chiplet_SOURCE_DIR} ${chiplet_BINARY_DIR})
+    include_directories(${chiplet_SOURCE_DIR}/external)
 endif()
 
 find_package(Git)

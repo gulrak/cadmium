@@ -58,6 +58,12 @@ Property::Property(const Property& other)
 {
 }
 
+Properties::RegistryMaps& Properties::getRegistryMaps()
+{
+    static RegistryMaps regMaps;
+    return regMaps;
+}
+
 void to_json(nlohmann::json& j, const Properties& props)
 {
     j = nlohmann::json::object();

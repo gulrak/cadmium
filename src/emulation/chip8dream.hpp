@@ -35,8 +35,8 @@ class Chip8Dream : public Chip8RealCoreBase, public M6800Bus<>
 {
 public:
 public:
-    constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
-    constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
+    //constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
+    //constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
 
     Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8Dream() override;

@@ -99,7 +99,7 @@ public:
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
     void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = idx; }
     void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
-    Property& operator=(const Property& other)
+/*    Property& operator=(const Property& other)
     {
         if(_value.index() != other._value.index())
             return *this;
@@ -111,7 +111,7 @@ public:
                   [&](emu::Property::Combo& val) { val.index = std::get<Combo>(other._value).index; }
               }, _value);
         return *this;
-    }
+    }*/
     bool operator==(const Property& other) const
     {
         if(_value.index() != other._value.index())
@@ -133,9 +133,16 @@ private:
 };
 
 class Properties {
+    struct RegistryMaps {
+        static std::map<std::string_view,Properties> propertyRegistry;
+        static std::unordered_map<std::string,std::string> registeredKeys;
+        static std::unordered_map<std::string,std::string> registeredJsonKeys;
+    };
 public:
     Properties() = default;
-    Properties(const Properties&) = delete;
+    //Properties(const Properties&) = delete;
+    explicit operator bool() const { return !_valueList.empty(); }
+    const std::string& propertyClass() const { return _class; }
     void registerProperty(const Property& prop)
     {
         auto iter = _valueMap.find(prop.getName());
@@ -145,6 +152,23 @@ public:
         }
     }
     size_t numProperties() const { return _valueList.size(); }
+
+    Properties& operator=(const Properties& other)
+    {
+        if(&other != this) {
+            _class = other._class;
+            _valueList = other._valueList;
+            _valueMap = other._valueMap;
+        }
+        return *this;
+    }
+
+    /*
+    void cloneInto(Properties& props) const
+    {
+        props._valueList = _valueList;
+        props._valueMap = _valueMap;
+    }
     void copyInto(Properties& props) const
     {
         if(_valueList.empty()) {
@@ -169,6 +193,7 @@ public:
             props._valueMap = _valueMap;
         }
     }
+     */
     bool operator==(const Properties& other) const
     {
         return _valueMap == other._valueMap;
@@ -180,7 +205,10 @@ public:
     Property* changedProperty(const Properties& memento)
     {
         auto iterM = memento._valueMap.cbegin();
+        bool error = false;
         for(auto iter = _valueMap.begin(); iter != _valueMap.cend(); ++iter, ++iterM) {
+            if(iter->first != iterM->first)
+                error = true;
             if(!(iter->second == iterM->second)) {
                 return &iter->second;
             }
@@ -214,6 +242,7 @@ public:
         auto iter = propertyRegistry.find(key);
         if(iter == propertyRegistry.end()) {
             iter = propertyRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple()).first;
+            iter->second._class = key;
         }
         return iter->second;
     }
@@ -232,7 +261,11 @@ public:
         }
         return key;
     }
+
+    RegistryMaps& getRegistryMaps();
+
 private:
+    std::string _class;
     std::vector<std::string> _valueList;
     std::map<std::string, Property> _valueMap;
     static std::map<std::string_view,Properties> propertyRegistry;

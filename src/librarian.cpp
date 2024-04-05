@@ -314,7 +314,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"64176ff030ebff27f483db5a16f38f2383d0026e", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Chip-48 Rainmeter Edition Splash Screen (Christian Kosman, 2018)", nullptr, nullptr},
     //{"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", emu::chip8::Variant::XO_CHIP, "Replicator (Björn Kempen, 2015)", nullptr, nullptr},
-    {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::SCHIPC, "Sub-Terr8Nia (your name here, 2017-08-31)", R"({"instructionsPerFrame": 60, "optWrapSprites": true, "advanced": {"col1": "#ffffff", "col2": "#FF6600", "col3": "#662200", "col0": "#000000", "buzzColor": "#FFAA00", "quietColor": "#111111", "screenRotation": 270}})", nullptr},
+    {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::XO_CHIP, "Sub-Terr8Nia (your name here, 2017-08-31)", R"({"instructionsPerFrame": 60, "advanced": {"col1": "#ffffff", "col2": "#FF6600", "col3": "#662200", "col0": "#000000", "buzzColor": "#FFAA00", "quietColor": "#111111", "screenRotation": 270}})", nullptr},
     {"659cb966e976fcbcae76f6a8a07c65be4d18aae8", emu::chip8::Variant::CHIP_8, "Space Racer (WilliamDonnelly, 2017-10-30)", R"({"instructionsPerFrame": 20, "optWrapSprites": true, "advanced": {"col1": "#FCFCFC", "col2": "#FF6600", "col3": "#662200", "col0": "#111111", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"65e3432c942df6ce18db2c2d01d3260e56dd1e53", emu::chip8::Variant::CHIP_8, "Lady Runner (noodulz, 2020)", nullptr, nullptr},
     //{"66068809c482a30aa4475dc554a18d8d727d3521", {emu::Chip8EmulatorOptions::eXOCHIP}},
@@ -1055,7 +1055,7 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
     if(info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
         emu::Chip8HeadlessHostEx host;
         host.updateEmulatorOptions({});
-        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), true)) {
+        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), emu::Chip8HeadlessHostEx::SetToRun)) {
             auto& chipEmu = host.chipEmu();
             auto options = host.options();
             auto ticks = 5000;

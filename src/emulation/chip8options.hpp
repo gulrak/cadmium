@@ -26,9 +26,11 @@
 #pragma once
 
 #include <chiplet/chip8variants.hpp>
+#include <emulation/properties.hpp>
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -63,6 +65,7 @@ struct Chip8EmulatorOptions {
     bool optTraceLog{false};
     int instructionsPerFrame{15};
     int frameRate{60};
+    Properties properties;
     nlohmann::ordered_json advanced;
     std::string advancedDump;
     Chip8Variant presetAsVariant() const;

@@ -177,6 +177,7 @@ public:
         }
         return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
     }
+    const std::string& errorMessage() const override { return _errorMessage; }
 protected:
     Chip8EmulatorHost& _host;
     Chip8State _state;
@@ -187,6 +188,7 @@ protected:
     uint16_t _stepOverSP{};
     std::array<uint8_t,4096> _breakMap;
     std::map<uint32_t,BreakpointInfo> _breakpoints;
+    std::string _errorMessage;
 };
 
 }  // namespace emu

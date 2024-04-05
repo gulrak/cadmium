@@ -291,7 +291,7 @@ bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
            optSC11Collision == other.optSC11Collision && optSCLoresDrawing == other.optSCLoresDrawing && optHalfPixelScroll == other.optHalfPixelScroll && optModeChangeClear == other.optModeChangeClear && optJump0Bxnn == other.optJump0Bxnn &&
            optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors && optHas16BitAddr == other.optHas16BitAddr && optCyclicStack == other.optCyclicStack &&
            optXOChipSound == other.optXOChipSound && optExtendedVBlank == other.optExtendedVBlank && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame &&
-           frameRate == other.frameRate && advancedDump == other.advancedDump;
+           frameRate == other.frameRate && advancedDump == other.advancedDump && properties == other.properties;
 }
 
 #define SET_IF_CHANGED(j, n) if(o.n != defaultOpts.n) j[#n] = o.n;
