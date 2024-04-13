@@ -26,6 +26,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <map>
 #include <unordered_map>
 #include <string>
@@ -75,7 +76,7 @@ public:
         int minValue{};
         int maxValue{};
     };
-    using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
+    using Value = std::variant<nullptr_t,bool,Integer,std::string,Combo>;
 
     Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true);
     Property(std::string name, Value val, bool isReadOnly = true);
