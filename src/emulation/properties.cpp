@@ -71,7 +71,7 @@ void to_json(nlohmann::json& j, const Properties& props)
         const auto& prop = props[i];
         const auto& name = prop.getJsonKey();
         std::visit(emu::visitor{
-                       [&](nullptr_t) { },
+                       [&](std::nullptr_t) { },
                        [&](bool val) { j[name] = val; },
                        [&](const emu::Property::Integer& val) { j[name] = val.intValue; },
                        [&](const std::string& val) { j[name] = val; },

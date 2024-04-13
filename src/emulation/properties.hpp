@@ -76,7 +76,7 @@ public:
         int minValue{};
         int maxValue{};
     };
-    using Value = std::variant<nullptr_t,bool,Integer,std::string,Combo>;
+    using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
     Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true);
     Property(std::string name, Value val, bool isReadOnly = true);
@@ -106,7 +106,7 @@ public:
         if(_value.index() != other._value.index())
             return *this;
         std::visit(emu::visitor{
-                  [&](nullptr_t) { },
+                  [&](std::nullptr_t) { },
                   [&](bool& val) { val = std::get<bool>(other._value); },
                   [&](Integer& val) { val.intValue = std::get<Integer>(other._value).intValue; },
                   [&](std::string& val) { val = std::get<std::string>(other._value); },
@@ -119,7 +119,7 @@ public:
         if(_value.index() != other._value.index())
             return false;
         return std::visit(emu::visitor{
-                       [&](nullptr_t) { return true; },
+                       [&](std::nullptr_t) { return true; },
                        [&](bool val) { return val == std::get<bool>(other._value); },
                        [&](const Integer& val) { return val.intValue == std::get<Integer>(other._value).intValue; },
                        [&](const std::string& val) { return val == std::get<std::string>(other._value); },

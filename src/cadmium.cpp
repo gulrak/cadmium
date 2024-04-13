@@ -1829,7 +1829,7 @@ public:
                     if(prop.isReadonly())
                         GuiDisable();
                     std::visit(emu::visitor{
-                        [](nullptr_t) -> void { Label(""); },
+                        [](std::nullptr_t) -> void { Label(""); },
                         [](bool& val) -> void { val = CheckBox("", val); },
                         [](emu::Property::Integer& val) -> void { Spinner("", &val.intValue, val.minValue, val.maxValue); },
                         [](std::string& val) -> void {
