@@ -580,6 +580,7 @@ public:
             {{12,4}, emu::Chip8EmulatorOptions::eCHIP8XVIP},
             {{12,5}, emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD},
             {{12,6}, emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD},
+            {{12,7}, emu::Chip8EmulatorOptions::eRAWVIP},
             {{13,0}, emu::Chip8EmulatorOptions::eCHIP8DREAM},
             {{13,1}, emu::Chip8EmulatorOptions::eC8D68CHIPOSLO}
         };
@@ -774,7 +775,8 @@ public:
 
     void vblank() override
     {
-        pushAudio(44100 / _options.frameRate);
+        if(_chipEmu)
+            pushAudio(44100 / _options.frameRate);
     }
 
     uint8_t getKeyPressed() override
@@ -1692,7 +1694,7 @@ public:
         }
         if(_behaviorSel == 12) {
             Space(2);
-            if(DropdownBox("CHIP-8;CHIP-8 64x64;HI-RES-CHIP-8;CHIP-8E;CHIP-8X;CHIP-8X-64x64;HI-RES-CHIP-8X", &_subBehaviorSel)) {
+            if(DropdownBox("CHIP-8;CHIP-8 64x64;HI-RES-CHIP-8;CHIP-8E;CHIP-8X;CHIP-8X-64x64;HI-RES-CHIP-8X;NONE", &_subBehaviorSel)) {
                 auto preset = _presetMapping[{_behaviorSel, _subBehaviorSel}];
                 _frameBoost = 1;
                 updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
@@ -2282,7 +2284,7 @@ public:
                 FS.mkdir("/upload");
             }
             open_file_element.value = "";
-            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o';
+            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif';
             open_file_element.click();
         });
     }
@@ -2322,11 +2324,8 @@ public:
 #endif
     }
 
-    void whenEmuChanged(emu::IChip8Emulator& emu) override
+    void updateBehaviorSelects()
     {
-        _debugger.updateCore(&emu);
-        _editor.updateCompilerOptions(_options.startAddress);
-        reloadRom();
         auto result = std::find_if(_presetMapping.begin(), _presetMapping.end(), [this](const auto& pair) {return pair.second == _options.behaviorBase; });
         if(result != _presetMapping.end()) {
             _behaviorSel = result->first.first;
@@ -2339,6 +2338,14 @@ public:
         }
         else
             _behaviorSel = emu::Chip8EmulatorOptions::eXOCHIP;
+    }
+
+    void whenEmuChanged(emu::IChip8Emulator& emu) override
+    {
+        _debugger.updateCore(&emu);
+        _editor.updateCompilerOptions(_options.startAddress);
+        reloadRom();
+        updateBehaviorSelects();
         resetStats();
     }
 
@@ -2355,7 +2362,7 @@ public:
         _logView.clear();
         _audioBuffer.reset();
         _frameBoost = 1;
-        _behaviorSel = _options.behaviorBase != emu::Chip8EmulatorOptions::eCHICUEYI ? _options.behaviorBase : emu::Chip8EmulatorOptions::eXOCHIP;
+        updateBehaviorSelects();
         _editor.setText(source);
         _editor.setFilename(filename);
         resetStats();
@@ -2834,7 +2841,7 @@ int main(int argc, char* argv[])
     cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
     cli.option({"--extended-display-wait"}, options.optExtendedVBlank, "If true, Dxyn might even wait 2 screens depending on size and position");
-    cli.positional(romFile, "ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, or `.8o`)");
+    cli.positional(romFile, "ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, '.gif', or `.8o`)");
     cli.parse();
     if(showHelp) {
         cli.usage();
@@ -2969,7 +2976,7 @@ int main(int argc, char* argv[])
     }
 #ifndef PLATFORM_WEB
     else {
-        emu::Chip8HeadlessHostEx host;
+        emu::Chip8HeadlessHost host;
         //chip8options.optHas16BitAddr = true;
         //chip8options.optWrapSprites = true;
         //chip8options.optAllowColors = true;

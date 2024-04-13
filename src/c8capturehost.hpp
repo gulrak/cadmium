@@ -30,7 +30,7 @@
 #include <raylib.h>
 
 
-class C8CaptureHost : public emu::Chip8HeadlessHostEx
+class C8CaptureHost : public emu::Chip8HeadlessHost
 {
 public:
     C8CaptureHost();

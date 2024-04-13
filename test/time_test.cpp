@@ -34,6 +34,7 @@
 #include <emulation/chip8strict.hpp>
 #include <emulation/chip8dream.hpp>
 #include <emulation/chip8vip.hpp>
+#include "../src/chip8emuhostex.hpp"
 
 using namespace emu;
 
@@ -89,7 +90,7 @@ TEST_CASE("Emulation timing")
 {
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
-        emu::Chip8HeadlessHost host(opts);
+        Chip8HeadlessTestHost host(opts);
         std::unique_ptr<IChip8Emulator> chip8 = std::make_unique<emu::Chip8StrictEmulator>(host, opts);
         chip8->reset();
         write(chip8, 0x200, {0x6000, 0x1200});
@@ -110,7 +111,7 @@ TEST_CASE("Emulation timing")
 
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
-        emu::Chip8HeadlessHost host(opts);
+        Chip8HeadlessTestHost host(opts);
         std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8EmulatorFP>(host, opts);
         chip8fp->reset();
         write(chip8fp, 0x200, {0x6000, 0x1200});
@@ -132,7 +133,7 @@ TEST_CASE("Emulation timing")
 
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
-        emu::Chip8HeadlessHost host(opts);
+        Chip8HeadlessTestHost host(opts);
         std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8EmulatorFP>(host, opts);
         chip8fp->reset();
         write(chip8fp, 0x200, {0x6000, 0x1200});
@@ -152,7 +153,7 @@ TEST_CASE("Emulation timing")
 
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP);
-        emu::Chip8HeadlessHost host(opts);
+        Chip8HeadlessTestHost host(opts);
         std::unique_ptr<IChip8Emulator> chip8vip = std::make_unique<emu::Chip8VIP>(host, opts);
         chip8vip->reset();
         write(chip8vip, 0x200, {0x6000, 0x1200});
@@ -175,7 +176,7 @@ TEST_CASE("Emulation timing")
 
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8DREAM);
-        emu::Chip8HeadlessHost host(opts);
+        Chip8HeadlessTestHost host(opts);
         std::unique_ptr<IChip8Emulator> dream6k8 = std::make_unique<emu::Chip8Dream>(host, opts);
         dream6k8->reset();
         write(dream6k8, 0x200, {0x6000, 0x1200});

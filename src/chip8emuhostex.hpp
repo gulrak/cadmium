@@ -101,11 +101,12 @@ protected:
 
 GHC_ENUM_ENABLE_BIT_OPERATIONS(Chip8EmuHostEx::LoadOptions)
 
-class Chip8HeadlessHostEx : public Chip8EmuHostEx
+class Chip8HeadlessHost : public Chip8EmuHostEx
 {
 public:
-    explicit Chip8HeadlessHostEx() {}
-    ~Chip8HeadlessHostEx() override = default;
+    Chip8HeadlessHost() = default;
+    explicit Chip8HeadlessHost(Chip8EmulatorOptions& opts) { updateEmulatorOptions(opts); }
+    ~Chip8HeadlessHost() override = default;
     Chip8EmulatorOptions& options() { return _options; }
     IChip8Emulator& chipEmu() { return *_chipEmu; }
     bool isHeadless() const override { return true; }

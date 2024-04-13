@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - COSMAC VIP now supports up to 32k RAM, the interpreters will still put their screen data at
   the end of the actual memory, theoretically expanding the CHIP-8 space (even if the max. 12
   bit operands limit usability quite a bit)
+- New non-CHIP-8 mode: COSMAC VIP now supports running native VIP programs.
 
 ### Fixed
 

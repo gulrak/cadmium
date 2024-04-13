@@ -61,7 +61,7 @@ public:
                 prop.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}});
                 prop.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}});
                 prop.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
-                prop.registerProperty({PROP_INTERPRETER, Property::Combo{"CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}});
+                prop.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}});
             }
             _properties = prop;
         }
@@ -446,6 +446,8 @@ Chip8VIP::Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip
     , _impl(new Private(host, *this, options))
 {
     //options.optTraceLog = true;
+    if(options.behaviorBase == Chip8EmulatorOptions::eRAWVIP)
+        _isHybridChipMode = false;
     std::memcpy(_impl->_rom.data(), _rom_cvip, sizeof(_rom_cvip));
     if(_impl->_ram.size() > 4096) {
         _impl->_rom[0x10] = (_impl->_ram.size() >> 8) - 1;
@@ -532,13 +534,19 @@ void Chip8VIP::reset()
         std::generate(_impl->_ram.begin(), _impl->_ram.end(), rnd);
     }
     std::memset(_impl->_colorRam.data(), 0, _impl->_colorRam.size());
-    std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
-    if(_options.advanced.contains("interpreter")) {
-        auto name = _options.advanced.value("interpreter", "");
-        auto size = patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
-        _impl->_properties[PROP_INTERPRETER].setSelectedText(name);
-        _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0,8)));
-        //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
+    if(_isHybridChipMode) {
+        std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
+        if (_options.advanced.contains("interpreter")) {
+            auto name = _options.advanced.value("interpreter", "");
+            auto size = patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
+            _impl->_properties[PROP_INTERPRETER].setSelectedText(name);
+            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0, 8)));
+            //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
+        }
+    }
+    else {
+        _impl->_properties[PROP_INTERPRETER].setSelectedText("NONE");
+        _impl->_properties[PROP_INTERPRETER].setAdditionalInfo("No CHIP-8 interpreter used");
     }
     _impl->_screen.setAll(0);
     _impl->_video.reset();
@@ -553,8 +561,17 @@ void Chip8VIP::reset()
     _impl->_wavePhase = 0;
     _cpuState = eNORMAL;
     _errorMessage.clear();
-    setExecMode(eRUNNING);
-    while(_impl->_cpu.getExecMode() == eRUNNING && (!executeCdp1802() || getPC() != _options.startAddress)); // fast-forward to fetch/decode loop
+    if (_isHybridChipMode) {
+        setExecMode(eRUNNING);
+        while (_impl->_cpu.getExecMode() == eRUNNING && (!executeCdp1802() || getPC() != _options.startAddress))
+            ;  // fast-forward to fetch/decode loop
+    }
+    else {
+        setExecMode(eRUNNING);
+        while (_impl->_cpu.getExecMode() == eRUNNING && !executeCdp1802())
+            if(_impl->_cpu.getR(_impl->_cpu.getP()) == 0)
+                break;  // fast-forward to fetch/decode loop
+    }
     setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
     if(_options.optTraceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.getCycles(), frameCycle()).c_str());
@@ -640,7 +657,7 @@ bool Chip8VIP::executeCdp1802()
         _host.vblank();
     if(_options.optTraceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
-    if(_impl->_cpu.PC() == _impl->FETCH_LOOP_ENTRY) {
+    if(_isHybridChipMode && _impl->_cpu.PC() == _impl->FETCH_LOOP_ENTRY) {
         _cycles++;
         //std::cout << fmt::format("{:06d}:{:04x}", _impl->_cpu.getCycles()>>3, opcode()) << std::endl;
         _impl->_currentOpcode = opcode();
@@ -648,7 +665,7 @@ bool Chip8VIP::executeCdp1802()
             Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
     }
     _impl->_cpu.executeInstruction();
-    if(_impl->_cpu.PC() == _impl->FETCH_LOOP_ENTRY) {
+    if(_isHybridChipMode && _impl->_cpu.PC() == _impl->FETCH_LOOP_ENTRY) {
         _impl->_lastOpcode = _impl->_currentOpcode;
 #ifdef DIFFERENTIATE_CYCLES
         static int64_t lastCycles{}, lastIdle{}, lastIrq{};
@@ -704,6 +721,8 @@ bool Chip8VIP::executeCdp1802()
         setExecMode(ePAUSED);
         _backendStopped = true;
     }
+    if(!_isHybridChipMode)
+        _cycles++;
     return false;
 }
 
@@ -745,7 +764,6 @@ void Chip8VIP::tick(int)
         setExecMode(ePAUSED);
         return;
     }
-
     auto nextFrame = Cdp186x::nextFrame(_impl->_cpu.getCycles());
     while(_execMode != ePAUSED && _impl->_cpu.getCycles() < nextFrame) {
         executeCdp1802();

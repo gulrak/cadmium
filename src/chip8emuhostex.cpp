@@ -32,6 +32,7 @@
 #include <emulation/chip8dream.hpp>
 #include <emulation/chip8vip.hpp>
 #include <chiplet/utility.hpp>
+#include <chiplet/octocartridge.hpp>
 #include <emulation/c8bfile.hpp>
 #include <systemtools.hpp>
 #include <configuration.hpp>
@@ -82,7 +83,8 @@ std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& opt
     IChip8Emulator::Engine engine = IChip8Emulator::eCHIP8MPT;
     if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_FPD ||
         _options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP ||
-        _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_FPD)
+        _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_FPD ||
+        _options.behaviorBase == Chip8EmulatorOptions::eRAWVIP)
         engine = IChip8Emulator::eCHIP8VIP;
     else if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8DREAM ||_options.behaviorBase == Chip8EmulatorOptions::eC8D68CHIPOSLO)
         engine = IChip8Emulator::eCHIP8DREAM;
@@ -211,12 +213,37 @@ bool Chip8EmuHostEx::loadRom(const char* filename, LoadOptions loadOpt)
     return false;
 }
 
+static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
+{
+    Chip8EmulatorOptions result;
+    if(octo.maxRom > 3584 || !octo.qClip) {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eXOCHIP);
+    }
+    else if(octo.qVBlank || !octo.qLoadStore || !octo.qShift) {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
+    }
+    else {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHPC);
+    }
+    result.optJustShiftVx = octo.qShift;
+    result.optLoadStoreDontIncI = octo.qLoadStore;
+    result.optLoadStoreIncIByX = false;
+    result.optJump0Bxnn = octo.qJump0;
+    result.optDontResetVf = !octo.qLogic;
+    result.optWrapSprites = !octo.qClip;
+    result.optInstantDxyn = !octo.qVBlank;
+    result.instructionsPerFrame = octo.tickrate;
+    result.advanced["palette"] = octo.colors;
+    return result;
+}
+
 bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_t size, LoadOptions loadOpt)
 {
     bool valid = false;
     std::unique_ptr<emu::OctoCompiler> c8c;
     std::string romSha1Hex;
     std::vector<uint8_t> romImage;
+    std::string source;
     auto fileData = std::vector<uint8_t>(data, data + size);
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
     bool wasFromSource = false;
@@ -224,6 +251,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
     auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
     if(endsWith(filename, ".8o")) {
         c8c = std::make_unique<emu::OctoCompiler>();
+        source.assign((const char*)fileData.data(), fileData.size());
         if(c8c->compile(filename).resultType == emu::CompileResult::eOK)
         {
             if(c8c->codeSize() < _chipEmu->memSize() - _options.startAddress) {
@@ -236,6 +264,30 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
                     knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
                     if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
                         updateEmulatorOptions(knownOptions);
+                }
+            }
+        }
+    }
+    else if(endsWith(filename, ".gif")) {
+        emu::OctoCartridge cart(fileData);
+        cart.loadCartridge();
+        source = cart.getSource();
+        if(!source.empty()) {
+            c8c = std::make_unique<emu::OctoCompiler>();
+            if(c8c->compile(filename, source.data(), source.data() + source.size(), false).resultType == emu::CompileResult::eOK)
+            {
+                if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                    auto octoOpt = cart.getOptions();
+                    if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                        auto options = optionsFromOctoOptions(octoOpt);
+                        updateEmulatorOptions(options);
+                    }
+                }
+                if(c8c->codeSize() < _chipEmu->memSize() - _options.startAddress) {
+                    romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
+                    romSha1Hex = c8c->sha1Hex();
+                    valid = true;
+                    wasFromSource = true;
                 }
             }
         }
@@ -379,6 +431,15 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             }
         }
     }
+    else if(endsWith(filename, ".bin") || endsWith(filename, ".ram") || endsWith(filename, ".vip")) {
+        if(size < 32*1024) {
+            if ((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eRAWVIP));
+            }
+            romImage = fileData;
+            valid = true;
+        }
+    }
     if (valid) {
         //TraceLog(LOG_INFO, "Found a valid rom.");
         _romImage = std::move(romImage);
@@ -406,13 +467,8 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             _currentDirectory = fs::path(_romName).parent_path().string();
             _librarian.fetchDir(_currentDirectory);
         }
-        std::string source;
         //TraceLog(LOG_INFO, "Done with directory change.");
-        if(wasFromSource) {
-            source.assign((const char*)fileData.data(), fileData.size());
-            //TraceLog(LOG_INFO, "Assigned source.");
-        }
-        else if(_romImage.size() < 8192*1024) {
+        if(!wasFromSource && _romImage.size() < 8192*1024) {
             //TraceLog(LOG_INFO, "Setting up decompiler.");
             std::stringstream os;
             //TraceLog(LOG_INFO, "Setting instance.");

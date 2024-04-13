@@ -84,7 +84,7 @@ public:
     }
     bool inErrorState() const override { return _cpuState == eERROR; }
     CpuState cpuState() const override { return _cpuState; }
-
+    bool hybridChipMode() const { return _isHybridChipMode; }
     int64_t getCycles() const override { return _cycles; }
     int64_t frames() const override { return _frames; }
     const ClockedTime& getTime() const override { return getBackendCpu().getTime(); }
@@ -184,6 +184,7 @@ protected:
     int64_t _cycles{0};
     int _frames{0};
     bool _backendStopped{false};
+    bool _isHybridChipMode{true};
     mutable CpuState _cpuState{eNORMAL};
     uint16_t _stepOverSP{};
     std::array<uint8_t,4096> _breakMap;

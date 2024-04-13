@@ -46,6 +46,7 @@ void Debugger::updateCore(emu::IChip8Emulator* core)
     _visibleCpu = CHIP8_CORE;
     _instructionOffset[CHIP8_CORE] = -1;
     _instructionOffset[BACKEND_CORE] = -1;
+    _activeInstructionsTab = 0;
     // ensure cached data has the correct size by actually forcing a capture
     _core->fetchAllRegisters(_chip8State);
     if(_backend)
@@ -96,23 +97,15 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     }
     EndPanel();
     drawScreen(video, debugScale);
-    static int activeTab = 0;
-    if(_backend) {
+    if(_backend && _realCore->hybridChipMode()) {
         if(_realCore->hasBackendStopped())
-            activeTab = 1;
-        BeginTabView(&activeTab);
-    }
-    else {
-        BeginPanel("Instructions", {5, 0});
-    }
-    if(!_backend || BeginTab("Instructions", {5, 0})) {
-        _visibleCpu = CHIP8_CORE;
-        showInstructions(*_core, font, lineSpacing);
-        if(_backend)
+            _activeInstructionsTab = 1;
+        BeginTabView(&_activeInstructionsTab);
+        if(BeginTab("Instructions", {5, 0})) {
+            _visibleCpu = CHIP8_CORE;
+            showInstructions(*_core, font, lineSpacing);
             EndTab();
-    }
-    if(_backend) {
-        //Color{3, 161, 127, 255}
+        }
         if(BeginTab(_backend->getName().c_str(), {5,0})) {
             _visibleCpu = BACKEND_CORE;
             showInstructions(*_backend, font, lineSpacing);
@@ -121,6 +114,15 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         EndTabView();
     }
     else {
+        BeginPanel("Instructions", {5, 0});
+        if(_realCore && !_realCore->hybridChipMode()) {
+            _visibleCpu = BACKEND_CORE;
+            showInstructions(*_backend, font, lineSpacing);
+        }
+        else {
+            _visibleCpu = CHIP8_CORE;
+            showInstructions(*_core, font, lineSpacing);
+        }
         EndPanel();
     }
     End();
@@ -140,17 +142,34 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     }
     EndPanel();
     SetNextWidth(44);
-    BeginPanel("Stack");
-    {
-        auto pos = GetCurrentPos();
-        auto area = GetContentAvailable();
-        pos.x += 0;
-        Space(area.height);
-        auto stackSize = _core->stackSize();
-        const auto* stack = _core->getStackElements();
-        bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
-        for (int i = 0; i < stackSize; ++i) {
-            DrawTextEx(font, fourDigitStack  ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
+    if(!_realCore || _realCore->hybridChipMode()) {
+        BeginPanel("Stack");
+        {
+            auto pos = GetCurrentPos();
+            auto area = GetContentAvailable();
+            pos.x += 0;
+            Space(area.height);
+            auto stackSize = _core->stackSize();
+            const auto* stack = _core->getStackElements();
+            bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
+            for (int i = 0; i < stackSize; ++i) {
+                DrawTextEx(font, fourDigitStack ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
+            }
+        }
+    }
+    else {
+        BeginPanel("X Data");
+        {
+            auto pos = GetCurrentPos();
+            auto area = GetContentAvailable();
+            pos.x += 0;
+            Space(area.height);
+            auto x = _backend->getRegisterByName("X").value;
+            auto rx = _backend->getRegister(x).value;
+            auto col = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
+            for(uint16_t offset = 0; offset < 36; ++offset) {
+                DrawTextEx(font, TextFormat("%02X: %02X", offset, _backend->getMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, col);
+            }
         }
     }
     EndPanel();

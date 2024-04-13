@@ -13,6 +13,8 @@ add_compile_options(-fsanitize=address)
 add_link_options(-fsanitize=address)
 endif()
 
+add_code_coverage_all_targets(EXCLUDE tools/*)
+
 add_subdirectory(external)
 add_subdirectory(tools)
 add_subdirectory(resources)
