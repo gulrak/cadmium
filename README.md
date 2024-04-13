@@ -106,9 +106,9 @@ The Supported presets are:
 * MegaChip 8 (with Mega8 wrapping/scrolling support if wrapping is enabled)
 * XO-CHIP
 * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
-* VIP-CHIP-8E (CHIP-8E on an emulated COSMAC VIP)
 * VIP-CHIP-8 TPD (same, but with 64x64 display)
 * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
+* VIP-CHIP-8E (same, with CHIP-8E interpreter)
 * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
 * VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
 * VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)

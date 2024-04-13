@@ -37,6 +37,7 @@ as well as developing software for them using Octo assembler language.
 Currently supported CHIP-8 variants are:
   * CHIP-8
   * CHIP-8-STRICT (cycle exact HLE VIP CHIP-8)
+  * CHIP-8E
   * CHIP-8X
   * CHIP-10
   * CHIP-48
@@ -49,6 +50,7 @@ Currently supported CHIP-8 variants are:
   * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
   * VIP-CHIP-8 TPD (same, but with 64x64 display)
   * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
+  * VIP-CHIP-8E (same, with CHIP-8E interpreter)
   * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
   * VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
   * VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)
@@ -64,6 +66,11 @@ Cadmium automatically switches to specific presets depending on the
 file type of files loaded:
   '*.ch8' - This is the generic form and the current preset is not
             changed
+  '*.ch10'- CHIP-10 (a 128x64-only video mode variant)
+  '*.hc8' - Hybrid CHIP-8 (including 1802 assembly code)
+  '*.c8h' - CHIP-8 with two page display (64x64)
+  '*.c8e' - CHIP-8E
+  '*.c8x' - CHIP-8X (with some color and audio support hardware)
   '*.sc8' - SUPERCHIP 1.1
   '*.mc8' - MegaChip8
   '*.xo8' - XO-CHIP
@@ -72,6 +79,11 @@ file type of files loaded:
   '*.c8b' - Experimental support for CHIP-8 binary format files
             as described at:
             https://github.com/Timendus/chip8-binary-format
+  '*.gif' - OctoCartridge format that combines programs with options
+            and color settings in a GIF file.
+  '*.bin' - Binary file that is used by raw 1802 programs that can
+            be executed by a COSMAC VIP
+  '*.ram' - Alternative extension for '*.bin'
 
 # Editor
 
@@ -191,7 +203,7 @@ it freely, subject to the following restrictions:
 
                            - - -
 
-# Octo-Compiler taken from C-Octo
+# Octo-Compiler based on a heavily reworked variant of from C-Octo
 
 A C rewrite of the Octo CHIP-8 IDE
 https://github.com/JohnEarnest/c-octo
