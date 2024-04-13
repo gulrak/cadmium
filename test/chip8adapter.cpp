@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include "chip8adapter.hpp"
-
+#include "../src/chip8emuhostex.hpp"
 #include <fmt/format.h>
 
 #ifdef TEST_CHIP8EMULATOR_TS
@@ -58,7 +58,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         default:
             return nullptr;
     }
-    static emu::Chip8HeadlessHost host(options);
+    static Chip8HeadlessTestHost host(options);
     if (options.optHas16BitAddr) {
         if (options.optAllowColors) {
             if (options.optWrapSprites)
@@ -105,7 +105,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         default:
             return nullptr;
     }
-    static emu::Chip8HeadlessHost host(options);
+    static Chip8HeadlessTestHost host(options);
     return std::make_unique<emu::Chip8StrictEmulator>(host, options);
 }
 
@@ -139,7 +139,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP);
             break;
     }
-    static emu::Chip8HeadlessHost host(options);
+    static Chip8HeadlessTestHost host(options);
     return std::make_unique<emu::Chip8EmulatorFP>(host, options);
 }
 
@@ -159,7 +159,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             return nullptr;
     }
     //options.optTraceLog = true;
-    static emu::Chip8HeadlessHost host(options);
+    static Chip8HeadlessTestHost host(options);
     return std::make_unique<emu::Chip8VIP>(host, options);
 }
 
@@ -180,7 +180,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             return nullptr;
     }
     options.optTraceLog = true;
-    static emu::Chip8HeadlessHost host(options);
+    static Chip8HeadlessTestHost host(options);
     return std::make_unique<emu::Chip8Dream>(host, options);
 }
 

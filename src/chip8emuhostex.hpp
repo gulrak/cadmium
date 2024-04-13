@@ -28,6 +28,7 @@
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
 #include <chiplet/octocompiler.hpp>
+#include <ghc/bitenum.hpp>
 #include <librarian.hpp>
 
 #include <array>
@@ -38,9 +39,28 @@ namespace emu {
 
 class IChip8Emulator;
 
+/*
+class Chip8HeadlessHost : public Chip8EmulatorHost
+{
+public:
+    explicit Chip8HeadlessHost(const Chip8EmulatorOptions& options_) : options(options_) {}
+    ~Chip8HeadlessHost() override = default;
+    bool isHeadless() const override { return true; }
+    uint8_t getKeyPressed() override { return 0; }
+    bool isKeyDown(uint8_t key) override { return false; }
+    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
+    void updateScreen() override {}
+    void vblank() override {}
+    void updatePalette(const std::array<uint8_t,16>& palette) override {}
+    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
+    Chip8EmulatorOptions options;
+};
+*/
+
 class Chip8EmuHostEx : public Chip8EmulatorHost
 {
 public:
+    enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2 };
     Chip8EmuHostEx();
     ~Chip8EmuHostEx() override = default;
     //virtual bool isHeadless() const = 0;
@@ -51,11 +71,13 @@ public:
     //virtual void updateScreen() = 0;
     //virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
-    virtual bool loadRom(const char* filename, bool andRun);
-    virtual bool loadBinary(std::string filename, const uint8_t* data, size_t size, bool andRun);
-    void updateEmulatorOptions(Chip8EmulatorOptions options);
+    virtual bool loadRom(const char* filename, LoadOptions loadOpt);
+    virtual bool loadBinary(std::string filename, const uint8_t* data, size_t size, LoadOptions loadOpt);
+    void updateEmulatorOptions(const Chip8EmulatorOptions& options);
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
+
 protected:
+    std::unique_ptr<IChip8Emulator> create(Chip8EmulatorOptions& options, IChip8Emulator* iother = nullptr);
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(IChip8Emulator& emu) {}
     CadmiumConfiguration _cfg;
@@ -77,11 +99,14 @@ protected:
     emu::Chip8EmulatorOptions _previousOptions;
 };
 
-class Chip8HeadlessHostEx : public Chip8EmuHostEx
+GHC_ENUM_ENABLE_BIT_OPERATIONS(Chip8EmuHostEx::LoadOptions)
+
+class Chip8HeadlessHost : public Chip8EmuHostEx
 {
 public:
-    explicit Chip8HeadlessHostEx() {}
-    ~Chip8HeadlessHostEx() override = default;
+    Chip8HeadlessHost() = default;
+    explicit Chip8HeadlessHost(Chip8EmulatorOptions& opts) { updateEmulatorOptions(opts); }
+    ~Chip8HeadlessHost() override = default;
     Chip8EmulatorOptions& options() { return _options; }
     IChip8Emulator& chipEmu() { return *_chipEmu; }
     bool isHeadless() const override { return true; }

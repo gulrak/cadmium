@@ -109,7 +109,7 @@ public:
         _rQ = false;
         _rX = 0;
         _rR[0] = 0;
-        _rR[1] = 0xfff;
+        _rR[1] = 0;
         _rIE = true;
         _cycles = 0;
 #ifdef DIFFERENTIATE_CYCLES

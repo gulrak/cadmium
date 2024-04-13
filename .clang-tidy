@@ -1,3 +1,3 @@
 ---
-Checks: -modernize-use-nodiscard
+Checks: '-modernize-use-nodiscard'
 ...

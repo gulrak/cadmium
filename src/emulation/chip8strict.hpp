@@ -65,7 +65,7 @@ public:
     {
         Chip8EmulatorBase::reset();
         std::memcpy(_memory.data(), _chip8_cvip, 512);
-        _machineCycles = 3206;  // This is the amount of cycles a VIP needs to get to the start of the program
+        _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
         _nextFrame = calcNextFrame();
         _cycleCounter = 2;
         _systemTime.reset();

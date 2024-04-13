@@ -579,9 +579,11 @@ void Chip8EmulatorFP::op00EE(uint16_t opcode)
 {
     if(!_rSP)
         errorHalt("STACK UNDERFLOW");
-    _rPC = _stack[--_rSP];
-    if (_execMode == eSTEPOUT)
-        _execMode = ePAUSED;
+    else {
+        _rPC = _stack[--_rSP];
+        if (_execMode == eSTEPOUT)
+            _execMode = ePAUSED;
+    }
 }
 
 void Chip8EmulatorFP::op00EE_cyclic(uint16_t opcode)
@@ -838,8 +840,10 @@ void Chip8EmulatorFP::op2nnn(uint16_t opcode)
 {
     if(_rSP == 16)
         errorHalt("STACK OVERFLOW");
-    _stack[_rSP++] = _rPC;
-    _rPC = opcode & 0xFFF;
+    else {
+        _stack[_rSP++] = _rPC;
+        _rPC = opcode & 0xFFF;
+    }
 }
 
 void Chip8EmulatorFP::op2nnn_cyclic(uint16_t opcode)

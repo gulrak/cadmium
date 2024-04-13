@@ -27,9 +27,12 @@
 #include <chip8emuhostex.hpp>
 
 #include <chiplet/chip8decompiler.hpp>
-#include <emulation/chip8emulatorbase.hpp>
+#include <emulation/chip8cores.hpp>
 #include <emulation/chip8strict.hpp>
-#include <emulation/utility.hpp>
+#include <emulation/chip8dream.hpp>
+#include <emulation/chip8vip.hpp>
+#include <chiplet/utility.hpp>
+#include <chiplet/octocartridge.hpp>
 #include <emulation/c8bfile.hpp>
 #include <systemtools.hpp>
 #include <configuration.hpp>
@@ -75,20 +78,101 @@ void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offs
 }
 
 
-void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
+std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& options, IChip8Emulator* iother)
+{
+    IChip8Emulator::Engine engine = IChip8Emulator::eCHIP8MPT;
+    if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_FPD ||
+        _options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP ||
+        _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8XVIP_FPD ||
+        _options.behaviorBase == Chip8EmulatorOptions::eRAWVIP)
+        engine = IChip8Emulator::eCHIP8VIP;
+    else if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8DREAM ||_options.behaviorBase == Chip8EmulatorOptions::eC8D68CHIPOSLO)
+        engine = IChip8Emulator::eCHIP8DREAM;
+    else if(_options.behaviorBase == Chip8EmulatorOptions::eCHIP8TE)
+        return std::make_unique<Chip8StrictEmulator>(*this, _options, _chipEmu.get());
+
+    if(engine == emu::IChip8Emulator::eCHIP8TS) {
+        if (options.optAllowHires) {
+            if (options.optHas16BitAddr) {
+                if (options.optAllowColors) {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor>>(*this, options, iother);
+                }
+                else {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<16, HiresSupport | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<16, HiresSupport>>(*this, options, iother);
+                }
+            }
+            else {
+                if (options.optAllowColors) {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor>>(*this, options, iother);
+                }
+                else {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<12, HiresSupport | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<12, HiresSupport>>(*this, options, iother);
+                }
+            }
+        }
+        else {
+            if (options.optHas16BitAddr) {
+                if (options.optAllowColors) {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<16, MultiColor | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<16, MultiColor>>(*this, options, iother);
+                }
+                else {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<16, WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<16, 0>>(*this, options, iother);
+                }
+            }
+            else {
+                if (options.optAllowColors) {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<12, MultiColor | WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<12, MultiColor>>(*this, options, iother);
+                }
+                else {
+                    if (options.optWrapSprites)
+                        return std::make_unique<Chip8Emulator<12, WrapSprite>>(*this, options, iother);
+                    else
+                        return std::make_unique<Chip8Emulator<12, 0>>(*this, options, iother);
+                }
+            }
+        }
+    }
+    else if(engine == IChip8Emulator::eCHIP8MPT) {
+        return std::make_unique<Chip8EmulatorFP>(*this, options, iother);
+    }
+    else if(engine == IChip8Emulator::eCHIP8VIP) {
+        return std::make_unique<Chip8VIP>(*this, options, iother);
+    }
+    else if(engine == IChip8Emulator::eCHIP8DREAM) {
+        return std::make_unique<Chip8Dream>(*this, options, iother);
+    }
+    return std::make_unique<Chip8EmulatorVIP>(*this, options, iother);
+}
+
+
+void Chip8EmuHostEx::updateEmulatorOptions(const Chip8EmulatorOptions& options)
 {
     if(_previousOptions != options || !_chipEmu) {
-        _previousOptions = _options = options;
-        if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8VIP_FPD ||
-            _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8EVIP ||
-            _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD)
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8VIP, _options, _chipEmu.get());
-        else if (_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8DREAM ||_options.behaviorBase == emu::Chip8EmulatorOptions::eC8D68CHIPOSLO)
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8DREAM, _options, _chipEmu.get());
-        else if(_options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
-            _chipEmu = std::make_unique<emu::Chip8StrictEmulator>(*this, _options, _chipEmu.get());
-        else
-            _chipEmu = emu::Chip8EmulatorBase::create(*this, emu::IChip8Emulator::eCHIP8MPT, _options, _chipEmu.get());
+        if(&options != &_options)
+            _options = options;
+        _previousOptions = _options.clone();
+        _chipEmu = create(_options, _chipEmu.get());
         //
         auto tmpOpt = emu::Chip8EmulatorOptions::optionsOfPreset(options.behaviorBase);
         if(tmpOpt.hasColors()) {
@@ -115,30 +199,51 @@ void Chip8EmuHostEx::updateEmulatorOptions(Chip8EmulatorOptions options)
     }
 }
 
-bool Chip8EmuHostEx::loadRom(const char* filename, bool andRun)
+bool Chip8EmuHostEx::loadRom(const char* filename, LoadOptions loadOpt)
 {
     std::error_code ec;
     if (strlen(filename) < 4095 && fs::exists(filename, ec)) {
         unsigned int size = 0;
         _customPalette = false;
         _colorPalette = _defaultPalette;
-#ifdef WITH_EDITOR
-        _editor.setText("");
-        _editor.setFilename("");
-#endif
         auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
-        return loadBinary(filename, fileData.data(), fileData.size(), andRun);
+        return loadBinary(filename, fileData.data(), fileData.size(), loadOpt);
         //memory[0x1FF] = 3;
     }
     return false;
 }
 
-bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_t size, bool andRun)
+static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
+{
+    Chip8EmulatorOptions result;
+    if(octo.maxRom > 3584 || !octo.qClip) {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eXOCHIP);
+    }
+    else if(octo.qVBlank || !octo.qLoadStore || !octo.qShift) {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
+    }
+    else {
+        result = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHPC);
+    }
+    result.optJustShiftVx = octo.qShift;
+    result.optLoadStoreDontIncI = octo.qLoadStore;
+    result.optLoadStoreIncIByX = false;
+    result.optJump0Bxnn = octo.qJump0;
+    result.optDontResetVf = !octo.qLogic;
+    result.optWrapSprites = !octo.qClip;
+    result.optInstantDxyn = !octo.qVBlank;
+    result.instructionsPerFrame = octo.tickrate;
+    result.advanced["palette"] = octo.colors;
+    return result;
+}
+
+bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_t size, LoadOptions loadOpt)
 {
     bool valid = false;
     std::unique_ptr<emu::OctoCompiler> c8c;
     std::string romSha1Hex;
     std::vector<uint8_t> romImage;
+    std::string source;
     auto fileData = std::vector<uint8_t>(data, data + size);
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
     bool wasFromSource = false;
@@ -146,23 +251,49 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
     auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
     if(endsWith(filename, ".8o")) {
         c8c = std::make_unique<emu::OctoCompiler>();
+        source.assign((const char*)fileData.data(), fileData.size());
         if(c8c->compile(filename).resultType == emu::CompileResult::eOK)
         {
             if(c8c->codeSize() < _chipEmu->memSize() - _options.startAddress) {
                 romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
                 romSha1Hex = c8c->sha1Hex();
-#ifdef WITH_EDITOR
-                _editor.setText(loadTextFile(filename));
-                _editor.setFilename(filename);
-                _mainView = eEDITOR;
-#endif
                 valid = true;
                 wasFromSource = true;
+                if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                    isKnown = _librarian.isKnownFile(romImage.data(), romImage.size());
+                    knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
+                    if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
+                        updateEmulatorOptions(knownOptions);
+                }
+            }
+        }
+    }
+    else if(endsWith(filename, ".gif")) {
+        emu::OctoCartridge cart(fileData);
+        cart.loadCartridge();
+        source = cart.getSource();
+        if(!source.empty()) {
+            c8c = std::make_unique<emu::OctoCompiler>();
+            if(c8c->compile(filename, source.data(), source.data() + source.size(), false).resultType == emu::CompileResult::eOK)
+            {
+                if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                    auto octoOpt = cart.getOptions();
+                    if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                        auto options = optionsFromOctoOptions(octoOpt);
+                        updateEmulatorOptions(options);
+                    }
+                }
+                if(c8c->codeSize() < _chipEmu->memSize() - _options.startAddress) {
+                    romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
+                    romSha1Hex = c8c->sha1Hex();
+                    valid = true;
+                    wasFromSource = true;
+                }
             }
         }
     }
     else if(isKnown) {
-        if(_options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0 && _options.behaviorBase != emu::Chip8EmulatorOptions::ePORTABLE && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
             updateEmulatorOptions(knownOptions);
         if(_options.hasColors()) {
             _options.updateColors(_colorPalette);
@@ -171,14 +302,16 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         valid = true;
     }
     else if(endsWith(filename, ".ch10")) {
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
         }
     }
     else if(endsWith(filename, ".hc8") || Librarian::isPrefixedRSTDPRom(fileData.data(), fileData.size())) {
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
@@ -189,38 +322,44 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             romImage = fileData;
             valid = true;
         }
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP_TPD));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP_TPD));
     }
     else if(endsWith(filename, ".c8e")) {
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
         }
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8EVIP));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8EVIP));
     }
     else if(endsWith(filename, ".c8x")) {
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
         }
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8XVIP));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8XVIP));
     }
     else if(endsWith(filename, ".sc8")) {
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
         }
     }
     else if(endsWith(filename, ".mc8")) {
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
         }
     }
     else if(endsWith(filename, ".xo8")) {
-        updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP));
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0)
+            updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eXOCHIP));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
             valid = true;
@@ -228,7 +367,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
     }
     else if(endsWith(filename, ".ch8")) {
         auto estimate = _librarian.getEstimatedPresetForFile(_options.behaviorBase, fileData.data(), fileData.size());
-        if(_options.behaviorBase != estimate)
+        if((loadOpt & LoadOptions::DontChangeOptions) == 0 && _options.behaviorBase != estimate)
             updateEmulatorOptions(Chip8EmulatorOptions::optionsOfPreset(estimate));
         if (size < _chipEmu->memSize() - _options.startAddress) {
             romImage = fileData;
@@ -251,31 +390,33 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
                 }
                 codeOffset = iter->second.first;
                 codeSize = iter->second.second;
-                switch (iter->first) {
-                    case C8BFile::C8V_XO_CHIP:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eXOCHIP));
-                        break;
-                    case C8BFile::C8V_MEGA_CHIP:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eMEGACHIP));
-                        break;
-                    case C8BFile::C8V_SCHIP_1_1:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11));
-                        break;
-                    case C8BFile::C8V_SCHIP_1_0:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10));
-                        break;
-                    case C8BFile::C8V_CHIP_48:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP48));
-                        break;
-                    case C8BFile::C8V_CHIP_10:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10));
-                        break;
-                    case C8BFile::C8V_CHIP_8:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8));
-                        break;
-                    default:
-                        updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11));
-                        break;
+                if((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                    switch (iter->first) {
+                        case C8BFile::C8V_XO_CHIP:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eXOCHIP));
+                            break;
+                        case C8BFile::C8V_MEGA_CHIP:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eMEGACHIP));
+                            break;
+                        case C8BFile::C8V_SCHIP_1_1:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11));
+                            break;
+                        case C8BFile::C8V_SCHIP_1_0:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10));
+                            break;
+                        case C8BFile::C8V_CHIP_48:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP48));
+                            break;
+                        case C8BFile::C8V_CHIP_10:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP10));
+                            break;
+                        case C8BFile::C8V_CHIP_8:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8));
+                            break;
+                        default:
+                            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11));
+                            break;
+                    }
                 }
                 if(c8b.executionSpeed > 0) {
                     _options.instructionsPerFrame = c8b.executionSpeed;
@@ -290,6 +431,15 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             }
         }
     }
+    else if(endsWith(filename, ".bin") || endsWith(filename, ".ram") || endsWith(filename, ".vip")) {
+        if(size < 32*1024) {
+            if ((loadOpt & LoadOptions::DontChangeOptions) == 0) {
+                updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eRAWVIP));
+            }
+            romImage = fileData;
+            valid = true;
+        }
+    }
     if (valid) {
         //TraceLog(LOG_INFO, "Found a valid rom.");
         _romImage = std::move(romImage);
@@ -297,7 +447,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         _romName = filename;
         _romIsWellKnown = isKnown;
         if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
-            _romWellKnownOptions = _options;
+            _romWellKnownOptions = knownOptions;
         _chipEmu->reset();
         if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
             std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
@@ -317,13 +467,8 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             _currentDirectory = fs::path(_romName).parent_path().string();
             _librarian.fetchDir(_currentDirectory);
         }
-        std::string source;
         //TraceLog(LOG_INFO, "Done with directory change.");
-        if(wasFromSource) {
-            source.assign((const char*)fileData.data(), fileData.size());
-            //TraceLog(LOG_INFO, "Assigned source.");
-        }
-        else if(_romImage.size() < 8192*1024) {
+        if(!wasFromSource && _romImage.size() < 8192*1024) {
             //TraceLog(LOG_INFO, "Setting up decompiler.");
             std::stringstream os;
             //TraceLog(LOG_INFO, "Setting instance.");
@@ -336,7 +481,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
             source = os.str();
         }
         //TraceLog(LOG_INFO, "About to callback whenRomLoaded.");
-        whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), andRun, c8c.get(), source);
+        whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
     }
     return valid;
 }

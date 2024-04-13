@@ -314,7 +314,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"64176ff030ebff27f483db5a16f38f2383d0026e", emu::chip8::Variant::SCHIP_1_1, "BMP Viewer - Chip-48 Rainmeter Edition Splash Screen (Christian Kosman, 2018)", nullptr, nullptr},
     //{"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", {emu::Chip8EmulatorOptions::eXOCHIP}},
     {"642e6174ac7b2bccb7d0845eb5f18d2defbe98b4", emu::chip8::Variant::XO_CHIP, "Replicator (Björn Kempen, 2015)", nullptr, nullptr},
-    {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::SCHIPC, "Sub-Terr8Nia (your name here, 2017-08-31)", R"({"instructionsPerFrame": 60, "optWrapSprites": true, "advanced": {"col1": "#ffffff", "col2": "#FF6600", "col3": "#662200", "col0": "#000000", "buzzColor": "#FFAA00", "quietColor": "#111111", "screenRotation": 270}})", nullptr},
+    {"64536d549c986e9edf25de9fa89db60d2ade85c0", emu::chip8::Variant::XO_CHIP, "Sub-Terr8Nia (your name here, 2017-08-31)", R"({"instructionsPerFrame": 60, "advanced": {"col1": "#ffffff", "col2": "#FF6600", "col3": "#662200", "col0": "#000000", "buzzColor": "#FFAA00", "quietColor": "#111111", "screenRotation": 270}})", nullptr},
     {"659cb966e976fcbcae76f6a8a07c65be4d18aae8", emu::chip8::Variant::CHIP_8, "Space Racer (WilliamDonnelly, 2017-10-30)", R"({"instructionsPerFrame": 20, "optWrapSprites": true, "advanced": {"col1": "#FCFCFC", "col2": "#FF6600", "col3": "#662200", "col0": "#111111", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"65e3432c942df6ce18db2c2d01d3260e56dd1e53", emu::chip8::Variant::CHIP_8, "Lady Runner (noodulz, 2020)", nullptr, nullptr},
     //{"66068809c482a30aa4475dc554a18d8d727d3521", {emu::Chip8EmulatorOptions::eXOCHIP}},
@@ -750,7 +750,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"fc724ae0125f5f1ac94a79fe3afc6318b1f57556", emu::chip8::Variant::CHIP_8, "Kaleidoscope (Joseph Weisbecker, 1978)", nullptr, nullptr},
     {"fca71182a8838b686573e69b22aff945d79fe1d0", emu::chip8::Variant::CHIP_8, "Airplane", nullptr, nullptr},                        // Airplane.ch8
     //{"fcaa793332a83c93f4ed79f5ffbc8403c8b8aea0", {emu::Chip8EmulatorOptions::eSCHIP11}},
-    {"fcaa793332a83c93f4ed79f5ffbc8403c8b8aea0", emu::chip8::Variant::SCHIPC, "Eaty The Alien (JohnEarnest, 2015-10-31)", R"({"instructionsPerFrame": 200, "advanced": {"col1": "#443300", "col2": "#FF6600", "col3": "#662200", "col0": "#aa7700", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
+    {"fcaa793332a83c93f4ed79f5ffbc8403c8b8aea0", emu::chip8::Variant::XO_CHIP, "Eaty The Alien (JohnEarnest, 2015-10-31)", R"({"instructionsPerFrame": 200, "advanced": {"col1": "#443300", "col2": "#FF6600", "col3": "#662200", "col0": "#aa7700", "buzzColor": "#FFAA00", "quietColor": "#000000"}})", nullptr},
     {"fcecf90496dadd214486a7a769e3a07f2b8f4eab", emu::chip8::Variant::SCHIPC, "Knight (simonpacis, 2016-10-07)", R"({"instructionsPerFrame": 200, "optWrapSprites": true, "advanced": {"col1": "#FFCC00", "col2": "#FF6600", "col3": "#662200", "col0": "#996600", "buzzColor": "#FFAA00", "quietColor": "#000000", "screenRotation": 0}})", nullptr},
     {"fdb2da9e06a07bb11dee8a7dc1a9589759a9c57d", emu::chip8::Variant::XO_CHIP, "Skipper (Jason DuPertuis, 2020)", nullptr, nullptr},
     {"fe25659856e1921ea629d3f8fce977c0cae57ff3", emu::chip8::Variant::CHIP_8, "Snake (Henry Wang, 2019)", nullptr, nullptr},
@@ -760,6 +760,20 @@ static KnownRomInfo g_knownRoms[] = {
     {"ff5276bfd203634ef3034475ff7bc8bd9033a03d", emu::chip8::Variant::SCHIPC, "Bounce (Les Harris, 20xx)", nullptr, nullptr},
     {"ff639eceaf221ae66151a03779b41fae7118d2d8", emu::chip8::Variant::CHIP_8, "Reversi (Philip Baltzer)", nullptr, nullptr},
     {"ff6b8ac59bf281cd4b5ab6e161600b00f85a0265", emu::chip8::Variant::CHIP_8, "Danm8Ku (buffi, 2015-10-31)", R"({"instructionsPerFrame": 1000, "advanced": {"col1": "#00FF00", "col2": "#FF0000", "col3": "#FFFF00", "col0": "#000000", "buzzColor": "#999900", "quietColor": "#333300"}})", nullptr},
+
+    // COSMAC VIP Binaries
+    {"135de7f6dad3c82eb518590eea33f36808a570eb", emu::chip8::Variant::COSMAC_VIP, "Curses Foiled Again Demo", nullptr, nullptr},
+    {"278b2dedb91ff60b1d795122cde204d01076f6ba", emu::chip8::Variant::COSMAC_VIP, "1K Memort Test", nullptr, nullptr},
+    {"3d1789a54c7001992659d4eb235b1286b0a0be78", emu::chip8::Variant::COSMAC_VIP, "VIP 1K Memory Test", nullptr, nullptr},
+    {"45c1e9970abfe0797d1938724f3ff0ebb4f09c31", emu::chip8::Variant::COSMAC_VIP, "Android Signboard Demo", nullptr, nullptr},
+    {"45dd96fc14592fd9a1f10c58ef5cf0e84bfac0e3", emu::chip8::Variant::COSMAC_VIP, "4096 Bit Picture", nullptr, nullptr},
+    //{"59b42a94d51b4fdab82888edfbc583e3f0522c9e", emu::chip8::Variant::COSMAC_VIP, "EPROM Burner", nullptr, nullptr},
+    {"802bc3fdbd8988d17f584564ab91b5ebbcf15281", emu::chip8::Variant::COSMAC_VIP, "Final Exam Question", nullptr, nullptr}, // ??
+    {"a4f774ea1736d87b6ee1e95ae46c7d0f1179d0c7", emu::chip8::Variant::COSMAC_VIP, "Dragon", nullptr, nullptr},
+    {"ba743c97aac6bae1b6a50a56a078780b28c59643", emu::chip8::Variant::COSMAC_VIP, "RCA Cosmac Picture", nullptr, nullptr},
+    {"cbab3d0fba840fc9190749363ae9c72d36682d13", emu::chip8::Variant::COSMAC_VIP, "Beeper", nullptr, nullptr},
+    {"d02aa4e2e9a24c6f774c50a14c21ff30ba148daa", emu::chip8::Variant::COSMAC_VIP, "Snoopy Snipe Shoot", nullptr, nullptr},
+
 };
 
 static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]);
@@ -767,6 +781,11 @@ static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]
 size_t Librarian::numKnownRoms()
 {
     return g_knownRomNum;
+}
+
+const KnownRomInfo& Librarian::getRomInfo(size_t index)
+{
+    return index < g_knownRomNum ? g_knownRoms[index] : g_knownRoms[0];
 }
 
 const KnownRomInfo* Librarian::getKnownRoms()
@@ -862,6 +881,8 @@ bool Librarian::fetchDir(std::string directory)
                     type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eXOCHIP;
                 else if(ext == ".c8b")
                     type = Info::eROM_FILE;
+                else if(ext == ".bin" || ext == ".ram")
+                    type = Info::eROM_FILE, variant = emu::Chip8EmulatorOptions::eRAWVIP;
                 _directoryEntries.push_back({de.path().filename().string(), type, variant, (size_t)de.file_size(), convertClock(de.last_write_time())});
             }
         }
@@ -899,7 +920,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
         for (auto& entry : _directoryEntries) {
             if (!entry.analyzed) {
                 foundOne = true;
-                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 8) {
+                if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 16) {
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
@@ -1029,13 +1050,28 @@ emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const std::string& sha1su
     return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
 }
 
+emu::Chip8EmulatorOptions Librarian::getOptionsForSha1(const std::string_view& sha1)
+{
+    const auto* romInfo = findKnownRom(std::string(sha1));
+    if (romInfo) {
+        auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
+        auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
+        if(romInfo->options) {
+            emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
+            options.behaviorBase = preset;
+        }
+        return options;
+    }
+    return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+}
+
 Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const
 {
     using namespace std::literals::chrono_literals;
     if(info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
-        emu::Chip8HeadlessHostEx host;
+        emu::Chip8HeadlessHost host;
         host.updateEmulatorOptions({});
-        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), true)) {
+        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), emu::Chip8HeadlessHost::SetToRun)) {
             auto& chipEmu = host.chipEmu();
             auto options = host.options();
             auto ticks = 5000;

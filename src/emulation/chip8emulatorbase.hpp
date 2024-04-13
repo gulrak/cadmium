@@ -50,7 +50,7 @@ class Chip8EmulatorBase : public Chip8OpcodeDisassembler
 public:
     enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
     enum Chip8Font { C8F5_COSMAC, C8F5_ETI, C8F5_DREAM, C8F5_CHIP48 };
-    enum Chip8BigFont { C8F10_SCHIP10, C8F10_SCHIP11, C8F10_MEGACHIP, C8F10_XOCHIP };
+    enum Chip8BigFont { C8F10_SCHIP10, C8F10_SCHIP11, C8F10_FISHNCHIPS, C8F10_MEGACHIP, C8F10_XOCHIP };
     constexpr static int MAX_SCREEN_WIDTH = 256;
     constexpr static int MAX_SCREEN_HEIGHT = 192;
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
@@ -285,7 +285,7 @@ public:
     std::pair<const uint8_t*, size_t> getSmallFontData() const;
     std::pair<const uint8_t*, size_t> getBigFontData() const;
 
-    static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
+    //static std::unique_ptr<IChip8Emulator> create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
 
     static std::pair<const uint8_t*, size_t> smallFontData(Chip8Font font = Chip8Font::C8F5_COSMAC);
     static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font = Chip8BigFont::C8F10_SCHIP11);

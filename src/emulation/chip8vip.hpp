@@ -39,9 +39,6 @@ extern const uint8_t _rom_cvip[0x200];
 class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
 {
 public:
-    constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
-    constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
-
     Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8VIP() override;
 
@@ -82,8 +79,8 @@ public:
 
     GenericCpu& getBackendCpu() override;
 
-    std::pair<std::string_view,std::string_view> romInfo() override;
-    std::pair<std::string_view,std::string_view> interpreterInfo() override;
+    Properties& getProperties() override;
+    void updateProperties(Property& changedProp) override;
 
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 

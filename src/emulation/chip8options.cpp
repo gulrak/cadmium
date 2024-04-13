@@ -88,6 +88,7 @@ std::string Chip8EmulatorOptions::nameOfPreset(SupportedPreset preset)
         case eCHIP8XVIP: return "VIP-CHIP-8X";
         case eCHIP8XVIP_TPD: return "VIP-CHIP-8X-TPD";
         case eCHIP8XVIP_FPD: return "VIP-HI-RES-CHIP-8X";
+        case eRAWVIP: return "COSMAC VIP";
         case eCHIP8DREAM: return "CHIP-8-DREAM";
         case eC8D68CHIPOSLO: return "CHIP-8-DREAM-CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -118,6 +119,7 @@ const char* Chip8EmulatorOptions::shortNameOfPreset(SupportedPreset preset)
         case eCHIP8XVIP: return "VIPCHIP8X";
         case eCHIP8XVIP_TPD: return "VIPCHIP8XTPD";
         case eCHIP8XVIP_FPD: return "VIPCHIP8XFPD";
+        case eRAWVIP: return "COSMACVIP";
         case eCHIP8DREAM: return "CHIP8DREAM";
         case eC8D68CHIPOSLO: return "D6k8CHIPOSLO";
         case eCHICUEYI: return "CHICUEYI";
@@ -160,8 +162,6 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"xochip", Opts::eXOCHIP},
     {"vipchip8", Opts::eCHIP8VIP},
     {"chip8vip", Opts::eCHIP8VIP},
-    {"cosmac", Opts::eCHIP8VIP},
-    {"cosmacvip", Opts::eCHIP8VIP},
     {"vipchip8tpd", Opts::eCHIP8VIP_TPD},
     {"chip8viptpd", Opts::eCHIP8VIP_TPD},
     {"chip8tpdvip", Opts::eCHIP8VIP_TPD},
@@ -186,6 +186,7 @@ static std::map<std::string, emu::Chip8EmulatorOptions::SupportedPreset> presetM
     {"chip8xvipfpd", Opts::eCHIP8XVIP_FPD},
     {"vipchip8xfpd", Opts::eCHIP8XVIP_FPD},
     {"hireschip8xvip", Opts::eCHIP8XVIP_FPD},
+    {"cosmacvip", Opts::eRAWVIP},
     {"chip8dream", Opts::eCHIP8DREAM},
     {"dreamchip8", Opts::eCHIP8DREAM},
     {"dream6800", Opts::eCHIP8DREAM},
@@ -218,6 +219,7 @@ static std::map<Opts::SupportedPreset,std::string> presetOptionsProtoMap = {
     {Opts::eCHIP8XVIP, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8X"}})"},
     {Opts::eCHIP8XVIP_TPD, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8XTPD"}})"},
     {Opts::eCHIP8XVIP_FPD, R"({"startAddress":768,"advanced":{"interpreter":"CHIP8XFPD"}})"},
+    {Opts::eRAWVIP, R"({"startAddress":0})"},
     {Opts::eCHIP8DREAM, R"({"frameRate":50})"},
     {Opts::eC8D68CHIPOSLO, R"({"frameRate":50,"advanced":{"kernel":"chiposlo"}})"}
 };
@@ -257,6 +259,7 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chi
     else if(variant == chip8::Variant::CHIP_8_D6800) return eCHIP8DREAM;
     else if(variant == chip8::Variant::CHIP_8_D6800_LOP) return eC8D68CHIPOSLO;
     else if(variant == chip8::Variant::GENERIC_CHIP_8) return ePORTABLE;
+    else if(variant == chip8::Variant::COSMAC_VIP) return eRAWVIP;
     return eCHIP8;
 }
 
@@ -291,7 +294,7 @@ bool Chip8EmulatorOptions::operator==(const Chip8EmulatorOptions& other) const
            optSC11Collision == other.optSC11Collision && optSCLoresDrawing == other.optSCLoresDrawing && optHalfPixelScroll == other.optHalfPixelScroll && optModeChangeClear == other.optModeChangeClear && optJump0Bxnn == other.optJump0Bxnn &&
            optAllowHires == other.optAllowHires && optOnlyHires == other.optOnlyHires && optAllowColors == other.optAllowColors && optHas16BitAddr == other.optHas16BitAddr && optCyclicStack == other.optCyclicStack &&
            optXOChipSound == other.optXOChipSound && optExtendedVBlank == other.optExtendedVBlank && optChicueyiSound == other.optChicueyiSound && optTraceLog == other.optTraceLog && instructionsPerFrame == other.instructionsPerFrame &&
-           frameRate == other.frameRate && advancedDump == other.advancedDump;
+           frameRate == other.frameRate && advancedDump == other.advancedDump && properties == other.properties;
 }
 
 #define SET_IF_CHANGED(j, n) if(o.n != defaultOpts.n) j[#n] = o.n;

@@ -26,6 +26,8 @@
 #pragma once
 
 #include <emulation/ichip8.hpp>
+#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/chip8options.hpp>
 #include <memory>
 
 //#define TEST_CHIP8EMULATOR_FP
@@ -33,6 +35,22 @@
 //#define TEST_C_OCTO
 //#define TEST_JAMES_GRIFFIN_CHIP_8
 //#define TEXT_WERNSEY_CHIP_8
+
+class Chip8HeadlessTestHost : public emu::Chip8EmulatorHost
+{
+public:
+    explicit Chip8HeadlessTestHost(const emu::Chip8EmulatorOptions& options_) : options(options_) {}
+    ~Chip8HeadlessTestHost() override = default;
+    bool isHeadless() const override { return true; }
+    uint8_t getKeyPressed() override { return 0; }
+    bool isKeyDown(uint8_t key) override { return false; }
+    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
+    void updateScreen() override {}
+    void vblank() override {}
+    void updatePalette(const std::array<uint8_t,16>& palette) override {}
+    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
+    emu::Chip8EmulatorOptions options;
+};
 
 enum Chip8TestVariant { C8TV_GENERIC, C8TV_C8, C8TV_C10, C8TV_C48, C8TV_SC10, C8TV_SC11, C8TV_MC8, C8TV_XO };
 using EmuCore = std::unique_ptr<emu::IChip8Emulator>;

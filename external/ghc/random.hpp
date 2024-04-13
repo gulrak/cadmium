@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/c8capturehost.hpp
+// src/random.hpp - warning this is not for cryptographic use, it's used for emulation!!!
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2024, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,21 +25,44 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <chip8emuhostex.hpp>
+#include <cstdint>
+#include <random>
 
-#include <raylib.h>
+namespace ghc
+{
 
-
-class C8CaptureHost : public emu::Chip8HeadlessHost
+class RandomLCG
 {
 public:
-    C8CaptureHost();
-    ~C8CaptureHost() override;
-    void preClear() override;
-
+    enum Type { };
+    explicit RandomLCG(uint32_t seed = 1)
+        : _state(seed ? seed : 1)
+    {}
+    uint16_t operator()()
+    {
+        next();
+        return _state >> 16;
+    }
 private:
-    void grabImage(uint32_t* destination, int destWidth, int destHeight, int destStride);
-    Image _snapshot;
-    Image _nineSnapshot;
-    int _snapNum{0};
+    void next()
+    {
+        _state = ((_state * 1103515245) + 12345) & 0x7FFFFFFF;
+    }
+    uint32_t _state{1};
 };
+
+class RandomMT
+{
+public:
+    RandomMT(uint32_t seed = 0)
+        : _engine(seed ? seed : std::random_device()())
+    {}
+    uint16_t operator()()
+    {
+        return _engine();
+    }
+private:
+    std::mt19937 _engine;
+};
+
+}

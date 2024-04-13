@@ -23,6 +23,8 @@ set(CHIP8_EMU_SOURCE
     chip8dream.cpp
     chip8dream.hpp
     utility.cpp
+    properties.cpp
+    properties.hpp
     #octocartridge.cpp
     #octocartridge.hpp
 )
@@ -32,3 +34,6 @@ set_source_files_properties(src/emulation/chip8compiler.cpp PROPERTIES COMPILE_F
 #target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU GEN_OPCODE_STATS)
 target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU)
 target_link_libraries(emulation PUBLIC c_octo chiplet-lib)
+if(CODE_COVERAGE)
+    target_code_coverage(emulation)
+endif()

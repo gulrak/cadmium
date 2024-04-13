@@ -28,10 +28,16 @@
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/hardware/genericcpu.hpp>
+#include <emulation/properties.hpp>
 
 #include <fmt/format.h>
 
 namespace emu {
+
+struct RealCoreSetupInfo {
+    const char* name;
+    const char* propertiesJsonString;
+};
 
 class Chip8RealCoreBase : public Chip8OpcodeDisassembler
 {
@@ -78,7 +84,7 @@ public:
     }
     bool inErrorState() const override { return _cpuState == eERROR; }
     CpuState cpuState() const override { return _cpuState; }
-
+    bool hybridChipMode() const { return _isHybridChipMode; }
     int64_t getCycles() const override { return _cycles; }
     int64_t frames() const override { return _frames; }
     const ClockedTime& getTime() const override { return getBackendCpu().getTime(); }
@@ -89,8 +95,8 @@ public:
         return const_cast<Chip8RealCoreBase*>(this)->getBackendCpu();
     }
 
-    virtual std::pair<std::string_view,std::string_view> romInfo() = 0;
-    virtual std::pair<std::string_view,std::string_view> interpreterInfo() = 0;
+    virtual Properties& getProperties() = 0;
+    virtual void updateProperties(Property& changedProp) = 0;
 
     std::string dumpStateLine() const override {
         uint16_t op = (getMemoryByte(getPC())<<8)|getMemoryByte(getPC() + 1);
@@ -171,16 +177,19 @@ public:
         }
         return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
     }
+    const std::string& errorMessage() const override { return _errorMessage; }
 protected:
     Chip8EmulatorHost& _host;
     Chip8State _state;
     int64_t _cycles{0};
     int _frames{0};
     bool _backendStopped{false};
+    bool _isHybridChipMode{true};
     mutable CpuState _cpuState{eNORMAL};
     uint16_t _stepOverSP{};
     std::array<uint8_t,4096> _breakMap;
     std::map<uint32_t,BreakpointInfo> _breakpoints;
+    std::string _errorMessage;
 };
 
 }  // namespace emu

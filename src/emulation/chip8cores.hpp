@@ -833,20 +833,4 @@ private:
 };
 
 
-class Chip8HeadlessHost : public Chip8EmulatorHost
-{
-public:
-    explicit Chip8HeadlessHost(const Chip8EmulatorOptions& options_) : options(options_) {}
-    ~Chip8HeadlessHost() override = default;
-    bool isHeadless() const override { return true; }
-    uint8_t getKeyPressed() override { return 0; }
-    bool isKeyDown(uint8_t key) override { return false; }
-    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
-    void updateScreen() override {}
-    void vblank() override {}
-    void updatePalette(const std::array<uint8_t,16>& palette) override {}
-    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
-    Chip8EmulatorOptions options;
-};
-
 }

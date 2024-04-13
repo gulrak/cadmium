@@ -56,7 +56,7 @@ public:
 
     Integer() : _value{0} {}
     explicit constexpr Integer(value_type val) : _value(val) {}
-    Integer(Self other) : _value(other._value) {}
+    constexpr Integer(const Self& other) : _value(other._value) {}
 
     PodType asNative() const { return _value; }
 
@@ -64,49 +64,49 @@ public:
     template<typename PodType2, typename = typename std::enable_if<std::is_arithmetic<PodType2>::value, PodType2>::type>
     explicit operator Integer<PodType2>() const { return Integer<PodType2>((PodType2)_value); }
 
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self& operator+=(const Integer<Other>& other) { _value = value_type((safe_type)_value + other._value); }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self& operator-=(const Integer<Other>& other) { _value = value_type((safe_type)_value - other._value); }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self& operator*=(const Integer<Other>& other) { _value = value_type((safe_type)_value * other._value); }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     bool addTo_overflow(const Integer<Other>& other)
     {
         auto result = safe_type(_value) + other._value;
         _value = value_type(result);
         return result < std::numeric_limits<value_type>::min() || result > std::numeric_limits<value_type>::max();
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     bool subTo_overflow(const Integer<Other>& other)
     {
         auto result = safe_type(_value) - other._value;
         _value = value_type(result);
         return result < std::numeric_limits<value_type>::min() || result > std::numeric_limits<value_type>::max();
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     bool mulTo_overflow(const Integer<Other>& other)
     {
         auto result = safe_type(_value) * other._value;
         _value = value_type(result);
         return result < std::numeric_limits<value_type>::min() || result > std::numeric_limits<value_type>::max();
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator+(const Integer<Other>& other) const
     {
         return Self(value_type(safe_type(_value) + other._value));
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator-(const Integer<Other>& other) const
     {
         return Self(value_type(safe_type(_value) - other._value));
     }
-    template<typename T = PodType, typename std::enable_if_t<std::is_signed_v<T>, Self>>
+    template<typename T = PodType, typename = std::enable_if_t<std::is_signed_v<T>, Self>>
     constexpr Self operator-() const
     {
         return Self(-_value);
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator*(const Integer<Other>& other) const
     {
         return Self(value_type(safe_type(_value) * other._value));
@@ -127,31 +127,31 @@ public:
             return Self(_value << other);
         }
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator&(const Integer<Other>& other) const
     {
         return Self(_value & other._value);
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     Self operator|(const Integer<Other>& other) const
     {
         return Self(_value & other._value);
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     std::pair<Self, bool> add_overflow(const Integer<Other>& other) const
     {
         auto result{*this};
         bool overflow = result.addTo_overflow(other);
         return {result, overflow};
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     std::pair<Self, bool> sub_overflow(const Integer<Other>& other) const
     {
         auto result{*this};
         bool overflow = result.subTo_overflow(other);
         return {result, overflow};
     }
-    template<typename Other, typename std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
+    template<typename Other, typename = std::enable_if_t<std::is_integral_v<Other> && sizeof(Other) <= sizeof(PodType)>>
     std::pair<Self, bool> mul_overflow(const Integer<Other>& other) const
     {
         auto result{*this};
@@ -183,20 +183,20 @@ constexpr RU16 operator ""_ru16(unsigned long long int val) { return val > std::
 constexpr RI32 operator ""_ri32(unsigned long long int val) { return val > std::numeric_limits<int32_t>::max() ? throw std::exception() : RI32(val); }
 constexpr RU32 operator ""_ru32(unsigned long long int val) { return val > std::numeric_limits<uint32_t>::max() ? throw std::exception() : RU32(val); }
 
-template<typename ValueType = uint8_t>
+template<typename EnumType, typename ValueType = RU8>
 class Bitfield {
 public:
     Bitfield() = delete;
     Bitfield(std::string names) : _names(std::move(names)) {}
-    Bitfield(std::string names, ValueType positions, ValueType values) : _names(std::move(names)) { setFromVal(positions, values); }
-    void setFromVal(ValueType positions, ValueType values) { _val = (_val & ~positions) | (values & positions); }
-    void setFromBool(ValueType positions, bool asOnes) { if(asOnes) set(positions); else clear(positions); }
-    void set(ValueType positions) { _val |= positions; }
-    void clear(ValueType positions) { _val &= ~positions; }
-    bool isValue(ValueType positions, ValueType values) const { return (_val & positions) == (values & positions); }
-    bool isSet(ValueType positions) const { return (_val & positions) == positions; }
-    bool isUnset(ValueType positions) const { return (_val & positions) == 0; }
-    bool isValid(ValueType positions) const { return true; }
+    Bitfield(std::string names, EnumType positions, ValueType values) : _names(std::move(names)) { setFromVal(positions, values); }
+    void setFromVal(EnumType positions, ValueType values) { _val = (_val & ~positions) | (values & positions); }
+    void setFromBool(EnumType positions, bool asOnes) { if(asOnes) set(positions); else clear(positions); }
+    void set(EnumType positions) { _val |= positions; }
+    void clear(EnumType positions) { _val &= ~positions; }
+    bool isValue(EnumType positions, ValueType values) const { return (_val & positions) == (values & positions); }
+    bool isSet(EnumType positions) const { return (_val & positions) == positions; }
+    bool isUnset(EnumType positions) const { return (_val & positions) == 0; }
+    bool isValid(EnumType positions) const { return true; }
     ValueType asNumber() const { return _val; }
     ValueType validity() const { return ~static_cast<ValueType>(0); }
     std::string asString() const {

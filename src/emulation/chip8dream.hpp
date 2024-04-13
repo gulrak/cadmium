@@ -35,8 +35,8 @@ class Chip8Dream : public Chip8RealCoreBase, public M6800Bus<>
 {
 public:
 public:
-    constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
-    constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
+    //constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
+    //constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
 
     Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
     ~Chip8Dream() override;
@@ -76,8 +76,8 @@ public:
 
     GenericCpu& getBackendCpu() override;
 
-    std::pair<std::string_view,std::string_view> romInfo() override;
-    std::pair<std::string_view,std::string_view> interpreterInfo() override;
+    Properties& getProperties() override;
+    void updateProperties(Property& changedProp) override;
 
 private:
     int frameCycle() const;

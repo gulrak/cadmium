@@ -46,12 +46,19 @@ the get the feeling for it. I already had done some work on emulators and
 wrote my own implementation of a Commodore 64 emulator in C++, so one could
 say that I had no reason to actually make a CHIP-8 one, but on a longer
 weekend off, I stumbled across the topic, I knew the system from my trusty
-old HP48GX, during my study times in the 1990s, so I felt it would be fun to
+old HP-48GX, during my study times in the 1990s, so I felt it would be fun to
 try to cobble an implementation together in a few hours.
 It worked quite well, and as I was using raylib for some tools and took part
 in a raylib game jam, I saw this as a good fit.
 
 ![Cadmium debug view](media/cadmium_01.png?raw=true "A screenshot of the debug view")
+
+I had so much fun with this project that I added emulation of the original
+COSMAC VIP and the DREAM6800 to the project, to allow using those to run
+the historical CHIP-8 interpreters from the past and also to allow execution
+of hybrid CHIP-8 programs that contain a mix of CHIP-8 and assembly subroutines
+using the rarely supported `0nnn` opcode. So this project explores
+the corners of historic CHIP-8 as well and sometimes goes a bit beyond it.
 
 ## Online Version
 
@@ -60,14 +67,18 @@ Emscripten builds are available here for testing:
 * https://games.gulrak.net/cadmium-wip/?p=xochip - this is the current work in progress
 
 Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`) or
-Octo sources (`.8o`) onto the window to load them.
+Octo sources (`.8o`), or Octo cartridges (`.gif`), or even COSMAC VIP programs
+(`.bin` or `.ram`) onto the window to load them.
 
 ## Features
 
 The emulation behavior used in Cadmium is based on opcode information documented
 in [the opcode table](https://chip8.gulrak.net), various VIPER magazine issues,
 the [CHIP-8 extensions and compatibility](https://chip-8.github.io/extensions/) pages
-and tests on various emulators and the HP-48SX/HP-48GX calculator implementations.
+and tests on various emulators and the HP-48SX/HP-48GX calculator implementations
+as well as analyzing the historic interpreters' code and running them on COSMAC
+VIP and DREAM6800 (but both emulated, as I sadly don't have access to real hardware
+of those yet).
 
 ### Supported CHIP-8 variants
 
@@ -95,9 +106,9 @@ The Supported presets are:
 * MegaChip 8 (with Mega8 wrapping/scrolling support if wrapping is enabled)
 * XO-CHIP
 * VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
-* VIP-CHIP-8E (CHIP-8E on an emulated COSMAC VIP)
 * VIP-CHIP-8 TPD (same, but with 64x64 display)
 * VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
+* VIP-CHIP-8E (same, with CHIP-8E interpreter)
 * VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
 * VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
 * VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)
@@ -110,7 +121,7 @@ this core, like other HLE emulators, can not execute machine subroutines, it
 emulates the exact timing behavior of every instruction and the overall frame
 timing to reach cycle exact accuracy compared to the real machine. The main
 difference to the VIP-CHIP-8 preset is, that this one needs quite less host
-CPU resources.
+CPU resources, but as said, can't run hybrid programs.
 
 The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
 to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
@@ -135,9 +146,14 @@ driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS
 kernel and run an accurate emulation of DREAM6800 CHIP-8. This core also
 allows hybrid roms that use machine code parts.
 
+There now also is the possibility to select a COSMAC VIP without any CHIP-8
+interpreter. Cadmium then falls back into a raw 1802 COSMAC VIP emulation
+that allows to load and run games and programs made for the VIP that don't
+use CHIP-8.
+
 ### Multi Architecture Debugging
 
-Cadmium allows for the presets that emulate actual hardware to debug
+Cadmium allows for those presets, that emulate actual hardware, to debug
 seamlessly on the CHIP-8 opcode level or the backend CPU assembly level:
 
 ![Cadmium emulating DREAM6800](media/cadmium_mdbg_01.png?raw=true "Debugging on CHIP8 level") ![Cadmium emulating DREAM6800](media/cadmium_mdbg_02.png?raw=true "Debugging on M6800 level")
@@ -146,6 +162,12 @@ Breakpoints and single stepping works in both views, the selected instruction
 tab defines the logical entity the debug buttons work on, the register view
 shows the registers of that entity. Breakpoints of the hidden entity still
 work and the tab switches to the entity that hit the breakpoint.
+
+**Note:** Be aware, that in COSMAC VIP 1802 mode, while breakpoints and single
+stepping works fine, there is no step-over/step-out support as there is no
+defined way of the 1802 CPU to enter subroutines and return, and no stack in
+the sense most other CPUs have it. The M6800 debugging of the DREAM6800 side
+has those features enabled, as have all CHIP-8 modes, even the VIP one.
 
 ### Quirks
 
@@ -311,7 +333,7 @@ Quirks:
     If true, use XO-CHIP sound instead of buzzer
 
 ...
-    ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, or `.8o`)
+    ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, `.gif`, `.bin`, `.ram`, or `.8o`)
 ```
 
 ## Versioning
@@ -328,6 +350,18 @@ _Cadmium_ is written in C++17 and uses CMake as a build solution. To build it,
 checkout or download the source.
 
 ### Linux / macOS
+
+The Linux build of Cadmium has the same prerequisites that raylib has and as thus
+the following packages are expected to be installed:
+
+* **Ubunbtu:** `libasound2-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev libxinerama-dev libwayland-dev libxkbcommon-dev`
+* **Fedora:** `alsa-lib-devel mesa-libGL-devel libX11-devel libXrandr-devel libXi-devel libXcursor-devel libXinerama-devel libatomic`
+* **Arch:** `alsa-lib mesa libx11 libxrandr libxi libxcursor libxinerama`
+
+Additionally, if building for Wayland, one needs `wayland-devel libxkbcommon-devel wayland-protocols-devel`
+and add the `-DUSE_WAYLAND=ON` option to the initial CMake call.
+
+For macOS, only the Xcode commandline tools and CMake are needed.
 
 Open a terminal, enter the directory where the code was extracted and run:
 
@@ -395,12 +429,14 @@ cmake --build build
 ### Libraries
 
 * [raylib](https://www.raylib.com) - the fun game programming library that
-  inspired me to write this _(automatically fetched during configuration from a fork)_
+  inspired me to write this _(automatically fetched during configuration)_
 * [raygui](https://github.com/raysan5/raygui) - the lightweight immediate mode
   gui library for raylib _(contained in my wrapper rlguipp)_
 * [c-octo assembler](https://github.com/JohnEarnest/c-octo) - the octo
   assembler for support of generating binaries from [Octo assembler syntax](http://johnearnest.github.io/Octo/docs/Manual.html)
-  _(containied in `external/c-octo`)_
+  was originally the base of Chiplets assembler, but it has been very heavily
+  reworked and modified, so it is its ancestor but hardly recognizable by now.
+  Still, having this was a huge help and it will allways be named as the reference.
 * [fmtlib](https://github.com/fmtlib/fmt) - a modern formatting library in
   the style of C++20 std::format _(contained in `external/fmt`)_
 * [date](https://howardhinnant.github.io/date/date.html) - A date and time
@@ -451,7 +487,7 @@ I still want to give out some explicit thanks to:
 
 * _@NinjaWeedle_ - for his great help and countless tests to get some
   flesh on the very skinny original MegaChip8 specs to allow actually
-  support this exotic CHIP-8 variant ant maybe help it to be more
+  support this exotic CHIP-8 variant and maybe help it to be more
   accepted. This work resulted in his extended
   [MegaChip8 documentation](https://github.com/NinjaWeedle/MegaChip8).
 
