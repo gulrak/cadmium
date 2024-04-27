@@ -474,7 +474,7 @@ public:
                 _output(_rN, readByte(RX()++));
                 break;
             }
-            case 0x68: _cpuState = eERROR; break; // ILLEGAL
+            case 0x68: _cpuState = eERROR; PC()--; break; // ILLEGAL (still behaving as NOP on the original CDP1802)
             CASE_7(0x69): { // INP 1/7 ; BUS → M(R(X)); BUS → D; N LINES = N
                 _rD = _input(_rN&7);
                 writeByte(RX(), _rD);
@@ -702,8 +702,10 @@ public:
             _execMode = ePAUSED;
         }
         if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC()))
+            if(findBreakpoint(getPC())) {
                 _execMode = ePAUSED;
+                _breakpointTriggered = true;
+            }
         }
     }
 #ifdef CADMIUM_WITH_GENERIC_CPU

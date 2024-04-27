@@ -37,7 +37,7 @@ class Chip8EmulatorHost
 public:
     virtual ~Chip8EmulatorHost() = default;
     virtual bool isHeadless() const = 0;
-    virtual uint8_t getKeyPressed() = 0;
+    virtual int getKeyPressed() = 0;
     virtual bool isKeyDown(uint8_t key) = 0;
     virtual bool isKeyUp(uint8_t key) { return !isKeyDown(key); }
     virtual const std::array<bool,16>& getKeyStates() const = 0;

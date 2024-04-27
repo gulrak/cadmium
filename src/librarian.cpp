@@ -495,7 +495,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"a1ec824285a593cd1ca84dc6c732c61b0fe96330", emu::chip8::Variant::SCHIP_1_1, "SuperChip Test (unknown author)", nullptr, nullptr},
     //{"a2788177b820a28cd27e6d2d180340cb7f4948fb", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"a2788177b820a28cd27e6d2d180340cb7f4948fb", emu::chip8::Variant::SCHIPC, "Loopz (hap, 2006)", nullptr, nullptr},
-    {"a27dcf88a931f70c3ccf3c01a5410b263bac48bc", emu::chip8::Variant::CHIP_8, "Animal Race (Brian Astle)", nullptr, nullptr},
+    {"a27dcf88a931f70c3ccf3c01a5410b263bac48bc", emu::chip8::Variant::CHIP_8, "Animal Race (Brian Astle, broken)", nullptr, nullptr},
     {"a2807d2b9591a2cb061e3c3a64c2766b4bab4327", emu::chip8::Variant::CHIP_8, "Fractal Set (A-KouZ1, 2018)", nullptr, nullptr},
     {"a28c25586a38b0e6147092a2bc50899b463528df", emu::chip8::Variant::CHIP_8, "Elite International Golf", nullptr, nullptr},                        // Elite International Golf.ch8
     {"a3b80d4a9efa8e7700d348d3e3ddf81d3c7e92a9", emu::chip8::Variant::CHIP_8, "Blitz (David Winter)", nullptr, nullptr},

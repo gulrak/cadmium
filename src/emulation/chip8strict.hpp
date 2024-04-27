@@ -345,7 +345,7 @@ public:
                         }
                         else {
                             auto key = _host.getKeyPressed();
-                            if (key) {
+                            if (key > 0) {
                                 _rV[(opcode >> 8) & 0xF] = key - 1;
                                 addCycles(cyclesLeftInCurrentFrame());
                                 _instructionCycles = 3 * 3668;
@@ -355,7 +355,9 @@ public:
                             else {
                                 // keep waiting...
                                 _rPC -= 2;
-                                _rST = 4;
+                                if(key < 0) {
+                                    _rST = 4;
+                                }
                                 _cpuState = eWAITING;
                             }
                         }
@@ -421,8 +423,10 @@ public:
                 _execMode = ePAUSED;
         }
         if(hasBreakPoint(_rPC)) {
-            if(Chip8EmulatorBase::findBreakpoint(_rPC))
+            if(Chip8EmulatorBase::findBreakpoint(_rPC)) {
                 _execMode = ePAUSED;
+                _breakpointTriggered = true;
+            }
         }
     }
 

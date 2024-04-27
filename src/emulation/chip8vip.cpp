@@ -712,12 +712,14 @@ bool Chip8VIP::executeCdp1802()
             }
         }
         if(hasBreakPoint(getPC())) {
-            if(Chip8VIP::findBreakpoint(getPC()))
+            if(Chip8VIP::findBreakpoint(getPC())) {
                 setExecMode(ePAUSED);
+                _breakpointTriggered = true;
+            }
         }
         return true;
     }
-    else if(_impl->_cpu.getExecMode() == ePAUSED) {
+    else if(_impl->_cpu.getExecMode() == ePAUSED || _impl->_cpu.getCpuState() == Cdp1802::eERROR) {
         setExecMode(ePAUSED);
         _backendStopped = true;
     }

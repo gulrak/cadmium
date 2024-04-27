@@ -267,6 +267,11 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
                 }
             }
         }
+        else {
+            _romName = filename;
+            whenRomLoaded(_romName, false, c8c.get(), source);
+            return true;
+        }
     }
     else if(endsWith(filename, ".gif")) {
         emu::OctoCartridge cart(fileData);

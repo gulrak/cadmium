@@ -57,6 +57,7 @@ private:
     Core _visibleCpu{CHIP8_CORE};
     int _instructionOffset[2]{};
     int _activeInstructionsTab{0};
+    bool _memViewFollow{true};
     RegPack _chip8State;
     RegPack _chip8StateBackup;
     RegPack _backendState;

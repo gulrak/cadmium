@@ -475,8 +475,10 @@ public:
             _execMode = ePAUSED;
         }
         if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC()))
+            if(findBreakpoint(getPC())) {
                 _execMode = ePAUSED;
+                _breakpointTriggered = true;
+            }
         }
 #endif
     }

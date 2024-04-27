@@ -16,11 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   due to more accurate timing, but the generic one will take up less resources for more constrained
   platforms
 - Programs that are loaded from source are now also checked for their assembled binary being known
-  and options set accordingly. 
+  and options set accordingly
 - COSMAC VIP now supports up to 32k RAM, the interpreters will still put their screen data at
   the end of the actual memory, theoretically expanding the CHIP-8 space (even if the max. 12
   bit operands limit usability quite a bit)
-- New non-CHIP-8 mode: COSMAC VIP now supports running native VIP programs.
+- New non-CHIP-8 mode: COSMAC VIP now supports running native VIP programs
+- Memory panel now has a checkbox to detach it from auto-following the `I` register
+
+### Changed
+
+- Changed hardly visible memory change highlight color on darker columns
+- When running the program and the view is on settings or editor, the view will now switch to the
+  last used run-view (those are full video or debugger)
+- When loading source that has a compile error, the editor is shown
 
 ### Fixed
 
@@ -31,7 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single stepped or breakpoints involved
 - Wrong initial cycles after a reset for the COSMAC VIP and the CHIP-8 strict timing core, the
   time in ROM was not counted in
-  
+- COSMAC VIP could make Cadmium hang on opcode 0x68
+- Step-Over handling in hardware based emulation was not working correctly
+- Memory panel modification highlight was messed up
+- Memory panel `I` following was delayed by an instruction cycle when stepping
+- DREAM6800 was wrongly buzzing all the time, correctly controlled by PB6 now
+- DREAM6800 had not finished the last frame when auto-pausing on self-loop, potentially leaving
+  change undisplayed
+- Due to an change in the gui library the toggle buttons in the find bar of the editor didn't work
+- Loading of Octo source that didn't compile without error was not possible
 
 ## [1.1.8] - 2024-01-01
 

@@ -29,6 +29,8 @@
 #include <rlguipp/rlguipp4.hpp>
 #include <fmt/format.h>
 
+#include <cmath>
+
 #if 0
 static const uint32_t cadmiumPalette[7] = {
     0x00222bff, //E = 0!
@@ -50,6 +52,7 @@ static const uint32_t cadmiumPalette[7] = {
     0xeff8ffff  //C = 6!
 };
 #endif
+static float cadmiumAverageHue = 200.0f;
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
@@ -246,13 +249,43 @@ int StyleManager::Scope::getStyle(Style style) const
 
 StyleManager* StyleManager::_instance = nullptr;
 
+static inline float diff(float a1, float a2)
+{
+    auto a = a1 - a2;
+    if(a > 180) a -= 360;
+    if(a < -180) a += 360;
+    return a;
+}
+
+static inline uint32_t tintedColor(uint32_t color, float hue, float sat, bool invert)
+{
+    auto col = GetColor(color);
+    auto hsv = gui::HsvFromColor(col);
+    auto hueDelta = diff(hsv.x, cadmiumAverageHue);
+    hue += hueDelta;
+    if(hue >= 360) hue -= 360;
+    if(hue < 0) hue += 360;
+    hsv.x = hue;
+    hsv.y *= sat / 100.0f;
+    if (invert)
+        hsv.z = 1.0f - hsv.z;
+    return ColorToInt(gui::ColorFromHsv(hsv));
+}
+
 StyleManager::StyleManager()
 {
     _instance = this;
     _styleSets.push_back({"default", {}});
+    double y_part = 0, x_part = 0;
+    int count = 0;
     for(auto color : cadmiumPalette) {
+        auto hsv = gui::HsvFromColor(GetColor(color));
+        x_part += cos (hsv.x * M_PI / 180);
+        y_part += sin (hsv.x * M_PI / 180);
+        count++;
         _styleSets.front().palette.push_back(color);
     }
+    cadmiumAverageHue = static_cast<float>(std::atan2 (y_part / count, x_part / count) * 180 / M_PI);
     /*
     int idx = 0;
     for (auto chip8StyleProp : chip8StyleProps) {
@@ -274,6 +307,7 @@ void StyleManager::addTheme(const std::string& name, float hue, float sat, bool 
 {
     _styleSets.push_back({name, invert, {}});
     for(auto color : cadmiumPalette) {
+        /*
         auto col = GetColor(color);
         auto hsv = gui::HsvFromColor(col);
         hsv.x = hue;
@@ -281,6 +315,8 @@ void StyleManager::addTheme(const std::string& name, float hue, float sat, bool 
         if(invert)
             hsv.z = 1.0f - hsv.z;
         _styleSets.back().palette.push_back(ColorToInt(gui::ColorFromHsv(hsv)));
+         */
+        _styleSets.back().palette.push_back(tintedColor(color, hue, sat, invert));
     }
 }
 
@@ -291,6 +327,7 @@ void StyleManager::updateStyle(uint16_t hue, uint8_t sat, bool invert)
     _guiHue = hue;
     _guiSaturation = sat;
     for(auto& color : _currentStyle.palette) {
+        /*
         color = cadmiumPalette[idx];
         auto col = GetColor(color);
         auto hsv = gui::HsvFromColor(col);
@@ -299,6 +336,8 @@ void StyleManager::updateStyle(uint16_t hue, uint8_t sat, bool invert)
         if (invert)
             hsv.z = 1.0f - hsv.z;
         color = ColorToInt(gui::ColorFromHsv(hsv));
+         */
+        color = tintedColor(cadmiumPalette[idx], hue, sat, invert);
         idx++;
     }
     idx = 0;

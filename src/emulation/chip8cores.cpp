@@ -352,6 +352,10 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
                 }
 #endif
                 (this->*_opcodeHandler[opcode])(opcode);
+                if(_cpuState == eWAITING) {
+                    _cycleCounter += numInstructions - i;
+                    break;
+                }
                 _cycleCounter++;
             }
             //_cycleCounter += numInstructions;
@@ -411,8 +415,10 @@ inline void Chip8EmulatorFP::executeInstruction()
         }
     }
     if(hasBreakPoint(_rPC)) {
-        if(Chip8EmulatorBase::findBreakpoint(_rPC))
+        if(Chip8EmulatorBase::findBreakpoint(_rPC)) {
             _execMode = ePAUSED;
+            _breakpointTriggered = true;
+        }
     }
 }
 
@@ -945,7 +951,7 @@ void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
     if(x < y) {
         auto l = y - x;
         for(int i=0; i <= l; ++i)
-            _memory[_rI + i] = _rV[x + i];
+            write(_rI + i, _rV[x + i]);
         _rI = (_rI + l + 1) & ADDRESS_MASK;
     }
 }
@@ -955,7 +961,7 @@ void Chip8EmulatorFP::op5xy3(uint16_t opcode)
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
     for(int i=0; i <= std::abs(x-y); ++i)
-        _rV[x < y ? x + i : x - i] = _memory[_rI + i];
+        _rV[x < y ? x + i : x - i] = read(_rI + i);
 }
 
 void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
@@ -965,7 +971,7 @@ void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
     if(x < y) {
         auto l = y - x;
         for(int i=0; i <= l; ++i)
-            _rV[x + i] = _memory[_rI + i];
+            _rV[x + i] = read(_rI + i);
         _rI = (_rI + l + 1) & ADDRESS_MASK;
     }
 }
@@ -1419,13 +1425,15 @@ void Chip8EmulatorFP::opFx07(uint16_t opcode)
 void Chip8EmulatorFP::opFx0A(uint16_t opcode)
 {
     auto key = _host.getKeyPressed();
-    if (key) {
+    if (key > 0) {
         _rV[(opcode >> 8) & 0xF] = key - 1;
         _cpuState = eNORMAL;
     }
     else {
         // keep waiting...
         _rPC -= 2;
+        if(key < 0)
+            _rST = 4;
         //--_cycleCounter;
         if(_isMegaChipMode && _cpuState != eWAITING)
             _host.updateScreen();
@@ -1533,7 +1541,7 @@ void Chip8EmulatorFP::opFx65(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[_rI + i];
+        _rV[i] = read(_rI + i);
     }
     _rI = (_rI + upto + 1) & ADDRESS_MASK;
 }
@@ -1542,7 +1550,7 @@ void Chip8EmulatorFP::opFx65_loadStoreIncIByX(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[_rI + i];
+        _rV[i] = read(_rI + i);
     }
     _rI = (_rI + upto) & ADDRESS_MASK;
 }
@@ -1551,7 +1559,7 @@ void Chip8EmulatorFP::opFx65_loadStoreDontIncI(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
-        _rV[i] = _memory[_rI + i];
+        _rV[i] = read(_rI + i);
     }
 }
 

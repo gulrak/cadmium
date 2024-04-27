@@ -42,7 +42,7 @@ public:
     explicit Chip8HeadlessTestHost(const emu::Chip8EmulatorOptions& options_) : options(options_) {}
     ~Chip8HeadlessTestHost() override = default;
     bool isHeadless() const override { return true; }
-    uint8_t getKeyPressed() override { return 0; }
+    int getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
     const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
     void updateScreen() override {}

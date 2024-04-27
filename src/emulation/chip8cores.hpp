@@ -336,13 +336,15 @@ public:
                         break;
                     case 0x0A: {  // Fx0A - vX := key
                         auto key = _host.getKeyPressed();
-                        if (key) {
+                        if (key > 0) {
                             _rV[(opcode >> 8) & 0xF] = key - 1;
                             _cpuState = eNORMAL;
                         }
                         else {
                             // keep waiting...
                             _rPC -= 2;
+                            if(key < 0)
+                                _rST = 4;
                             --_cycleCounter;
                             _cpuState = eWAITING;
                         }
@@ -817,6 +819,12 @@ public:
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
 private:
+    uint8_t read(const uint32_t addr) const
+    {
+        if(addr <= ADDRESS_MASK)
+            return _memory[addr];
+        return 0;
+    }
     void write(const uint32_t addr, uint8_t val)
     {
         if(addr <= ADDRESS_MASK)

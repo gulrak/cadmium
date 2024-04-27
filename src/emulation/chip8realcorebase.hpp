@@ -63,22 +63,22 @@ public:
         if(mode == ePAUSED) {
             if(_execMode != ePAUSED)
                 _backendStopped = false;
-            _execMode = ePAUSED;
+            GenericCpu::setExecMode(ePAUSED);
             getBackendCpu().setExecMode(ePAUSED);
         }
         else {
-            _execMode = mode;
+            GenericCpu::setExecMode(mode);
             getBackendCpu().setExecMode(eRUNNING);
         }
     }
     void setBackendExecMode(ExecMode mode)
     {
         if(mode == ePAUSED) {
-            _execMode = ePAUSED;
+            GenericCpu::setExecMode(ePAUSED);
             getBackendCpu().setExecMode(ePAUSED);
         }
         else {
-            _execMode = eRUNNING;
+            GenericCpu::setExecMode(eRUNNING);
             getBackendCpu().setExecMode(mode);
         }
     }
@@ -178,6 +178,7 @@ public:
         return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
     }
     const std::string& errorMessage() const override { return _errorMessage; }
+    bool isBreakpointTriggered() override { return GenericCpu::isBreakpointTriggered() || getBackendCpu().isBreakpointTriggered(); }
 protected:
     Chip8EmulatorHost& _host;
     Chip8State _state;
@@ -186,7 +187,6 @@ protected:
     bool _backendStopped{false};
     bool _isHybridChipMode{true};
     mutable CpuState _cpuState{eNORMAL};
-    uint16_t _stepOverSP{};
     std::array<uint8_t,4096> _breakMap;
     std::map<uint32_t,BreakpointInfo> _breakpoints;
     std::string _errorMessage;

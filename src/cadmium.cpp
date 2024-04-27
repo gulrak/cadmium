@@ -779,7 +779,7 @@ public:
             pushAudio(44100 / _options.frameRate);
     }
 
-    uint8_t getKeyPressed() override
+    int getKeyPressed() override
     {
         static uint32_t instruction = 0;
         static int waitKeyUp = 0;
@@ -793,7 +793,7 @@ public:
                 instruction = 0;
                 return keyId;
             }
-            return 0;
+            return -1;
         }
         waitKeyUp = 0;
         auto key = GetKeyPressed();
@@ -807,7 +807,7 @@ public:
                 }
             }
         }
-        return 0;
+        return waitKeyUp ? -1 : 0;
     }
 
     bool isKeyDown(uint8_t key) override
@@ -1081,6 +1081,8 @@ public:
                     _partialFrameTime -= 1000;
                     for(int i = 0; i < getFrameBoost(); ++i) {
                         _chipEmu->tick(getInstrPerFrame());
+                        if(_chipEmu->isBreakpointTriggered())
+                            _mainView = eDEBUGGER;
                     }
                     _fps.add(GetTime()*1000);
                 }
@@ -1413,7 +1415,7 @@ public:
                 if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F5))) {
                     _debugger.setExecMode(ExecMode::eRUNNING);
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
-                        _mainView = eVIDEO;
+                        _mainView = _lastRunView;
                     }
                 }
                 SetTooltip("RUN [F5]");
@@ -1448,7 +1450,7 @@ public:
                     reloadRom();
                     resetStats();
                     if(_mainView == eEDITOR || _mainView == eSETTINGS) {
-                        _mainView = eDEBUGGER;
+                        _mainView = _lastRunView;
                     }
                 }
                 SetTooltip("RESTART");
@@ -1501,12 +1503,12 @@ public:
 
             switch (_mainView) {
                 case eDEBUGGER: {
-                    _lastView = _mainView;
+                    _lastView = _lastRunView = _mainView;
                     _debugger.render(_font, [this](Rectangle video, int scale){ drawScreen(video, scale); });
                     break;
                 }
                 case eVIDEO: {
-                    _lastView = _mainView;
+                    _lastView = _lastRunView = _mainView;
                     gridScale = _screenWidth / _chipEmu->getCurrentScreenWidth();
                     video = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
                     drawScreen(video, gridScale);
@@ -1671,10 +1673,12 @@ public:
             }
             EndGui();
         }
-        if(_chipEmu->getExecMode() != ExecMode::ePAUSED) {
+        static auto lastExecMode = _chipEmu->getExecMode();
+        if(_chipEmu->getExecMode() == ExecMode::eRUNNING || (_chipEmu->getExecMode() != ExecMode::ePAUSED && lastExecMode == ExecMode::ePAUSED)) {
             _instructionOffset = -1;
             _debugger.captureStates();
         }
+        lastExecMode = _chipEmu->getExecMode();
     }
 
     void renderEmulationSettings()
@@ -2157,8 +2161,10 @@ public:
                     //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
                     //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
                     //}
+                    auto mainView = _mainView;
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::None);
-                    _mainView = _lastView;
+                    if(_mainView == mainView)
+                        _mainView = _lastView;
                 }
                 SetNextWidth(110);
                 if(Button("Load w/o Config") && selectedInfo.analyzed) {
@@ -2284,7 +2290,7 @@ public:
                 FS.mkdir("/upload");
             }
             open_file_element.value = "";
-            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif';
+            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram';
             open_file_element.click();
         });
     }
@@ -2371,6 +2377,8 @@ public:
         saveConfig();
         if(autoRun)
             _mainView = eVIDEO;
+        else if(compiler && compiler->isError())
+            _mainView = eEDITOR;
     }
 
     void reloadRom()
@@ -2458,6 +2466,7 @@ private:
     volatile bool _grid{false};
     MainView _mainView{eDEBUGGER};
     MainView _lastView{eDEBUGGER};
+    MainView _lastRunView{eDEBUGGER};
     Debugger _debugger;
     LogView _logView;
     Editor _editor;

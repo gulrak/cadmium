@@ -77,7 +77,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     auto grayCol = StyleManager::mappedColor(GRAY);
     auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
-    auto brownCol = StyleManager::mappedColor(BROWN);
+    auto brownCol = StyleManager::mappedColor({ 203, 199, 0, 255 });
     if(_core->getExecMode() != emu::GenericCpu::ePAUSED) {
         _instructionOffset[CHIP8_CORE] = -1;
         _instructionOffset[BACKEND_CORE] = -1;
@@ -179,11 +179,14 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     {
         auto pos = GetCurrentPos();
         auto area = GetContentAvailable();
+        GuiCheckBox({pos.x + 108, pos.y - 13, 10, 10}, "Follow", &_memViewFollow);
         pos.x += 4;
         pos.y -= lineSpacing / 2;
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
-        if(_core->getExecMode() != emu::GenericCpu::ePAUSED)
+        static auto lastExecMode = emu::GenericCpu::eRUNNING;
+        if(_memViewFollow && (_core->getExecMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
             memScroll.y = -(float)(_core->getI() / 8) * lineSpacing;
+        lastExecMode = _core->getExecMode();
         BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto addr = int(-memScroll.y / lineSpacing) * 8 - 8;
         memPage = addr < 0 ? 0 : addr >> 16;
@@ -191,7 +194,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
             if(addr + i * 8 >= 0 && addr + i * 8 < _core->memSize()) {
                 DrawTextEx(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, lightgrayCol);
                 for (int j = 0; j < 8; ++j) {
-                    if (!showChipCPU || _core->getI() + i * 8 + j > 65535 || _core->memory()[_core->getI() + i * 8 + j] == _memBackup[_core->getI() + i * 8 + j]) {
+                    if (!showChipCPU || addr + i * 8 + j > _core->memSize() || _core->memory()[addr + i * 8 + j] == _memBackup[addr + i * 8 + j]) {
                         DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? lightgrayCol : grayCol);
                     }
                     else {

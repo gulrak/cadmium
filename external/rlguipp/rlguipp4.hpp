@@ -391,6 +391,7 @@ struct GuiContext
         auto iter = dropdownBoxes.find(active);
         if (iter != dropdownBoxes.end()) {
             iter->second.lastUpdate = frameId;
+            iter->second.rect = rect;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
@@ -1317,7 +1318,8 @@ bool LabelButton(const char* text)
 
 bool Toggle(const char* text, bool active)
 {
-    return detail::defaultWidget(GuiToggle, text, &active);
+    detail::defaultWidget(GuiToggle, text, &active);
+    return active;
 }
 
 static void CountGuiTextItems(const char* text, short& numRows, short& numCols)

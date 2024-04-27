@@ -78,6 +78,8 @@ public:
     MC682x _pia;
     KeyMatrix<4,4> _keyMatrix;
     bool _ic20aNAnd{false};
+    bool _soundEnabled{false};
+    bool _lowFreq{true};
     int64_t _irqStart{0};
     int64_t _nextFrame{0};
     std::atomic<float> _wavePhase{0};
@@ -195,6 +197,14 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
     _impl->_pia.portAOutputHandler = [this](uint8_t data, uint8_t mask) {
         _impl->_keyMatrix.setCols(data & 0xF, mask & 0xF);
         _impl->_keyMatrix.setRows(data >> 4, mask >> 4);
+    };
+    _impl->_pia.portBOutputHandler = [this](uint8_t data, uint8_t mask) {
+        if(mask & 0x40) {
+            _impl->_soundEnabled = data & 0x40;
+        }
+        //if(mask & 0x01) {
+        //    _impl->_lowFreq = data & 1;
+        //}
     };
     _impl->_pia.portAInputHandler = [this](uint8_t mask) -> MC682x::InputWithConnection {
         if(mask & 0xF) {
@@ -377,11 +387,15 @@ bool Chip8Dream::executeM6800()
         bool newFrame = lastFC > fc;
         lastFC = fc;
         if(newFrame && (nextOp & 0xF000) == 0x1000 && (opcode() & 0xFFF) == getPC()) {
+            flushScreen();
+            _host.updateScreen();
             setExecMode(ePAUSED);
         }
         if(hasBreakPoint(getPC())) {
-            if(Chip8Dream::findBreakpoint(getPC()))
+            if(Chip8Dream::findBreakpoint(getPC())) {
                 setExecMode(ePAUSED);
+                _breakpointTriggered = true;
+            }
         }
         return true;
     }
@@ -482,8 +496,8 @@ void Chip8Dream::setAudioPhase(float phase)
 
 void Chip8Dream::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
-    if(_state.st) {
-        const float step = 1000.0f / sampleFrequency;
+    if(_impl->_soundEnabled) {
+        const float step = (_impl->_lowFreq ? 1200.0f : 2400.0f) / sampleFrequency;
         for (int i = 0; i < frames; ++i) {
             *samples++ = (_impl->_wavePhase > 0.5f) ? 16384 : -16384;
             _impl->_wavePhase = std::fmod(_impl->_wavePhase + step, 1.0f);
