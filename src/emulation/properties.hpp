@@ -99,6 +99,7 @@ public:
     const std::string& getString() const { return std::get<std::string>(_value); }
     void setString(const std::string& val) { std::get<std::string>(_value) = val; }
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
+    size_t getSelectedIndex() const { return std::get<Combo>(_value).index; }
     void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = idx; }
     void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
 /*    Property& operator=(const Property& other)
@@ -164,38 +165,6 @@ public:
         }
         return *this;
     }
-
-    /*
-    void cloneInto(Properties& props) const
-    {
-        props._valueList = _valueList;
-        props._valueMap = _valueMap;
-    }
-    void copyInto(Properties& props) const
-    {
-        if(_valueList.empty()) {
-            if(props._valueList.empty()) {
-                // from a passive copy into another passive copy
-                props._valueMap = _valueMap;
-            }
-            else {
-                // from a passive copy into an active property set
-                for(auto iterDest = props._valueMap.begin(); iterDest != props._valueMap.cend(); ++iterDest) {
-                    auto iterSrc = _valueMap.find(iterDest->first);
-                    if(iterSrc != _valueMap.end()) {
-                        iterDest->second = iterSrc->second;
-                    }
-                }
-            }
-        }
-        else {
-            // from an active property set to a passive copy
-            if(!props._valueList.empty())
-                throw std::runtime_error("Tried to overwrite an active property set with another active one!");
-            props._valueMap = _valueMap;
-        }
-    }
-     */
     bool operator==(const Properties& other) const
     {
         return _valueMap == other._valueMap;
@@ -229,9 +198,17 @@ public:
     bool isReadonly(size_t index) const
     {
         auto iter = _valueMap.find(_valueList[index]);
-        return iter == _valueMap.end() ? true : iter->second.isReadonly();
+        return iter == _valueMap.end() || iter->second.isReadonly();
     }
     Property& operator[](const std::string& key)
+    {
+        auto iter = _valueMap.find(key);
+        if(iter == _valueMap.end()) {
+            throw std::runtime_error("No property named " + key);
+        }
+        return iter->second;
+    }
+    const Property& operator[](const std::string& key) const
     {
         auto iter = _valueMap.find(key);
         if(iter == _valueMap.end()) {

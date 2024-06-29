@@ -38,6 +38,68 @@ static const RealCoreSetupInfo defaultSetups[] = {
     {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
 };
 
+enum VIPVideoType { VVT_CDP1861, VVT_CDP1861_C10_HIRES, VVT_VP_590 };
+enum VIPAudioType { VAT_CA555_BUZZER, VAT_VP_595_SIMPLE_SB, VAT_VP_551_2_SUPER_SB };
+enum VIPKeyboard { VIPK_HEX, VIPK_VP_580_2_HEX };
+enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
+
+struct Chip8VIPOptions
+{
+    Chip8VIPOptions() = delete;
+    explicit Chip8VIPOptions(const Properties& props)
+    {
+        cpuType = props[PROP_CPU].getString();
+        clockFrequency = props[PROP_CLOCK].getInt();
+        ramSize = std::stoul(props[PROP_RAM].getSelectedText());
+        cleanRam = props[PROP_CLEAN_RAM].getBool();
+        videoType = static_cast<VIPVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        audioType = static_cast<VIPAudioType>(props[PROP_AUDIO].getSelectedIndex());
+        keyboard = static_cast<VIPKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
+        romName = props[PROP_KEYBOARD].getString();
+        interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
+    }
+    Properties asProperties() const
+    {
+        auto result = registeredPrototype();
+        result[PROP_CPU].setString(cpuType);
+        result[PROP_CLOCK].setInt(clockFrequency);
+        result[PROP_RAM].setSelectedText(std::to_string(ramSize));
+        result[PROP_CLEAN_RAM].setBool(cleanRam);
+        result[PROP_VIDEO].setSelectedIndex(toType(videoType));
+        result[PROP_AUDIO].setSelectedIndex(toType(audioType));
+        result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
+        result[PROP_ROM_NAME].setString(romName);
+        result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
+        return result;
+    }
+    static Properties& registeredPrototype()
+    {
+        using namespace std::string_literals;
+        auto& prototype = Properties::getProperties("CosmacVIP");
+        if(!prototype) {
+            prototype.registerProperty({PROP_CPU, "CDP1802"s});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, false});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, false});
+            prototype.registerProperty({PROP_CLEAN_RAM, true, false});
+            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}});
+            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}});
+            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}});
+            prototype.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
+            prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}});
+        }
+        return prototype;
+    }
+    std::string cpuType;
+    int clockFrequency;
+    size_t ramSize;
+    bool cleanRam;
+    VIPVideoType videoType;
+    VIPAudioType audioType;
+    VIPKeyboard keyboard;
+    std::string romName;
+    VIPChip8Interpreter interpreter;
+};
+
 class Chip8VIP::Private {
 public:
     uint16_t FETCH_LOOP_ENTRY{0x01B};
