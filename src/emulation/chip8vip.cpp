@@ -39,9 +39,12 @@ static const RealCoreSetupInfo defaultSetups[] = {
     {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
 };
 
+bool registeredVIP = CoreRegistry::registerFactory("COSMAC VIP", Chip8VIP::create);
+
 enum VIPVideoType { VVT_CDP1861, VVT_CDP1861_C10_HIRES, VVT_VP_590 };
 enum VIPAudioType { VAT_CA555_BUZZER, VAT_VP_595_SIMPLE_SB, VAT_VP_551_2_SUPER_SB };
 enum VIPKeyboard { VIPK_HEX, VIPK_VP_580_2_HEX };
+
 
 struct Chip8VIPOptions
 {
@@ -124,6 +127,12 @@ static CosmacVipSetupInfo presets[] = {
     {"CHIP8E", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8E}},
 };
 // clang-format on
+
+CoreRegistry::EmulatorInstance Chip8VIP::create(const std::string& variant, Properties& props)
+{
+    auto options = Chip8VIPOptions::fromProperties(props);
+    return std::make_unique<Chip8VIP>();
+}
 
 class Chip8VIP::Private {
 public:

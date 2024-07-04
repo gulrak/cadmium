@@ -27,6 +27,7 @@
 
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8realcorebase.hpp>
+#include <emulation/coreregistry.h>
 #include <emulation/hardware/cdp1802.hpp>
 
 #include <memory>
@@ -84,6 +85,7 @@ public:
     Properties& getProperties() override;
     void updateProperties(Property& changedProp) override;
 
+    static CoreRegistry::EmulatorInstance create(const std::string& variant, Properties& props);
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 
 private:

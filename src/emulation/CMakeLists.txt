@@ -25,7 +25,9 @@ set(CHIP8_EMU_SOURCE
     utility.cpp
     properties.cpp
     properties.hpp
-    #octocartridge.cpp
+    coreregistry.cpp
+    coreregistry.h
+        #octocartridge.cpp
     #octocartridge.hpp
 )
 
