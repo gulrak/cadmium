@@ -34,10 +34,10 @@
 namespace emu {
 
 const uint32_t Cdp186x::_cdp1862BackgroundColors[4] = { 0x000080FF, 0x000000FF, 0x008000FF, 0x800000FF };
-Cdp186x::Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options)
+Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 : _cpu(cpu)
 , _type(type)
-, _options(options)
+, _traceLog(traceLog)
 {
     static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
     _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
@@ -99,7 +99,7 @@ std::pair<int,bool> Cdp186x::executeStep()
     }
     _frameCycle = fc;
     auto lineCycle = _frameCycle % 14;
-    if(_options.optTraceLog) {
+    if(_traceLog) {
         if (vsync)
             Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- VSYNC ---", _cpu.dumpStateLine()).c_str());
         else if (lineCycle == 0)
@@ -110,7 +110,7 @@ std::pair<int,bool> Cdp186x::executeStep()
     if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
         _displayEnabledLatch = _displayEnabled;
         if(_displayEnabled) {
-            if (_options.optTraceLog)
+            if (_traceLog)
                 Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
             _cpu.triggerInterrupt();
         }
@@ -133,7 +133,7 @@ std::pair<int,bool> Cdp186x::executeStep()
                 }
             }
             if (_displayEnabledLatch) {
-                if(_options.optTraceLog)
+                if(_traceLog)
                     Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _cpu.getR(0) - 1).c_str());
             }
         }

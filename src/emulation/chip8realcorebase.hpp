@@ -42,8 +42,8 @@ struct RealCoreSetupInfo {
 class Chip8RealCoreBase : public Chip8OpcodeDisassembler
 {
 public:
-    Chip8RealCoreBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options)
-        : Chip8OpcodeDisassembler(options)
+    explicit Chip8RealCoreBase(Chip8EmulatorHost& host)
+        : Chip8OpcodeDisassembler()
         , _host(host)
     {
     }
@@ -187,7 +187,7 @@ protected:
     bool _backendStopped{false};
     bool _isHybridChipMode{true};
     mutable CpuState _cpuState{eNORMAL};
-    std::array<uint8_t,4096> _breakMap;
+    std::array<uint8_t,4096> _breakMap{};
     std::map<uint32_t,BreakpointInfo> _breakpoints;
     std::string _errorMessage;
 };

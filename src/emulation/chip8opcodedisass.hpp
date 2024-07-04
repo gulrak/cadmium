@@ -41,10 +41,9 @@ class Chip8OpcodeDisassembler : public emu::IChip8Emulator
 {
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
+    Chip8OpcodeDisassembler();
     std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
 protected:
-    Chip8EmulatorOptions& _options;
     SymbolResolver _labelOrAddress;
     detail::OpcodeSet _opcodeSet;
 };

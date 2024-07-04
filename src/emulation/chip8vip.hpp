@@ -36,10 +36,12 @@ namespace emu {
 extern const uint8_t _chip8_cvip[0x200];
 extern const uint8_t _rom_cvip[0x200];
 
+enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
+
 class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
 {
 public:
-    Chip8VIP(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
+    Chip8VIP(Chip8EmulatorHost& host, Properties& properties, IChip8Emulator* other = nullptr);
     ~Chip8VIP() override;
 
     void reset() override;
@@ -85,7 +87,7 @@ public:
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 
 private:
-    static uint16_t patchRAM(std::string name, uint8_t* ram, size_t size);
+    uint16_t patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);
     int frameCycle() const;
     int videoLine() const;
     bool executeCdp1802();

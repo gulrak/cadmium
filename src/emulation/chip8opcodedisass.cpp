@@ -9,9 +9,8 @@
 
 namespace emu {
 
-Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(Chip8EmulatorOptions& options)
-: _options(options)
-, _opcodeSet(Chip8EmulatorOptions::variantForPreset(options.behaviorBase))
+Chip8OpcodeDisassembler::Chip8OpcodeDisassembler()
+: _opcodeSet(Chip8EmulatorOptions::variantForPreset(options.behaviorBase))
 {
     _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
 }
