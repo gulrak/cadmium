@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change undisplayed
 - Due to an change in the gui library the toggle buttons in the find bar of the editor didn't work
 - Loading of Octo source that didn't compile without error was not possible
+- MegaChip audio suppressed the last sample of a non looping sound
 
 ## [1.1.8] - 2024-01-01
 
@@ -60,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to support the CORS mechanism (e.g. `raw.githubusercontent.com`) and the url
   needs to be url-encoded, for programs it knows am url for, the SHA1 number works too
 - New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
-  and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
+  and the one from the CHIP-8 test suite v4.1, the SCHIPC is now more oriented on the
   behavior of Chromatophores SCHIPC
 - Added support for CHIP-8E on the VIP core
 - Realistic buzzer sound from HP48 based variants (CHIP-48, SCHIP1.x, SCHIPC)

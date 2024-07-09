@@ -32,6 +32,7 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -47,6 +48,7 @@ class CLI
     template<class T, class TL> struct Contains;
     template<typename T, template<class...> class Container, class... Ts>
     struct Contains<T, Container<Ts...>> : std::disjunction<std::is_same<T, Ts>...> {};
+public:
     struct Info
     {
         ValuePtr valPtr;
@@ -54,8 +56,13 @@ class CLI
         std::string help;
         std::string category;
         std::function<void()> triggerCallback;
+        std::function<bool()> condition;
+        Info& dependsOn(std::function<bool()> dependCondition)
+        {
+            condition = std::move(dependCondition);
+            return *this;
+        }
     };
-public:
     CLI(int argc, char* argv[])
     {
         for(size_t i = 0; i < argc; ++i) {
@@ -70,10 +77,10 @@ public:
         }
     }
     template<typename T>
-    void option(const std::vector<std::string>& names, T& destVal, std::string description = std::string(), std::function<void()> trigger = {})
+    Info& option(const std::vector<std::string>& names, T& destVal, std::string description = std::string(), std::function<void()> trigger = {})
     {
         static_assert(Contains<T*, ValuePtr>::value, "CLI: supported option types are only bool, std::int64_t, std::string or std::vector<std::string>");
-        handler[names] = {&destVal,
+        auto [iter, inserted] = handler.emplace(names, {&destVal,
                           [](const std::string& arg, ValuePtr valp) {
                               std::visit(visitor{[arg](bool* val) { *val = !*val; },
                                                  [arg](std::int64_t* val) { *val = std::strtoll(arg.c_str(), nullptr, 0); },
@@ -82,7 +89,8 @@ public:
                           },
                           description,
                           currentCategory,
-                          trigger};
+                          trigger,{}});
+        return iter->second;
     }
     void positional(std::vector<std::string>& dest, std::string description = std::string())
     {

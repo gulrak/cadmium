@@ -117,6 +117,7 @@ public:
             case 0:
                 if (opcode == 0x00E0) {  // 00E0 - clear
                     clearScreen();
+                    std::memset(_memory.data() + 0xF00, 0, 256);
                     ++_clearCounter;
                     addCycles(3078);
                 }
@@ -300,7 +301,7 @@ public:
                     }
                     else {
                         _cpuState = eNORMAL;
-                        _rV[15] = drawSprite(x, y, _rI, lines, false) ? 1 : 0;
+                        _rV[15] = drawSprite(x, y, _rI, lines) ? 1 : 0;
                     }
                 }
                 break;
@@ -436,7 +437,14 @@ public:
             Chip8StrictEmulator::executeInstruction();
     }
 
-    bool drawSprite(uint8_t x, uint8_t y, uint16_t data, uint8_t height, bool hires)
+    void drawRamPixel(uint8_t x, uint8_t y)
+    {
+        uint8_t mask = 0x80u >> (x & 3);
+        unsigned offset = (y << 3u) + (x >> 3u);
+        _memory[0xF00 + offset] ^= mask;
+    }
+
+    bool drawSprite(uint8_t x, uint8_t y, uint16_t data, uint8_t height)
     {
         // sdt = 26 + 34*VisN + 4*ColRow1 + (VX < 56 ? 16*VisN + 4*ColRow2 : 0);
         bool collision = false;
@@ -452,6 +460,7 @@ public:
                     unsigned vipBit = b + bitOffset;
                     if (x + b < 64 && (value & 0x80)) {
                         unsigned& col = vipBit < 8 ? col1 : col2;
+                        drawRamPixel(x + b, y + l);
                         if (_screen.drawSpritePixel(x + b, y + l, 1)) {
                             collision = true;
                             col = 4;

@@ -27,7 +27,7 @@
 
 #include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8realcorebase.hpp>
-#include <emulation/coreregistry.h>
+#include <emulation/coreregistry.hpp>
 #include <emulation/hardware/cdp1802.hpp>
 
 #include <memory>
@@ -85,10 +85,11 @@ public:
     Properties& getProperties() override;
     void updateProperties(Property& changedProp) override;
 
-    static CoreRegistry::EmulatorInstance create(const std::string& variant, Properties& props);
+    static std::pair<std::string, CoreRegistry::EmulatorInstance> create(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel);
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 
 private:
+    static uint16_t justPatchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);
     uint16_t patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);
     int frameCycle() const;
     int videoLine() const;

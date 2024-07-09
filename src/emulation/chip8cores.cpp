@@ -431,7 +431,7 @@ uint8_t Chip8EmulatorFP::getNextMCSample()
             if(_sampleLoop)
                 pos -= _sampleLength;
             else
-                pos = _sampleLength = 0, val = 128;
+                pos = _sampleLength = 0;
         }
         _mcSamplePos.store(pos);
         return val;

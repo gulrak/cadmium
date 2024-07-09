@@ -2384,7 +2384,6 @@ public:
     void reloadRom()
     {
         if(!_romImage.empty()) {
-            unsigned int size = 0;
             _chipEmu->reset();
             _audioBuffer.reset();
             updateScreen();
@@ -2512,8 +2511,7 @@ std::string chip8EmuScreenANSI(emu::IChip8Emulator& chip8)
     auto width = chip8.getCurrentScreenWidth();
     auto maxWidth = 256; //chip8.getMaxScreenWidth();
     auto height = chip8.getCurrentScreenHeight();
-    const auto* screen = chip8.getScreen();
-    if(screen) {
+    if (const auto* screen = chip8.getScreen()) {
         result.reserve(width * height * 16);
         if (chip8.isDoublePixel()) {
             for (int y = 0; y < height; y += 4) {

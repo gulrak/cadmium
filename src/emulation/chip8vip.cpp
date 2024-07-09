@@ -27,20 +27,6 @@ static const std::string PROP_KEYBOARD = "Keyboard";
 static const std::string PROP_ROM_NAME = "ROM Name";
 static const std::string PROP_INTERPRETER = "Interpreter";
 
-static const RealCoreSetupInfo defaultSetups[] = {
-    {"CHIP8", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8")"},
-    {"CHIP10", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP10")"},
-    {"CHIP8RB", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8RB")"},
-    {"CHIP8TPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8TPD")"},
-    {"CHIP8FPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
-    {"CHIP8X", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8X")"},
-    {"CHIP8XTPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8XTPD")"},
-    {"CHIP8XFPD", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "VP-590", "audio": "VP-595 Simple SB", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8FPD")"},
-    {"CHIP8E", R"("cpu": "CDP1802", "clockRate": 1760640, "ram": "4096", "cleanRam": true, "video": "CDP1861", "audio": "CA555 Buzzer", "keyboard": "VIP Hex", "romName": "COSMAC-VIP", "interpreter": "CHIP8E")"}
-};
-
-bool registeredVIP = CoreRegistry::registerFactory("COSMAC VIP", Chip8VIP::create);
-
 enum VIPVideoType { VVT_CDP1861, VVT_CDP1861_C10_HIRES, VVT_VP_590 };
 enum VIPAudioType { VAT_CA555_BUZZER, VAT_VP_595_SIMPLE_SB, VAT_VP_551_2_SUPER_SB };
 enum VIPKeyboard { VIPK_HEX, VIPK_VP_580_2_HEX };
@@ -110,28 +96,106 @@ struct Chip8VIPOptions
 
 struct CosmacVipSetupInfo {
     const char* presetName;
+    const char* description;
     Chip8VIPOptions options;
 };
 
 // clang-format off
 static CosmacVipSetupInfo presets[] = {
-    {"NONE", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_NONE}},
-    {"CHIP8", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8}},
-    {"CHIP10", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP10}},
-    {"CHIP8RB", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8RB}},
-    {"CHIP8TPD", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8TPD}},
-    {"CHIP8FPD", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8FPD}},
-    {"CHIP8X", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8X}},
-    {"CHIP8XTPD", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XTPD}},
-    {"CHIP8XFPD", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XFPD}},
-    {"CHIP8E", { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8E}},
+    {
+        "NONE",
+        "Raw COSMAC VIP without any CHIP-8 preloaded",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_NONE}
+    },
+    {
+        "CHIP-8",
+        "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8}
+    },
+    {
+        "CHIP-10",
+        "128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP10}
+    },
+    {
+        "CHIP-8 RB",
+        "CHIP-8 modification with relative branching (BFnn, FBnn), from #VIPER-V2-I1, by Wayne Smith, 1979",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8RB}
+    },
+    {
+        "CHIP-8 TPD",
+        "CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8TPD}
+    },
+    {
+        "CHIP-8 FPD",
+        "CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8FPD}
+    },
+    {
+        "CHIP-8X",
+        "An official update to CHIP-8 by RCA, requiring the color extensipn VP-590 and the simple sound board VP-595, 1980",
+        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8X}
+    },
+    {
+        "CHIP-8X TPD",
+        "A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor",
+        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XTPD}
+    },
+    {
+        "CHIP-8X FPD",
+        "A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug",
+        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XFPD}
+    },
+    {
+        "CHIP-8E",
+        "CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9",
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8E}
+    }
 };
 // clang-format on
 
-CoreRegistry::EmulatorInstance Chip8VIP::create(const std::string& variant, Properties& props)
+struct VIPFactoryInfo final : public CoreRegistry::FactoryInfo
 {
+    VIPFactoryInfo(CoreRegistry::FactoryMethod fm, const char* description)
+        : FactoryInfo(fm, description)
+    {}
+    size_t numberOfVariants() const override
+    {
+        return sizeof(presets) / sizeof(CosmacVipSetupInfo);
+    }
+    std::string variantName(size_t index) const override
+    {
+        return index < numberOfVariants() ? presets[index].presetName : presets[0].presetName;
+    }
+    const char* variantDescription(size_t index) const override
+    {
+        return index < numberOfVariants() ? presets[index].description : presets[0].description;
+    }
+    Properties variantProperties(size_t index) const override
+    {
+        return index < numberOfVariants() ? presets[index].options.asProperties() : presets[0].options.asProperties();
+    }
+};
+
+bool registeredVIP = CoreRegistry::registerFactory("COSMAC-VIP", std::make_unique<VIPFactoryInfo>(Chip8VIP::create, "Hardware emulation of a COSMAC VIP"));
+
+
+std::pair<std::string, CoreRegistry::EmulatorInstance> Chip8VIP::create(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel)
+{
+    Properties defaultProps;
+    auto newVariant = variant;
+    for(const auto& setupInfo : presets) {
+        if(setupInfo.presetName == variant) {
+            defaultProps = setupInfo.options.asProperties();
+            break;
+        }
+    }
+    if(propSel == PropertiesFromVariant) {
+        props = defaultProps ? defaultProps : presets[0].options.asProperties();
+    }
     auto options = Chip8VIPOptions::fromProperties(props);
-    return std::make_unique<Chip8VIP>();
+    return {newVariant, std::make_unique<Chip8VIP>(host, props)};
 }
 
 class Chip8VIP::Private {
@@ -149,28 +213,10 @@ public:
             _colorRamMask = 0x3ff;
             _colorRamMaskLores = 0x3e7;
         }
+        _properties = _options.asProperties();
         _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_rom_cvip, 512).substr(0,8)));
-        _properties[PROP_INTERPRETER].setSelectedText("CHIP8");
-        _properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_chip8_cvip, 512).substr(0,8)));
-        switch(_video.getType()) {
-            case Cdp186x::eCDP1861_C10:
-                _properties[PROP_VIDEO].setSelectedIndex(1);
-                break;
-            case Cdp186x::eVP590:
-                _properties[PROP_VIDEO].setSelectedIndex(2);
-                _properties[PROP_AUDIO].setSelectedIndex(1);
-                break;
-            case Cdp186x::eCDP1864:
-                _properties[PROP_VIDEO].setSelectedIndex(3);
-                break;
-            case Cdp186x::eCDP1861:
-            default:
-                _properties[PROP_VIDEO].setSelectedIndex(0);
-                _properties[PROP_AUDIO].setSelectedIndex(0);
-                break;
-        }
         _memorySize = _options.ramSize;
-        _ram.resize(_memorySize, 0);
+        _ram.resize(_options.ramSize, 0);
     }
     Chip8EmulatorHost& _host;
     Properties& _properties;
@@ -671,6 +717,13 @@ uint16_t Chip8VIP::patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_
     return iter->second.apply(ram, size);
 }
 
+uint16_t Chip8VIP::justPatchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size)
+{
+    auto iter = g_patchSets.find(interpreter);
+    if(iter == g_patchSets.end())
+        return 0;
+    return iter->second.apply(ram, size);}
+
 std::string Chip8VIP::name() const
 {
     return "Chip-8-RVIP";
@@ -1000,11 +1053,19 @@ std::vector<uint8_t> Chip8VIP::getInterpreterCode(const std::string& name)
     memory.resize(4096, 0);
     std::memcpy(memory.data(), _chip8_cvip, sizeof(_chip8_cvip));
     uint16_t used = 512;
-    if(name != "CHIP8")
-        used = patchRAM(name, memory.data(), memory.size());
-    if(!used)
-        return {};
-    memory.resize(std::max(sizeof(_chip8_cvip), (size_t)used));
+    if(!fuzzyCompare(name, "CHIP8")) {
+        bool found = false;
+        for(const auto& setupInfo : presets) {
+            if(fuzzyCompare(setupInfo.presetName, name)) {
+                used = justPatchRAM(setupInfo.options.interpreter, memory.data(), memory.size());
+                found = true;
+                break;
+            }
+        }
+        if(!found)
+            return {};
+    }
+    memory.resize(std::max(sizeof(_chip8_cvip), static_cast<size_t>(used)));
     return memory;
 }
 
