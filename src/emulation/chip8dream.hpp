@@ -90,6 +90,7 @@ private:
     void forceState();
     class Private;
     std::unique_ptr<Private> _impl;
+    Chip8EmulatorOptions _options;
 };
 
 };

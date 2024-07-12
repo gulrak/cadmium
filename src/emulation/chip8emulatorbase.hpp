@@ -57,7 +57,7 @@ public:
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother)
-        : Chip8OpcodeDisassembler(options)
+        : _options(options)
         , _systemTime(options.instructionsPerFrame ? options.instructionsPerFrame * options.frameRate : 1000000)
         , _host(host)
         , _memory(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0x1010000 : options.optHas16BitAddr ? 0x10100 : 0x1100, 0)
@@ -296,6 +296,7 @@ protected:
     void swapMegaSchreens() {
         std::swap(_screenRGBA, _workRGBA);
     }
+    Chip8EmulatorOptions _options;
     CpuState _cpuState{eNORMAL};
     std::string _errorMessage;
     bool _isHires{false};

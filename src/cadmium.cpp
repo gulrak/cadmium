@@ -2790,9 +2790,11 @@ int main(int argc, char* argv[])
     bool screenDump = false;
     bool drawDump = false;
     std::string dumpInterpreter;
-    emu::Chip8EmulatorOptions options;
+    //emu::Chip8EmulatorOptions options;
+    emu::Properties coreProperties;
     int64_t execSpeed = -1;
     std::string randomGen;
+    std::string emulationCore;
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName;
@@ -2803,6 +2805,55 @@ int main(int argc, char* argv[])
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
+    emu::CoreRegistry reg{};
+    std::string coresAvailable;
+    std::string presetsDescription;
+    for(const auto& [name, info] : reg) {
+        //std::cout << toOptionName(name) << std::endl;
+        coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
+        presetsDescription += fmt::format("        {}:\n", info->description);
+        for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+            presetsDescription += fmt::format("            {} - {}\n", toOptionName(info->prefix() + '-' + info->variantName(i)), info->variantDescription(i));
+        }
+        auto proto = info->propertiesPrototype();
+        auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, toOptionName(info->prefix())));
+        for(size_t i = 0; i < proto.numProperties(); ++i) {
+            auto& prop = proto[i];
+            static int64_t dummyInt;
+            static std::string dummyString;
+            auto dependencyCheck = [&presetName, info](){ return startsWith(toOptionName(presetName), toOptionName(info->prefix())); };
+            std::visit(emu::visitor{
+               [](std::nullptr_t) -> void {  },
+               [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option({fmt::format("--{}", toOptionName(prop.getName()))}, val, prop.getDescription()).dependsOn(dependencyCheck); },
+               [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option({fmt::format("--{}", toOptionName(prop.getName()))}, dummyInt, prop.getDescription()).dependsOn(dependencyCheck); },
+               [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option({fmt::format("--{}", toOptionName(prop.getName()))}, val, prop.getDescription()).dependsOn(dependencyCheck); },
+               [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
+                   const emu::Property::Combo& combo = std::get<emu::Property::Combo>(prop.getValue());
+                   std::ostringstream optionList;
+                   for (auto i = combo.options.begin(); i != combo.options.end(); ++i) {
+                       if (i != combo.options.begin()) {
+                           optionList << ", ";
+                       }
+                       optionList << toOptionName(*i);
+                   }
+                   cli.option({fmt::format("--{}", toOptionName(prop.getName()))}, dummyString, prop.getDescription() + " (" + optionList.str() +")").dependsOn(dependencyCheck);
+               }
+           }, prop.getValue());
+        }
+        cli.category(oldCat);
+    }
+    cli.option({"-p", "--preset"}, presetName, "Select one of the following available preset:\n" + trimRight(presetsDescription), [&presetName, &coreProperties](std::string) {
+        // Todo: Set coreProperties to a matching instance
+        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName);
+
+    });
+    try {
+        cli.parse();
+    }
+    catch(std::exception& ex) {
+        std::cerr << "ERROR: " << ex.what() << std::endl;
+    }
+    exit(0);
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8", [&](){
         if(!presetName.empty()) {
             try {

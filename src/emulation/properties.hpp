@@ -78,12 +78,13 @@ public:
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true);
-    Property(std::string name, Value val, bool isReadOnly = true);
+    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, bool isReadOnly = true);
+    Property(const std::string& name, Value val, std::string description, bool isReadOnly = true);
     Property(const Property& other);
     const std::string& getName() const { return _name; }
     const std::string& getJsonKey() const { return _jsonKey; }
     void setJsonKey(const std::string& jsonKey) { _jsonKey = jsonKey; }
+    const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
     bool isReadonly() const { return _isReadonly; }
@@ -92,6 +93,7 @@ public:
     bool getBool() const { return std::get<bool>(_value); }
     void setBool(bool val) { std::get<bool>(_value) = val; }
     int getInt() const { return std::get<Integer>(_value).intValue; }
+    int& getIntRef() { return std::get<Integer>(_value).intValue; }
     int getIntMin() const { return std::get<Integer>(_value).minValue; }
     int getIntMax() const { return std::get<Integer>(_value).maxValue; }
     void setInt(int val) { std::get<Integer>(_value).intValue = val; }
@@ -100,6 +102,7 @@ public:
     void setString(const std::string& val) { std::get<std::string>(_value) = val; }
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
     size_t getSelectedIndex() const { return std::get<Combo>(_value).index; }
+    int& getSelectedIndexRef() { return std::get<Combo>(_value).index; }
     void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = idx; }
     void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
 /*    Property& operator=(const Property& other)
@@ -131,6 +134,7 @@ private:
     std::string _name;
     std::string _jsonKey;
     Value _value;
+    std::string _description;
     std::string _additionalInfo;
     bool _isReadonly{true};
 };

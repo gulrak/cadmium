@@ -2,6 +2,7 @@ if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS ON)
+    add_compile_definitions(bit_CONFIG_SELECT_BIT=bit_BIT_NONSTD)
 endif()
 
 # add_compile_options(-fsanitize=address)

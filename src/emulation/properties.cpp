@@ -27,6 +27,7 @@
 #include "properties.hpp"
 
 #include <nlohmann/json.hpp>
+#include <utility>
 
 
 namespace emu {
@@ -34,18 +35,20 @@ namespace emu {
 std::map<std::string_view,Properties> Properties::propertyRegistry{};
 
 
-Property::Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly)
+Property::Property(const std::string& name, Value val, std::string description, std::string additionalInfo, bool isReadOnly)
     : _name(name)
     , _jsonKey(Properties::makeJsonKey(name))
-    , _value(val)
-    , _additionalInfo(additionalInfo)
+    , _value(std::move(val))
+    , _description(std::move(description))
+    , _additionalInfo(std::move(additionalInfo))
     , _isReadonly(isReadOnly)
 {}
 
-Property::Property(std::string name, Value val, bool isReadOnly)
+Property::Property(const std::string& name, Value val, std::string description, bool isReadOnly)
     : _name(name)
     , _jsonKey(Properties::makeJsonKey(name))
-    , _value(val)
+    , _value(std::move(val))
+    , _description(std::move(description))
     , _isReadonly(isReadOnly)
 {}
 
@@ -53,6 +56,7 @@ Property::Property(const Property& other)
     : _name(other._name)
     , _jsonKey(other._jsonKey)
     , _value(other._value)
+    , _description(other._description)
     , _additionalInfo(other._additionalInfo)
     , _isReadonly(other._isReadonly)
 {

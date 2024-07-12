@@ -59,13 +59,13 @@ public:
         if(!_properties || options.properties.propertyClass() != _properties.propertyClass()) {
             auto& prop = Properties::getProperties("Dream6800");
             if(!prop) {
-                prop.registerProperty({PROP_CPU, "M6800"s});
-                prop.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, false});
-                prop.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, false});
+                prop.registerProperty({PROP_CPU, "M6800"s, ""});
+                prop.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, "", false});
+                prop.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "", false});
                 prop[PROP_RAM].setSelectedText(std::to_string(_memorySize));
-                prop.registerProperty({PROP_CLEAN_RAM, true, false});
-                prop.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}});
-                prop.registerProperty({PROP_ROM_NAME, ""});
+                prop.registerProperty({PROP_CLEAN_RAM, true, "", false});
+                prop.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}, ""});
+                prop.registerProperty({PROP_ROM_NAME, "", ""});
             }
             _properties = prop;
         }
@@ -173,8 +173,9 @@ static const uint8_t dream6800ChipOslo[] = {
 };
 
 Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
-    : Chip8RealCoreBase(host, options)
+    : Chip8RealCoreBase(host)
     , _impl(new Private(host, *this, options))
+    , _options(options)
 {
     if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));

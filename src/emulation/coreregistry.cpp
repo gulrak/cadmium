@@ -26,8 +26,24 @@
 
 #include "coreregistry.hpp"
 
+#include <chiplet/utility.hpp>
+
 namespace emu {
 
-std::unordered_map<std::string, CoreRegistry::FactoryInfo> CoreRegistry::_factories;
+Properties CoreRegistry::FactoryInfo::variantProperties(const std::string& variant) const
+{
+    for(size_t i = 0; i < numberOfVariants(); ++i) {
+        if(fuzzyCompare(toOptionName(prefix() + '-' + variantName(i)), variant)) {
+            return variantProperties(i);
+        }
+    }
+    return {};
+}
+
+CoreRegistry::FactoryMap& CoreRegistry::factoryMap()
+{
+    static FactoryMap factories{};
+    return factories;
+}
 
 } // emu

@@ -69,16 +69,16 @@ struct Chip8VIPOptions
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties("CosmacVIP");
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, false});
-            prototype.registerProperty({PROP_CPU, "CDP1802"s});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, false});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, false});
-            prototype.registerProperty({PROP_CLEAN_RAM, true, false});
-            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}});
-            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}});
-            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}});
-            prototype.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s});
-            prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}});
+            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", false});
+            prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", false});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", false});
+            prototype.registerProperty({PROP_CLEAN_RAM, true, "Delete ram on startup", false});
+            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}, "Video hardware, default cdp1861"});
+            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
+            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
+            prototype.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s, "Rom image name, default cosmac-vip"});
+            prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
         }
         return prototype;
     }
@@ -160,6 +160,14 @@ struct VIPFactoryInfo final : public CoreRegistry::FactoryInfo
     VIPFactoryInfo(CoreRegistry::FactoryMethod fm, const char* description)
         : FactoryInfo(fm, description)
     {}
+    std::string prefix() const override
+    {
+        return "VIP";
+    }
+    Properties propertiesPrototype() const override
+    {
+        return presets[0].options.asProperties();
+    }
     size_t numberOfVariants() const override
     {
         return sizeof(presets) / sizeof(CosmacVipSetupInfo);
@@ -178,7 +186,7 @@ struct VIPFactoryInfo final : public CoreRegistry::FactoryInfo
     }
 };
 
-bool registeredVIP = CoreRegistry::registerFactory("COSMAC-VIP", std::make_unique<VIPFactoryInfo>(Chip8VIP::create, "Hardware emulation of a COSMAC VIP"));
+static bool registeredVIP = CoreRegistry::registerFactory("COSMAC-VIP", std::make_unique<VIPFactoryInfo>(Chip8VIP::create, "Hardware emulation of a COSMAC VIP"));
 
 
 std::pair<std::string, CoreRegistry::EmulatorInstance> Chip8VIP::create(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel)
@@ -209,6 +217,7 @@ public:
         , _video(_options.videoType == VVT_CDP1861 ? Cdp186x::eCDP1861 : Cdp186x::eVP590, _cpu, false)
     {
         using namespace std::string_literals;
+        (void)registeredVIP;
         if(_video.getType() == Cdp186x::eVP590) {
             _colorRamMask = 0x3ff;
             _colorRamMaskLores = 0x3e7;

@@ -29,6 +29,7 @@
 #include <emulation/ichip8.hpp>
 #include <emulation/properties.hpp>
 
+#include <iterator>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -47,17 +48,42 @@ public:
             , description(std::move(coreDescription))
         {}
         virtual ~FactoryInfo() = default;
+        virtual std::string prefix() const = 0;
+        virtual Properties propertiesPrototype() const = 0;
         virtual size_t numberOfVariants() const = 0;
         virtual std::string variantName(size_t index) const = 0;
         virtual const char* variantDescription(size_t index) const = 0;
         virtual Properties variantProperties(size_t index) const = 0;
+        Properties variantProperties(const std::string& variant) const;
+        virtual EmulatorInstance createCore(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel) const = 0;
         FactoryMethod factory;
         std::string description;
     };
+    using FactoryMap = std::unordered_map<std::string, std::unique_ptr<FactoryInfo>>;
+
+    struct Iterator
+    {
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = std::pair<std::string_view,const FactoryInfo*>;
+        using pointer           = value_type*;
+        using reference         = value_type&;
+        explicit Iterator(FactoryMap::iterator iter) : _iter(iter) {}
+        reference operator*() const { _val = {_iter->first, _iter->second.get()}; return _val; }
+        pointer operator->() const { return &(operator*()); }
+        Iterator& operator++() { _iter++; return *this; }
+        Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
+        friend bool operator== (const Iterator& a, const Iterator& b) { return a._iter == b._iter; };
+        friend bool operator!= (const Iterator& a, const Iterator& b) { return a._iter != b._iter; };
+    private:
+        FactoryMap::iterator _iter;
+        mutable value_type _val;
+    };
+
     static bool registerFactory(const std::string& name, std::unique_ptr<FactoryInfo>&& factoryInfo)
     {
-        if(auto iter = _factories.find(name); iter == _factories.end()) {
-            _factories[name] = std::move(factoryInfo);
+        if(auto iter = factoryMap().find(name); iter == factoryMap().end()) {
+            factoryMap()[name] = std::move(factoryInfo);
             return true;
         }
         return false;
@@ -65,16 +91,30 @@ public:
 
     static std::pair<std::string, EmulatorInstance> create(const std::string& name, const std::string& variant, Chip8EmulatorHost& host, Properties& properties, PropertySelector propSel)
     {
-        if (auto iter = _factories.find(name); iter != _factories.end()) {
+        if (auto iter = factoryMap().find(name); iter != factoryMap().end()) {
             return iter->second->factory(variant, host, properties, propSel);
+        }
+        for(const auto& [coreName, info] : factoryMap()) {
+            if(fuzzyCompare(info->prefix(), name) || fuzzyCompare(coreName, name))
+                return info->factory(variant, host, properties, propSel);
         }
         return {};
     }
 
+    static Properties propertiesForPreset(const std::string& name)
+    {
+        return {};
+    }
 
+    Iterator begin() const {
+        return Iterator(factoryMap().begin());
+    }
+    Iterator end() const {
+        return Iterator(factoryMap().end());
+    }
 
 private:
-    static std::unordered_map<std::string, std::unique_ptr<FactoryInfo>> _factories;
+    static FactoryMap& factoryMap();
 };
 
 } // emu

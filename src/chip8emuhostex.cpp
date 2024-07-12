@@ -80,6 +80,8 @@ void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offs
 
 std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& options, IChip8Emulator* iother)
 {
+    return {};
+#if 0
     IChip8Emulator::Engine engine = IChip8Emulator::eCHIP8MPT;
     if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_FPD ||
         _options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP ||
@@ -163,6 +165,7 @@ std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& opt
         return std::make_unique<Chip8Dream>(*this, options, iother);
     }
     return std::make_unique<Chip8EmulatorVIP>(*this, options, iother);
+#endif
 }
 
 
