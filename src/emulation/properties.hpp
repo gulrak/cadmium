@@ -40,13 +40,19 @@
 
 namespace emu {
 
-template<class... Ts> struct visitor : Ts... { using Ts::operator()...;  };
-template<class... Ts> visitor(Ts...) -> visitor<Ts...>;
+template<class... Ts>
+
+struct visitor : Ts... { using Ts::operator()...;  };
+template<class... Ts>
+
+visitor(Ts...) -> visitor<Ts...>;
+
 
 class Property
 {
 public:
-    struct Combo {
+    struct Combo
+    {
         Combo(std::initializer_list<std::string> opts)
         : options{opts}
         {
@@ -71,10 +77,15 @@ public:
         std::vector<std::string> options;
         std::string rgCombo;
     };
-    struct Integer {
+
+    struct Integer
+    {
+
         int intValue{};
-        int minValue{};
-        int maxValue{};
+
+        int minValue{std::numeric_limits<int>::min()};
+
+        int maxValue{std::numeric_limits<int>::max()};
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
@@ -88,7 +99,10 @@ public:
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
     bool isReadonly() const { return _isReadonly; }
+    bool isValid() const { return !std::holds_alternative<std::nullptr_t>(_value); }
+    explicit operator bool() const { return isValid(); }
     Value& getValue() { return _value; }
+    Value& getValueNC() { return _value; }
     const Value& getValue() const { return _value; }
     bool getBool() const { return std::get<bool>(_value); }
     void setBool(bool val) { std::get<bool>(_value) = val; }
@@ -96,28 +110,15 @@ public:
     int& getIntRef() { return std::get<Integer>(_value).intValue; }
     int getIntMin() const { return std::get<Integer>(_value).minValue; }
     int getIntMax() const { return std::get<Integer>(_value).maxValue; }
-    void setInt(int val) { std::get<Integer>(_value).intValue = val; }
+    void setInt(int val) { std::get<Integer>(_value).intValue = std::clamp(val, std::get<Integer>(_value).minValue, std::get<Integer>(_value).maxValue); }
     std::string& getStringRef() { return std::get<std::string>(_value); }
     const std::string& getString() const { return std::get<std::string>(_value); }
     void setString(const std::string& val) { std::get<std::string>(_value) = val; }
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
     size_t getSelectedIndex() const { return std::get<Combo>(_value).index; }
     int& getSelectedIndexRef() { return std::get<Combo>(_value).index; }
-    void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = idx; }
+    void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = static_cast<int>(idx < std::get<Combo>(_value).options.size() ? idx : std::get<Combo>(_value).options.size() - 1); }
     void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
-/*    Property& operator=(const Property& other)
-    {
-        if(_value.index() != other._value.index())
-            return *this;
-        std::visit(emu::visitor{
-                  [&](std::nullptr_t) { },
-                  [&](bool& val) { val = std::get<bool>(other._value); },
-                  [&](Integer& val) { val.intValue = std::get<Integer>(other._value).intValue; },
-                  [&](std::string& val) { val = std::get<std::string>(other._value); },
-                  [&](emu::Property::Combo& val) { val.index = std::get<Combo>(other._value).index; }
-              }, _value);
-        return *this;
-    }*/
     bool operator==(const Property& other) const
     {
         if(_value.index() != other._value.index())
@@ -130,6 +131,7 @@ public:
                        [&](const emu::Property::Combo& val) { return val.index == std::get<Combo>(other._value).index; }
                    }, _value);
     }
+
 private:
     std::string _name;
     std::string _jsonKey;
@@ -139,15 +141,16 @@ private:
     bool _isReadonly{true};
 };
 
-class Properties {
-    struct RegistryMaps {
+class Properties
+{
+    struct RegistryMaps
+    {
         static std::map<std::string_view,Properties> propertyRegistry;
         static std::unordered_map<std::string,std::string> registeredKeys;
         static std::unordered_map<std::string,std::string> registeredJsonKeys;
     };
 public:
     Properties() = default;
-    //Properties(const Properties&) = delete;
     explicit operator bool() const { return !_valueList.empty(); }
     const std::string& propertyClass() const { return _class; }
     void registerProperty(const Property& prop)
@@ -220,7 +223,47 @@ public:
         }
         return iter->second;
     }
-    inline static Properties& getProperties(std::string_view key)
+    Property& at(std::string_view key)
+    {
+        for(auto& [mapKey, val] : _valueMap) {
+            if(fuzzyCompare(mapKey, key)) {
+                return val;
+            }
+        }
+        throw std::runtime_error(fmt::format("No property named {}", key));
+    }
+    const Property& at(std::string_view key) const
+    {
+        for(auto& [mapKey, val] : _valueMap) {
+            if(fuzzyCompare(mapKey, key)) {
+                return val;
+            }
+        }
+        throw std::runtime_error(fmt::format("No property named {}", key));
+    }
+    template<typename T>
+    std::optional<T> get(std::string_view key) const
+    {
+        for(auto& [mapKey, val] : _valueMap) {
+            if(fuzzyCompare(mapKey, key)) {
+                if(std::holds_alternative<T>(val.getValue())) {
+                    return std::get<T>(val.getValue());
+                }
+                return {};
+            }
+        }
+        return {};
+    }
+    bool contains(const std::string& key)
+    {
+        return _valueMap.find(key) != _valueMap.end();
+    }
+    bool containsFuzzy(std::string_view key)
+    {
+        return std::any_of(_valueMap.begin(), _valueMap.end(),
+                       [&](const auto& pair) { return fuzzyCompare(pair.first, key); });
+    }
+    static Properties& getProperties(std::string_view key)
     {
         auto iter = propertyRegistry.find(key);
         if(iter == propertyRegistry.end()) {
@@ -229,7 +272,7 @@ public:
         }
         return iter->second;
     }
-    inline static std::string makeJsonKey(std::string name)
+    static std::string makeJsonKey(const std::string& name)
     {
         std::string key;
         bool nonChar = false;

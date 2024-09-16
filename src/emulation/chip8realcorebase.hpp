@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/hardware/genericcpu.hpp>
 #include <emulation/properties.hpp>
@@ -39,55 +39,22 @@ struct RealCoreSetupInfo {
     const char* propertiesJsonString;
 };
 
-class Chip8RealCoreBase : public Chip8OpcodeDisassembler
+class Chip8RealCoreBase : public IEmulationCore, public IChip8Emulator, public Chip8OpcodeDisassembler
 {
 public:
-    explicit Chip8RealCoreBase(Chip8EmulatorHost& host)
+    explicit Chip8RealCoreBase(EmulatorHost& host)
         : Chip8OpcodeDisassembler()
         , _host(host)
     {
     }
 
     bool hasBackendStopped() { auto result = _backendStopped; _backendStopped = false; return result; }
-    ExecMode getExecMode() const override
-    {
-        auto backendMode = getBackendCpu().getExecMode();
-        if(backendMode == ePAUSED || _execMode == ePAUSED)
-            return ePAUSED;
-        if(backendMode == eRUNNING)
-            return _execMode;
-        return backendMode;
-    }
-    void setExecMode(ExecMode mode) override
-    {
-        if(mode == ePAUSED) {
-            if(_execMode != ePAUSED)
-                _backendStopped = false;
-            GenericCpu::setExecMode(ePAUSED);
-            getBackendCpu().setExecMode(ePAUSED);
-        }
-        else {
-            GenericCpu::setExecMode(mode);
-            getBackendCpu().setExecMode(eRUNNING);
-        }
-    }
-    void setBackendExecMode(ExecMode mode)
-    {
-        if(mode == ePAUSED) {
-            GenericCpu::setExecMode(ePAUSED);
-            getBackendCpu().setExecMode(ePAUSED);
-        }
-        else {
-            GenericCpu::setExecMode(eRUNNING);
-            getBackendCpu().setExecMode(mode);
-        }
-    }
     bool inErrorState() const override { return _cpuState == eERROR; }
     CpuState cpuState() const override { return _cpuState; }
     bool hybridChipMode() const { return _isHybridChipMode; }
-    int64_t getCycles() const override { return _cycles; }
+    int64_t cycles() const override { return _cycles; }
     int64_t frames() const override { return _frames; }
-    const ClockedTime& getTime() const override { return getBackendCpu().getTime(); }
+    const ClockedTime& time() const override { return getBackendCpu().time(); }
 
     virtual GenericCpu& getBackendCpu() = 0;
     const GenericCpu& getBackendCpu() const
@@ -99,7 +66,7 @@ public:
     virtual void updateProperties(Property& changedProp) = 0;
 
     std::string dumpStateLine() const override {
-        uint16_t op = (getMemoryByte(getPC())<<8)|getMemoryByte(getPC() + 1);
+        uint16_t op = (readMemoryByte(getPC())<<8)|readMemoryByte(getPC() + 1);
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", getV(0), getV(1), getV(2),
                            getV(3), getV(4), getV(5), getV(6), getV(7), getV(8), getV(9), getV(10), getV(11), getV(12), getV(13), getV(14), getV(15), getI(), getSP(), getPC(), op);
     }
@@ -108,25 +75,23 @@ public:
     uint32_t getPC() const override { auto pcstr = std::to_string(_state.pc); return _state.pc; }
     uint32_t getI() const override { return _state.i; }
     uint32_t getSP() const override { return _state.sp; }
+    std::span<const uint8_t> stack() const override { return {}; }
     uint8_t stackSize() const override { return 12; }
-    const uint16_t* getStackElements() const override { return _state.s.data(); }
+    const uint16_t* stackElements() const override { return _state.s.data(); }
     uint8_t delayTimer() const override { return _state.dt; }
     uint8_t soundTimer() const override { return _state.st; }
 
     virtual bool isDisplayEnabled() const = 0;
 
-    uint32_t getCpuID() const override
-    {
-        return 0xC8;
-    }
+    uint32_t cpuID() const override { return 0xC8; }
 
-    const std::string& getName() const override
+    std::string name() const override
     {
         static const std::string name = "SystemChip8";
         return name;
     }
 
-    const std::vector<std::string>& getRegisterNames() const override
+    const std::vector<std::string>& registerNames() const override
     {
         static const std::vector<std::string> registerNames = {
             "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7",
@@ -136,12 +101,12 @@ public:
         return registerNames;
     }
 
-    size_t getNumRegisters() const override
+    size_t numRegisters() const override
     {
         return 21;
     }
 
-    GenericCpu::RegisterValue getRegister(size_t index) const override
+    GenericCpu::RegisterValue registerbyIndex(size_t index) const override
     {
         if(index < 16)
             return {_state.v[index], 8};
@@ -161,14 +126,19 @@ public:
         // TODO
     }
 
+    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override
+    {
+        return Chip8OpcodeDisassembler::disassembleInstruction(code, end);
+    }
+
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
     {
         if(pc < 0) pc = getPC();
         uint8_t code[4];
         for(size_t i = 0; i < 4; ++i) {
-            code[i] = getMemoryByte(pc + i);
+            code[i] = readMemoryByte(pc + i);
         }
-        auto [size, opcode, instruction] = disassembleInstruction(code, code + 4);
+        auto [size, opcode, instruction] = Chip8OpcodeDisassembler::disassembleInstruction(code, code + 4);
         if(bytes)
             *bytes = size;
         if (size == 2) {
@@ -180,12 +150,13 @@ public:
     const std::string& errorMessage() const override { return _errorMessage; }
     bool isBreakpointTriggered() override { return GenericCpu::isBreakpointTriggered() || getBackendCpu().isBreakpointTriggered(); }
 protected:
-    Chip8EmulatorHost& _host;
-    Chip8State _state;
+    EmulatorHost& _host;
+    Chip8State _state{};
     int64_t _cycles{0};
     int _frames{0};
     bool _backendStopped{false};
     bool _isHybridChipMode{true};
+    bool _execChip8{true};
     mutable CpuState _cpuState{eNORMAL};
     std::array<uint8_t,4096> _breakMap{};
     std::map<uint32_t,BreakpointInfo> _breakpoints;

@@ -26,8 +26,12 @@
 #pragma once
 
 #include <chiplet/chip8meta.hpp>
+#include <emulation/chip8opcodedisass.hpp>
 #include <emulation/chip8options.hpp>
-#include <emulation/chip8emulatorbase.hpp>
+#include <emulation/emulatorhost.hpp>
+#include <emulation/ichip8.hpp>
+#include <emulation/iemulationcore.hpp>
+#include <emulation/logger.hpp>
 #include <emulation/time.hpp>
 #include <iostream>
 
@@ -37,22 +41,34 @@ namespace emu
 extern const uint8_t _chip8_cvip[0x200];
 extern const uint8_t _rom_cvip[0x200];
 
-class Chip8StrictEmulator : public Chip8EmulatorBase
+struct Chip8StrictOptions {
+    Properties asProperties() const;
+    static Chip8StrictOptions fromProperties(const Properties& props);
+    static Properties& registeredPrototype();
+    int clockFrequency;
+    size_t ramSize;
+    bool cleanRam;
+    bool traceLog;
+};
+
+class Chip8StrictEmulator : public IEmulationCore, public IChip8Emulator, public Chip8OpcodeDisassembler
 {
 public:
-    using Chip8EmulatorBase::ExecMode;
-    using Chip8EmulatorBase::CpuState;
     constexpr static uint16_t ADDRESS_MASK = 0xFFF;
-    constexpr static uint32_t MEMORY_SIZE = 4096;
+    //constexpr static uint32_t MEMORY_SIZE = 4096;
     constexpr static int SCREEN_WIDTH = 64;
     constexpr static int SCREEN_HEIGHT = 32;
     static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
 
-    Chip8StrictEmulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
-        : Chip8EmulatorBase(host, options, other)
+    Chip8StrictEmulator(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr)
+        : _host(host)
+        , _options(Chip8StrictOptions::fromProperties(properties))
+        , _memory(_options.ramSize, 0)
+        , _rV(_memory.data() + _options.ramSize - 0x110)
+        , _systemTime(CPU_CLOCK_FREQUENCY)
     {
         _systemTime.setFrequency(CPU_CLOCK_FREQUENCY>>3);
-        _memory.resize(MEMORY_SIZE, 0);
+        _memory.resize(_options.ramSize, 0);
     }
     ~Chip8StrictEmulator() override = default;
 
@@ -60,16 +76,138 @@ public:
     {
         return "Chip-8-Strict";
     }
+    uint32_t cpuID() const override { return 0xC856; }
+    bool inErrorState() const override { return _cpuState == eERROR; }
+    bool isGenericEmulation() const override { return true; }
+    GenericCpu* executionUnit(size_t index) override { return this; }
+    void setFocussedExecutionUnit(GenericCpu* unit) override {}
+    GenericCpu* focussedExecutionUnit() override { return this; }
+    void setExecMode(ExecMode mode) override { GenericCpu::setExecMode(mode); }
+    ExecMode execMode() const override { return GenericCpu::execMode(); }
+    int64_t cycles() const override { return _cycleCounter; }
+    int64_t frames() const override { return _frameCounter; }
+    int frameRate() const override { return 60; };
+    const ClockedTime& time() const override { return _systemTime; }
+    const std::string& errorMessage() const override { return _errorMessage; }
+    uint8_t getV(uint8_t index) const override { return _rV[index]; }
+    uint32_t getPC() const override { return _rPC; }
+    uint32_t getI() const override { return _rI; }
+    uint32_t getSP() const override { return _rSP; }
+    uint8_t stackSize() const override { return 24; }
+    std::span<const uint8_t> stack() const override { return {}; }
+    const uint16_t* stackElements() const override { return nullptr; }
+    uint8_t delayTimer() const override { return _rDT; }
+    uint8_t soundTimer() const override { return _rST; }
+    uint16_t getCurrentScreenWidth() const override { return 64; }
+    uint16_t getCurrentScreenHeight() const override { return 32; }
+    uint16_t getMaxScreenWidth() const override { return 64; }
+    uint16_t getMaxScreenHeight() const override { return 32; }
+    uint8_t* memory() override { return _memory.data(); }
+    int memSize() const override { return static_cast<int>(_options.ramSize); }
+    uint8_t readMemoryByte(uint32_t addr) const override { return readByte(addr); }
+    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override
+    {
+        return Chip8OpcodeDisassembler::disassembleInstruction(code, end);
+    }
+    std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
+    {
+        if(pc < 0) pc = _rPC;
+        uint8_t code[4];
+        for(size_t i = 0; i < 4; ++i) {
+            code[i] = readMemoryByte(pc + i);
+        }
+        auto [size, opcode, instruction] = Chip8OpcodeDisassembler::disassembleInstruction(code, code + 4);
+        if(bytes)
+            *bytes = size;
+        if (size == 2)
+            return fmt::format("{:04X}: {:04X}       {}", pc, (code[0] << 8)|code[1], instruction);
+        return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
+    }
+    std::string dumpStateLine() const override
+    {
+        return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
+                           _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);
+    }
+
+    bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override
+    {
+        auto offset = loadAddress ? *loadAddress : 0x200;
+        if(offset < _options.ramSize) {
+            auto size = std::min(_options.ramSize - offset, data.size());
+            std::memcpy(_memory.data() + offset, data.data(), size);
+            return true;
+        }
+        return false;
+    }
+
+    const std::vector<std::string>& registerNames() const override {
+        static const std::vector<std::string> registerNames = {
+            "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7",
+            "V8", "V9", "VA", "VB", "VC", "VD", "VE", "VF",
+            "I", "DT", "ST", "PC", "SP"
+        };
+        return registerNames;
+    }
+    size_t numRegisters() const override { return 21; }
+    RegisterValue registerbyIndex(size_t index) const override
+    {
+        if(index < 16)
+            return {_rV[index], 8};
+        if(index == 16) {
+            return {_rI, 16};
+        }
+        if(index == 17)
+            return {_rDT, 8};
+        if(index == 18)
+            return {_rST, 8};
+        if(index == 19)
+            return {_rPC, 16};
+        return {_rSP, 8};
+    }
+    void setRegister(size_t index, uint32_t value) override
+    {
+        if(index < 16)
+            _rV[index] = static_cast<uint8_t>(value);
+        else if(index == 16)
+            _rI = static_cast<uint16_t>(value);
+        else if(index == 17)
+            _rDT = static_cast<uint8_t>(value);
+        else if(index == 18)
+            _rST = static_cast<uint8_t>(value);
+        else if(index == 19)
+            _rPC = static_cast<uint16_t>(value);
+        else
+            _rSP = static_cast<uint8_t>(value);
+    }
 
     void reset() override
     {
-        Chip8EmulatorBase::reset();
+        //Chip8EmulatorBase::reset();
+        _cycleCounter = 0;
+        _frameCounter = 0;
+        _systemTime.reset();
+        if(_options.cleanRam)
+            std::memset(_memory.data(), 0, _memory.size());
+        if(_options.traceLog)
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
+        _rI = 0;
+        _rPC = 0x200;
+        //std::memset(_memory.data() + MEMORY_SIZE - 0x160, 0, 48); // clear stack
+        _rSP = 0;
+        _rDT = 0;
+        _rST = 0;
+        std::memset(_rV, 0, 16);
         std::memcpy(_memory.data(), _chip8_cvip, 512);
         _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
         _nextFrame = calcNextFrame();
         _cycleCounter = 2;
         _systemTime.reset();
         _frameCounter = 0;
+        _screen.setAll(0);
+        _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
+        _cpuState = eNORMAL;
+        _errorMessage.clear();
+        _wavePhase = 0;
     }
 
     inline uint16_t readWord(uint32_t addr) const
@@ -77,7 +215,7 @@ public:
         return (readByte(addr) << 8) | readByte(addr + 1);
     }
 
-    int64_t getMachineCycles() const override { return _machineCycles; }
+    int64_t machineCycles() const override { return _machineCycles; }
 
     int64_t executeFor(int64_t microseconds) override
     {
@@ -91,10 +229,10 @@ public:
         return 0;
     }
 
-    void tick(int instructionsPerFrame) override
+    void executeFrame() override
     {
         if (_execMode == ePAUSED || _cpuState == eERROR) {
-            setExecMode(ePAUSED);
+            GenericCpu::setExecMode(ePAUSED);
             return;
         }
         auto nextFrame = _nextFrame;
@@ -103,20 +241,29 @@ public:
         }
     }
 
-    void executeInstruction() override
+    void errorHalt(std::string errorMessage)
     {
+        _execMode = ePAUSED;
+        _cpuState = eERROR;
+        _errorMessage = std::move(errorMessage);
+        _rPC -= 2;
+    }
+
+    int executeInstruction() override
+    {
+        const auto startCycles = _machineCycles;
         if (_execMode == ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
         uint16_t opcode = readWord(_rPC);
         _rPC = uint16_t(_rPC + 2);
-        if(_cpuState != eWAITING) {
+        if(_cpuState != CpuState::eWAIT) {
             ++_cycleCounter;
             addCycles((opcode & 0xF000) ? 68 : 40);
         }
         switch (opcode >> 12) {
             case 0:
                 if (opcode == 0x00E0) {  // 00E0 - clear
-                    clearScreen();
+                    _screen.setAll(0);
                     std::memset(_memory.data() + 0xF00, 0, 256);
                     ++_clearCounter;
                     addCycles(3078);
@@ -124,7 +271,8 @@ public:
                 else if (opcode == 0x00EE) {  // 00EE - return
                     if(!_rSP)
                         errorHalt("STACK UNDERFLOW");
-                    _rPC = _stack[--_rSP];
+                    --_rSP;
+                    _rPC = (_memory[_options.ramSize - 0x130 - _rSP * 2 - 2] << 8) | _memory[_options.ramSize - 0x130 - _rSP * 2 - 1];
                     addCycles(10);
                     if (_execMode == eSTEPOUT)
                         _execMode = ePAUSED;
@@ -142,7 +290,9 @@ public:
             case 2:  // 2nnn - :call NNN
                 if(_rSP == 0x15)
                     errorHalt("STACK OVERFLOW");
-                _stack[_rSP++] = _rPC;
+                _memory[_options.ramSize - 0x130 - _rSP * 2 - 2] = _rPC >> 8;
+                _memory[_options.ramSize - 0x130 - _rSP * 2 - 1] = _rPC & 0xFF;
+                _rSP++;
                 _rPC = opcode & 0xFFF;
                 addCycles(26);
                 break;
@@ -285,9 +435,9 @@ public:
                 int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
                 int lines = opcode & 0xF;
                 auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
-                if(_cpuState != eWAITING) {
+                if(_cpuState != eWAIT) {
                     auto prepareTime = 68 + lines * (46 + 20 * (x & 7));
-                    _cpuState = eWAITING;
+                    _cpuState = eWAIT;
                     _rPC = uint16_t(_rPC - 2);
                     _instructionCycles = (prepareTime > cyclesLeftInFrame) ? prepareTime - cyclesLeftInFrame : 0;
                     addCycles(cyclesLeftInFrame);
@@ -351,7 +501,7 @@ public:
                                 addCycles(cyclesLeftInCurrentFrame());
                                 _instructionCycles = 3 * 3668;
                                 _rST = 4;
-                                _cpuState = eWAITING;
+                                _cpuState = eWAIT;
                             }
                             else {
                                 // keep waiting...
@@ -359,7 +509,7 @@ public:
                                 if(key < 0) {
                                     _rST = 4;
                                 }
-                                _cpuState = eWAITING;
+                                _cpuState = eWAIT;
                             }
                         }
                         break;
@@ -420,15 +570,16 @@ public:
             }
         }
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP <= _stepOverSP)) {
-            if(_cpuState != eWAITING)
+            if(_cpuState != eWAIT)
                 _execMode = ePAUSED;
         }
         if(hasBreakPoint(_rPC)) {
-            if(Chip8EmulatorBase::findBreakpoint(_rPC)) {
+            if(findBreakpoint(_rPC)) {
                 _execMode = ePAUSED;
                 _breakpointTriggered = true;
             }
         }
+        return static_cast<int>(_machineCycles - startCycles);
     }
 
     void executeInstructions(int numInstructions) override
@@ -486,16 +637,18 @@ public:
         }
         else {
             // Default is silence
-            IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+            IEmulationCore::renderAudio(samples, frames, sampleFrequency);
         }
     }
+
+    const VideoType* getScreen() const override { return &_screen; }
 
 protected:
     void wait(int instructionCycles = 0)
     {
         _rPC -= 2;
         _instructionCycles = instructionCycles;
-        _cpuState = eWAITING;
+        _cpuState = eWAIT;
     }
     int64_t cyclesLeftInCurrentFrame() const
     {
@@ -503,10 +656,10 @@ protected:
     }
     uint8_t readByte(uint16_t addr) const
     {
-        if(addr < 0x1000) {
+        if(addr < _options.ramSize) {
             return _memory[addr];
         }
-        else if(addr >= 0x8000 && addr < 0x8200)
+        if(addr >= 0x8000 && addr < 0x8200)
         {
             return _rom_cvip[addr & 0x1ff];
         }
@@ -514,11 +667,11 @@ protected:
     }
     void writeByte(uint16_t addr, uint8_t val)
     {
-        if(addr < 0x1000) {
+        if(addr < _options.ramSize) {
             _memory[addr] = val;
         }
     }
-    int64_t calcNextFrame() const override { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
+    int64_t calcNextFrame() const { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
     void handleTimer() override
     {
         ++_frameCounter;
@@ -539,16 +692,33 @@ protected:
         _machineCycles += cycles;
         _systemTime.addCycles(cycles);
         if(_machineCycles >= _nextFrame) {
-            handleTimer();
             auto irqTime = 1832 + (_rST ? 4 : 0) + (_rDT ? 8 : 0);
+            handleTimer();
             _machineCycles += irqTime;
             _systemTime.addCycles(irqTime);
             _nextFrame = calcNextFrame();
         }
     }
-    int64_t _machineCycles{0};
+    EmulatorHost& _host;
+    Chip8StrictOptions _options;
+    std::vector<uint8_t> _memory{};
+    uint8_t* _rV{};
+    uint8_t _rDT{};
+    uint8_t _rST{};
+    uint16_t _rI{};
+    uint16_t _rSP{};
+    uint16_t _rPC{};
+    uint16_t _randomSeed{};
+    int64_t _cycleCounter{};
+    int64_t _machineCycles{};
     int64_t _nextFrame{1122};
-    int _instructionCycles{0};
+    float _wavePhase{0};
+    int _frameCounter{};
+    int _clearCounter{};
+    int _instructionCycles{};
+    ClockedTime _systemTime;
+    bool _screenNeedsUpdate{};
+    VideoType _screen{};
 };
 
 }

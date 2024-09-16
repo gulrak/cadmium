@@ -26,10 +26,12 @@
 #pragma once
 
 #include <emulation/ichip8.hpp>
+#include <emulation/iemulationcore.hpp>
 #include <emulation/chip8realcorebase.hpp>
 #include <chiplet/octocompiler.hpp>
 
 #include <raylib.h>
+
 
 class Debugger
 {
@@ -39,29 +41,28 @@ public:
     Debugger() = default;
 
     void setExecMode(ExecMode mode);
-    void updateCore(emu::IChip8Emulator* core);
+    void updateCore(emu::IEmulationCore* core);
     void captureStates();
     void render(Font& font, std::function<void(Rectangle,int)> drawScreen);
     void updateOctoBreakpoints(const emu::OctoCompiler& compiler);
     bool supportsStepOver() const;
-    bool isControllingChip8() const { return _backend == nullptr || _visibleCpu == CHIP8_CORE; }
+    bool isControllingChip8() const { return dynamic_cast<emu::IChip8Emulator*>(_core->focussedExecutionUnit()) != nullptr; }
 private:
+    emu::IChip8Emulator* chip8Core();
     void showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
     void showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const;
-    const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);
-    void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
+    static const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);
+    static void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
     enum Core { CHIP8_CORE, BACKEND_CORE };
-    emu::IChip8Emulator* _core{nullptr};
+    emu::IEmulationCore* _core{nullptr};
     emu::Chip8RealCoreBase* _realCore{nullptr};
     emu::GenericCpu* _backend{nullptr};
-    Core _visibleCpu{CHIP8_CORE};
-    int _instructionOffset[2]{};
+    size_t _visibleExecUnit{0};
+    std::vector<int> _instructionOffset{};
     int _activeInstructionsTab{0};
     bool _memViewFollow{true};
-    RegPack _chip8State;
-    RegPack _chip8StateBackup;
-    RegPack _backendState;
-    RegPack _backendStateBackup;
+    std::vector<RegPack> _cpuStates;
+    std::vector<RegPack> _cpuStatesBackup;
     std::vector<uint16_t> _chip8StackBackup;
     std::vector<uint8_t> _memBackup;
 };

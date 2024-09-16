@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+#include <emulation/properties.hpp>
 #include <nlohmann/json_fwd.hpp>
 
 #include <map>
@@ -38,8 +38,8 @@ struct CadmiumConfiguration
     uint8_t guiSat{80};
     std::string workingDirectory;
     std::string databaseDirectory;
-    emu::Chip8EmulatorOptions emuOptions;
-    std::map<std::string,emu::Chip8EmulatorOptions> romConfigs;
+    emu::Properties emuOptions;
+    std::map<std::string,emu::Properties> romConfigs;
     bool load(const std::string& filepath);
     bool save(const std::string& filepath);
 };

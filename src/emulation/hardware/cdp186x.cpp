@@ -91,7 +91,7 @@ const Cdp186x::VideoType& Cdp186x::getScreen() const
 
 std::pair<int,bool> Cdp186x::executeStep()
 {
-    auto fc = (_cpu.getCycles() >> 3) % 3668;
+    auto fc = (_cpu.cycles() >> 3) % 3668;
     bool vsync = false;
     if(fc < _frameCycle) {
         vsync = true;
@@ -101,9 +101,9 @@ std::pair<int,bool> Cdp186x::executeStep()
     auto lineCycle = _frameCycle % 14;
     if(_traceLog) {
         if (vsync)
-            Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- VSYNC ---", _cpu.dumpStateLine()).c_str());
+            Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- VSYNC ---", _cpu.dumpStateLine()).c_str());
         else if (lineCycle == 0)
-            Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- HSYNC ---", _cpu.dumpStateLine()).c_str());
+            Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- HSYNC ---", _cpu.dumpStateLine()).c_str());
     }
     if(_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
         return {_frameCycle,vsync};
@@ -111,7 +111,7 @@ std::pair<int,bool> Cdp186x::executeStep()
         _displayEnabledLatch = _displayEnabled;
         if(_displayEnabled) {
             if (_traceLog)
-                Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
+                Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
             _cpu.triggerInterrupt();
         }
     }
@@ -134,11 +134,11 @@ std::pair<int,bool> Cdp186x::executeStep()
             }
             if (_displayEnabledLatch) {
                 if(_traceLog)
-                    Logger::log(Logger::eBACKEND_EMU, _cpu.getCycles(), {_frameCounter, _frameCycle}, fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _cpu.getR(0) - 1).c_str());
+                    Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _cpu.getR(0) - 1).c_str());
             }
         }
     }
-    return {(_cpu.getCycles() >> 3) % 3668, vsync};
+    return {(_cpu.cycles() >> 3) % 3668, vsync};
 }
 
 void Cdp186x::incrementBackground()

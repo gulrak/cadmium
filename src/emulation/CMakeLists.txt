@@ -1,32 +1,36 @@
 
 set(CHIP8_EMU_SOURCE
-    time.cpp
-    time.hpp
-    math.hpp
-    chip8cores.hpp
-    chip8cores.cpp
-    chip8strict.hpp
+    #chip8cores.cpp
+    #chip8cores.hpp
+    #chip8emulatorbase.cpp
+    #chip8emulatorbase.hpp
     chip8opcodedisass.cpp
     chip8opcodedisass.hpp
-    chip8emulatorbase.cpp
-    chip8emulatorbase.hpp
     chip8options.cpp
     chip8options.hpp
-    hardware/cdp1802.hpp
+    chip8strict.cpp
+    chip8strict.hpp
+    coreregistry.cpp
+    coreregistry.hpp
+    cosmacvip.cpp
+    cosmacvip.hpp
+    #dream6800.cpp
+    #dream6800.hpp
+    emulatorhost.hpp
     hardware/cdp186x.cpp
     hardware/cdp186x.hpp
+    hardware/cdp1802.hpp
     hardware/m6800.hpp
     hardware/mc682x.cpp
     hardware/mc682x.hpp
-    chip8vip.cpp
-    chip8vip.hpp
-    chip8dream.cpp
-    chip8dream.hpp
-    utility.cpp
+    ichip8.hpp
+    iemulationcore.hpp
+    math.hpp
     properties.cpp
     properties.hpp
-    coreregistry.cpp
-    coreregistry.hpp
+    time.cpp
+    time.hpp
+    utility.cpp
         #octocartridge.cpp
     #octocartridge.hpp
 )

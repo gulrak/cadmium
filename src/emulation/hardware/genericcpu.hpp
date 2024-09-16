@@ -26,22 +26,24 @@
 #pragma once
 
 #include <array>
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <ranges>
 #include <string>
 #include <vector>
-#include <variant>
+
 #include <emulation/time.hpp>
 
 namespace emu
 {
 
+/// Abstract CPU base class that allows generic control and register retrieval
 class GenericCpu
 {
 public:
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
+    enum CpuState { eNORMAL, eIDLE, eWAIT = eIDLE, eHALT, eERROR };
     struct BreakpointInfo {
         enum Type { eTRANSIENT, eCODED };
         std::string label;
@@ -55,29 +57,32 @@ public:
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
 
+    virtual int executeInstruction() = 0;
     virtual int64_t executeFor(int64_t microseconds) = 0;
-    virtual ExecMode getExecMode() const { return _execMode; }
+    virtual ExecMode execMode() const { return _execMode; }
     virtual void setExecMode(ExecMode mode) { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = getSP(); }
     virtual bool inErrorState() const = 0;
-
-    virtual uint32_t getCpuID() const = 0;
-    virtual const std::string& getName() const = 0;
-    virtual const std::vector<std::string>& getRegisterNames() const = 0;
-    virtual size_t getNumRegisters() const = 0;
-    virtual RegisterValue getRegister(size_t index) const = 0;
+    virtual const std::string& errorMessage() const { return _errorMessage; }
+    virtual uint32_t cpuID() const = 0;
+    virtual std::string name() const = 0;
+    virtual CpuState cpuState() const { return _cpuState; }
+    virtual const std::vector<std::string>& registerNames() const = 0;
+    virtual size_t numRegisters() const = 0;
+    virtual RegisterValue registerbyIndex(size_t index) const = 0;
     virtual void fetchAllRegisters(RegisterPack& registers) const
     {
-        registers.resize(getNumRegisters());
-        for(size_t i = 0; i < getNumRegisters(); ++i) {
-            registers[i] = getRegister(i);
+        registers.resize(numRegisters());
+        for(size_t i = 0; i < numRegisters(); ++i) {
+            registers[i] = registerbyIndex(i);
         }
     }
     virtual void setRegister(size_t index, uint32_t value) = 0;
     virtual uint32_t getSP() const = 0;
     virtual uint32_t getPC() const = 0;
-    virtual int64_t getCycles() const = 0;
-    virtual const ClockedTime& getTime() const = 0;
-    virtual uint8_t getMemoryByte(uint32_t addr) const = 0;
+    virtual int64_t cycles() const = 0;
+    virtual const ClockedTime& time() const = 0;
+    virtual uint8_t readMemoryByte(uint32_t addr) const = 0;
+    virtual std::span<const uint8_t> stack() const = 0;
 
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 
@@ -89,8 +94,7 @@ public:
     virtual void removeBreakpoint(uint32_t address)
     {
         _breakpoints.erase(address);
-        size_t count = 0;
-        uint32_t masked = address & 0xFFF;
+        const uint32_t masked = address & 0xFFF;
         for(const auto& [addr, bpi] : _breakpoints) {
             if((addr & 0xFFF) == masked) {
                 _breakMap[masked] = 1;
@@ -111,7 +115,7 @@ public:
     virtual size_t numBreakpoints() const {
         return _breakpoints.size();
     }
-    virtual std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index)
+    virtual std::pair<uint32_t, BreakpointInfo*> nthBreakpoint(size_t index)
     {
         size_t count = 0;
         for(auto& [addr, bpi] : _breakpoints) {
@@ -129,21 +133,22 @@ public:
     {
         return _breakMap[address&0xfff] != 0;
     }
-    RegisterValue getRegisterByName(const std::string& name) const
+    RegisterValue registerByName(const std::string& name) const
     {
-        static const auto& regNames = getRegisterNames();
-        auto iter = std::find(regNames.begin(), regNames.end(), name);
-        if(iter != regNames.end()) {
-            return getRegister(iter - regNames.begin());
+        static const auto& regNames = registerNames();
+        if (const auto iter = std::ranges::find(regNames, name); iter != regNames.end()) {
+            return registerbyIndex(iter - regNames.begin());
         }
         return {0,0};
     }
     virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
 protected:
     mutable ExecMode _execMode{eRUNNING};
+    CpuState _cpuState{eNORMAL};
     uint32_t _stepOverSP{};
-    std::array<uint8_t,4096> _breakMap;
-    std::map<uint32_t,BreakpointInfo> _breakpoints;
+    std::array<uint8_t,4096> _breakMap{};
+    std::map<uint32_t,BreakpointInfo> _breakpoints{};
+    std::string _errorMessage{};
     bool _breakpointTriggered{false};
 };
 

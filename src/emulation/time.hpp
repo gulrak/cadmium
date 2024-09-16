@@ -30,7 +30,7 @@
 
 namespace emu {
 
-class Time
+class Time final
 {
 public:
     using seconds_t = uint32_t;

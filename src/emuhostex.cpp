@@ -24,45 +24,45 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include <chip8emuhostex.hpp>
+#include <emuhostex.hpp>
 
 #include <chiplet/chip8decompiler.hpp>
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8strict.hpp>
-#include <emulation/chip8dream.hpp>
-#include <emulation/chip8vip.hpp>
-#include <chiplet/utility.hpp>
 #include <chiplet/octocartridge.hpp>
-#include <emulation/c8bfile.hpp>
-#include <systemtools.hpp>
+#include <chiplet/utility.hpp>
 #include <configuration.hpp>
+#include <emulation/c8bfile.hpp>
+#include <emulation/coreregistry.hpp>
+//#include <emulation/chip8cores.hpp>
+//#include <emulation/chip8strict.hpp>
+//#include <emulation/cosmacvip.hpp>
+//#include <emulation/dream6800.hpp>
+#include <systemtools.hpp>
 
 #include <raylib.h>
 #include <nlohmann/json.hpp>
+#include <ghc/span.hpp>
 
 namespace emu {
 
-Chip8EmuHostEx::Chip8EmuHostEx()
-: _librarian(_cfg)
+EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
+: _cfg(cfg)
+, _librarian(_cfg)
 {
 #ifndef PLATFORM_WEB
-    _cfgPath = (fs::path(dataPath())/"config.json").string();
-    if(_cfg.load(_cfgPath)) {
-        _options = _cfg.emuOptions;
-        _currentDirectory = _cfg.workingDirectory;
-        _databaseDirectory = _cfg.databaseDirectory;
-    }
+    _currentDirectory = _cfg.workingDirectory;
+    _databaseDirectory = _cfg.databaseDirectory;
     _librarian.fetchDir(_currentDirectory);
 #endif
-    if(_options.hasColors())
-        _options.updateColors(_colorPalette);
-    else {
+    // TODO: Fix this
+    //if(_options.hasColors())
+    //    _options.updateColors(_colorPalette);
+    //else {
         setPalette({0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff, 0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff, 0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff, 0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff});
-    }
+    //}
     _defaultPalette = _colorPalette;
 }
 
-void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
+void EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
 {
     for(size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
         _colorPalette[i + offset] = colors[i];
@@ -73,14 +73,17 @@ void Chip8EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offs
     for(size_t i = 0; i < 16; ++i) {
         pal[i] = fmt::format("#{:06x}", _colorPalette[i] >> 8);
     }
-    _options.advanced["palette"] = pal;
-    _options.updatedAdvanced();
+    // TODO: Fix this
+    //_options.advanced["palette"] = pal;
+    //_options.updatedAdvanced();
 }
 
 
-std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& options, IChip8Emulator* iother)
+std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmulationCore* iother)
 {
-    return {};
+    auto [variantName, emuCore] = CoreRegistry::create(*this, properties);
+    _variantName = variantName;
+    return std::move(emuCore);
 #if 0
     IChip8Emulator::Engine engine = IChip8Emulator::eCHIP8MPT;
     if (_options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_TPD || _options.behaviorBase == Chip8EmulatorOptions::eCHIP8VIP_FPD ||
@@ -159,18 +162,29 @@ std::unique_ptr<IChip8Emulator> Chip8EmuHostEx::create(Chip8EmulatorOptions& opt
         return std::make_unique<Chip8EmulatorFP>(*this, options, iother);
     }
     else if(engine == IChip8Emulator::eCHIP8VIP) {
-        return std::make_unique<Chip8VIP>(*this, options, iother);
+        return std::make_unique<CosmacVIP>(*this, options, iother);
     }
     else if(engine == IChip8Emulator::eCHIP8DREAM) {
-        return std::make_unique<Chip8Dream>(*this, options, iother);
+        return std::make_unique<Dream6800>(*this, options, iother);
     }
     return std::make_unique<Chip8EmulatorVIP>(*this, options, iother);
 #endif
 }
 
 
-void Chip8EmuHostEx::updateEmulatorOptions(const Chip8EmulatorOptions& options)
+void EmuHostEx::updateEmulatorOptions(const Properties& properties)
 {
+    // TODO: Fix this
+    if(_previousProperties != properties || !_chipEmu) {
+        if(&properties != &_properties) {
+            _previousProperties = _properties = properties;
+        }
+        _chipEmu = create(_properties, _chipEmu.get());
+        if(_chipEmu->getScreen())
+            (void)_chipEmu->getScreen();
+        whenEmuChanged(*_chipEmu);
+    }
+#if 0
     if(_previousOptions != options || !_chipEmu) {
         if(&options != &_options)
             _options = options;
@@ -195,22 +209,20 @@ void Chip8EmuHostEx::updateEmulatorOptions(const Chip8EmulatorOptions& options)
         else {
             setPalette({_colorPalette.begin(), _colorPalette.end()});
         }
-        if(_chipEmu->getScreen())
-            _chipEmu->getScreen();
-        whenEmuChanged(*_chipEmu);
         //_debugger.updateCore(_chipEmu.get());
     }
+#endif
 }
 
-bool Chip8EmuHostEx::loadRom(const char* filename, LoadOptions loadOpt)
+bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
 {
     std::error_code ec;
-    if (strlen(filename) < 4095 && fs::exists(filename, ec)) {
+    if (filename.size() < 4095 && fs::exists(filename, ec)) {
         unsigned int size = 0;
         _customPalette = false;
         _colorPalette = _defaultPalette;
         auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
-        return loadBinary(filename, fileData.data(), fileData.size(), loadOpt);
+        return loadBinary(filename, fileData, loadOpt);
         //memory[0x1FF] = 3;
     }
     return false;
@@ -240,16 +252,95 @@ static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
     return result;
 }
 
-bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_t size, LoadOptions loadOpt)
+bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt)
 {
     bool valid = false;
+    bool wasFromSource = false;
+    std::unique_ptr<emu::OctoCompiler> c8c;
+    std::string romSha1Hex;
+    std::vector<uint8_t> romImage;
+    std::string source;
+    Properties knownProperties;
+    auto fileData = std::vector(binary.data(), binary.data() + binary.size());
+    auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
+    TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
+    auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
+    if(endsWith(filename, ".8o")) {
+        c8c = std::make_unique<emu::OctoCompiler>();
+        source.assign((const char*)fileData.data(), fileData.size());
+        if(c8c->compile(filename).resultType == emu::CompileResult::eOK)
+        {
+            auto startAddress = _properties.get<Property::Integer>("startAddress");
+            auto loadAddress = startAddress ? startAddress->intValue : 0;
+            if(c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
+                romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
+                romSha1Hex = c8c->sha1Hex();
+                valid = true;
+                wasFromSource = true;
+                if((loadOpt & DontChangeOptions) == 0) {
+                    isKnown = _librarian.isKnownFile(romImage.data(), romImage.size());
+                    //knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
+                    //if(knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
+                    //    updateEmulatorOptions(knownOptions);
+                }
+            }
+        }
+        else {
+            _romName = filename;
+            whenRomLoaded(_romName, false, c8c.get(), source);
+            return true;
+        }
+    }
+    else if(loadOpt & DontChangeOptions) {
+        _chipEmu->reset();
+        if(_chipEmu->loadData(binary, {})) {
+            romImage.assign(binary.data(), binary.data() + binary.size());
+            valid = true;
+        }
+    }
+    else{
+        if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
+            updateEmulatorOptions(extensionProps);
+            _chipEmu->reset();
+            if(_chipEmu->loadData(binary, {})) {
+                romImage.assign(binary.data(), binary.data() + binary.size());
+                valid = true;
+            }
+        }
+    }
+    if (valid) {
+        //TraceLog(LOG_INFO, "Found a valid rom.");
+        _romImage = std::move(romImage);
+        _romSha1Hex = romSha1Hex.empty() ? calculateSha1Hex(_romImage.data(), _romImage.size()) : romSha1Hex;
+        _romName = filename;
+        _romIsWellKnown = isKnown;
+        if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
+            _romWellKnownProperties = knownProperties;
+        //_chipEmu->reset();
+        if(!wasFromSource && _romImage.size() < 8192*1024) {
+            //TraceLog(LOG_INFO, "Setting up decompiler.");
+            std::stringstream os;
+            //TraceLog(LOG_INFO, "Setting instance.");
+            emu::Chip8Decompiler decomp;
+            decomp.setVariant(Chip8Variant::CHIP_8/*_options.presetAsVariant()*/, true);
+            //TraceLog(LOG_INFO, "Setting variant.");
+            //decomp.setVariant(Chip8Variant::CHIP_8, true);
+            //TraceLog(LOG_INFO, "About to decompile...");
+            auto startAddress = _properties.get<Property::Integer>("startAddress");
+            auto loadAddress = startAddress ? startAddress->intValue : 0;
+            decomp.decompile(filename, _romImage.data(), loadAddress, _romImage.size(), loadAddress, &os, false, true);
+            source = os.str();
+        }
+        whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
+    }
+        // TODO: Fix this
+#if 0
     std::unique_ptr<emu::OctoCompiler> c8c;
     std::string romSha1Hex;
     std::vector<uint8_t> romImage;
     std::string source;
     auto fileData = std::vector<uint8_t>(data, data + size);
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
-    bool wasFromSource = false;
     TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
     auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
     if(endsWith(filename, ".8o")) {
@@ -491,6 +582,7 @@ bool Chip8EmuHostEx::loadBinary(std::string filename, const uint8_t* data, size_
         //TraceLog(LOG_INFO, "About to callback whenRomLoaded.");
         whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
     }
+#endif
     return valid;
 }
 

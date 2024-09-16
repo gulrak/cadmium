@@ -20,7 +20,7 @@ target_link_libraries(imageconv PUBLIC raylib fmt::fmt)
 add_executable(rpgt rpgt.cpp)
 target_link_libraries(rpgt PUBLIC emulation ghc_filesystem)
 
-add_executable(c8db c8db.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/chip8emuhostex.cpp ../src/systemtools.cpp)
+add_executable(c8db c8db.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/emuhostex.cpp ../src/systemtools.cpp)
 target_compile_definitions(c8db PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
 target_link_libraries(c8db PUBLIC emulation ghc_filesystem raylib)
 target_code_coverage(c8db)

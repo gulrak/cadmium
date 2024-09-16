@@ -28,16 +28,53 @@
 
 #include <chiplet/utility.hpp>
 
+#include <set>
+
 namespace emu {
 
-Properties CoreRegistry::FactoryInfo::variantProperties(const std::string& variant) const
+void CoreRegistry::IFactoryInfo::cacheVariantMappings() const
 {
-    for(size_t i = 0; i < numberOfVariants(); ++i) {
-        if(fuzzyCompare(toOptionName(prefix() + '-' + variantName(i)), variant)) {
-            return variantProperties(i);
+    if(presetMappings.empty()) {
+        for (size_t i = 0; i < numberOfVariants(); ++i) {
+            if(prefix().empty())
+                presetMappings.emplace(toOptionName(variantName(i)), i);
+            else
+                presetMappings.emplace(toOptionName(prefix() + '-' + variantName(i)), i);
         }
     }
+}
+
+bool CoreRegistry::IFactoryInfo::hasVariant(const std::string& variant) const
+{
+    cacheVariantMappings();
+    return presetMappings.find(toOptionName(variant)) != presetMappings.end();
+}
+
+Properties CoreRegistry::IFactoryInfo::variantProperties(const std::string& variant) const
+{
+    cacheVariantMappings();
+    if(const auto iter = presetMappings.find(toOptionName(variant)); iter != presetMappings.end())
+        return variantProperties(iter->second);
     return {};
+}
+
+CoreRegistry::CoreRegistry()
+{
+    for(auto& [key, info] : factoryMap()) {
+        if(!coresCombo.empty())
+            coresCombo += ";";
+        coresCombo += key;
+        if(info->variantsCombo.empty()) {
+            for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+                if(!info->variantsCombo.empty()) {
+                    info->variantsCombo += ";";
+                }
+                info->variantsCombo += info->variantName(i);
+                auto defaultExtensions = split(info->variantExtensions(i), ';');
+                supportedExtensions.insert(defaultExtensions.begin(), defaultExtensions.end());
+            }
+        }
+    }
 }
 
 CoreRegistry::FactoryMap& CoreRegistry::factoryMap()

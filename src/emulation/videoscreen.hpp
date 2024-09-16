@@ -28,7 +28,6 @@
 #include <array>
 #include <cstdint>
 #include <stdendian/stdendian.h>
-#include <set>
 
 namespace emu {
 
@@ -102,10 +101,7 @@ public:
                     auto dstPtr = destination + row * destinationStride;
                     for (unsigned x = 0; x < _width; ++x) {
                         if constexpr (isRGBA()) {
-                            blendColorsAlpha(dstPtr, srcPtr, alpha);
-                            dstPtr++;
-                            srcPtr++;
-                            //*dstPtr++ = blend(*srcPtr++,alpha);
+                            blendColorsAlpha(dstPtr++, srcPtr++, alpha);
                         }
                         else {
                             *dstPtr++ = blend(_palette[*srcPtr++],alpha);
@@ -208,7 +204,7 @@ public:
         _palette = other._palette;
         return *this;
     }
-    inline bool drawSpritePixel(uint8_t x, uint8_t y, uint8_t planes)
+    bool drawSpritePixel(uint8_t x, uint8_t y, uint8_t planes)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -217,7 +213,7 @@ public:
         *pixel ^= planes;
         return collision;
     }
-    inline bool drawSpritePixelDoubled(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    bool drawSpritePixelDoubled(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -237,7 +233,7 @@ public:
         }
         return collision;
     }
-    inline bool drawSpritePixelDoubledSC(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    bool drawSpritePixelDoubledSC(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -251,10 +247,6 @@ public:
                 *(pixel + 1) ^= planes;
             }
         }
-        /*if(!hires) {
-            *(pixel + _stride) = *pixel;
-            *(pixel + _stride + 1) = *(pixel + 1);
-        }*/
         return collision;
     }
     void copyPixelRow(int x1, int x2, int ySrc, int yDst)
@@ -274,7 +266,7 @@ public:
         _screenBuffer[y * _stride + x] &= ~mask;
     }
 protected:
-    static inline uint32_t blend(uint32_t color, uint8_t  alpha)
+    static uint32_t blend(uint32_t color, uint8_t  alpha)
     {
         auto newAlpha = (color >> 24) * alpha / 255;
         return (color & 0x00ffffff) | (newAlpha << 24);

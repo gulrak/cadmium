@@ -25,8 +25,8 @@
 //---------------------------------------------------------------------------------------
 
 #include "chip8adapter.hpp"
-#include "../src/chip8emuhostex.hpp"
 #include <fmt/format.h>
+#include "../src/emuhostex.hpp"
 
 #ifdef TEST_CHIP8EMULATOR_TS
 #include <emulation/chip8cores.hpp>
@@ -160,13 +160,13 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     }
     //options.optTraceLog = true;
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8VIP>(host, options);
+    return std::make_unique<emu::CosmacVIP>(host, options);
 }
 
 #elif defined(TEST_CHIP8DREAM)
 
 #include <emulation/chip8cores.hpp>
-#include <emulation/chip8dream.hpp>
+#include <emulation/dream6800.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
@@ -181,7 +181,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     }
     options.optTraceLog = true;
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8Dream>(host, options);
+    return std::make_unique<emu::Dream6800>(host, options);
 }
 
 #elif defined(TEST_C_OCTO)

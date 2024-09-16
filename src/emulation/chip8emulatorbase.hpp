@@ -25,9 +25,9 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
-#include <emulation/chip8vip.hpp>
+#include <emulation/cosmacvip.hpp>
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/time.hpp>
 #include <emulation/videoscreen.hpp>
@@ -56,7 +56,7 @@ public:
     constexpr static uint32_t MAX_ADDRESS_MASK = (1<<24)-1;
     constexpr static uint32_t MAX_MEMORY_SIZE = 1<<24;
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8EmulatorBase(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother)
+    Chip8EmulatorBase(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* iother)
         : _options(options)
         , _systemTime(options.instructionsPerFrame ? options.instructionsPerFrame * options.frameRate : 1000000)
         , _host(host)
@@ -70,7 +70,7 @@ public:
             _cpuState = iother->cpuState();
             _rI = iother->getI();
             _rPC = iother->getPC();
-            std::memcpy(_stack.data(), iother->getStackElements(), sizeof(uint16_t) * iother->stackSize());
+            std::memcpy(_stack.data(), iother->stackElements(), sizeof(uint16_t) * iother->stackSize());
             _rSP = iother->getSP();
             _rDT = iother->delayTimer();
             _rST = iother->soundTimer();
@@ -125,9 +125,9 @@ public:
     ~Chip8EmulatorBase() override = default;
 
     bool inErrorState() const override { return _cpuState == eERROR; }
-    uint32_t getCpuID() const override { return 0xC8; }
-    const std::string& getName() const override { static const std::string name = "GenericChip8"; return name; }
-    const std::vector<std::string>& getRegisterNames() const override {
+    uint32_t cpuID() const override { return 0xC8; }
+    std::string name() const override { static const std::string name = "GenericChip8"; return name; }
+    const std::vector<std::string>& registerNames() const override {
         static const std::vector<std::string> registerNames = {
             "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7",
             "V8", "V9", "VA", "VB", "VC", "VD", "VE", "VF",
@@ -135,8 +135,8 @@ public:
         };
         return registerNames;
     }
-    size_t getNumRegisters() const override { return 21; }
-    RegisterValue getRegister(size_t index) const override
+    size_t numRegisters() const override { return 21; }
+    RegisterValue registerbyIndex(size_t index) const override
     {
         if(index < 16)
             return {_rV[index], 8};
@@ -167,7 +167,7 @@ public:
         else
             _rSP = static_cast<uint8_t>(value);
     }
-    uint8_t getMemoryByte(uint32_t addr) const override
+    uint8_t readMemoryByte(uint32_t addr) const override
     {
         return addr < _memory.size() ? _memory[addr] : 0;
     }
@@ -176,7 +176,7 @@ public:
         if(pc < 0) pc = _rPC;
         uint8_t code[4];
         for(size_t i = 0; i < 4; ++i) {
-            code[i] = getMemoryByte(pc + i);
+            code[i] = readMemoryByte(pc + i);
         }
         auto [size, opcode, instruction] = disassembleInstruction(code, code + 4);
         if(bytes)
@@ -212,16 +212,16 @@ public:
     uint32_t getI() const override { return _rI; }
     uint32_t getSP() const override { return _rSP; }
     uint8_t stackSize() const override { return _stack.size(); }
-    const uint16_t* getStackElements() const override { return _stack.data(); }
+    const uint16_t* stackElements() const override { return _stack.data(); }
     CpuState cpuState() const override { return _cpuState; }
     uint8_t delayTimer() const override { return _rDT; }
     uint8_t soundTimer() const override { return _rST; }
     uint8_t* memory() override { return _memory.data(); }
     int memSize() const override { return _memSize; }
     void reset() override;
-    int64_t getCycles() const override { return _cycleCounter; }
+    int64_t cycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
-    const ClockedTime& getTime() const override { return _systemTime; }
+    const ClockedTime& time() const override { return _systemTime; }
     const std::string& errorMessage() const override { return _errorMessage; }
 
     inline void errorHalt(std::string errorMessage)
@@ -263,7 +263,7 @@ public:
     }
 
     int64_t executeFor(int64_t microseconds) override;
-    void tick(int instructionsPerFrame) override;
+    void executeFrame() override;
     int frameRate() const override { return _options.frameRate; };
 
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
@@ -274,7 +274,7 @@ public:
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
-    const uint8_t getScreenAlpha() const override { return _screenAlpha; }
+    uint8_t getScreenAlpha() const override { return _screenAlpha; }
     void setPalette(std::array<uint32_t,256>& palette) override { _screen.setPalette(palette); }
 
     //float getAudioPhase() const override { return _wavePhase; }
@@ -338,7 +338,7 @@ protected:
     uint8_t _collisionColor{1};
     MegaChipBlendMode _blendMode{eBLEND_NORMAL};
 
-    Chip8EmulatorHost& _host;
+    EmulatorHost& _host;
     uint16_t _randomSeed{0};
     std::vector<uint8_t> _memory{};
     int _memSize{};

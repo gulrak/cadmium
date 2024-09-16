@@ -34,6 +34,8 @@
 #include <string>
 #include <utility>
 
+#include "iemulationcore.hpp"
+
 namespace emu
 {
 
@@ -53,34 +55,16 @@ struct Chip8State
 class IChip8Emulator : public GenericCpu
 {
 public:
-    struct BreakpointInfo {
-        enum Type { eTRANSIENT, eCODED };
-        std::string label;
-        Type type{eTRANSIENT};
-        bool isEnabled{true};
-    };
-    enum Engine {
-        eCHIP8TS,       // templated core based on nested switch - this is the fastest (ch8,ch10,ch48,sc10,sc11,xo)
-        eCHIP8MPT,      // method table based core - this is the most capable one (ch8,ch10,ch48,sc10,sc11,mc8,xo)
-        eCHIP8VIP,      // cdp1802 based vip core running original emulator (only supports <ch48 cores, but runs hybrids)
-        eCHIP8DREAM     // M6800 based DREAM6800 code running CHIPOS
-    };
-    enum CpuState { eNORMAL, eWAITING, eERROR };
     using VideoType = VideoScreen<uint8_t, 256, 192>;
     using VideoRGBAType = VideoScreen<uint32_t, 256, 192>;
-    virtual ~IChip8Emulator() = default;
-    virtual void reset() = 0;
-    virtual std::string name() const = 0;
-    virtual void executeInstruction() = 0;
+    ~IChip8Emulator() override = default;
     virtual void executeInstructions(int numInstructions) = 0;
-    virtual void tick(int instructionsPerFrame) = 0;
-    virtual int frameRate() const = 0;
 
     virtual uint8_t getV(uint8_t index) const = 0;
     virtual uint32_t getI() const = 0;
     //virtual uint8_t getSP() const = 0;
     virtual uint8_t stackSize() const = 0;
-    virtual const uint16_t* getStackElements() const = 0;
+    virtual const uint16_t* stackElements() const = 0;
 
     virtual uint8_t* memory() = 0;
     virtual int memSize() const = 0;
@@ -100,35 +84,17 @@ public:
     virtual bool isGenericEmulation() const { return true; }
 
     // defaults for unused debugger support
-    virtual CpuState cpuState() const { return eNORMAL; }
     virtual uint16_t opcode() {
         return (memory()[getPC()] << 8) | memory()[getPC() + 1];
     }
-    virtual int64_t getMachineCycles() const { return getCycles(); }
-    virtual const std::string& errorMessage() const { static std::string none; return none; }
+    virtual int64_t machineCycles() const { return cycles(); }
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}
-    virtual bool needsScreenUpdate() { return true; }
-    virtual uint16_t getCurrentScreenWidth() const { return 64; }
-    virtual uint16_t getCurrentScreenHeight() const { return 32; }
-    virtual uint16_t getMaxScreenWidth() const { return 64; }
-    virtual uint16_t getMaxScreenHeight() const { return 32; }
-    virtual bool isDoublePixel() const { return false; }
-    virtual const VideoType* getScreen() const { return nullptr; }
-    virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
-    virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }
-    virtual const uint8_t getScreenAlpha() const { return 255; }
-    virtual void setPalette(std::array<uint32_t,256>& palette) {}
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties
-    //virtual float getAudioPhase() const { return 0.0f; }
-    //virtual void setAudioPhase(float) { }
-    //virtual float getAudioFrequency() const { return 1400.0f; }
-    virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
     virtual uint8_t getXOPitch() const { return 0; }
-    virtual uint8_t getNextMCSample() { return 0; }
 };
 
 

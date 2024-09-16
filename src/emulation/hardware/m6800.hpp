@@ -259,13 +259,13 @@ public:
     }
 
 #ifdef M6800_WITH_TIME
-    const ClockedTime& getTime() const override
+    const ClockedTime& time() const override
     {
         return _systemTime;
     }
 #endif
 
-    int64_t getCycles() const GENERIC_OVERRIDE
+    int64_t cycles() const GENERIC_OVERRIDE
     {
         return _cycles;
     }
@@ -447,20 +447,21 @@ public:
     }
 #endif
 
-    void executeInstruction()
+    int executeInstruction() override
     {
 #ifdef CADMIUM_WITH_GENERIC_CPU
         if(_execMode == ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
 #else
         if(_cpuState == eERROR)
             return;
 #endif
         if(_halt) {
             handleHALT();
-            return;
+            return 1;
         }
-        else if(_nmi)
+        const auto startCycles = _cycles;
+        if(_nmi)
             handleNMI();
         else if(_irq && _rCC.isUnset(I))
             handleIRQ();
@@ -481,6 +482,7 @@ public:
             }
         }
 #endif
+        return static_cast<int>(_cycles - startCycles);
     }
 
     std::string executeInstructionTraced()
@@ -500,22 +502,26 @@ public:
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
     ~M6800() override = default;
-    uint8_t getMemoryByte(uint32_t addr) const override
+    uint8_t readMemoryByte(uint32_t addr) const override
     {
         return _bus.readDebugByte(addr);
     }
+    std::span<const uint8_t> stack() const override
+    {
+        return {};
+    }
     bool inErrorState() const override { return _cpuState == eERROR; }
-    uint32_t getCpuID() const override { return 6800; }
-    const std::string& getName() const override { static const std::string name = "M6800"; return name; }
-    const std::vector<std::string>& getRegisterNames() const override
+    uint32_t cpuID() const override { return 6800; }
+    std::string name() const override { static const std::string name = "M6800"; return name; }
+    const std::vector<std::string>& registerNames() const override
     {
         static const std::vector<std::string> registerNames = {
             "A", "B", "IX", "SP", "PC", "SR"
         };
         return registerNames;
     }
-    size_t getNumRegisters() const override { return 6; }
-    RegisterValue getRegister(size_t index) const override
+    size_t numRegisters() const override { return 6; }
+    RegisterValue registerbyIndex(size_t index) const override
     {
         switch(index) {
             case 0: return {_rA, 8};

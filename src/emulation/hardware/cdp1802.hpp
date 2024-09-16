@@ -76,14 +76,16 @@ struct Cdp1802State
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
 #define GENERIC_OVERRIDE override
-class Cdp1802 : public GenericCpu
+#define GENERIC_BASE : public GenericCpu
 #else
 #define GENERIC_OVERRIDE
-class Cdp1802
+#define GENERIC_BASE
 #endif
+
+/// Implementation of a CDP1802 CPU
+class Cdp1802 : public GenericCpu
 {
 public:
-    enum CpuState { eNORMAL, eIDLE, eHALT, eERROR };
     struct Disassembled {
         int size;
         std::string text;
@@ -91,7 +93,7 @@ public:
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
     using NEFInputHandler = std::function<bool (uint8_t)>;
-    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
+    explicit Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
         : _bus(bus)
         , _systemTime(clockFreq)
     {
@@ -119,6 +121,7 @@ public:
         _systemTime.reset();
         _execMode = eRUNNING;
         _cpuState = eNORMAL;
+        _errorMessage.clear();
     }
 
     void setOutputHandler(OutputHandler handler)
@@ -140,8 +143,8 @@ public:
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
-    const ClockedTime& getTime() const override { return _systemTime; }
-    int64_t getCycles() const GENERIC_OVERRIDE { return _cycles; }
+    const ClockedTime& time() const override { return _systemTime; }
+    int64_t cycles() const GENERIC_OVERRIDE { return _cycles; }
 #ifdef DIFFERENTIATE_CYCLES
     int64_t getIdleCycles() const { return _idleCycles; }
     int64_t getIrqCycles() const { return _irqCycles; }
@@ -387,15 +390,16 @@ public:
         return {readByteDMA(addr), addr};
     }
 
-    void executeInstruction()
+    int executeInstruction() override
     {
+        const auto startCycles = _cycles;
         if (_execMode == GenericCpu::ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
         //if(!_rIE)
         //    std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
         if(_cpuState == eIDLE) {
             addCycles(8);
-            return;
+            return 8;
         }
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
@@ -474,7 +478,7 @@ public:
                 _output(_rN, readByte(RX()++));
                 break;
             }
-            case 0x68: _cpuState = eERROR; PC()--; break; // ILLEGAL (still behaving as NOP on the original CDP1802)
+            case 0x68: _cpuState = eERROR; _errorMessage = "Illegal opcode 0x68!"; PC()--; break; // ILLEGAL (still behaving as NOP on the original CDP1802)
             CASE_7(0x69): { // INP 1/7 ; BUS → M(R(X)); BUS → D; N LINES = N
                 _rD = _input(_rN&7);
                 writeByte(RX(), _rD);
@@ -697,6 +701,11 @@ public:
                 _rD = t;
                 break;
             }
+            default:
+                _cpuState = eERROR;
+                _errorMessage = "Internal error, default opcode case should not happen!";
+                --PC();
+                break;
         }
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rR[_rP] >= _stepOverSP)) {
             _execMode = ePAUSED;
@@ -707,17 +716,17 @@ public:
                 _breakpointTriggered = true;
             }
         }
+        return static_cast<int>(_cycles - startCycles);
     }
 #ifdef CADMIUM_WITH_GENERIC_CPU
     ~Cdp1802() override = default;
-    uint8_t getMemoryByte(uint32_t addr) const override
-    {
-        return _bus.readByteDMA(addr);
+    uint8_t readMemoryByte(uint32_t addr) const override { return _bus.readByteDMA(addr);
     }
+    std::span<const uint8_t> stack() const override { return {}; }
     bool inErrorState() const override { return _cpuState == eERROR; }
-    uint32_t getCpuID() const override { return 1802; }
-    const std::string& getName() const override { static const std::string name = "CDP1802"; return name; }
-    const std::vector<std::string>& getRegisterNames() const override
+    uint32_t cpuID() const override { return 1802; }
+    std::string name() const override { static const std::string name = "CDP1802"; return name; }
+    const std::vector<std::string>& registerNames() const override
     {
         static const std::vector<std::string> registerNames = {
             "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
@@ -726,8 +735,8 @@ public:
         };
         return registerNames;
     }
-    size_t getNumRegisters() const override { return 25; }
-    RegisterValue getRegister(size_t index) const override
+    size_t numRegisters() const override { return 25; }
+    RegisterValue registerbyIndex(size_t index) const override
     {
         switch(index) {
             case 0: return {_rR[0], 16};
@@ -808,10 +817,10 @@ private:
     uint8_t _rD{};
     bool _rDF{};
     uint16_t _rR[16]{};
-    uint16_t _rP:4;
-    uint16_t _rX:4;
-    uint16_t _rN:4;
-    uint16_t _rI:4;
+    uint16_t _rP:4{};
+    uint16_t _rX:4{};
+    uint16_t _rN:4{};
+    uint16_t _rI:4{};
     uint8_t _rT{};
     bool _rIE{false};
     bool _rQ{false};

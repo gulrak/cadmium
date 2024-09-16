@@ -191,6 +191,7 @@ RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER)
 
 #endif  // RLGUIPP_HPP
 
+//#define  RLGUIPP_IMPLEMENTATION
 //-----------------------------------------------------------------------------
 // IMPLEMENTATION
 //-----------------------------------------------------------------------------
@@ -207,6 +208,50 @@ RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER)
 namespace gui {
 
 int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode);
+
+namespace detail {
+//---------------------------------------------------------------------------
+// fnv_64a_str - 64 bit Fowler/Noll/Vo-0 FNV-1a hash code
+// Please do not copyright this code.  This code is in the public domain.
+//
+// LANDON CURT NOLL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+// INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO
+// EVENT SHALL LANDON CURT NOLL BE LIABLE FOR ANY SPECIAL, INDIRECT OR
+// CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
+// USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+// OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+// PERFORMANCE OF THIS SOFTWARE.
+//
+// By:
+//	chongo <Landon Curt Noll> /\oo/\
+//      http://www.isthe.com/chongo/
+//
+// Share and Enjoy!	:-)
+// (Code minimally adapted by Gulrak)
+uint64_t fnv_64a_str(const char* str, uint64_t hval, size_t cnt = 0)
+{
+    auto* s = (unsigned char*)str; /* unsigned string */
+
+    /*
+     * FNV-1a hash each octet of the string
+     */
+    while (*s) {
+        /* xor the bottom with the current octet */
+        hval ^= (uint64_t)*s++;
+
+        /* multiply by the 64 bit FNV magic prime mod 2^64 */
+        hval *= ((uint64_t)0x100000001b3ULL);
+    }
+    if(cnt) {
+        hval ^= (uint64_t)cnt;
+        hval *= ((uint64_t)0x100000001b3ULL);
+    }
+    /* return our new hash value */
+    return hval;
+}
+//---------------------------------------------------------------------------
+
+}
 
 struct PopupContext
 {
@@ -333,7 +378,11 @@ struct GuiContext
     Vector2 scrollOffset{0, 0};
     std::string groupName;
     ContextData contextData;
+    uint64_t hash{0xbeef};
+    size_t childContextCount{0};
     // RenderTexture* texture{nullptr};
+
+    GuiContext& newContext(const std::string& key) const;
 
     void increment(Vector2 size)
     {
@@ -369,6 +418,7 @@ struct GuiContext
     struct DropdownInfo
     {
         Rectangle rect{};
+        int* active{nullptr};
         bool directionUp{false};
         bool clicked{false};
         std::string text;
@@ -379,19 +429,21 @@ struct GuiContext
         bool guiDisabled{false};
         unsigned int style[RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED];
     };
-    inline static std::unordered_map<int*, DropdownInfo> dropdownBoxes;
-    inline static int* openDropdownboxId{nullptr};
+    inline static std::unordered_map<uint64_t, DropdownInfo> dropdownBoxes;
+    inline static uint64_t openDropdownboxId{0};
     inline static void* editFocusId{nullptr};
     inline static GuiContext* rootContext{nullptr};
     inline static std::string tooltipText;
     inline static Rectangle tooltipParentRect{};
     inline static float tooltipTimer{};
-    static bool deferDropdownBox(Rectangle rect, const char* text, int* active, bool directionUp)
+    static bool deferDropdownBox(Rectangle rect, const char* text, int* active, bool directionUp, uint64_t hash)
     {
-        auto iter = dropdownBoxes.find(active);
+        uint64_t key = detail::fnv_64a_str(text, hash);
+        auto iter = dropdownBoxes.find(key);
         if (iter != dropdownBoxes.end()) {
             iter->second.lastUpdate = frameId;
             iter->second.rect = rect;
+            iter->second.active = active;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
@@ -399,7 +451,7 @@ struct GuiContext
             return iter->second.clicked;
         }
         else {
-            iter = dropdownBoxes.emplace(active, DropdownInfo{rect, directionUp, false, std::string(text), false, 0, 0, GetState()}).first;
+            iter = dropdownBoxes.emplace(key, DropdownInfo{rect, active, directionUp, false, std::string(text), false, 0, 0, GetState()}).first;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
@@ -414,11 +466,11 @@ struct GuiContext
             if (iter != dropdownBoxes.end()) {
                 iter->second.editMode = false;
                 iter->second.clicked = false;
-                openDropdownboxId = nullptr;
+                openDropdownboxId = 0;
             }
         }
     }
-    static void handleDeferredDropBox(int*const & active, DropdownInfo& info)
+    static void handleDeferredDropBox(uint64_t key, DropdownInfo& info)
     {
         if (info.lastDraw < info.lastUpdate && info.lastUpdate == frameId) {
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
@@ -427,13 +479,13 @@ struct GuiContext
             auto oldState = GuiGetState();
             if(info.guiDisabled)
                 GuiDisable();
-            if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), active, info.editMode)) {
-                if (openDropdownboxId != active) {
+            if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), info.active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), info.active, info.editMode)) {
+                if (openDropdownboxId != key) {
                     closeOpenDropdownBox();
                 }
                 info.clicked = info.editMode;
                 info.editMode = !info.editMode;
-                openDropdownboxId = info.editMode ? active : nullptr;
+                openDropdownboxId = info.editMode ? key : 0;
             }
             else {
                 info.clicked = false;
@@ -445,14 +497,14 @@ struct GuiContext
     }
     static void handleDeferredDropBoxes()
     {
-        for (auto& [active, info] : dropdownBoxes) {
+        for (auto& [key, info] : dropdownBoxes) {
             if(!info.editMode) {
-                handleDeferredDropBox(active, info);
+                handleDeferredDropBox(key, info);
             }
         }
-        for (auto& [active, info] : dropdownBoxes) {
+        for (auto& [key, info] : dropdownBoxes) {
             if(info.editMode) {
-                handleDeferredDropBox(active, info);
+                handleDeferredDropBox(key, info);
             }
         }
         if(!GuiContext::tooltipText.empty()) {
@@ -485,6 +537,15 @@ inline static std::unordered_map<void*, MenuBar> g_menuBars;
 inline static std::unordered_map<uint64_t, MenuContext> g_menuContextMap;
 inline static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
 inline static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
+
+inline GuiContext& GuiContext::newContext(const std::string& key) const
+{
+    g_contextStack.push(*this);
+    auto& ctx = g_contextStack.top();
+    ctx.childContextCount = 0;
+    ctx.hash = detail::fnv_64a_str(key.c_str(), ctx.hash, ++g_contextStack.top().childContextCount);
+    return ctx;
+}
 
 PopupContext::PopupContext(Rectangle rect, bool* isOpen)
     : _level((int)g_contextStack.size())
@@ -535,10 +596,6 @@ PopupContext* PopupContext::find(bool* isOpen)
     return nullptr;
 }
 
-namespace detail {
-uint64_t fnv_64a_str(const char* str, uint64_t hval);
-};
-
 MenuBar& MenuBar::getMenuBar(void* id)
 {
     auto iter = g_menuBars.find(id);
@@ -577,43 +634,6 @@ TabViewContext& TabViewContext::getContext(int* activeTab)
 }
 
 namespace detail {
-
-//---------------------------------------------------------------------------
-// fnv_64a_str - 64 bit Fowler/Noll/Vo-0 FNV-1a hash code
-// Please do not copyright this code.  This code is in the public domain.
-//
-// LANDON CURT NOLL DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
-// INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO
-// EVENT SHALL LANDON CURT NOLL BE LIABLE FOR ANY SPECIAL, INDIRECT OR
-// CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
-// USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-// OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-// PERFORMANCE OF THIS SOFTWARE.
-//
-// By:
-//	chongo <Landon Curt Noll> /\oo/\
-//      http://www.isthe.com/chongo/
-//
-// Share and Enjoy!	:-)
-// (Code minimally adapted by Gulrak)
-uint64_t fnv_64a_str(const char* str, uint64_t hval)
-{
-    auto* s = (unsigned char*)str; /* unsigned string */
-
-    /*
-     * FNV-1a hash each octet of the string
-     */
-    while (*s) {
-        /* xor the bottom with the current octet */
-        hval ^= (uint64_t)*s++;
-
-        /* multiply by the 64 bit FNV magic prime mod 2^64 */
-        hval *= ((uint64_t)0x100000001b3ULL);
-    }
-    /* return our new hash value */
-    return hval;
-}
-//---------------------------------------------------------------------------
 
 void updatePopupUnderMouse()
 {
@@ -751,8 +771,7 @@ void UnloadGui()
 void Begin()
 {
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("Begin");
     ctx.type = GuiContext::ctGROUP;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, ctx.nextWidth > 0 ? ctx.nextWidth : ctxParent.content.width + ctxParent.content.x - ctxParent.currentPos.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
     ctx.content = ctx.area;
@@ -804,8 +823,7 @@ void EndColumns()
 void BeginPanel(const char* text, Vector2 padding)
 {
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginPanel");
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctGROUP;
     if (text) {
@@ -847,8 +865,7 @@ void BeginTabView(int *activeTab)
 {
     auto& tvc = TabViewContext::getContext(activeTab);
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginTabView");
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctTABVIEW;
     tvc.activeTab = activeTab;
@@ -905,8 +922,7 @@ bool BeginTab(const char* text, Vector2 padding)
     if(!isActive) {
         return false;
     }
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginTab");
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctTAB;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
@@ -952,8 +968,7 @@ void EndTab()
 void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
 {
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginScrollPanel");
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctSCROLLPANEL;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, height > 0 ? height : ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
@@ -1067,8 +1082,7 @@ void EndTableView()
 void BeginGroupBox(const char* text)
 {
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginGroupBox");
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctGROUP;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.area.height + ctxParent.area.y - ctxParent.currentPos.y};
@@ -1087,8 +1101,9 @@ void BeginGroupBox(const char* text)
 void EndGroupBox()
 {
     auto& ctx = detail::context();
-    GuiGroupBox({ctx.area.x, ctx.area.y + 8, ctx.area.width, ctx.currentPos.y - ctx.area.y}, ctx.groupName.c_str());
+    GuiGroupBox({ctx.area.x, ctx.area.y + 8, ctx.area.width, ctx.currentPos.y - ctx.area.y - 4}, ctx.groupName.c_str());
     ctx.increment({0, ctx.spacingV});
+    //DrawLineEx({ctx.currentPos.x, ctx.currentPos.y}, {ctx.currentPos.x + 4, ctx.currentPos.y}, 1.0f, RED);
     End();
 }
 
@@ -1102,8 +1117,7 @@ void BeginPopup(Rectangle area, bool* isOpen)
             area.y = (root->area.height - area.height) / 2.0f;
     }
     auto& ctxParent = detail::context();
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginPopup" + std::to_string(reinterpret_cast<std::uintptr_t>(isOpen)));
     ctx.type = GuiContext::ctPOPUP;
     ctx.area = {0, 0, area.width, area.height};
     ctx.content = ctx.area;  //{2, 2, area.width - 4, area.height - 4};
@@ -1487,7 +1501,7 @@ int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
 
 bool DropdownBox(const char* text, int* active, bool directionUp)
 {
-    return detail::defaultWidget(GuiContext::deferDropdownBox, text, active, directionUp);
+    return detail::defaultWidget(GuiContext::deferDropdownBox, text, active, directionUp, g_contextStack.top().hash);
 }
 
 bool Spinner(const char* text, int* value, int minValue, int maxValue)
@@ -1791,8 +1805,7 @@ bool BeginMenuBar()
     }
     auto id = std::holds_alternative<RenderTexture*>(ctxParent.contextData) ? (void*)std::get<RenderTexture*>(ctxParent.contextData) : nullptr;
     auto& menuBar = MenuBar::getMenuBar(id);
-    g_contextStack.push(ctxParent);
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginMenuBar");
     auto size = ctx.standardSize();
     GuiStatusBar({ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctx.rowHeight}, nullptr);
     ctx.type = GuiContext::ctMENUBAR;
@@ -1846,8 +1859,7 @@ bool BeginMenu(const char* text)
         BeginPopup(mctx.area, &mctx.isOpen);
         GuiStatusBar({0, 0, mctx.area.width, mctx.area.height}, nullptr);
     }
-    g_contextStack.push(g_contextStack.top());
-    auto& ctx = detail::context();
+    auto& ctx = ctxParent.newContext("BeginMenu");
     ctx.type = GuiContext::ctMENU;
     ctx.content = {ctx.content.x + 5, ctx.content.y + ctx.spacingV / 2, ctx.content.width - 10, ctx.content.height - ctx.spacingV};
     ctx.initialPos = {ctx.content.x, ctx.content.y};

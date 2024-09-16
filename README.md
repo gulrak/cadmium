@@ -347,7 +347,7 @@ the changing `main` branch head between `v1.0.0` and `v1.0.2`.
 
 ## Compiling from Source
 
-_Cadmium_ is written in C++17 and uses CMake as a build solution. To build it,
+_Cadmium_ is written in C++20 and uses CMake as a build solution. To build it,
 checkout or download the source.
 
 ### Linux / macOS

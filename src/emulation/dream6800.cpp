@@ -24,11 +24,11 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include <emulation/chip8dream.hpp>
-#include <emulation/logger.hpp>
-#include <emulation/hardware/mc682x.hpp>
-#include <emulation/hardware/keymatrix.hpp>
 #include <chiplet/utility.hpp>
+#include <emulation/dream6800.hpp>
+#include <emulation/hardware/keymatrix.hpp>
+#include <emulation/hardware/mc682x.hpp>
+#include <emulation/logger.hpp>
 #include <ghc/random.hpp>
 
 #include <nlohmann/json.hpp>
@@ -47,10 +47,10 @@ static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_ROM_NAME = "ROM Name";
 
-class Chip8Dream::Private {
+class Dream6800::Private {
 public:
     static constexpr uint16_t FETCH_LOOP_ENTRY = 0xC00C;
-    explicit Private(Chip8EmulatorHost& host, M6800Bus<>& bus, Chip8EmulatorOptions& options)
+    explicit Private(EmulatorHost& host, M6800Bus<>& bus, Chip8EmulatorOptions& options)
         : _host(host)
         , _cpu(bus)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/
         , _properties(options.properties)
@@ -72,7 +72,7 @@ public:
         _memorySize = std::stoul(_properties[PROP_RAM].getSelectedText());
         _ram.resize(_memorySize, 0);
     }
-    Chip8EmulatorHost& _host;
+    EmulatorHost& _host;
     uint32_t _memorySize{4096};
     CadmiumM6800 _cpu;
     MC682x _pia;
@@ -172,7 +172,7 @@ static const uint8_t dream6800ChipOslo[] = {
     0x39, 0x7a, 0x00, 0x20, 0x7a, 0x00, 0x21, 0x7d, 0x80, 0x12, 0x3b, 0xde, 0x00, 0x6e, 0x00, 0x00, 0xc3, 0xf3, 0x00, 0x80, 0x00, 0x83, 0xc3, 0x60
 };
 
-Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
+Dream6800::Dream6800(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
     : Chip8RealCoreBase(host)
     , _impl(new Private(host, *this, options))
     , _options(options)
@@ -222,7 +222,7 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
         auto [value, conn] = _impl->_keyMatrix.getCols(0xF);
         return 0xF == (((value & conn) | ~conn) & 0xF) ? false : true;
     };
-    Chip8Dream::reset();
+    Dream6800::reset();
     if(other) {
         std::memcpy(_impl->_ram.data() + 0x200, other->memory() + 0x200, std::min(_impl->_ram.size() - 0x200, (size_t)other->memSize()));
         for(size_t i = 0; i < 16; ++i) {
@@ -233,20 +233,20 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
         _state.sp = other->getSP();
         _state.dt = other->delayTimer();
         _state.st = other->soundTimer();
-        std::memcpy(_state.s.data(), other->getStackElements(), stackSize() * sizeof(uint16_t));
+        std::memcpy(_state.s.data(), other->stackElements(), stackSize() * sizeof(uint16_t));
         forceState();
     }
 }
 
-Chip8Dream::~Chip8Dream()
+Dream6800::~Dream6800()
 {
 
 }
 
-void Chip8Dream::reset()
+void Dream6800::reset()
 {
     if(_options.optTraceLog)
-        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.getCycles(), frameCycle()).c_str());
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
     if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
         std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
     }
@@ -259,7 +259,7 @@ void Chip8Dream::reset()
     _impl->_ram[0x006] = 0xC0;
     _impl->_ram[0x007] = 0x00;
     setExecMode(eRUNNING);
-    while(!executeM6800() && (_impl->_cpu.getRegisterByName("SR").value & CadmiumM6800::I));
+    while(!executeM6800() && (_impl->_cpu.registerByName("SR").value & CadmiumM6800::I));
     flushScreen();
     M6800State state;
     _impl->_ram[0x026] = 0x00;
@@ -276,25 +276,25 @@ void Chip8Dream::reset()
     while(!executeM6800() || getPC() != 0x200); // fast-forward to fetch/decode loop
     setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
     if(_options.optTraceLog)
-        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.getCycles(), frameCycle()).c_str());
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.cycles(), frameCycle()).c_str());
 }
 
-std::string Chip8Dream::name() const
+std::string Dream6800::name() const
 {
     return "DREAM6800";
 }
 
-Properties& Chip8Dream::getProperties()
+Properties& Dream6800::getProperties()
 {
     return _impl->_properties;
 }
 
-void Chip8Dream::updateProperties(Property& changedProp)
+void Dream6800::updateProperties(Property& changedProp)
 {
 
 }
 
-void Chip8Dream::fetchState()
+void Dream6800::fetchState()
 {
     _state.cycles = _cycles;
     _state.frameCycle = frameCycle();
@@ -309,7 +309,7 @@ void Chip8Dream::fetchState()
     }
 }
 
-void Chip8Dream::forceState()
+void Dream6800::forceState()
 {
     _state.cycles = _cycles;
     _state.frameCycle = frameCycle();
@@ -326,12 +326,12 @@ void Chip8Dream::forceState()
     }
 }
 
-int64_t Chip8Dream::getMachineCycles() const
+int64_t Dream6800::machineCycles() const
 {
-    return _impl->_cpu.getCycles();
+    return _impl->_cpu.cycles();
 }
 
-int Chip8Dream::executeVDG()
+int Dream6800::executeVDG()
 {
     static int lastFC = 312*64 + 1;
     auto fc = frameCycle();
@@ -350,7 +350,7 @@ int Chip8Dream::executeVDG()
     return fc;
 }
 
-void Chip8Dream::flushScreen()
+void Dream6800::flushScreen()
 {
     for(int y = 0; y < 32*4; ++y) {
         for (int i = 0; i < 8; ++i) {
@@ -362,12 +362,12 @@ void Chip8Dream::flushScreen()
     }
 }
 
-bool Chip8Dream::executeM6800()
+bool Dream6800::executeM6800()
 {
     static int lastFC = 0;
     auto fc = executeVDG();
     if(_options.optTraceLog  && _impl->_cpu.getCpuState() == CadmiumM6800::eNORMAL)
-        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.getCycles(), {_frames, fc}, fmt::format("{:28} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpRegisterState()).c_str());
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, fc}, fmt::format("{:28} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpRegisterState()).c_str());
     if(_impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
         if(_options.optTraceLog)
             Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
@@ -377,7 +377,7 @@ bool Chip8Dream::executeM6800()
     if(_impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
         fetchState();
         _cycles++;
-        if(_impl->_cpu.getExecMode() == ePAUSED) {
+        if(_impl->_cpu.execMode() == ePAUSED) {
             setExecMode(ePAUSED);
             _backendStopped = true;
         }
@@ -393,32 +393,32 @@ bool Chip8Dream::executeM6800()
             setExecMode(ePAUSED);
         }
         if(hasBreakPoint(getPC())) {
-            if(Chip8Dream::findBreakpoint(getPC())) {
+            if(Dream6800::findBreakpoint(getPC())) {
                 setExecMode(ePAUSED);
                 _breakpointTriggered = true;
             }
         }
         return true;
     }
-    else if(_impl->_cpu.getExecMode() == ePAUSED) {
+    else if(_impl->_cpu.execMode() == ePAUSED) {
         setExecMode(ePAUSED);
         _backendStopped = true;
     }
     return false;
 }
 
-void Chip8Dream::executeInstruction()
+void Dream6800::executeInstruction()
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {
         setExecMode(ePAUSED);
         return;
     }
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
-    auto start = _impl->_cpu.getCycles();
-    while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.getCycles() - start < 19968*0x30);
+    auto start = _impl->_cpu.cycles();
+    while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < 19968*0x30);
 }
 
-void Chip8Dream::executeInstructions(int numInstructions)
+void Dream6800::executeInstructions(int numInstructions)
 {
     for(int i = 0; i < numInstructions; ++i) {
         executeInstruction();
@@ -429,17 +429,17 @@ void Chip8Dream::executeInstructions(int numInstructions)
 // For easier handling we shift the line/cycle counting to the start of the
 // interrupt (if display is enabled)
 
-inline int Chip8Dream::frameCycle() const
+inline int Dream6800::frameCycle() const
 {
-    return _impl->_cpu.getCycles() % 19968;
+    return _impl->_cpu.cycles() % 19968;
 }
 
-inline cycles_t Chip8Dream::nextFrame() const
+inline cycles_t Dream6800::nextFrame() const
 {
-    return ((_impl->_cpu.getCycles() + 19968) / 19968) * 19968;
+    return ((_impl->_cpu.cycles() + 19968) / 19968) * 19968;
 }
 
-void Chip8Dream::tick(int)
+void Dream6800::executeFrame()
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {
         setExecMode(ePAUSED);
@@ -447,55 +447,55 @@ void Chip8Dream::tick(int)
     }
 
     auto nxtFrame = nextFrame();
-    while(_execMode != ePAUSED && _impl->_cpu.getCycles() < nxtFrame) {
+    while(_execMode != ePAUSED && _impl->_cpu.cycles() < nxtFrame) {
         executeM6800();
     }
 }
 
-int64_t Chip8Dream::executeFor(int64_t microseconds)
+int64_t Dream6800::executeFor(int64_t microseconds)
 {
     if(_execMode != ePAUSED) {
-        auto cpuTime = _impl->_cpu.getTime();
+        auto cpuTime = _impl->_cpu.time();
         auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
-        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.getTime() < endTime) {
+        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.time() < endTime) {
             executeInstruction();
         }
-        return _impl->_cpu.getTime().difference_us(endTime);
+        return _impl->_cpu.time().difference_us(endTime);
     }
     return 0;
 }
 
-bool Chip8Dream::isDisplayEnabled() const
+bool Dream6800::isDisplayEnabled() const
 {
     return true; //_impl->_video.isDisplayEnabled();
 }
 
-uint8_t* Chip8Dream::memory()
+uint8_t* Dream6800::memory()
 {
     return _impl->_ram.data();
 }
 
-int Chip8Dream::memSize() const
+int Dream6800::memSize() const
 {
     return _impl->_memorySize;
 }
 
-uint8_t Chip8Dream::soundTimer() const
+uint8_t Dream6800::soundTimer() const
 {
     return (_impl->_pia.portB() & 64) ? _state.st : 0;
 }
 
-/*float Chip8Dream::getAudioPhase() const
+/*float Dream6800::getAudioPhase() const
 {
     return _impl->_wavePhase;
 }
 
-void Chip8Dream::setAudioPhase(float phase)
+void Dream6800::setAudioPhase(float phase)
 {
     _impl->_wavePhase = phase;
 }*/
 
-void Chip8Dream::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
+void Dream6800::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
     if(_impl->_soundEnabled) {
         const float step = (_impl->_lowFreq ? 1200.0f : 2400.0f) / sampleFrequency;
@@ -510,37 +510,37 @@ void Chip8Dream::renderAudio(int16_t* samples, size_t frames, int sampleFrequenc
     }
 }
 
-uint16_t Chip8Dream::getCurrentScreenWidth() const
+uint16_t Dream6800::getCurrentScreenWidth() const
 {
     return 64;
 }
 
-uint16_t Chip8Dream::getCurrentScreenHeight() const
+uint16_t Dream6800::getCurrentScreenHeight() const
 {
     return 128;
 }
 
-uint16_t Chip8Dream::getMaxScreenWidth() const
+uint16_t Dream6800::getMaxScreenWidth() const
 {
     return 64;
 }
 
-uint16_t Chip8Dream::getMaxScreenHeight() const
+uint16_t Dream6800::getMaxScreenHeight() const
 {
     return 128;
 }
 
-const IChip8Emulator::VideoType* Chip8Dream::getScreen() const
+const IChip8Emulator::VideoType* Dream6800::getScreen() const
 {
     return &_impl->_screen;
 }
 
-GenericCpu& Chip8Dream::getBackendCpu()
+GenericCpu& Dream6800::getBackendCpu()
 {
     return _impl->_cpu;
 }
 
-uint8_t Chip8Dream::readByte(uint16_t addr) const
+uint8_t Dream6800::readByte(uint16_t addr) const
 {
     if(addr < _impl->_ram.size())
         return _impl->_ram[addr];
@@ -552,7 +552,7 @@ uint8_t Chip8Dream::readByte(uint16_t addr) const
     return 0;
 }
 
-uint8_t Chip8Dream::readDebugByte(uint16_t addr) const
+uint8_t Dream6800::readDebugByte(uint16_t addr) const
 {
     if(addr < _impl->_ram.size())
         return _impl->_ram[addr];
@@ -563,12 +563,12 @@ uint8_t Chip8Dream::readDebugByte(uint16_t addr) const
     return 0;
 }
 
-uint8_t Chip8Dream::getMemoryByte(uint32_t addr) const
+uint8_t Dream6800::readMemoryByte(uint32_t addr) const
 {
-    return Chip8Dream::readDebugByte(addr);
+    return Dream6800::readDebugByte(addr);
 }
 
-void Chip8Dream::writeByte(uint16_t addr, uint8_t val)
+void Dream6800::writeByte(uint16_t addr, uint8_t val)
 {
     if(addr < _impl->_ram.size())
         _impl->_ram[addr] = val;

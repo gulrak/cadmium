@@ -25,47 +25,119 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/ichip8.hpp>
+#include <emulation/iemulationcore.hpp>
 #include <emulation/properties.hpp>
 
 #include <iterator>
 #include <memory>
 #include <unordered_map>
+#include <set>
 #include <utility>
+
+#include <ghc/span.hpp>
 
 namespace emu {
 
 enum PropertySelector {PropertiesFromVariant, PropertiesAsGiven};
 class CoreRegistry {
 public:
-    using EmulatorInstance = std::unique_ptr<IChip8Emulator>;
-    using FactoryMethod = std::pair<std::string, EmulatorInstance> (*)(const std::string&, Chip8EmulatorHost&, Properties&, PropertySelector);
-    struct FactoryInfo
+    using EmulatorInstance = std::unique_ptr<IEmulationCore>;
+    //using FactoryMethod = std::pair<std::string, EmulatorInstance> (*)(const std::string&, Chip8EmulatorHost&, Properties&, PropertySelector);
+    struct IFactoryInfo
     {
-        FactoryInfo(FactoryMethod factoryMethod, std::string  coreDescription)
-            : factory(factoryMethod)
-            , description(std::move(coreDescription))
+        struct VariantIndex
+        {
+            size_t index{0};
+            bool isCustom{true};
+        };
+        IFactoryInfo(std::string  coreDescription)
+            : description(std::move(coreDescription))
         {}
-        virtual ~FactoryInfo() = default;
+        virtual ~IFactoryInfo() = default;
         virtual std::string prefix() const = 0;
         virtual Properties propertiesPrototype() const = 0;
         virtual size_t numberOfVariants() const = 0;
         virtual std::string variantName(size_t index) const = 0;
         virtual const char* variantDescription(size_t index) const = 0;
+        virtual const char* variantExtensions(size_t index) const = 0;
         virtual Properties variantProperties(size_t index) const = 0;
+        virtual VariantIndex variantIndex(const Properties& props) const = 0;
+        void cacheVariantMappings() const;
+        bool hasVariant(const std::string& variant) const;
         Properties variantProperties(const std::string& variant) const;
-        virtual EmulatorInstance createCore(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel) const = 0;
-        FactoryMethod factory;
+        virtual std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel) const = 0;
+        virtual std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const = 0;
         std::string description;
+        std::string variantsCombo{};
+        mutable std::map<std::string,size_t> presetMappings{};
     };
-    using FactoryMap = std::unordered_map<std::string, std::unique_ptr<FactoryInfo>>;
+    template<typename CoreType, typename PresetType, typename OptionsType>
+    struct FactoryInfo : public IFactoryInfo
+    {
+        FactoryInfo(ghc::span<const PresetType> presetSet, std::string coreDescription) : IFactoryInfo(std::move(coreDescription)), presets(presetSet) {}
+        Properties propertiesPrototype() const override
+        {
+            return presets[0].options.asProperties();
+        }
+        size_t numberOfVariants() const override
+        {
+            return presets.size();
+        }
+        std::string variantName(size_t index) const override
+        {
+            return index < numberOfVariants() ? presets[index].presetName : presets[0].presetName;
+        }
+        const char* variantDescription(size_t index) const override
+        {
+            return index < numberOfVariants() ? presets[index].description : presets[0].description;
+        }
+        const char* variantExtensions(size_t index) const override
+        {
+            return index < numberOfVariants() ? presets[index].defaultExtensions : presets[0].defaultExtensions;
+        }
+        Properties variantProperties(size_t index) const override
+        {
+            return index < numberOfVariants() ? presets[index].options.asProperties() : presets[0].options.asProperties();
+        }
+        std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel) const override
+        {
+            Properties defaultProps;
+            auto newVariant = variant;
+            for(const auto& setupInfo : presets) {
+                if(setupInfo.presetName == variant) {
+                    defaultProps = setupInfo.options.asProperties();
+                    break;
+                }
+            }
+            if(propSel == PropertiesFromVariant) {
+                props = defaultProps ? defaultProps : presets[0].options.asProperties();
+            }
+            auto options = OptionsType::fromProperties(props);
+            return {newVariant, std::make_unique<CoreType>(host, props)};
+        }
+        std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const override
+        {
+            std::string variant = prefix() + "-CUSTOM";
+            for(const auto& setupInfo : presets) {
+                if(props == setupInfo.options.asProperties()) {
+                    variant = !std::strcmp(setupInfo.presetName, "NONE") ? prefix() : prefix() + "-" + setupInfo.presetName;
+                }
+            }
+            auto options = OptionsType::fromProperties(props);
+            return {variant, std::make_unique<CoreType>(host, props)};
+        }
+    private:
+        ghc::span<const PresetType> presets{nullptr};
+    };
+    using FactoryMap = std::unordered_map<std::string, std::unique_ptr<IFactoryInfo>>;
 
     struct Iterator
     {
         using iterator_category = std::forward_iterator_tag;
         using difference_type   = std::ptrdiff_t;
-        using value_type        = std::pair<std::string_view,const FactoryInfo*>;
+        using value_type        = std::pair<std::string_view,const IFactoryInfo*>;
         using pointer           = value_type*;
         using reference         = value_type&;
         explicit Iterator(FactoryMap::iterator iter) : _iter(iter) {}
@@ -80,7 +152,7 @@ public:
         mutable value_type _val;
     };
 
-    static bool registerFactory(const std::string& name, std::unique_ptr<FactoryInfo>&& factoryInfo)
+    static bool registerFactory(const std::string& name, std::unique_ptr<IFactoryInfo>&& factoryInfo)
     {
         if(auto iter = factoryMap().find(name); iter == factoryMap().end()) {
             factoryMap()[name] = std::move(factoryInfo);
@@ -89,31 +161,88 @@ public:
         return false;
     }
 
-    static std::pair<std::string, EmulatorInstance> create(const std::string& name, const std::string& variant, Chip8EmulatorHost& host, Properties& properties, PropertySelector propSel)
+    static std::pair<std::string, EmulatorInstance> create(const std::string& name, const std::string& variant, EmulatorHost& host, Properties& properties, PropertySelector propSel)
     {
         if (auto iter = factoryMap().find(name); iter != factoryMap().end()) {
-            return iter->second->factory(variant, host, properties, propSel);
+            return iter->second->createCore(variant, host, properties, propSel);
         }
         for(const auto& [coreName, info] : factoryMap()) {
             if(fuzzyCompare(info->prefix(), name) || fuzzyCompare(coreName, name))
-                return info->factory(variant, host, properties, propSel);
+                return info->createCore(variant, host, properties, propSel);
+        }
+        return {};
+    }
+
+    static std::pair<std::string, EmulatorInstance> create(EmulatorHost& host, Properties& properties)
+    {
+        if (auto iter = factoryMap().find(properties.propertyClass()); iter != factoryMap().end()) {
+            return iter->second->createCore(host, properties);
         }
         return {};
     }
 
     static Properties propertiesForPreset(const std::string& name)
     {
+        for(const auto& [coreName, info] : factoryMap()) {
+            if(fuzzyCompare(info->prefix(), name)) {
+                return info->variantProperties(0);
+            }
+            for(size_t idx = 0; idx < info->numberOfVariants(); ++idx) {
+                if(fuzzyCompare(info->prefix() + info->variantName(idx), name)) {
+                    return info->variantProperties(idx);
+                }
+            }
+        }
         return {};
     }
 
-    Iterator begin() const {
+    static IFactoryInfo::VariantIndex variantIndex(const Properties& props)
+    {
+        if (auto iter = factoryMap().find(props.propertyClass()); iter != factoryMap().end()) {
+            return iter->second->variantIndex(props);
+        }
+        return {};
+    }
+
+    static Properties propertiesForExtension(const std::string& extension)
+    {
+        for(const auto& [name, factory] : factoryMap()) {
+            for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
+                auto extensions = split(factory->variantExtensions(i), ';');
+                if(auto iter = std::ranges::find(extensions, extension); iter != extensions.end()) {
+                    return factory->variantProperties(i);
+                }
+            }
+        }
+        return {};
+    }
+
+    Iterator begin() const
+    {
         return Iterator(factoryMap().begin());
     }
-    Iterator end() const {
+    Iterator end() const
+    {
         return Iterator(factoryMap().end());
     }
 
+    const IFactoryInfo& operator[](size_t index) const
+    {
+        auto iter = begin();
+        while(iter != end() && index) {
+            ++iter;
+            --index;
+        }
+        return iter == end() ? *begin()->second : *iter->second;
+    }
+
+    CoreRegistry();
+    const std::string& getCoresCombo() const { return coresCombo; }
+    const std::set<std::string>& getSupportedExtensions() const { return supportedExtensions; }
+
 private:
+    std::string coresCombo{};
+    std::set<std::string> supportedExtensions{};
     static FactoryMap& factoryMap();
 };
 

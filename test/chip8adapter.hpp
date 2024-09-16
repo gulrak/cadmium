@@ -36,7 +36,7 @@
 //#define TEST_JAMES_GRIFFIN_CHIP_8
 //#define TEXT_WERNSEY_CHIP_8
 
-class Chip8HeadlessTestHost : public emu::Chip8EmulatorHost
+class Chip8HeadlessTestHost : public emu::EmulatorHost
 {
 public:
     explicit Chip8HeadlessTestHost(const emu::Chip8EmulatorOptions& options_) : options(options_) {}

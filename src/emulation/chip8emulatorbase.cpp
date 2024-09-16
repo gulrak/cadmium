@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #include <emulation/chip8cores.hpp>
 #include <emulation/chip8emulatorbase.hpp>
-#include <emulation/chip8dream.hpp>
+#include <emulation/dream6800.hpp>
 #include <emulation/logger.hpp>
 #include <emulation/properties.hpp>
 
@@ -322,10 +322,10 @@ std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& hos
         return std::make_unique<Chip8EmulatorFP>(host, options, iother);
     }
     else if(engine == eCHIP8VIP) {
-        return std::make_unique<Chip8VIP>(host, options, iother);
+        return std::make_unique<CosmacVIP>(host, options, iother);
     }
     else if(engine == eCHIP8DREAM) {
-        return std::make_unique<Chip8Dream>(host, options, iother);
+        return std::make_unique<Dream6800>(host, options, iother);
     }
     return std::make_unique<Chip8EmulatorVIP>(host, options, iother);
 }
@@ -426,9 +426,9 @@ int64_t Chip8EmulatorBase::executeFor(int64_t micros)
     return 0;
 }
 
-void Chip8EmulatorBase::tick(int instructionsPerFrame)
+void Chip8EmulatorBase::executeFrame()
 {
-    if(!instructionsPerFrame) {
+    if(!_options.instructionsPerFrame) {
         handleTimer();
         auto start = std::chrono::steady_clock::now();
         do {
@@ -438,7 +438,7 @@ void Chip8EmulatorBase::tick(int instructionsPerFrame)
     }
     else {
         auto instructionsLeft = calcNextFrame() - _cycleCounter;
-        if(instructionsLeft == instructionsPerFrame) {
+        if(instructionsLeft == _options.instructionsPerFrame) {
             handleTimer();
         }
         executeInstructions(instructionsLeft);

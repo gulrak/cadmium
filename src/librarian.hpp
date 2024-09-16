@@ -74,7 +74,7 @@ public:
     bool fetchDir(std::string directory);
     bool intoDir(std::string subDirectory);
     bool parentDir();
-    bool update(const emu::Chip8EmulatorOptions& options);
+    bool update(const emu::Properties& properties);
 
     size_t numEntries() const { return _directoryEntries.size(); }
     const Info& getInfo(size_t index) { return _directoryEntries[index]; }

@@ -26,15 +26,15 @@
 
 #include <doctest/doctest.h>
 
+#include <emulation/chip8cores.hpp>
+#include <emulation/chip8options.hpp>
+#include <emulation/chip8strict.hpp>
+#include <emulation/chip8vip.hpp>
+#include <emulation/dream6800.hpp>
 #include <emulation/time.hpp>
+#include "../src/emuhostex.hpp"
 #include "chip8adapter.hpp"
 #include "chip8testhelper.hpp"
-#include <emulation/chip8options.hpp>
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8strict.hpp>
-#include <emulation/chip8dream.hpp>
-#include <emulation/chip8vip.hpp>
-#include "../src/chip8emuhostex.hpp"
 
 using namespace emu;
 
@@ -154,7 +154,7 @@ TEST_CASE("Emulation timing")
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8VIP);
         Chip8HeadlessTestHost host(opts);
-        std::unique_ptr<IChip8Emulator> chip8vip = std::make_unique<emu::Chip8VIP>(host, opts);
+        std::unique_ptr<IChip8Emulator> chip8vip = std::make_unique<emu::CosmacVIP>(host, opts);
         chip8vip->reset();
         write(chip8vip, 0x200, {0x6000, 0x1200});
         auto initialFrames = chip8vip->frames();
@@ -177,7 +177,7 @@ TEST_CASE("Emulation timing")
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8DREAM);
         Chip8HeadlessTestHost host(opts);
-        std::unique_ptr<IChip8Emulator> dream6k8 = std::make_unique<emu::Chip8Dream>(host, opts);
+        std::unique_ptr<IChip8Emulator> dream6k8 = std::make_unique<emu::Dream6800>(host, opts);
         dream6k8->reset();
         write(dream6k8, 0x200, {0x6000, 0x1200});
         auto initialFrames = dream6k8->frames();

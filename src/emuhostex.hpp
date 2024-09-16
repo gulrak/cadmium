@@ -25,10 +25,12 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
+#include <emulation/emulatorhost.hpp>
+#include <emulation/iemulationcore.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <ghc/bitenum.hpp>
+#include <ghc/span.hpp>
 #include <librarian.hpp>
 
 #include <array>
@@ -57,12 +59,12 @@ public:
 };
 */
 
-class Chip8EmuHostEx : public Chip8EmulatorHost
+class EmuHostEx : public EmulatorHost
 {
 public:
     enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2 };
-    Chip8EmuHostEx();
-    ~Chip8EmuHostEx() override = default;
+    explicit EmuHostEx(CadmiumConfiguration& cfg);
+    ~EmuHostEx() override = default;
     //virtual bool isHeadless() const = 0;
     //virtual uint8_t getKeyPressed() = 0;
     //virtual bool isKeyDown(uint8_t key) = 0;
@@ -71,22 +73,22 @@ public:
     //virtual void updateScreen() = 0;
     //virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
-    virtual bool loadRom(const char* filename, LoadOptions loadOpt);
-    virtual bool loadBinary(std::string filename, const uint8_t* data, size_t size, LoadOptions loadOpt);
-    void updateEmulatorOptions(const Chip8EmulatorOptions& options);
+    virtual bool loadRom(std::string_view filename, LoadOptions loadOpt);
+    virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
+    void updateEmulatorOptions(const Properties& properties);
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
 
 protected:
-    std::unique_ptr<IChip8Emulator> create(Chip8EmulatorOptions& options, IChip8Emulator* iother = nullptr);
+    std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
-    virtual void whenEmuChanged(IChip8Emulator& emu) {}
-    CadmiumConfiguration _cfg;
+    virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
+    CadmiumConfiguration& _cfg;
     std::string _cfgPath;
     std::string _databaseDirectory;
     std::string _currentDirectory;
     std::string _currentFileName;
     Librarian _librarian;
-    std::unique_ptr<IChip8Emulator> _chipEmu;
+    std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
     std::vector<uint8_t> _romImage;
     std::string _romSha1Hex;
@@ -94,21 +96,22 @@ protected:
     bool _customPalette{false};
     std::array<uint32_t, 256> _colorPalette{};
     std::array<uint32_t, 256> _defaultPalette{};
-    emu::Chip8EmulatorOptions _options;
-    emu::Chip8EmulatorOptions _romWellKnownOptions;
-    emu::Chip8EmulatorOptions _previousOptions;
+    emu::Properties _properties;
+    std::string _variantName;
+    emu::Properties _romWellKnownProperties;
+    emu::Properties _previousProperties;
 };
 
-GHC_ENUM_ENABLE_BIT_OPERATIONS(Chip8EmuHostEx::LoadOptions)
+GHC_ENUM_ENABLE_BIT_OPERATIONS(EmuHostEx::LoadOptions)
 
-class Chip8HeadlessHost : public Chip8EmuHostEx
+class HeadlessHost : public EmuHostEx
 {
 public:
-    Chip8HeadlessHost() = default;
-    explicit Chip8HeadlessHost(Chip8EmulatorOptions& opts) { updateEmulatorOptions(opts); }
-    ~Chip8HeadlessHost() override = default;
-    Chip8EmulatorOptions& options() { return _options; }
-    IChip8Emulator& chipEmu() { return *_chipEmu; }
+    HeadlessHost() : EmuHostEx(_cfg) {}
+    explicit HeadlessHost(const Properties& options) : EmuHostEx(_cfg) { updateEmulatorOptions(options); }
+    ~HeadlessHost() override = default;
+    Properties& getProperties() { return _properties; }
+    IEmulationCore& emuCore() { return *_chipEmu; }
     bool isHeadless() const override { return true; }
     int getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
@@ -117,6 +120,8 @@ public:
     void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
+private:
+    CadmiumConfiguration _cfg;
 };
 
 }

@@ -31,38 +31,45 @@
 
 void Debugger::setExecMode(ExecMode mode)
 {
-    if(!_realCore || _visibleCpu == CHIP8_CORE)
-        _core->setExecMode(mode);
-    else {
-        _realCore->setBackendExecMode(mode);
-    }
+    _core->setExecMode(mode);
 }
 
-void Debugger::updateCore(emu::IChip8Emulator* core)
+void Debugger::updateCore(emu::IEmulationCore* core)
 {
     _core = core;
     _realCore = dynamic_cast<emu::Chip8RealCoreBase*>(core);
     _backend = _realCore != nullptr ? &_realCore->getBackendCpu() : nullptr;
-    _visibleCpu = CHIP8_CORE;
-    _instructionOffset[CHIP8_CORE] = -1;
-    _instructionOffset[BACKEND_CORE] = -1;
+    _visibleExecUnit = 0;
     _activeInstructionsTab = 0;
     // ensure cached data has the correct size by actually forcing a capture
-    _core->fetchAllRegisters(_chip8State);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendState);
+    _instructionOffset.resize(_core->numberOfExecutionUnits());
+    _cpuStates.resize(_core->numberOfExecutionUnits());
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        _instructionOffset[i] = -1;
+        _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
+    }
     captureStates();
 }
 
 void Debugger::captureStates()
 {
+    auto unit = _core->executionUnit(0);
     _memBackup.resize(_core->memSize());
     std::memcpy(_memBackup.data(), _core->memory(), _core->memSize());
-    _chip8StackBackup.resize(_core->stackSize());
-    std::memcpy(_chip8StackBackup.data(), _core->getStackElements(), sizeof(uint16_t) * _core->stackSize());
-    _core->fetchAllRegisters(_chip8StateBackup);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendStateBackup);
+    if(chip8Core()) {
+        _chip8StackBackup.resize(chip8Core()->stackSize());
+        // TODO: Fix this
+        //std::memcpy(_chip8StackBackup.data(), chip8Core()->stackElements(), sizeof(uint16_t) * chip8Core()->stackSize());
+    }
+    _cpuStatesBackup.resize(_core->numberOfExecutionUnits());
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        _core->executionUnit(i)->fetchAllRegisters(_cpuStatesBackup[i]);
+    }
+}
+
+emu::IChip8Emulator* Debugger::chip8Core()
+{
+    return dynamic_cast<emu::IChip8Emulator*>(_core->executionUnit(0));
 }
 
 void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
@@ -78,13 +85,12 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     auto brownCol = StyleManager::mappedColor({ 203, 199, 0, 255 });
-    if(_core->getExecMode() != emu::GenericCpu::ePAUSED) {
-        _instructionOffset[CHIP8_CORE] = -1;
-        _instructionOffset[BACKEND_CORE] = -1;
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        if(_core->executionUnit(i)->execMode() != emu::GenericCpu::ePAUSED) {
+            _instructionOffset[i] = -1;
+        }
+        _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
     }
-    _core->fetchAllRegisters(_chip8State);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendState);
     BeginColumns();
     SetSpacing(-1);
     SetNextWidth(256 + 2);
@@ -97,32 +103,34 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     }
     EndPanel();
     drawScreen(video, debugScale);
-    if(_backend && _realCore->hybridChipMode()) {
+    if(_core->numberOfExecutionUnits() > 1) {
         if(_realCore->hasBackendStopped())
             _activeInstructionsTab = 1;
         BeginTabView(&_activeInstructionsTab);
-        if(BeginTab("Instructions", {5, 0})) {
-            _visibleCpu = CHIP8_CORE;
-            showInstructions(*_core, font, lineSpacing);
-            EndTab();
-        }
-        if(BeginTab(_backend->getName().c_str(), {5,0})) {
-            _visibleCpu = BACKEND_CORE;
-            showInstructions(*_backend, font, lineSpacing);
-            EndTab();
+        for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+            if (auto exeUnit = _core->executionUnit(i); dynamic_cast<emu::IChip8Emulator*>(exeUnit)) {
+                if(BeginTab("Instructions", {5, 0})) {
+                    _visibleExecUnit = i;
+                    _core->setFocussedExecutionUnit(exeUnit);
+                    showInstructions(*exeUnit, font, lineSpacing);
+                    EndTab();
+                }
+            }
+            else {
+                if(BeginTab(exeUnit->name().c_str(), {5,0})) {
+                    _visibleExecUnit = i;
+                    _core->setFocussedExecutionUnit(exeUnit);
+                    showInstructions(*exeUnit, font, lineSpacing);
+                    EndTab();
+                }
+            }
         }
         EndTabView();
     }
     else {
         BeginPanel("Instructions", {5, 0});
-        if(_realCore && !_realCore->hybridChipMode()) {
-            _visibleCpu = BACKEND_CORE;
-            showInstructions(*_backend, font, lineSpacing);
-        }
-        else {
-            _visibleCpu = CHIP8_CORE;
-            showInstructions(*_core, font, lineSpacing);
-        }
+        _visibleExecUnit = 0;
+        showInstructions(*_core->focussedExecutionUnit(), font, lineSpacing);
         EndPanel();
     }
     End();
@@ -133,12 +141,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         auto area = GetContentAvailable();
         pos.x += 0;
         Space(area.height);
-        if(_visibleCpu == CHIP8_CORE) {
-            showGenericRegs(*_core, _chip8State, _chip8StateBackup, font, lineSpacing, pos);
-        }
-        else {
-            showGenericRegs(*_backend, _backendState, _backendStateBackup, font, lineSpacing, pos);
-        }
+        showGenericRegs(*_core->focussedExecutionUnit(), _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos);
     }
     EndPanel();
     SetNextWidth(44);
@@ -149,12 +152,15 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
             auto area = GetContentAvailable();
             pos.x += 0;
             Space(area.height);
-            auto stackSize = _core->stackSize();
-            const auto* stack = _core->getStackElements();
+            // TODO: Fix this
+            /*
+            auto stackSize = _core->focussedExecutionUnit()->stackSize();
+            const auto* stack = _core->focussedExecutionUnit()->stackElements();
             bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
             for (int i = 0; i < stackSize; ++i) {
                 DrawTextEx(font, fourDigitStack ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
             }
+            */
         }
     }
     else {
@@ -164,11 +170,11 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
             auto area = GetContentAvailable();
             pos.x += 0;
             Space(area.height);
-            auto x = _backend->getRegisterByName("X").value;
-            auto rx = _backend->getRegister(x).value;
+            auto x = _backend->registerByName("X").value;
+            auto rx = _backend->registerbyIndex(x).value;
             auto col = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
             for(uint16_t offset = 0; offset < 36; ++offset) {
-                DrawTextEx(font, TextFormat("%02X: %02X", offset, _backend->getMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%02X: %02X", offset, _backend->readMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, col);
             }
         }
     }
@@ -184,9 +190,9 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         pos.y -= lineSpacing / 2;
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         static auto lastExecMode = emu::GenericCpu::eRUNNING;
-        if(_memViewFollow && (_core->getExecMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
-            memScroll.y = -(float)(_core->getI() / 8) * lineSpacing;
-        lastExecMode = _core->getExecMode();
+        if(_memViewFollow && chip8Core() && (_core->focussedExecutionUnit()->execMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
+            memScroll.y = -(float)(chip8Core()->getI() / 8) * lineSpacing;
+        lastExecMode = _core->focussedExecutionUnit()->execMode();
         BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto addr = int(-memScroll.y / lineSpacing) * 8 - 8;
         memPage = addr < 0 ? 0 : addr >> 16;
@@ -219,7 +225,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     auto area = GetContentAvailable();
     Space(area.height);
     bool mouseInPanel = false;
-    auto& instructionOffset = _instructionOffset[_visibleCpu];
+    auto& instructionOffset = _instructionOffset[_visibleExecUnit];
     auto pc = cpu.getPC();
     if(!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
         auto wheel = GetMouseWheelMoveV();
@@ -278,7 +284,7 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
     auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     int i, line = 0, lastSize = 0;
-    for (i = 0; i < cpu.getNumRegisters(); ++i, ++line) {
+    for (i = 0; i < cpu.numRegisters(); ++i, ++line) {
         const auto& reg = regs[i];
         if(i && reg.size != lastSize)
             ++line;
@@ -286,23 +292,23 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
         switch(reg.size) {
             case 1:
             case 4:
-                DrawTextEx(font, TextFormat("%2s: %X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s: %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 8:
-                DrawTextEx(font, TextFormat("%2s: %02X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s: %02X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 12:
-                DrawTextEx(font, TextFormat("%2s: %03X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s: %03X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 16:
-                DrawTextEx(font, TextFormat("%2s:%04X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s:%04X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 24:
-                DrawTextEx(font, TextFormat("%2s:", cpu.getRegisterNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s:", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
                 DrawTextEx(font, TextFormat("%06X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             default:
-                DrawTextEx(font, TextFormat("%2s:%X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
+                DrawTextEx(font, TextFormat("%2s:%X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
                 break;
         }
         lastSize = reg.size;
@@ -341,19 +347,21 @@ void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
 
 void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
 {
-    for(uint32_t addr = 0; addr < std::min(_core->memSize(), 65536); ++addr) {
-        const auto* bpn = compiler.breakpointForAddr(addr);
-        if(bpn)
-            _core->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
-        else {
-            auto* bpi = _core->findBreakpoint(addr);
-            if(bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
-                _core->removeBreakpoint(addr);
+    if(auto core = chip8Core(); core) {
+        for(uint32_t addr = 0; addr < std::min(core->memSize(), 65536); ++addr) {
+            const auto* bpn = compiler.breakpointForAddr(addr);
+            if(bpn)
+                core->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
+            else {
+                auto* bpi = core->findBreakpoint(addr);
+                if(bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
+                    core->removeBreakpoint(addr);
+            }
         }
     }
 }
 
 bool Debugger::supportsStepOver() const
 {
-    return _visibleCpu == CHIP8_CORE || !_backend || _backend->getCpuID() != 1802;
+    return _core->focussedExecutionUnit()->cpuID() != 1802;
 }

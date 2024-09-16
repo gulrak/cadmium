@@ -39,7 +39,7 @@
 #include <raylib.h>
 
 std::string GetClipboardTextX();
-void SetClipboardTextX(std::string text);
+void SetClipboardTextX(const std::string& text);
 bool isClipboardPaste();
 
 class Editor

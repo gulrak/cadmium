@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <list>
 #include <map>
 #include <sstream>
@@ -66,14 +67,22 @@ public:
     struct Info
     {
         ValuePtr valPtr;
-        std::function<void(std::string, std::string, ValuePtr)> converter;
+        std::function<void(std::string, std::string, const Info&)> converter;
         std::string help;
         std::string category;
         std::function<void(std::string)> triggerCallback;
         std::function<bool()> condition;
+        int64_t minVal{std::numeric_limits<int64_t>::min()};
+        int64_t maxVal{std::numeric_limits<int64_t>::max()};
         Info& dependsOn(std::function<bool()> dependCondition)
         {
             condition = std::move(dependCondition);
+            return *this;
+        }
+        Info& range(int64_t minV, int64_t maxV)
+        {
+            minVal = minV;
+            maxVal = maxV;
             return *this;
         }
     };
@@ -98,24 +107,10 @@ public:
         static_assert(Contains<T*, ValuePtr>::value, "CLI: supported option types are only bool, int, std::int64_t, std::string or std::vector<std::string>");
         auto iter = handler.insert({names,
                                     {&destVal,
-                                     [](const std::string& name, const std::string& arg, ValuePtr valp) {
+                                     [](const std::string& name, const std::string& arg, const Info& valInfo) {
                                          std::visit(visitor{[name, arg](bool* val) { *val = !*val; },
-                                                            [name, arg](int* val) {
-                                                                errno = 0;
-                                                                char* endPtr{};
-                                                                *val = static_cast<int>(std::strtol(arg.c_str(), &endPtr, 0));
-                                                                if (errno > 0 || endPtr != arg.c_str() + arg.length()) {
-                                                                    throw std::runtime_error("Conversion error for option " + name);
-                                                                }
-                                                            },
-                                                            [name, arg](std::int64_t* val) {
-                                                                errno = 0;
-                                                                char* endPtr{};
-                                                                *val = std::strtoll(arg.c_str(), &endPtr, 0);
-                                                                if (errno > 0 || endPtr != arg.c_str() + arg.length()) {
-                                                                    throw std::runtime_error("Conversion error for option " + name);
-                                                                }
-                                                            },
+                                                            [name, arg, &valInfo](int* val) { handleInt(val, arg, name, valInfo); },
+                                                            [name, arg, &valInfo](std::int64_t* val) { handleInt(val, arg, name, valInfo); },
                                                             [name, arg](std::string* val) { *val = arg; }, [name, arg](std::vector<std::string>* val) { val->push_back(arg); },
                                                             [name, arg](Combo* val) {
                                                                 int idx = 0;
@@ -130,7 +125,7 @@ public:
                                                             }
 
                                                     },
-                                                    valp);
+                                                    valInfo.valPtr);
                                      },
                                      description,
                                      currentCategory,
@@ -143,7 +138,7 @@ public:
     {
         callbackArgs.push_back(T{});
         auto& val = std::get<T>(callbackArgs.back());
-        option(names, val, description, [callback,&val](std::string name){ callback(name, val); });
+        return option(names, val, description, [callback,&val](std::string name){ callback(name, val); });
     }
     void positional(std::vector<std::string>& dest, std::string description = std::string())
     {
@@ -193,6 +188,17 @@ public:
             std::cout << "...\n    " << positionalHelp << "\n" << std::endl;
     }
 private:
+    template <typename T>
+    static void handleInt(T* val, const std::string& arg, const std::string& name, const Info& info) {
+        errno = 0;
+        char* endPtr{};
+        long long int llVal = static_cast<long long int>(std::strtoll(arg.c_str(), &endPtr, 0));
+        if (errno > 0 || endPtr != arg.c_str() + arg.length() || llVal < std::numeric_limits<T>::min() || llVal > std::numeric_limits<T>::max() || llVal < info.minVal || llVal > info.maxVal) {
+            throw std::runtime_error("Conversion error for option: " + name);
+        }
+        *val = static_cast<T>(llVal);
+    }
+
     bool handleOption(std::vector<std::string>::iterator& iter)
     {
         static const std::map<std::string,bool> boolKeys = {{"true", true}, {"false", false}, {"yes", true}, {"no", false}, {"on", true}, {"off", false}};
@@ -213,11 +219,7 @@ private:
                         if(iter == argList.end()) {
                             throw std::runtime_error("Missing argument to option " + name);
                         }
-                        errno = 0;
-                        info.converter(name, *iter++, info.valPtr);
-                        if(errno) {
-                            throw std::runtime_error("Conversion error for option " + name);
-                        }
+                        info.converter(name, *iter++, info);
                     }
                     else if(iter != argList.end() && boolKeys.count(*iter)) {
                         *std::get<bool*>(info.valPtr) = boolKeys.at(*iter++);

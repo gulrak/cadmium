@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8emulatorhost.hpp
+// src/emulation/emulatorhost.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -32,10 +32,10 @@
 
 namespace emu {
 
-class Chip8EmulatorHost
+class EmulatorHost
 {
 public:
-    virtual ~Chip8EmulatorHost() = default;
+    virtual ~EmulatorHost() = default;
     virtual bool isHeadless() const = 0;
     virtual int getKeyPressed() = 0;
     virtual bool isKeyDown(uint8_t key) = 0;

@@ -52,15 +52,7 @@ Property::Property(const std::string& name, Value val, std::string description, 
     , _isReadonly(isReadOnly)
 {}
 
-Property::Property(const Property& other)
-    : _name(other._name)
-    , _jsonKey(other._jsonKey)
-    , _value(other._value)
-    , _description(other._description)
-    , _additionalInfo(other._additionalInfo)
-    , _isReadonly(other._isReadonly)
-{
-}
+Property::Property(const Property& other) = default;
 
 Properties::RegistryMaps& Properties::getRegistryMaps()
 {
@@ -71,6 +63,7 @@ Properties::RegistryMaps& Properties::getRegistryMaps()
 void to_json(nlohmann::json& j, const Properties& props)
 {
     j = nlohmann::json::object();
+    j["class"] = props.propertyClass();
     for(size_t i = 0; i < props.numProperties(); ++i) {
         const auto& prop = props[i];
         const auto& name = prop.getJsonKey();
@@ -87,7 +80,21 @@ void to_json(nlohmann::json& j, const Properties& props)
 void from_json(const nlohmann::json& j, Properties& props)
 {
     if(j.is_object()) {
-
+        auto cls = j.value("class", "GenericCore");
+        props = Properties::getProperties(cls);
+        if(props) {
+            for(size_t i = 0; i < props.numProperties(); ++i) {
+                auto& prop = props[i];
+                const auto& name = prop.getJsonKey();
+                std::visit(visitor{
+                    [&](std::nullptr_t&) { },
+                    [&](bool& val) { val = j.value(name, val); },
+                    [&](Property::Integer& val) { val.intValue = j.value(name, val.intValue); },
+                    [&](std::string& val) { val = j.value(name, val); },
+                    [&](Property::Combo& val) { val.setSelectedToText(j.value(name, val.selectedText())); }
+                }, prop.getValue());
+            }
+        }
     }
 }
 

@@ -37,12 +37,12 @@
 
 namespace emu {
 
-class Chip8OpcodeDisassembler : public emu::IChip8Emulator
+class Chip8OpcodeDisassembler
 {
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
     Chip8OpcodeDisassembler();
-    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
+    virtual std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const;
 protected:
     SymbolResolver _labelOrAddress;
     detail::OpcodeSet _opcodeSet;

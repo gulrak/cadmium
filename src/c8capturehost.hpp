@@ -25,12 +25,12 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <chip8emuhostex.hpp>
+#include <emuhostex.hpp>
 
 #include <raylib.h>
 
 
-class C8CaptureHost : public emu::Chip8HeadlessHost
+class C8CaptureHost : public emu::HeadlessHost
 {
 public:
     C8CaptureHost();

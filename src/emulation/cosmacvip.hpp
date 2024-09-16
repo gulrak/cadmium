@@ -25,10 +25,11 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/chip8realcorebase.hpp>
 #include <emulation/coreregistry.hpp>
 #include <emulation/hardware/cdp1802.hpp>
+#include <emulation/iemulationcore.hpp>
 
 #include <memory>
 
@@ -39,20 +40,40 @@ extern const uint8_t _rom_cvip[0x200];
 
 enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
 
-class Chip8VIP : public Chip8RealCoreBase, public Cdp1802Bus
+/// COSMAC VIP Emulation Core
+/// This core emulates the hardware of a COSMAC VIP and allows a few hardware configuration
+/// options. It offers two execution units:
+///   - A low-level CDP1802 driven one that runs the COSMAC VIP (Unit 0)
+///   - A high-level CHIP-8 interpreter driven one that sits on-top of the COSMAC VIP
+///     and allows to use the COSMAC VIP via a CIP-8 centric API as if it was a generic
+///     VIP emulator (Unit 1, only available if an integrated interpreter is selected)
+class CosmacVIP : public Chip8RealCoreBase, public Cdp1802Bus
 {
 public:
-    Chip8VIP(Chip8EmulatorHost& host, Properties& properties, IChip8Emulator* other = nullptr);
-    ~Chip8VIP() override;
+    CosmacVIP(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr);
+    ~CosmacVIP() override;
 
     void reset() override;
     std::string name() const override;
+
+    // IEmulationCore
+    size_t numberOfExecutionUnits() const override;
+    GenericCpu* executionUnit(size_t index) override;
+    void setFocussedExecutionUnit(GenericCpu* unit) override;
+    GenericCpu* focussedExecutionUnit() override;
+
+    void executeFrame() override;
+    int frameRate() const override;
+
+    bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
+
+    ExecMode execMode() const override;
+    void setExecMode(ExecMode mode) override;
+
     int64_t executeFor(int64_t microseconds) override;
-    void executeInstruction() override;
+    int executeInstruction() override;
     void executeInstructions(int numInstructions) override;
-    void tick(int instructionsPerFrame) override;
-    int frameRate() const override { return 60; }
-    int64_t getMachineCycles() const override;
+    int64_t machineCycles() const override;
 
     uint8_t* memory() override;
     int memSize() const override;
@@ -77,7 +98,7 @@ public:
     // CDP1802-Bus
     uint8_t readByte(uint16_t addr) const override;
     uint8_t readByteDMA(uint16_t addr) const override;
-    uint8_t getMemoryByte(uint32_t addr) const override;
+    uint8_t readMemoryByte(uint32_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
 
     GenericCpu& getBackendCpu() override;
@@ -85,7 +106,6 @@ public:
     Properties& getProperties() override;
     void updateProperties(Property& changedProp) override;
 
-    static std::pair<std::string, CoreRegistry::EmulatorInstance> create(const std::string& variant, Chip8EmulatorHost& host, Properties& props, PropertySelector propSel);
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 
 private:

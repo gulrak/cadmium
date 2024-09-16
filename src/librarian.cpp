@@ -23,19 +23,20 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#include <emulation/chip8cores.hpp>
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/utility.hpp>
+#include <emuhostex.hpp>
+//#include <emulation/chip8cores.hpp>
+#include <emulation/iemulationcore.hpp>
 #include <librarian.hpp>
-#include <chip8emuhostex.hpp>
 
-#include <nlohmann/json.hpp>
 #include <raylib.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
 
-static std::unique_ptr<emu::IChip8Emulator> minion;
+static std::unique_ptr<emu::IEmulationCore> minion;
 
 template<typename TP>
 inline std::chrono::system_clock::time_point convertClock(TP tp)
@@ -264,6 +265,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"518c1d40f5d768ee49d2b7951d998588ef8238ba", emu::chip8::Variant::XO_CHIP, "Wonky Pong (TomRintjema, 2018-11-01)", R"({"instructionsPerFrame": 100, "advanced": {"col0": "#FFFFFF", "col1": "#000000", "buzzColor": "#666666", "quietColor": "#000000"}})", nullptr},
     //{"51a31cc51414b4dd6c5c54081574f915e6f53744", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"51a31cc51414b4dd6c5c54081574f915e6f53744", emu::chip8::Variant::SCHIPC, "Seconds Counter (Michael Wales, 2014)", nullptr, nullptr},
+    {"528404afc02cacef8481827cfc66b9569a5d97e2", emu::chip8::Variant::SCHIP_MODERN, "Blobo (Decad, 2022)", R"({"instructionsPerFrame":100})", nullptr},
     {"5303be6c79bff9426b2f4b1fa9af1f4a5bbcd525", emu::chip8::Variant::CHIP_8, "Computer (John Earnest, 2014)", nullptr, nullptr},
     //{"531c44e8204d8ab8c078bad36e34067baddfccdb", {emu::Chip8EmulatorOptions::eSCHIP11}},
     {"531c44e8204d8ab8c078bad36e34067baddfccdb", emu::chip8::Variant::SCHIPC, "Sw8 Copter (JohnEarnest, 2014-09-02)", R"({"instructionsPerFrame": 100, "advanced": {"col0": "#117799", "col1": "#FFFFFF", "buzzColor": "#1166DD", "quietColor": "#000000"}})", nullptr},
@@ -913,7 +915,7 @@ bool Librarian::parentDir()
     return fetchDir(fs::path(_currentPath).parent_path().string());
 }
 
-bool Librarian::update(const emu::Chip8EmulatorOptions& options)
+bool Librarian::update(const emu::Properties& properties)
 {
     bool foundOne = false;
     if(_analyzing) {
@@ -934,9 +936,10 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                             dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);
                             entry.possibleVariants = dec.possibleVariants();
                             if ((uint64_t)dec.possibleVariants()) {
+                                /* TODO:
                                 if (dec.supportsVariant(options.presetAsVariant()))
                                     entry.variant = options.behaviorBase;
-                                else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
+                                else */ if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
                                     entry.variant = emu::Chip8EmulatorOptions::eXOCHIP;
                                 else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
                                     entry.variant = emu::Chip8EmulatorOptions::eMEGACHIP;
@@ -987,8 +990,9 @@ bool Librarian::isKnownFile(const std::string& sha1sum) const
 emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum) const
 {
     auto cfgIter = _cfg.romConfigs.find(sha1sum);
-    if(cfgIter != _cfg.romConfigs.end())
-        return cfgIter->second.behaviorBase;
+    // TODO: Fix this
+    //if(cfgIter != _cfg.romConfigs.end())
+    //    return cfgIter->second.behaviorBase;
     const auto* romInfo = findKnownRom(sha1sum);
     return romInfo ? emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant) : emu::Chip8EmulatorOptions::eCHIP8;
 }
@@ -1033,10 +1037,13 @@ emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size
 
 emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const std::string& sha1sum) const
 {
+    // TODO: Fix this
+    /*
     auto cfgIter = _cfg.romConfigs.find(sha1sum);
     if(cfgIter != _cfg.romConfigs.end()) {
         return cfgIter->second;
     }
+    */
     const auto* romInfo = findKnownRom(sha1sum);
     if (romInfo) {
         auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
@@ -1068,61 +1075,63 @@ emu::Chip8EmulatorOptions Librarian::getOptionsForSha1(const std::string_view& s
 Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const
 {
     using namespace std::literals::chrono_literals;
-    if(info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
-        emu::Chip8HeadlessHost host;
+    // TODO: Fix this
+    if(false && info.analyzed && (info.type == Info::eROM_FILE || info.type == Info::eOCTO_SOURCE) ) {
+        emu::HeadlessHost host;
         host.updateEmulatorOptions({});
-        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), emu::Chip8HeadlessHost::SetToRun)) {
-            auto& chipEmu = host.chipEmu();
-            auto options = host.options();
+        if(host.loadRom((fs::path(_currentPath) / info.filePath).string().c_str(), emu::HeadlessHost::SetToRun)) {
+            auto& core = host.emuCore();
+            // TODO: Fix this
+            // auto options = host.options();
             auto ticks = 5000;
             auto startChip8 = std::chrono::steady_clock::now();
             auto colors = palette;
-            if(options.hasColors()) {
-                options.updateColors(colors);
-            }
+            //if(options.hasColors()) {
+            //    options.updateColors(colors);
+            //}
             int64_t lastCycles = -1;
             int64_t cycles = 0;
             int tickCount = 0;
             for (tickCount = 0; tickCount < ticks /* && (cycles == chipEmu.getCycles()) != lastCycles */ && std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8) < 100ms; ++tickCount) {
-                chipEmu.tick(options.instructionsPerFrame);
+                core.executeFrame();
                 lastCycles = cycles;
             }
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startChip8).count();
-            TraceLog(LOG_WARNING, "executed %d cycles and %d frames in %dms for screenshot", (int)chipEmu.getCycles(), tickCount, (int)duration);
-            if (chipEmu.getScreen()) {
+            TraceLog(LOG_WARNING, "executed %d cycles and %d frames in %dms for screenshot", (int)core.cycles(), tickCount, (int)duration);
+            if (core.getScreen()) {
                 Screenshot s;
-                auto screen = *chipEmu.getScreen();
+                auto screen = *core.getScreen();
                 screen.setPalette(colors);
-                if (chipEmu.isDoublePixel()) {
-                    s.width = chipEmu.getCurrentScreenWidth() / 2;
-                    s.height = chipEmu.getCurrentScreenHeight() / 2;
+                if (core.isDoublePixel()) {
+                    s.width = core.getCurrentScreenWidth() / 2;
+                    s.height = core.getCurrentScreenHeight() / 2;
                     s.pixel.resize(s.width * s.height);
-                    for (int y = 0; y < chipEmu.getCurrentScreenHeight() / 2; ++y) {
-                        for (int x = 0; x < chipEmu.getCurrentScreenWidth() / 2; ++x) {
+                    for (int y = 0; y < core.getCurrentScreenHeight() / 2; ++y) {
+                        for (int x = 0; x < core.getCurrentScreenWidth() / 2; ++x) {
                             s.pixel[y * s.width + x] = screen.getPixel(x*2, y*2);
                         }
                     }
                 }
                 else {
-                    s.width = chipEmu.getCurrentScreenWidth();
-                    s.height = chipEmu.getCurrentScreenHeight();
+                    s.width = core.getCurrentScreenWidth();
+                    s.height = core.getCurrentScreenHeight();
                     s.pixel.resize(s.width * s.height);
-                    for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
-                        for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
+                    for (int y = 0; y < core.getCurrentScreenHeight(); ++y) {
+                        for (int x = 0; x < core.getCurrentScreenWidth(); ++x) {
                             s.pixel[y * s.width + x] = screen.getPixel(x, y);
                         }
                     }
                 }
                 return s;
             }
-            else if (chipEmu.getScreenRGBA()) {
+            else if (core.getScreenRGBA()) {
                 Screenshot s;
-                auto screen = *chipEmu.getScreenRGBA();
-                s.width = chipEmu.getCurrentScreenWidth();
-                s.height = chipEmu.getCurrentScreenHeight();
+                auto screen = *core.getScreenRGBA();
+                s.width = core.getCurrentScreenWidth();
+                s.height = core.getCurrentScreenHeight();
                 s.pixel.resize(s.width * s.height);
-                for (int y = 0; y < chipEmu.getCurrentScreenHeight(); ++y) {
-                    for (int x = 0; x < chipEmu.getCurrentScreenWidth(); ++x) {
+                for (int y = 0; y < core.getCurrentScreenHeight(); ++y) {
+                    for (int x = 0; x < core.getCurrentScreenWidth(); ++x) {
                         s.pixel[y * s.width + x] = screen.getPixel(x, y);
                     }
                 }

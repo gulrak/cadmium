@@ -1,31 +1,31 @@
 add_subdirectory(emulation)
 
 set(CADMIUM_SOURCE
+    c8capturehost.cpp
+    c8capturehost.hpp
+    c8db/database.hpp
     cadmium.cpp
+    circularbuffer.cpp
+    circularbuffer.hpp
+    configuration.cpp
+    configuration.hpp
     debugger.cpp
     debugger.hpp
     editor.cpp
     editor.hpp
-    logview.cpp
-    logview.hpp
+    emuhostex.cpp
+    emuhostex.hpp
     librarian.cpp
     librarian.hpp
-    systemtools.cpp
-    systemtools.hpp
+    logview.cpp
+    logview.hpp
     resourcemanager.cpp
     resourcemanager.hpp
-    configuration.cpp
-    configuration.hpp
-    circularbuffer.cpp
-    circularbuffer.hpp
-    chip8emuhostex.cpp
-    chip8emuhostex.hpp
-    c8capturehost.cpp
-    c8capturehost.hpp
+    rlguippimpl.cpp
     stylemanager.cpp
     stylemanager.hpp
-    rlguippimpl.cpp
-    c8db/database.hpp
+    systemtools.cpp
+    systemtools.hpp
 )
 
 if(WIN32)
