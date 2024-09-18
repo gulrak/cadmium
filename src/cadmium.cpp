@@ -44,7 +44,7 @@ extern "C" {
 #include <debugger.hpp>
 #include <emuhostex.hpp>
 #include <emulation/c8bfile.hpp>
-//#include <emulation/chip8cores.hpp>
+//#include <emulation/chip8generic.hpp>
 #include <emulation/coreregistry.hpp>
 //#include <emulation/dream6800.hpp>
 #include <emulation/time.hpp>
@@ -566,11 +566,11 @@ public:
         updateEmulatorOptions(props);
         Cadmium::whenEmuChanged(*_chipEmu);
         _debugger.updateCore(_chipEmu.get());
-        _screen = GenImageColor(emu::IEmulationCore::SUPPORTED_SCREEN_WIDTH, emu::IEmulationCore::SUPPORTED_SCREEN_HEIGHT, BLACK);
+        _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
         _screenTexture = LoadTextureFromImage(_screen);
         _crt = GenImageColor(256,512,BLACK);
         _crtTexture = LoadTextureFromImage(_crt);
-        _screenShot = GenImageColor(emu::IEmulationCore::SUPPORTED_SCREEN_WIDTH, emu::IEmulationCore::SUPPORTED_SCREEN_HEIGHT, BLACK);
+        _screenShot = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
         _screenShotTexture = LoadTextureFromImage(_screen);
         SetTextureFilter(_crtTexture, TEXTURE_FILTER_BILINEAR);
         SetTextureFilter(_screenShotTexture, TEXTURE_FILTER_POINT);
@@ -2839,20 +2839,20 @@ int main(int argc, char* argv[])
                 presetsDescription += fmt::format("            {} - {} ({})\n", toOptionName(info->prefix() + '-' + info->variantName(i)), info->variantDescription(i), info->variantExtensions(i));
         }
         auto proto = info->propertiesPrototype();
-        auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, toOptionName(info->prefix())));
+        auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, info->prefix().empty() ? "default" : toOptionName(info->prefix())));
         for(size_t i = 0; i < proto.numProperties(); ++i) {
             auto& prop = proto[i];
             if(!prop.isReadonly()) {
                 auto dependencyCheck = [&presetName, info](){ return info->hasVariant(presetName); };
                 std::visit(emu::visitor{
                    [](std::nullptr_t) -> void {  },
-                   [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", toOptionName(prop.getName()))}, [](const std::string& paramName, const bool& value) {
+                   [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const bool& value) {
                        coreProperties.at(paramName).setBool(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
-                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<std::string>({fmt::format("--{}", toOptionName(prop.getName()))}, [](const std::string& paramName, const std::string& value) {
+                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const std::string& value) {
                        coreProperties.at(paramName).setString(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck).range(prop.getIntMin(), prop.getIntMax()); },
-                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<int>({fmt::format("--{}", toOptionName(prop.getName()))}, [](const std::string& paramName, const int& value) {
+                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const int& value) {
                        coreProperties.at(paramName).setInt(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
                    [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
@@ -2864,7 +2864,7 @@ int main(int argc, char* argv[])
                            }
                            optionList << toOptionName(*i);
                        }
-                       cli.option<ghc::CLI::Combo>({fmt::format("--{}", toOptionName(prop.getName()))}, [](const std::string& paramName, const ghc::CLI::Combo& value) {
+                       cli.option<ghc::CLI::Combo>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const ghc::CLI::Combo& value) {
                             coreProperties.at(paramName).setSelectedIndex(value.index);
                        }, prop.getDescription() + " (" + optionList.str() +")").dependsOn(dependencyCheck);
                    }
@@ -2876,6 +2876,9 @@ int main(int argc, char* argv[])
     cli.option({"-p", "--preset"}, presetName, "Select one of the following available preset:\n" + trimRight(presetsDescription), [&presetName](std::string) {
         // Todo: Set coreProperties to a matching instance
         coreProperties = emu::CoreRegistry::propertiesForPreset(presetName);
+        if(!coreProperties) {
+            throw std::runtime_error(fmt::format("Unknown preset: '{}' (use --help to see supported presets)", presetName));
+        }
     });
 #if 0
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");

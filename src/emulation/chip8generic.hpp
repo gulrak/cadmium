@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8cores.hpp
+// src/emulation/chip8generic.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -34,39 +34,81 @@
 
 #pragma once
 
-#include <chiplet/chip8meta.hpp>
+#include <emulation/chip8genericbase.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
-#include <emulation/chip8emulatorbase.hpp>
+#include <chiplet/chip8meta.hpp>
 #include <emulation/time.hpp>
 
 namespace emu
 {
 
+struct Chip8GenericOptions
+{
+    Properties asProperties() const;
+    static Chip8GenericOptions fromProperties(const Properties& props);
+    static Properties& registeredPrototype();
+    Chip8Variant variant() const;
+    enum SupportedPreset { eCHIP8, eCHIP8TE, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8VIP_FPD, eCHIP8EVIP, eCHIP8XVIP, eCHIP8XVIP_TPD, eCHIP8XVIP_FPD, eRAWVIP, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
+    SupportedPreset behaviorBase{eCHIP8};
+    uint32_t ramSize{4096};
+    uint16_t startAddress{0x200};
+    bool cleanRam{true};
+    bool optJustShiftVx{false};
+    bool optDontResetVf{false};
+    bool optLoadStoreIncIByX{false};
+    bool optLoadStoreDontIncI{false};
+    bool optWrapSprites{false};
+    bool optInstantDxyn{false};
+    bool optLoresDxy0Is8x16{false};
+    bool optLoresDxy0Is16x16{false};
+    bool optSC11Collision{false};
+    bool optSCLoresDrawing{false};
+    bool optHalfPixelScroll{false};
+    bool optModeChangeClear{false};
+    bool optJump0Bxnn{false};
+    bool optAllowHires{false};
+    bool optOnlyHires{false};
+    bool optAllowColors{false};
+    bool optCyclicStack{false};
+    bool optHas16BitAddr{false};
+    bool optXOChipSound{false};
+    bool optChicueyiSound{false};
+    bool optExtendedVBlank{true};
+    bool optPalVideo{false};
+    bool traceLog{false};
+    int instructionsPerFrame{15};
+    int frameRate{60};
+};
+
 //---------------------------------------------------------------------------------------
 // ChipEmulatorFP - a method pointer table based CHIP-8 core
 //---------------------------------------------------------------------------------------
-class Chip8EmulatorFP : public Chip8EmulatorBase
+class Chip8GenericEmulator : public Chip8GenericBase
 {
 public:
-    using OpcodeHandler = void (Chip8EmulatorFP::*)(uint16_t);
+    using OpcodeHandler = void (Chip8GenericEmulator::*)(uint16_t);
     const uint32_t ADDRESS_MASK;
     const int SCREEN_WIDTH;
     const int SCREEN_HEIGHT;
     
-    Chip8EmulatorFP(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
-    ~Chip8EmulatorFP() override;
+    Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other = nullptr);
+    ~Chip8GenericEmulator() override;
 
     std::string name() const override
     {
         return "Chip-8-MPT";
     }
-
+    uint32_t cpuID() const override { return 0xC8; }
     void reset() override;
-    void executeInstruction() override;
+    int64_t machineCycles() const override { return 0; }
+    int executeInstruction() override;
     void executeInstructionNoBreakpoints();
     void executeInstructions(int numInstructions) override;
+    int64_t executeFor(int64_t microseconds) override;
+    void executeFrame() override;
 
-    uint8_t getNextMCSample() override;
+    uint8_t getNextMCSample();
 
     const VideoRGBAType* getWorkRGBA() const override { return _isMegaChipMode && _options.optWrapSprites ? _workRGBA : nullptr; }
 
@@ -255,11 +297,11 @@ public:
             int x = _rV[(opcode >> 8) & 0xF] % SCREEN_WIDTH;
             int y = _rV[(opcode >> 4) & 0xF] % SCREEN_HEIGHT;
             int lines = opcode & 0xF;
-            if(!_isInstantDxyn && _options.optExtendedVBlank && _cpuState != eWAITING) {
+            if(!_isInstantDxyn && _options.optExtendedVBlank && _cpuState != eWAIT) {
                 auto s = lines + (x & 7);
                 if(lines > 4 && s > 9) {
                     _rPC -= 2;
-                    _cpuState = eWAITING;
+                    _cpuState = eWAIT;
                     return;
                 }
             }
@@ -369,6 +411,23 @@ public:
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
 private:
+    virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
+    void swapMegaSchreens() {
+        std::swap(_screenRGBA, _workRGBA);
+    }
+    void clearScreen()
+    {
+        if(_options.optAllowColors) {
+            _screen.binaryAND(~_planes);
+        }
+        else {
+            _screen.setAll(0);
+            if (_options.behaviorBase == Chip8GenericOptions::eMEGACHIP) {
+                const auto blackTransparent = be32(0x00000000);
+                _workRGBA->setAll(blackTransparent);
+            }
+        }
+    }
     uint8_t read(const uint32_t addr) const
     {
         if(addr <= ADDRESS_MASK)
@@ -380,6 +439,51 @@ private:
         if(addr <= ADDRESS_MASK)
             _memory[addr] = val;
     }
+    void halt()
+    {
+        _execMode = ePAUSED;
+        _rPC -= 2;
+        //--_cycleCounter;
+    }
+    void errorHalt(std::string errorMessage)
+    {
+        _execMode = ePAUSED;
+        _cpuState = eERROR;
+        _errorMessage = std::move(errorMessage);
+        _rPC -= 2;
+    }
+    EmulatorHost& _host;
+    Chip8GenericOptions _options;
+    uint16_t _randomSeed{};
+    float _wavePhase{0};
+    VideoType _screen;
+    VideoRGBAType _screenRGBA1{};
+    VideoRGBAType _screenRGBA2{};
+    VideoRGBAType* _screenRGBA{};
+    VideoRGBAType* _workRGBA{};
+    std::array<uint8_t,16> _xoAudioPattern{};
+    bool _xoSilencePattern{true};
+    uint8_t _xoPitch{};
+    float _sampleStep{0};
+    uint32_t _sampleStart{0};
+    uint32_t _sampleLength{0};
+    double _mcSamplePos{0};
+    bool _isHires{false};
+    bool _isInstantDxyn{false};
+    bool _isMegaChipMode{false};
+    bool _screenNeedsUpdate{false};
+    bool _sampleLoop{true};
+    uint8_t _planes{1};
+    uint8_t _screenAlpha{255};
+    int _clearCounter{0};
+    std::array<uint16_t,24> _stack{};
+    std::array<uint8_t,16> _xxoPalette{};
+    std::array<uint32_t,256> _mcPalette{};
+    std::array<uint8_t,16> _rVData{};
+    uint16_t _spriteWidth{0};
+    uint16_t _spriteHeight{0};
+    uint8_t _collisionColor{1};
+    MegaChipBlendMode _blendMode{eBLEND_NORMAL};
     std::vector<OpcodeHandler> _opcodeHandler;
     uint32_t _simpleRandSeed{12345};
     uint32_t _simpleRandState{12345};

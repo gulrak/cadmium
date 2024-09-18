@@ -55,8 +55,6 @@ struct Chip8State
 class IChip8Emulator : public GenericCpu
 {
 public:
-    using VideoType = VideoScreen<uint8_t, 256, 192>;
-    using VideoRGBAType = VideoScreen<uint32_t, 256, 192>;
     ~IChip8Emulator() override = default;
     virtual void executeInstructions(int numInstructions) = 0;
 

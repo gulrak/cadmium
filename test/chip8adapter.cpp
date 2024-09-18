@@ -140,7 +140,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             break;
     }
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8EmulatorFP>(host, options);
+    return std::make_unique<emu::Chip8GenericEmulator>(host, options);
 }
 
 #elif defined(TEST_CHIP8VIP)

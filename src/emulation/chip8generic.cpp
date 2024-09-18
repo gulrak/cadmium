@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8cores.cpp
+// src/emulation/chip8generic.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -24,7 +24,8 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include <emulation/chip8cores.hpp>
+#include <emulation/chip8generic.hpp>
+#include <emulation/coreregistry.hpp>
 #include <emulation/logger.hpp>
 
 #include <iostream>
@@ -35,13 +36,288 @@
 namespace emu
 {
 
-Chip8EmulatorFP::Chip8EmulatorFP(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
-: Chip8EmulatorBase(host, options, other)
-, ADDRESS_MASK(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 0xFFFFFF : options.optHas16BitAddr ? 0xFFFF : 0xFFF)
-, SCREEN_WIDTH(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 256 : options.optAllowHires ? 128 : 64)
-, SCREEN_HEIGHT(options.behaviorBase == Chip8EmulatorOptions::eMEGACHIP ? 192 : options.optAllowHires ? 64 : options.optPalVideo ? 48 : 32)
-, _opcodeHandler(0x10000, &Chip8EmulatorFP::opInvalid)
+extern const uint8_t _chip8_cvip[0x200];
+
+static const std::string PROP_CLASS = "CHIP-8 GENERIC";
+static const std::string PROP_INSTRUCTIONS_PER_FRAME = "Instructions per frame";
+static const std::string PROP_FRAME_RATE = "Frame rate";
+static const std::string PROP_TRACE_LOG = "Trace Log";
+static const std::string PROP_RAM = "Memory";
+static const std::string PROP_CLEAN_RAM = "Clean RAM";
+static const std::string PROP_BEHAVIOR_BASE = "Behavior Base";
+static const std::string PROP_START_ADDRESS = "Start Address";
+static const std::string PROP_Q_JUST_SHIFT_VX = "8xy6/8xyE just shift VX";
+static const std::string PROP_Q_DONT_RESET_VF = "8xy1/8xy2/8xy3 don't reset VF";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE = "Fx55/Fx65 increment I by X + 1";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X = "Fx55/Fx65 increment I by X";
+static const std::string PROP_Q_WRAP_SPRITES = "Wrap sprite pixels";
+static const std::string PROP_Q_INSTANT_DXYN = "Dxyn doesn't wait for vsync";
+static const std::string PROP_Q_LORES_DXY0_IS_8X16 = "Lores Dxy0 draws 8 pixel width";
+static const std::string PROP_Q_LORES_DXY0_IS_16X16 = "Lores Dxy0 draws 16 pixel width";
+static const std::string PROP_Q_SC11_COLLISION = "Dxyn uses SCHIP1.1 collision";
+static const std::string PROP_Q_SC_LORES_DRAWING = "HP SuperChip lores drawing";
+static const std::string PROP_Q_HALF_PIXEL_SCROLL = "Half pixel scrolling";
+static const std::string PROP_Q_MODE_CHANGE_CLEAR = "Mode change clear";
+static const std::string PROP_Q_JUMP0_BXNN = "Bxnn/jump0 uses Vx";
+static const std::string PROP_Q_ALLOW_HIRES = "128x64 hires support";
+static const std::string PROP_Q_ONLY_HIRES = "Only 128x64 mode";
+static const std::string PROP_Q_ALLOW_COLORS = "Multicolor support";
+static const std::string PROP_Q_CYCLIC_STACK = "Cyclic stack";
+static const std::string PROP_Q_HAS_16BIT_ADDR = "Has 16 bit addresses";
+static const std::string PROP_Q_XO_CHIP_SOUND = "XO-CHIP sound engine";
+static const std::string PROP_Q_EXTENDED_VBLANK = "Extended CHIP-8 wait emulation";
+static const std::string PROP_Q_PAL_VIDEO = "PAL video format";
+
+Properties Chip8GenericOptions::asProperties() const
 {
+    auto result = registeredPrototype();
+    result[PROP_TRACE_LOG].setBool(traceLog);
+    result[PROP_INSTRUCTIONS_PER_FRAME].setInt(instructionsPerFrame);
+    result[PROP_FRAME_RATE].setInt(frameRate);
+    result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
+    result[PROP_CLEAN_RAM].setBool(cleanRam);
+    result[PROP_START_ADDRESS].setInt(startAddress);
+    result[PROP_Q_JUST_SHIFT_VX].setBool(optJustShiftVx);
+    result[PROP_Q_DONT_RESET_VF].setBool(optDontResetVf);
+    result[PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE].setBool(!optLoadStoreDontIncI && !optLoadStoreIncIByX);
+    result[PROP_Q_LOAD_STORE_INC_I_BY_X].setBool(optLoadStoreIncIByX);
+    result[PROP_Q_WRAP_SPRITES].setBool(optWrapSprites);
+    result[PROP_Q_INSTANT_DXYN].setBool(optInstantDxyn);
+    result[PROP_Q_LORES_DXY0_IS_8X16].setBool(optLoresDxy0Is8x16);
+    result[PROP_Q_LORES_DXY0_IS_16X16].setBool(optLoresDxy0Is16x16);
+    result[PROP_Q_SC11_COLLISION].setBool(optSC11Collision);
+    result[PROP_Q_SC_LORES_DRAWING].setBool(optSCLoresDrawing);
+    result[PROP_Q_HALF_PIXEL_SCROLL].setBool(optHalfPixelScroll);
+    result[PROP_Q_MODE_CHANGE_CLEAR].setBool(optModeChangeClear);
+    result[PROP_Q_JUMP0_BXNN].setBool(optJump0Bxnn);
+    result[PROP_Q_ALLOW_HIRES].setBool(optAllowHires);
+    result[PROP_Q_ONLY_HIRES].setBool(optOnlyHires);
+    result[PROP_Q_ALLOW_COLORS].setBool(optAllowColors);
+    result[PROP_Q_CYCLIC_STACK].setBool(optCyclicStack);
+    result[PROP_Q_HAS_16BIT_ADDR].setBool(optHas16BitAddr);
+    result[PROP_Q_XO_CHIP_SOUND].setBool(optXOChipSound);
+    result[PROP_Q_EXTENDED_VBLANK].setBool(optExtendedVBlank);
+    result[PROP_Q_PAL_VIDEO].setBool(optPalVideo);
+    return result;
+}
+
+Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
+{
+    Chip8GenericOptions opts{};
+    opts.traceLog = props[PROP_TRACE_LOG].getBool();
+    opts.instructionsPerFrame = props[PROP_INSTRUCTIONS_PER_FRAME].getInt();
+    opts.frameRate = props[PROP_FRAME_RATE].getInt();
+    opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
+    opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
+    opts.startAddress = props[PROP_START_ADDRESS].getInt();
+    opts.optJustShiftVx = props[PROP_Q_JUST_SHIFT_VX].getBool();
+    opts.optDontResetVf = props[PROP_Q_DONT_RESET_VF].getBool();
+    opts.optLoadStoreDontIncI = !props[PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE].getBool() && !props[PROP_Q_LOAD_STORE_INC_I_BY_X].getBool();
+    opts.optLoadStoreIncIByX = props[PROP_Q_LOAD_STORE_INC_I_BY_X].getBool();
+    opts.optWrapSprites = props[PROP_Q_WRAP_SPRITES].getBool();
+    opts.optInstantDxyn = props[PROP_Q_INSTANT_DXYN].getBool();
+    opts.optLoresDxy0Is8x16 = props[PROP_Q_LORES_DXY0_IS_8X16].getBool();
+    opts.optLoresDxy0Is16x16 = props[PROP_Q_LORES_DXY0_IS_16X16].getBool();
+    opts.optSC11Collision = props[PROP_Q_SC11_COLLISION].getBool();
+    opts.optSCLoresDrawing = props[PROP_Q_SC_LORES_DRAWING].getBool();
+    opts.optHalfPixelScroll = props[PROP_Q_HALF_PIXEL_SCROLL].getBool();
+    opts.optModeChangeClear = props[PROP_Q_MODE_CHANGE_CLEAR].getBool();
+    opts.optJump0Bxnn = props[PROP_Q_JUMP0_BXNN].getBool();
+    opts.optAllowHires = props[PROP_Q_ALLOW_HIRES].getBool();
+    opts.optOnlyHires = props[PROP_Q_ONLY_HIRES].getBool();
+    opts.optAllowColors = props[PROP_Q_ALLOW_COLORS].getBool();
+    opts.optCyclicStack = props[PROP_Q_CYCLIC_STACK].getBool();
+    opts.optHas16BitAddr = props[PROP_Q_HAS_16BIT_ADDR].getBool();
+    opts.optXOChipSound = props[PROP_Q_XO_CHIP_SOUND].getBool();
+    opts.optExtendedVBlank = props[PROP_Q_EXTENDED_VBLANK].getBool();
+    opts.optPalVideo = props[PROP_Q_PAL_VIDEO].getBool();
+    return opts;
+}
+
+Properties& Chip8GenericOptions::registeredPrototype()
+{
+    using namespace std::string_literals;
+    auto& prototype = Properties::getProperties(PROP_CLASS);
+    if(!prototype) {
+        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", false});
+
+        prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", false});
+        prototype.registerProperty({PROP_FRAME_RATE, Property::Integer{60, 50, 100}, "Number of frames per second, default 60", false});
+        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", false});
+        prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", false});
+        prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x200, 0, 0x7f0}, "Number of instructions per frame, default depends on variant", false});
+        prototype.registerProperty({{PROP_Q_JUST_SHIFT_VX, "just-Shift-Vx"}, false, false});
+        prototype.registerProperty({{PROP_Q_DONT_RESET_VF, "dont-Reset-Vf"}, false, false});
+        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE, "load-Store-Inc-I-By-X-Plus-1"}, true, false});
+        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X, "load-Store-Inc-I-ByX"}, false, false});
+        prototype.registerProperty({{PROP_Q_WRAP_SPRITES, "wrap-sprites"}, false, false});
+        prototype.registerProperty({{PROP_Q_INSTANT_DXYN, "instand-dxyn"}, false, false});
+        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_8X16, "lores-Dxy0-Is-8x16"}, false, false});
+        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_16X16, "lores-Dxy0-Is-16x16"}, false, false});
+        prototype.registerProperty({{PROP_Q_SC11_COLLISION, "schip-11-Collision"}, false, false});
+        prototype.registerProperty({{PROP_Q_SC_LORES_DRAWING, "schip-Lores-Drawing"}, false, false});
+        prototype.registerProperty({{PROP_Q_HALF_PIXEL_SCROLL, "half-Pixel-Scroll"}, false, false});
+        prototype.registerProperty({{PROP_Q_MODE_CHANGE_CLEAR, "mode-Change-Clear"}, false, false});
+        prototype.registerProperty({{PROP_Q_JUMP0_BXNN, "jump0-Bxnn"}, false, false});
+        prototype.registerProperty({{PROP_Q_ALLOW_HIRES, "allow-Hires"}, false, false});
+        prototype.registerProperty({{PROP_Q_ONLY_HIRES, "only-Hires"}, false, false});
+        prototype.registerProperty({{PROP_Q_ALLOW_COLORS, "allow-Colors"}, false, false});
+        prototype.registerProperty({{PROP_Q_CYCLIC_STACK, "cyclic-Stack"}, false, false});
+        prototype.registerProperty({{PROP_Q_HAS_16BIT_ADDR, "has-16Bit-Addr"}, false, false});
+        prototype.registerProperty({{PROP_Q_XO_CHIP_SOUND, "xo-Chip-Sound"}, false, false});
+        prototype.registerProperty({{PROP_Q_EXTENDED_VBLANK, "extended-Vblank"}, false, false});
+        prototype.registerProperty({{PROP_Q_PAL_VIDEO, "pal-Video"}, false, false});
+}
+    return prototype;
+}
+
+Chip8Variant Chip8GenericOptions::variant() const
+{
+    switch(behaviorBase) {
+        case eCHIP8: return Chip8Variant::CHIP_8;
+        case eCHIP8TE: return Chip8Variant::CHIP_8;
+        case eCHIP10: return Chip8Variant::CHIP_10;
+        case eCHIP8E: return Chip8Variant::CHIP_8E;
+        case eCHIP8X: return Chip8Variant::CHIP_8X;
+        case eCHIP48: return Chip8Variant::CHIP_48;
+        case eSCHIP10: return Chip8Variant::SCHIP_1_0;
+        case eSCHIP11: return Chip8Variant::SCHIP_1_1;
+        case eSCHPC: return Chip8Variant::SCHIPC_GCHIPC;
+        case eSCHIP_MODERN: return Chip8Variant::SCHIP_MODERN;
+        case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
+        case eXOCHIP: return Chip8Variant::XO_CHIP;
+        case eCHIP8VIP: return Chip8Variant::CHIP_8;
+        case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
+        case eCHIP8VIP_FPD: return Chip8Variant::HI_RES_CHIP_8;
+        case eCHIP8EVIP: return Chip8Variant::CHIP_8E;
+        case eCHIP8XVIP: return Chip8Variant::CHIP_8X;
+        case eCHIP8XVIP_TPD: return Chip8Variant::CHIP_8X_TPD;
+        case eCHIP8XVIP_FPD: return Chip8Variant::HI_RES_CHIP_8X;
+        case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
+        case eC8D68CHIPOSLO: return Chip8Variant::CHIP_8_D6800;
+        case eCHICUEYI: return Chip8Variant::XO_CHIP;
+        default: return Chip8Variant::CHIP_8;
+    }
+}
+
+struct Chip8GenericSetupInfo
+{
+    const char* presetName;
+    const char* description;
+    const char* defaultExtensions;
+    Chip8GenericOptions options;
+};
+
+// clang-format off
+Chip8GenericSetupInfo genericPresets[] = {
+    {
+        "CHIP-8",
+        "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
+        ".ch8",
+        {Chip8GenericOptions::eCHIP8}
+    },
+    {
+        "CHIP-10",
+        "128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979",
+        ".ch10",
+        {.behaviorBase = Chip8GenericOptions::eCHIP10, .optAllowHires = true, .optOnlyHires = true}
+    },
+    {
+        "CHIP-8E",
+        "CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9",
+        ".c8e",
+        {.behaviorBase = Chip8GenericOptions::eCHIP8E}
+    },
+    {
+        "CHIP-8X",
+        "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
+        ".c8x",
+        {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .instructionsPerFrame = 18}
+    },
+    {
+        "CHIP-48",
+        "The initial CHIP-8 port to the HP-48SX",
+        ".ch48;.c48",
+        {.behaviorBase = Chip8GenericOptions::eCHIP48, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optJump0Bxnn = true, .instructionsPerFrame = 15, .frameRate = 64}
+    },
+    {
+        "SCHIP-1.0",
+        "SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode",
+        ".sc10",
+        {.behaviorBase = Chip8GenericOptions::eSCHIP10, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+    },
+    {
+        "SCHIP-1.1",
+        "SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode",
+        ".sc10",
+        {.behaviorBase = Chip8GenericOptions::eSCHIP11, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+    },
+    {
+        "SCHIPC",
+        "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore",
+        ".scc",
+        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+    },
+    {
+        "SCHIP-MODERN",
+        "Modern SUPER-CHIP interpretation as done in Octo by John Earnest",
+        ".scm",
+        {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+    },
+    {
+        "MEGACHIP",
+        "MegaChip as specified by Martijn Wanting/Revival-Studios",
+        ".mc8",
+        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
+    },
+    {
+        "XO-CHIP",
+        "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo, by John Earnest",
+        "xo8",
+        {.behaviorBase = Chip8GenericOptions::eXOCHIP, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
+    }
+    /*{Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
+    {Opts::eCHIP8E, R"({})"},
+    {Opts::eCHIP8X, R"({"startAddress":768,"instructionsPerFrame":18,"advanced":{"palette":["#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"]}})"},
+    {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optJump0Bxnn":true,"instructionsPerFrame":15,"frameRate":64})"},
+    {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15,"frameRate":64})"},
+    {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optSC11Collision":true,"optHalfPixelScroll":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30,"frameRate":64})"},
+    {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eSCHIP_MODERN, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optJump0Bxnn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
+    {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optModeChangeClear":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000,"frameRate":50})"},
+    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
+*/
+};
+// clang-format on
+
+struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8GenericEmulator, Chip8GenericSetupInfo, Chip8GenericOptions>
+{
+    explicit C8GenericFactoryInfo(const char* description)
+        : FactoryInfo(0, genericPresets, description)
+    {}
+    std::string prefix() const override
+    {
+        return "";
+    }
+    VariantIndex variantIndex(const Properties& props) const override
+    {
+        return {0, genericPresets[0].options.asProperties() == props};
+    }
+};
+
+static bool registeredHleC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<C8GenericFactoryInfo>("Default HLE CHIP-8 emulation"));
+
+
+Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other)
+: Chip8GenericBase(Chip8GenericOptions::fromProperties(props).variant(), {})
+, _host(_host)
+, _options(Chip8GenericOptions::fromProperties(props))
+, ADDRESS_MASK(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.optHas16BitAddr ? 0xFFFF : 0xFFF)
+, SCREEN_WIDTH(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : _options.optAllowHires ? 128 : 64)
+, SCREEN_HEIGHT(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : _options.optAllowHires ? 64 : _options.optPalVideo ? 48 : 32)
+, _opcodeHandler(0x10000, &Chip8GenericEmulator::opInvalid)
+{
+    _rV = _rVData.data();
     _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA1.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA2.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -52,240 +328,345 @@ Chip8EmulatorFP::Chip8EmulatorFP(EmulatorHost& host, Chip8EmulatorOptions& optio
 }
 
 
-void Chip8EmulatorFP::setHandler()
+static Chip8GenericBase::Chip8Font getSmallFontId(Chip8GenericOptions::SupportedPreset behavior)
 {
-    on(0xFFFF, 0x00E0, &Chip8EmulatorFP::op00E0);
-    on(0xFFFF, 0x00EE, _options.optCyclicStack ? &Chip8EmulatorFP::op00EE_cyclic : &Chip8EmulatorFP::op00EE);
-    on(0xF000, 0x1000, &Chip8EmulatorFP::op1nnn);
-    on(0xF000, 0x2000, _options.optCyclicStack ? &Chip8EmulatorFP::op2nnn_cyclic : &Chip8EmulatorFP::op2nnn);
-    on(0xF000, 0x3000, &Chip8EmulatorFP::op3xnn);
-    on(0xF000, 0x4000, &Chip8EmulatorFP::op4xnn);
-    on(0xF00F, 0x5000, &Chip8EmulatorFP::op5xy0);
-    on(0xF000, 0x6000, &Chip8EmulatorFP::op6xnn);
-    on(0xF000, 0x7000, &Chip8EmulatorFP::op7xnn);
-    on(0xF00F, 0x8000, &Chip8EmulatorFP::op8xy0);
-    on(0xF00F, 0x8001, _options.optDontResetVf ? &Chip8EmulatorFP::op8xy1_dontResetVf : &Chip8EmulatorFP::op8xy1);
-    on(0xF00F, 0x8002, _options.optDontResetVf ? &Chip8EmulatorFP::op8xy2_dontResetVf : &Chip8EmulatorFP::op8xy2);
-    on(0xF00F, 0x8003, _options.optDontResetVf ? &Chip8EmulatorFP::op8xy3_dontResetVf : &Chip8EmulatorFP::op8xy3);
-    on(0xF00F, 0x8004, &Chip8EmulatorFP::op8xy4);
-    on(0xF00F, 0x8005, &Chip8EmulatorFP::op8xy5);
-    on(0xF00F, 0x8006, _options.optJustShiftVx ? &Chip8EmulatorFP::op8xy6_justShiftVx : &Chip8EmulatorFP::op8xy6);
-    on(0xF00F, 0x8007, &Chip8EmulatorFP::op8xy7);
-    on(0xF00F, 0x800E, _options.optJustShiftVx ? &Chip8EmulatorFP::op8xyE_justShiftVx : &Chip8EmulatorFP::op8xyE);
-    on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0);
-    on(0xF000, 0xA000, &Chip8EmulatorFP::opAnnn);
-    if(_options.behaviorBase != Chip8EmulatorOptions::eCHIP8X)
-        on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8EmulatorFP::opBxnn : &Chip8EmulatorFP::opBnnn);
-    std::string randomGen;
-    if(_options.advanced.contains("random")) {
-        randomGen = _options.advanced.at("random");
-        _randomSeed = _options.advanced.at("seed");
+    switch (behavior) {
+        case Chip8GenericOptions::eCHIP48:
+        case Chip8GenericOptions::eSCHIP10:
+        case Chip8GenericOptions::eSCHIP11:
+        case Chip8GenericOptions::eSCHPC:
+        case Chip8GenericOptions::eSCHIP_MODERN:
+        case Chip8GenericOptions::eMEGACHIP:
+        case Chip8GenericOptions::eXOCHIP:
+        case Chip8GenericOptions::eCHICUEYI:
+            return Chip8GenericBase::C8F5_CHIP48;
+        case Chip8GenericOptions::eCHIP8:
+        case Chip8GenericOptions::eCHIP10:
+        case Chip8GenericOptions::eCHIP8VIP:
+        default:
+            return Chip8GenericBase::C8F5_COSMAC;
     }
+}
+static Chip8GenericBase::Chip8BigFont getBigFontId(Chip8GenericOptions::SupportedPreset behavior)
+{
+    switch (behavior) {
+        case Chip8GenericOptions::eSCHIP10:
+            return Chip8GenericBase::C8F10_SCHIP10;
+        case Chip8GenericOptions::eSCHIP11:
+        case Chip8GenericOptions::eSCHPC:
+        case Chip8GenericOptions::eSCHIP_MODERN:
+        case Chip8GenericOptions::eCHICUEYI:
+            return Chip8GenericBase::C8F10_SCHIP11;
+        case Chip8GenericOptions::eMEGACHIP:
+            return Chip8GenericBase::C8F10_MEGACHIP;
+        case Chip8GenericOptions::eXOCHIP:
+            return Chip8GenericBase::C8F10_XOCHIP;
+        case Chip8GenericOptions::eCHIP8:
+        case Chip8GenericOptions::eCHIP10:
+        case Chip8GenericOptions::eCHIP48:
+        case Chip8GenericOptions::eCHIP8VIP:
+        default:
+            return Chip8GenericBase::C8F10_NONE;
+    }
+}
+
+void Chip8GenericEmulator::reset()
+{
+    //static const uint8_t defaultPalette[16] = {37, 255, 114, 41, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
+    static const uint8_t defaultPalette[16] = {0, 255, 182, 109, 224, 28, 3, 252, 160, 20, 2, 204, 227, 31, 162, 22};
+    //static const uint8_t defaultPalette[16] = {172, 248, 236, 100, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
+    _cycleCounter = 0;
+    _frameCounter = 0;
+    _clearCounter = 0;
+    _systemTime.reset();
+    if(_options.cleanRam)
+        std::memset(_memory.data(), 0, _memory.size());
+    if(_options.traceLog)
+        Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
+    _rI = 0;
+    _rPC = _options.startAddress;
+    std::memset(_stack.data(), 0, 16 * 2);
+    _rSP = 0;
+    _rDT = 0;
+    _rST = 0;
+    std::memset(_rV, 0, 16);
+    std::memset(_memory.data(), 0, _memory.size());
+    auto [smallFont, smallSize] = smallFontData(getSmallFontId(_options.behaviorBase));
+    std::memcpy(_memory.data(), smallFont, smallSize);
+    auto bigFontId = getBigFontId(_options.behaviorBase);
+    if(bigFontId != C8F10_NONE) {
+        auto [bigFont, bigSize] = bigFontData(bigFontId);
+        if(bigSize)
+            std::memcpy(_memory.data() + 16*5, bigFont, bigSize);
+    }
+    std::memcpy(_xxoPalette.data(), defaultPalette, 16);
+    std::memset(_xoAudioPattern.data(), 0, 16);
+    _xoSilencePattern = true;
+    _xoPitch = 64;
+    _planes = 0xff;
+    _screenAlpha = 0xff;
+    _screenRGBA = &_screenRGBA1;
+    _workRGBA = &_screenRGBA2;
+    _screen.setAll(0);
+    _screenRGBA1.setAll(0);
+    _screenRGBA2.setAll(0);
+    //_host.updatePalette(_xxoPalette);
+    _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
+    _cpuState = eNORMAL;
+    _errorMessage.clear();
+    _wavePhase = 0;
+    _simpleRandState = _simpleRandSeed;
+    _isHires = _options.optOnlyHires ? true : false;
+    _isInstantDxyn = _options.optInstantDxyn;
+    _isMegaChipMode = false;
+    _planes = 1;
+    _spriteWidth = 0;
+    _spriteHeight = 0;
+    _collisionColor = 1;
+    _sampleLength = 0;
+    _sampleStep = 0;
+    _mcSamplePos = 0;
+    _blendMode = eBLEND_NORMAL;
+    _mcPalette.fill(0x00);
+    _mcPalette[1] = 0xffffffff;
+    _mcPalette[254] = 0xffffffff;
+}
+
+void Chip8GenericEmulator::setHandler()
+{
+    on(0xFFFF, 0x00E0, &Chip8GenericEmulator::op00E0);
+    on(0xFFFF, 0x00EE, _options.optCyclicStack ? &Chip8GenericEmulator::op00EE_cyclic : &Chip8GenericEmulator::op00EE);
+    on(0xF000, 0x1000, &Chip8GenericEmulator::op1nnn);
+    on(0xF000, 0x2000, _options.optCyclicStack ? &Chip8GenericEmulator::op2nnn_cyclic : &Chip8GenericEmulator::op2nnn);
+    on(0xF000, 0x3000, &Chip8GenericEmulator::op3xnn);
+    on(0xF000, 0x4000, &Chip8GenericEmulator::op4xnn);
+    on(0xF00F, 0x5000, &Chip8GenericEmulator::op5xy0);
+    on(0xF000, 0x6000, &Chip8GenericEmulator::op6xnn);
+    on(0xF000, 0x7000, &Chip8GenericEmulator::op7xnn);
+    on(0xF00F, 0x8000, &Chip8GenericEmulator::op8xy0);
+    on(0xF00F, 0x8001, _options.optDontResetVf ? &Chip8GenericEmulator::op8xy1_dontResetVf : &Chip8GenericEmulator::op8xy1);
+    on(0xF00F, 0x8002, _options.optDontResetVf ? &Chip8GenericEmulator::op8xy2_dontResetVf : &Chip8GenericEmulator::op8xy2);
+    on(0xF00F, 0x8003, _options.optDontResetVf ? &Chip8GenericEmulator::op8xy3_dontResetVf : &Chip8GenericEmulator::op8xy3);
+    on(0xF00F, 0x8004, &Chip8GenericEmulator::op8xy4);
+    on(0xF00F, 0x8005, &Chip8GenericEmulator::op8xy5);
+    on(0xF00F, 0x8006, _options.optJustShiftVx ? &Chip8GenericEmulator::op8xy6_justShiftVx : &Chip8GenericEmulator::op8xy6);
+    on(0xF00F, 0x8007, &Chip8GenericEmulator::op8xy7);
+    on(0xF00F, 0x800E, _options.optJustShiftVx ? &Chip8GenericEmulator::op8xyE_justShiftVx : &Chip8GenericEmulator::op8xyE);
+    on(0xF00F, 0x9000, &Chip8GenericEmulator::op9xy0);
+    on(0xF000, 0xA000, &Chip8GenericEmulator::opAnnn);
+    if(_options.behaviorBase != Chip8GenericOptions::eCHIP8X)
+        on(0xF000, 0xB000, _options.optJump0Bxnn ? &Chip8GenericEmulator::opBxnn : &Chip8GenericEmulator::opBnnn);
+    std::string randomGen;
+    // TODO: fix this
+    //if(_options.advanced.contains("random")) {
+    //    randomGen = _options.advanced.at("random");
+    //    _randomSeed = _options.advanced.at("seed");
+    //}
     if(randomGen == "rand-lcg")
-        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_randLCG);
+        on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn_randLCG);
     else if(randomGen == "counting")
-        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn_counting);
+        on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn_counting);
     else
-        on(0xF000, 0xC000, &Chip8EmulatorFP::opCxnn);
-    if(_options.behaviorBase == Chip8EmulatorOptions::eCHIP8X) {
+        on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn);
+    if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X) {
         if(_options.optInstantDxyn)
-            on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<0>);
+            on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<0>);
         else
-            on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn_displayWait<0>);
+            on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn_displayWait<0>);
     }
     else if(_options.optAllowHires) {
         if(_options.optAllowColors) {
             if (_options.optWrapSprites)
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|MultiColor|WrapSprite>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|MultiColor|WrapSprite>);
             else
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|MultiColor>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|MultiColor>);
         }
         else {
             if (_options.optWrapSprites)
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|WrapSprite>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|WrapSprite>);
             else {
                 if (_options.optSCLoresDrawing)
-                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport|SChip1xLoresDraw>);
+                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|SChip1xLoresDraw>);
                 else
-                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<HiresSupport>);
+                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport>);
             }
         }
     }
     else {
         if(_options.optAllowColors) {
             if (_options.optWrapSprites)
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<MultiColor|WrapSprite>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<MultiColor|WrapSprite>);
             else
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<MultiColor>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<MultiColor>);
         }
         else {
             if (_options.optWrapSprites)
-                on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<WrapSprite>);
+                on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<WrapSprite>);
             else {
                 if(_options.optInstantDxyn)
-                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn<0>);
+                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<0>);
                 else
-                    on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn_displayWait<0>);
+                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn_displayWait<0>);
             }
         }
     }
-    //on(0xF000, 0xD000, _options.optAllowHires ? &Chip8EmulatorFP::opDxyn_allowHires : &Chip8EmulatorFP::opDxyn);
-    on(0xF0FF, 0xE09E, &Chip8EmulatorFP::opEx9E);
-    on(0xF0FF, 0xE0A1, &Chip8EmulatorFP::opExA1);
-    on(0xF0FF, 0xF007, &Chip8EmulatorFP::opFx07);
-    on(0xF0FF, 0xF00A, &Chip8EmulatorFP::opFx0A);
-    on(0xF0FF, 0xF015, &Chip8EmulatorFP::opFx15);
-    on(0xF0FF, 0xF018, &Chip8EmulatorFP::opFx18);
-    on(0xF0FF, 0xF01E, &Chip8EmulatorFP::opFx1E);
-    on(0xF0FF, 0xF029, &Chip8EmulatorFP::opFx29);
-    on(0xF0FF, 0xF033, &Chip8EmulatorFP::opFx33);
-    on(0xF0FF, 0xF055, _options.optLoadStoreIncIByX ? &Chip8EmulatorFP::opFx55_loadStoreIncIByX : (_options.optLoadStoreDontIncI ? &Chip8EmulatorFP::opFx55_loadStoreDontIncI : &Chip8EmulatorFP::opFx55));
-    on(0xF0FF, 0xF065, _options.optLoadStoreIncIByX ? &Chip8EmulatorFP::opFx65_loadStoreIncIByX : (_options.optLoadStoreDontIncI ? &Chip8EmulatorFP::opFx65_loadStoreDontIncI : &Chip8EmulatorFP::opFx65));
+    //on(0xF000, 0xD000, _options.optAllowHires ? &Chip8GenericEmulator::opDxyn_allowHires : &Chip8GenericEmulator::opDxyn);
+    on(0xF0FF, 0xE09E, &Chip8GenericEmulator::opEx9E);
+    on(0xF0FF, 0xE0A1, &Chip8GenericEmulator::opExA1);
+    on(0xF0FF, 0xF007, &Chip8GenericEmulator::opFx07);
+    on(0xF0FF, 0xF00A, &Chip8GenericEmulator::opFx0A);
+    on(0xF0FF, 0xF015, &Chip8GenericEmulator::opFx15);
+    on(0xF0FF, 0xF018, &Chip8GenericEmulator::opFx18);
+    on(0xF0FF, 0xF01E, &Chip8GenericEmulator::opFx1E);
+    on(0xF0FF, 0xF029, &Chip8GenericEmulator::opFx29);
+    on(0xF0FF, 0xF033, &Chip8GenericEmulator::opFx33);
+    on(0xF0FF, 0xF055, _options.optLoadStoreIncIByX ? &Chip8GenericEmulator::opFx55_loadStoreIncIByX : (_options.optLoadStoreDontIncI ? &Chip8GenericEmulator::opFx55_loadStoreDontIncI : &Chip8GenericEmulator::opFx55));
+    on(0xF0FF, 0xF065, _options.optLoadStoreIncIByX ? &Chip8GenericEmulator::opFx65_loadStoreIncIByX : (_options.optLoadStoreDontIncI ? &Chip8GenericEmulator::opFx65_loadStoreDontIncI : &Chip8GenericEmulator::opFx65));
 
     switch(_options.behaviorBase) {
-        case Chip8EmulatorOptions::eSCHIP10:
-            on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
+        case Chip8GenericOptions::eSCHIP10:
+            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
             if(_options.optModeChangeClear) {
-                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
-                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
+                on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_withClear);
+                on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_withClear);
             }
             else {
-                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
-                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+                on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE);
+                on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF);
             }
-            on(0xF0FF, 0xF029, &Chip8EmulatorFP::opFx29_ship10Beta);
-            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF029, &Chip8GenericEmulator::opFx29_ship10Beta);
+            on(0xF0FF, 0xF075, &Chip8GenericEmulator::opFx75);
+            on(0xF0FF, 0xF085, &Chip8GenericEmulator::opFx85);
             break;
-        case Chip8EmulatorOptions::eCHIP8E:
-            on(0xFFFF, 0x00ED, &Chip8EmulatorFP::op00ED_c8e);
-            on(0xFFFF, 0x00F2, &Chip8EmulatorFP::opNop);
-            on(0xFFFF, 0x0151, &Chip8EmulatorFP::op0151_c8e);
-            on(0xFFFF, 0x0188, &Chip8EmulatorFP::op0188_c8e);
-            on(0xF00F, 0x5001, &Chip8EmulatorFP::op5xy1_c8e);
-            on(0xF00F, 0x5002, &Chip8EmulatorFP::op5xy2_c8e);
-            on(0xF00F, 0x5003, &Chip8EmulatorFP::op5xy3_c8e);
-            on(0xFF00, 0xBB00, &Chip8EmulatorFP::opBBnn_c8e);
-            on(0xFF00, 0xBF00, &Chip8EmulatorFP::opBFnn_c8e);
-            on(0xF0FF, 0xF003, &Chip8EmulatorFP::opNop);
-            on(0xF0FF, 0xF01B, &Chip8EmulatorFP::opFx1B_c8e);
-            on(0xF0FF, 0xF04F, &Chip8EmulatorFP::opFx4F_c8e);
-            on(0xF0FF, 0xF0E3, &Chip8EmulatorFP::opNop);
-            on(0xF0FF, 0xF0E7, &Chip8EmulatorFP::opNop);
+        case Chip8GenericOptions::eCHIP8E:
+            on(0xFFFF, 0x00ED, &Chip8GenericEmulator::op00ED_c8e);
+            on(0xFFFF, 0x00F2, &Chip8GenericEmulator::opNop);
+            on(0xFFFF, 0x0151, &Chip8GenericEmulator::op0151_c8e);
+            on(0xFFFF, 0x0188, &Chip8GenericEmulator::op0188_c8e);
+            on(0xF00F, 0x5001, &Chip8GenericEmulator::op5xy1_c8e);
+            on(0xF00F, 0x5002, &Chip8GenericEmulator::op5xy2_c8e);
+            on(0xF00F, 0x5003, &Chip8GenericEmulator::op5xy3_c8e);
+            on(0xFF00, 0xBB00, &Chip8GenericEmulator::opBBnn_c8e);
+            on(0xFF00, 0xBF00, &Chip8GenericEmulator::opBFnn_c8e);
+            on(0xF0FF, 0xF003, &Chip8GenericEmulator::opNop);
+            on(0xF0FF, 0xF01B, &Chip8GenericEmulator::opFx1B_c8e);
+            on(0xF0FF, 0xF04F, &Chip8GenericEmulator::opFx4F_c8e);
+            on(0xF0FF, 0xF0E3, &Chip8GenericEmulator::opNop);
+            on(0xF0FF, 0xF0E7, &Chip8GenericEmulator::opNop);
             break;
-        case Chip8EmulatorOptions::eCHIP8X:
-            on(0xFFFF, 0x02A0, &Chip8EmulatorFP::op02A0_c8x);
-            on(0xF00F, 0x5001, &Chip8EmulatorFP::op5xy1_c8x);
-            on(0xF000, 0xB000, &Chip8EmulatorFP::opBxyn_c8x);
-            on(0xF00F, 0xB000, &Chip8EmulatorFP::opBxy0_c8x);
-            on(0xF0FF, 0xE0F2, &Chip8EmulatorFP::opExF2_c8x);
-            on(0xF0FF, 0xE0F5, &Chip8EmulatorFP::opExF5_c8x);
-            on(0xF0FF, 0xF0F8, &Chip8EmulatorFP::opFxF8_c8x);
-            on(0xF0FF, 0xF0FB, &Chip8EmulatorFP::opFxFB_c8x);
+        case Chip8GenericOptions::eCHIP8X:
+            on(0xFFFF, 0x02A0, &Chip8GenericEmulator::op02A0_c8x);
+            on(0xF00F, 0x5001, &Chip8GenericEmulator::op5xy1_c8x);
+            on(0xF000, 0xB000, &Chip8GenericEmulator::opBxyn_c8x);
+            on(0xF00F, 0xB000, &Chip8GenericEmulator::opBxy0_c8x);
+            on(0xF0FF, 0xE0F2, &Chip8GenericEmulator::opExF2_c8x);
+            on(0xF0FF, 0xE0F5, &Chip8GenericEmulator::opExF5_c8x);
+            on(0xF0FF, 0xF0F8, &Chip8GenericEmulator::opFxF8_c8x);
+            on(0xF0FF, 0xF0FB, &Chip8GenericEmulator::opFxFB_c8x);
             break;
-        case Chip8EmulatorOptions::eSCHIP11:
-        case Chip8EmulatorOptions::eSCHPC:
-        case Chip8EmulatorOptions::eSCHIP_MODERN:
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
-            on(0xFFFF, 0x00C0, &Chip8EmulatorFP::opInvalid);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
-            on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
+        case Chip8GenericOptions::eSCHIP11:
+        case Chip8GenericOptions::eSCHPC:
+        case Chip8GenericOptions::eSCHIP_MODERN:
+            on(0xFFF0, 0x00C0, &Chip8GenericEmulator::op00Cn);
+            on(0xFFFF, 0x00C0, &Chip8GenericEmulator::opInvalid);
+            on(0xFFFF, 0x00FB, &Chip8GenericEmulator::op00FB);
+            on(0xFFFF, 0x00FC, &Chip8GenericEmulator::op00FC);
+            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
             if(_options.optModeChangeClear) {
-                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
-                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
+                on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_withClear);
+                on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_withClear);
             }
             else {
-                on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE);
-                on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF);
+                on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE);
+                on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF);
             }
-            on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+            on(0xF0FF, 0xF030, &Chip8GenericEmulator::opFx30);
+            on(0xF0FF, 0xF075, &Chip8GenericEmulator::opFx75);
+            on(0xF0FF, 0xF085, &Chip8GenericEmulator::opFx85);
             break;
-        case Chip8EmulatorOptions::eMEGACHIP:
-            on(0xFFFF, 0x0010, &Chip8EmulatorFP::op0010);
-            on(0xFFFF, 0x0011, &Chip8EmulatorFP::op0011);
-            on(0xFFF0, 0x00B0, &Chip8EmulatorFP::op00Bn);
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn);
-            on(0xFFFF, 0x00E0, &Chip8EmulatorFP::op00E0_megachip);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC);
-            on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_megachip);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_megachip);
-            on(0xFF00, 0x0100, &Chip8EmulatorFP::op01nn);
-            on(0xFF00, 0x0200, &Chip8EmulatorFP::op02nn);
-            on(0xFF00, 0x0300, &Chip8EmulatorFP::op03nn);
-            on(0xFF00, 0x0400, &Chip8EmulatorFP::op04nn);
-            on(0xFF00, 0x0500, &Chip8EmulatorFP::op05nn);
-            on(0xFFF0, 0x0600, &Chip8EmulatorFP::op060n);
-            on(0xFFFF, 0x0700, &Chip8EmulatorFP::op0700);
-            on(0xFFF0, 0x0800, &Chip8EmulatorFP::op080n);
-            on(0xFF00, 0x0900, &Chip8EmulatorFP::op09nn);
-            on(0xF000, 0x3000, &Chip8EmulatorFP::op3xnn_with_01nn);
-            on(0xF000, 0x4000, &Chip8EmulatorFP::op4xnn_with_01nn);
-            on(0xF00F, 0x5000, &Chip8EmulatorFP::op5xy0_with_01nn);
-            on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0_with_01nn);
-            on(0xF000, 0xD000, &Chip8EmulatorFP::opDxyn_megaChip);
-            on(0xF0FF, 0xE09E, &Chip8EmulatorFP::opEx9E_with_01nn);
-            on(0xF0FF, 0xE0A1, &Chip8EmulatorFP::opExA1_with_01nn);
-            on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+        case Chip8GenericOptions::eMEGACHIP:
+            on(0xFFFF, 0x0010, &Chip8GenericEmulator::op0010);
+            on(0xFFFF, 0x0011, &Chip8GenericEmulator::op0011);
+            on(0xFFF0, 0x00B0, &Chip8GenericEmulator::op00Bn);
+            on(0xFFF0, 0x00C0, &Chip8GenericEmulator::op00Cn);
+            on(0xFFFF, 0x00E0, &Chip8GenericEmulator::op00E0_megachip);
+            on(0xFFFF, 0x00FB, &Chip8GenericEmulator::op00FB);
+            on(0xFFFF, 0x00FC, &Chip8GenericEmulator::op00FC);
+            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
+            on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_megachip);
+            on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_megachip);
+            on(0xFF00, 0x0100, &Chip8GenericEmulator::op01nn);
+            on(0xFF00, 0x0200, &Chip8GenericEmulator::op02nn);
+            on(0xFF00, 0x0300, &Chip8GenericEmulator::op03nn);
+            on(0xFF00, 0x0400, &Chip8GenericEmulator::op04nn);
+            on(0xFF00, 0x0500, &Chip8GenericEmulator::op05nn);
+            on(0xFFF0, 0x0600, &Chip8GenericEmulator::op060n);
+            on(0xFFFF, 0x0700, &Chip8GenericEmulator::op0700);
+            on(0xFFF0, 0x0800, &Chip8GenericEmulator::op080n);
+            on(0xFF00, 0x0900, &Chip8GenericEmulator::op09nn);
+            on(0xF000, 0x3000, &Chip8GenericEmulator::op3xnn_with_01nn);
+            on(0xF000, 0x4000, &Chip8GenericEmulator::op4xnn_with_01nn);
+            on(0xF00F, 0x5000, &Chip8GenericEmulator::op5xy0_with_01nn);
+            on(0xF00F, 0x9000, &Chip8GenericEmulator::op9xy0_with_01nn);
+            on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn_megaChip);
+            on(0xF0FF, 0xE09E, &Chip8GenericEmulator::opEx9E_with_01nn);
+            on(0xF0FF, 0xE0A1, &Chip8GenericEmulator::opExA1_with_01nn);
+            on(0xF0FF, 0xF030, &Chip8GenericEmulator::opFx30);
+            on(0xF0FF, 0xF075, &Chip8GenericEmulator::opFx75);
+            on(0xF0FF, 0xF085, &Chip8GenericEmulator::opFx85);
             break;
-        case Chip8EmulatorOptions::eXOCHIP:
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn_masked);
-            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn_masked);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB_masked);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC_masked);
-            on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
-            on(0xF000, 0x3000, &Chip8EmulatorFP::op3xnn_with_F000);
-            on(0xF000, 0x4000, &Chip8EmulatorFP::op4xnn_with_F000);
-            on(0xF00F, 0x5000, &Chip8EmulatorFP::op5xy0_with_F000);
-            on(0xF00F, 0x5002, &Chip8EmulatorFP::op5xy2);
-            on(0xF00F, 0x5003, &Chip8EmulatorFP::op5xy3);
-            on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0_with_F000);
-            on(0xF0FF, 0xE09E, &Chip8EmulatorFP::opEx9E_with_F000);
-            on(0xF0FF, 0xE0A1, &Chip8EmulatorFP::opExA1_with_F000);
-            on(0xFFFF, 0xF000, &Chip8EmulatorFP::opF000);
-            on(0xF0FF, 0xF001, &Chip8EmulatorFP::opFx01);
-            on(0xFFFF, 0xF002, &Chip8EmulatorFP::opF002);
-            on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            on(0xF0FF, 0xF03A, &Chip8EmulatorFP::opFx3A);
-            on(0xF0FF, 0xF075, &Chip8EmulatorFP::opFx75);
-            on(0xF0FF, 0xF085, &Chip8EmulatorFP::opFx85);
+        case Chip8GenericOptions::eXOCHIP:
+            on(0xFFF0, 0x00C0, &Chip8GenericEmulator::op00Cn_masked);
+            on(0xFFF0, 0x00D0, &Chip8GenericEmulator::op00Dn_masked);
+            on(0xFFFF, 0x00FB, &Chip8GenericEmulator::op00FB_masked);
+            on(0xFFFF, 0x00FC, &Chip8GenericEmulator::op00FC_masked);
+            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
+            on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_withClear);
+            on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_withClear);
+            on(0xF000, 0x3000, &Chip8GenericEmulator::op3xnn_with_F000);
+            on(0xF000, 0x4000, &Chip8GenericEmulator::op4xnn_with_F000);
+            on(0xF00F, 0x5000, &Chip8GenericEmulator::op5xy0_with_F000);
+            on(0xF00F, 0x5002, &Chip8GenericEmulator::op5xy2);
+            on(0xF00F, 0x5003, &Chip8GenericEmulator::op5xy3);
+            on(0xF00F, 0x9000, &Chip8GenericEmulator::op9xy0_with_F000);
+            on(0xF0FF, 0xE09E, &Chip8GenericEmulator::opEx9E_with_F000);
+            on(0xF0FF, 0xE0A1, &Chip8GenericEmulator::opExA1_with_F000);
+            on(0xFFFF, 0xF000, &Chip8GenericEmulator::opF000);
+            on(0xF0FF, 0xF001, &Chip8GenericEmulator::opFx01);
+            on(0xFFFF, 0xF002, &Chip8GenericEmulator::opF002);
+            on(0xF0FF, 0xF030, &Chip8GenericEmulator::opFx30);
+            on(0xF0FF, 0xF03A, &Chip8GenericEmulator::opFx3A);
+            on(0xF0FF, 0xF075, &Chip8GenericEmulator::opFx75);
+            on(0xF0FF, 0xF085, &Chip8GenericEmulator::opFx85);
             break;
-        case Chip8EmulatorOptions::eCHICUEYI:
-            on(0xFFF0, 0x00C0, &Chip8EmulatorFP::op00Cn_masked);
-            on(0xFFF0, 0x00D0, &Chip8EmulatorFP::op00Dn_masked);
-            on(0xFFFF, 0x00FB, &Chip8EmulatorFP::op00FB_masked);
-            on(0xFFFF, 0x00FC, &Chip8EmulatorFP::op00FC_masked);
-            on(0xFFFF, 0x00FD, &Chip8EmulatorFP::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8EmulatorFP::op00FE_withClear);
-            on(0xFFFF, 0x00FF, &Chip8EmulatorFP::op00FF_withClear);
-            on(0xF000, 0x3000, &Chip8EmulatorFP::op3xnn_with_F000);
-            on(0xF000, 0x4000, &Chip8EmulatorFP::op4xnn_with_F000);
-            on(0xF00F, 0x5000, &Chip8EmulatorFP::op5xy0_with_F000);
-            on(0xF00F, 0x5002, &Chip8EmulatorFP::op5xy2);
-            on(0xF00F, 0x5003, &Chip8EmulatorFP::op5xy3);
-            on(0xF00F, 0x5004, &Chip8EmulatorFP::op5xy4);
-            on(0xF00F, 0x9000, &Chip8EmulatorFP::op9xy0_with_F000);
-            on(0xF0FF, 0xE09E, &Chip8EmulatorFP::opEx9E_with_F000);
-            on(0xF0FF, 0xE0A1, &Chip8EmulatorFP::opExA1_with_F000);
-            on(0xFFFF, 0xF000, &Chip8EmulatorFP::opF000);
-            on(0xF0FF, 0xF001, &Chip8EmulatorFP::opFx01);
-            on(0xFFFF, 0xF002, &Chip8EmulatorFP::opF002);
-            on(0xF0FF, 0xF030, &Chip8EmulatorFP::opFx30);
-            on(0xF0FF, 0xF03A, &Chip8EmulatorFP::opFx3A);
+        case Chip8GenericOptions::eCHICUEYI:
+            on(0xFFF0, 0x00C0, &Chip8GenericEmulator::op00Cn_masked);
+            on(0xFFF0, 0x00D0, &Chip8GenericEmulator::op00Dn_masked);
+            on(0xFFFF, 0x00FB, &Chip8GenericEmulator::op00FB_masked);
+            on(0xFFFF, 0x00FC, &Chip8GenericEmulator::op00FC_masked);
+            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
+            on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_withClear);
+            on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_withClear);
+            on(0xF000, 0x3000, &Chip8GenericEmulator::op3xnn_with_F000);
+            on(0xF000, 0x4000, &Chip8GenericEmulator::op4xnn_with_F000);
+            on(0xF00F, 0x5000, &Chip8GenericEmulator::op5xy0_with_F000);
+            on(0xF00F, 0x5002, &Chip8GenericEmulator::op5xy2);
+            on(0xF00F, 0x5003, &Chip8GenericEmulator::op5xy3);
+            on(0xF00F, 0x5004, &Chip8GenericEmulator::op5xy4);
+            on(0xF00F, 0x9000, &Chip8GenericEmulator::op9xy0_with_F000);
+            on(0xF0FF, 0xE09E, &Chip8GenericEmulator::opEx9E_with_F000);
+            on(0xF0FF, 0xE0A1, &Chip8GenericEmulator::opExA1_with_F000);
+            on(0xFFFF, 0xF000, &Chip8GenericEmulator::opF000);
+            on(0xF0FF, 0xF001, &Chip8GenericEmulator::opFx01);
+            on(0xFFFF, 0xF002, &Chip8GenericEmulator::opF002);
+            on(0xF0FF, 0xF030, &Chip8GenericEmulator::opFx30);
+            on(0xF0FF, 0xF03A, &Chip8GenericEmulator::opFx3A);
             break;
         default: break;
     }
 }
 
-Chip8EmulatorFP::~Chip8EmulatorFP()
+Chip8GenericEmulator::~Chip8GenericEmulator()
 {
 #ifdef GEN_OPCODE_STATS
     std::vector<std::pair<uint16_t,int64_t>> result;
@@ -299,17 +680,65 @@ Chip8EmulatorFP::~Chip8EmulatorFP()
 #endif
 }
 
-void Chip8EmulatorFP::reset()
+int64_t Chip8GenericEmulator::executeFor(int64_t micros)
 {
-    Chip8EmulatorBase::reset();
-    _simpleRandState = _simpleRandSeed;
-    if(_options.behaviorBase == Chip8EmulatorOptions::eCHIP8X) {
-        _screen.setOverlayCellHeight(-1); // reset
-        _chip8xBackgroundColor = 0;
+    if (_execMode == ePAUSED || _cpuState == eERROR) {
+        setExecMode(ePAUSED);
+        return 0;
+    }
+    if(_options.instructionsPerFrame) {
+        auto startTime = _cycleCounter;
+        auto microsPerCycle = 1000000.0 / ((int64_t)_options.instructionsPerFrame * _options.frameRate);
+        auto endCycles = startTime + int64_t(micros/microsPerCycle);
+        auto nextFrame = calcNextFrame();
+        while(_execMode != ePAUSED && nextFrame <= endCycles) {
+            executeInstructions(nextFrame - _cycleCounter);
+            if(_cycleCounter == nextFrame) {
+                handleTimer();
+                nextFrame += _options.instructionsPerFrame;
+            }
+        }
+        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
+            executeInstruction();
+        }
+        auto excessTime = int64_t((endCycles - _cycleCounter) * microsPerCycle);
+        return excessTime;// > 0 ? excessTime : 0;
+    }
+    else {
+        using namespace std::chrono;
+        handleTimer();
+        auto start = _cycleCounter;
+        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros * 3 / 4 : 0);
+        do {
+            executeInstructions(487);
+        }
+        while(_execMode != ePAUSED && steady_clock::now() < endTime);
+        uint32_t actualIPF = _cycleCounter - start;
+        _systemTime.setFrequency((_systemTime.getClockFreq() + actualIPF)>>1);
+    }
+    return 0;
+}
+
+void Chip8GenericEmulator::executeFrame()
+{
+    if(!_options.instructionsPerFrame) {
+        handleTimer();
+        auto start = std::chrono::steady_clock::now();
+        do {
+            executeInstructions(487);
+        }
+        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
+    }
+    else {
+        auto instructionsLeft = calcNextFrame() - _cycleCounter;
+        if(instructionsLeft == _options.instructionsPerFrame) {
+            handleTimer();
+        }
+        executeInstructions(instructionsLeft);
     }
 }
 
-inline void Chip8EmulatorFP::executeInstructionNoBreakpoints()
+inline void Chip8GenericEmulator::executeInstructionNoBreakpoints()
 {
     uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
     ++_cycleCounter;
@@ -317,7 +746,7 @@ inline void Chip8EmulatorFP::executeInstructionNoBreakpoints()
     (this->*_opcodeHandler[opcode])(opcode);
 }
 
-void Chip8EmulatorFP::executeInstructions(int numInstructions)
+void Chip8GenericEmulator::executeInstructions(int numInstructions)
 {
     if(_execMode == ePAUSED)
         return;
@@ -326,19 +755,19 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
         if(_execMode == eRUNNING) {
             auto end = _cycleCounter + numInstructions;
             while (_execMode == eRUNNING && _cycleCounter < end) {
-                if (_breakpoints.empty() && !_options.optTraceLog)
-                    Chip8EmulatorFP::executeInstructionNoBreakpoints();
+                if (_breakpoints.empty() && !_options.traceLog)
+                    Chip8GenericEmulator::executeInstructionNoBreakpoints();
                 else
-                    Chip8EmulatorFP::executeInstruction();
+                    Chip8GenericEmulator::executeInstruction();
             }
         }
         else {
             for (int i = 0; i < numInstructions; ++i)
-                Chip8EmulatorFP::executeInstruction();
+                Chip8GenericEmulator::executeInstruction();
         }
     }
     else if(_isInstantDxyn) {
-        if(_execMode ==  eRUNNING && _breakpoints.empty() && !_options.optTraceLog) {
+        if(_execMode ==  eRUNNING && _breakpoints.empty() && !_options.traceLog) {
             for (int i = 0; i < numInstructions; ++i) {
                 uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
                 _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -352,18 +781,18 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
                 }
 #endif
                 (this->*_opcodeHandler[opcode])(opcode);
-                if(_cpuState == eWAITING) {
+                if(_cpuState == eWAIT) {
                     _cycleCounter += numInstructions - i;
                     break;
                 }
                 _cycleCounter++;
             }
             //_cycleCounter += numInstructions;
-            //    Chip8EmulatorFP::executeInstructionNoBreakpoints();
+            //    Chip8GenericEmulator::executeInstructionNoBreakpoints();
         }
         else  {
             for (int i = 0; i < numInstructions; ++i)
-                Chip8EmulatorFP::executeInstruction();
+                Chip8GenericEmulator::executeInstruction();
         }
     }
     else {
@@ -373,19 +802,20 @@ void Chip8EmulatorFP::executeInstructions(int numInstructions)
             //    _systemTime.addCycles(_cycleCounter - start);
             //    return;
             //}
-            if(_execMode == eRUNNING && _breakpoints.empty() && !_options.optTraceLog)
-                Chip8EmulatorFP::executeInstructionNoBreakpoints();
+            if(_execMode == eRUNNING && _breakpoints.empty() && !_options.traceLog)
+                Chip8GenericEmulator::executeInstructionNoBreakpoints();
             else
-                Chip8EmulatorFP::executeInstruction();
+                Chip8GenericEmulator::executeInstruction();
         }
     }
     _systemTime.addCycles(_cycleCounter - start);
 }
 
-inline void Chip8EmulatorFP::executeInstruction()
+int Chip8GenericEmulator::executeInstruction()
 {
+    auto startCycle = _cycleCounter;
     if(_execMode == eRUNNING) {
-        if(_options.optTraceLog && _cpuState != eWAITING)
+        if(_options.traceLog && _cpuState != eWAIT)
             Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -403,8 +833,8 @@ inline void Chip8EmulatorFP::executeInstruction()
     }
     else {
         if (_execMode == ePAUSED || _cpuState == eERROR)
-            return;
-        if(_options.optTraceLog)
+            return static_cast<int>(_cycleCounter - startCycle);
+        if(_options.traceLog)
             Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, int(_cycleCounter % 9999)}, dumpStateLine().c_str());
         uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
         _rPC = (_rPC + 2) & ADDRESS_MASK;
@@ -415,14 +845,15 @@ inline void Chip8EmulatorFP::executeInstruction()
         }
     }
     if(hasBreakPoint(_rPC)) {
-        if(Chip8EmulatorBase::findBreakpoint(_rPC)) {
+        if(findBreakpoint(_rPC)) {
             _execMode = ePAUSED;
             _breakpointTriggered = true;
         }
     }
+    return static_cast<int>(_cycleCounter - startCycle);
 }
 
-uint8_t Chip8EmulatorFP::getNextMCSample()
+uint8_t Chip8GenericEmulator::getNextMCSample()
 {
     if(_isMegaChipMode && _sampleLength>0 && _execMode == eRUNNING) {
         auto val = _memory[(_sampleStart + uint32_t(_mcSamplePos)) & ADDRESS_MASK];
@@ -433,13 +864,13 @@ uint8_t Chip8EmulatorFP::getNextMCSample()
             else
                 pos = _sampleLength = 0;
         }
-        _mcSamplePos.store(pos);
+        _mcSamplePos = pos;
         return val;
     }
     return 128;
 }
 
-void Chip8EmulatorFP::on(uint16_t mask, uint16_t opcode, OpcodeHandler handler)
+void Chip8GenericEmulator::on(uint16_t mask, uint16_t opcode, OpcodeHandler handler)
 {
     uint16_t argMask = ~mask;
     int shift = 0;
@@ -459,16 +890,16 @@ void Chip8EmulatorFP::on(uint16_t mask, uint16_t opcode, OpcodeHandler handler)
     }
 }
 
-void Chip8EmulatorFP::opNop(uint16_t)
+void Chip8GenericEmulator::opNop(uint16_t)
 {
 }
 
-void Chip8EmulatorFP::opInvalid(uint16_t opcode)
+void Chip8GenericEmulator::opInvalid(uint16_t opcode)
 {
     errorHalt(fmt::format("INVALID OPCODE: {:04X}", opcode));
 }
 
-void Chip8EmulatorFP::op0010(uint16_t opcode)
+void Chip8GenericEmulator::op0010(uint16_t opcode)
 {
     _isMegaChipMode = false;
     _host.preClear();
@@ -476,7 +907,7 @@ void Chip8EmulatorFP::op0010(uint16_t opcode)
     ++_clearCounter;
 }
 
-void Chip8EmulatorFP::op0011(uint16_t opcode)
+void Chip8GenericEmulator::op0011(uint16_t opcode)
 {
     _isMegaChipMode = true;
     _host.preClear();
@@ -484,7 +915,7 @@ void Chip8EmulatorFP::op0011(uint16_t opcode)
     ++_clearCounter;
 }
 
-void Chip8EmulatorFP::op00Bn(uint16_t opcode)
+void Chip8GenericEmulator::op00Bn(uint16_t opcode)
 { // Scroll UP
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
@@ -499,7 +930,7 @@ void Chip8EmulatorFP::op00Bn(uint16_t opcode)
 
 }
 
-void Chip8EmulatorFP::op00Cn(uint16_t opcode)
+void Chip8GenericEmulator::op00Cn(uint16_t opcode)
 { // Scroll DOWN
     auto n = (opcode & 0xf);
     if(_isMegaChipMode) {
@@ -513,12 +944,12 @@ void Chip8EmulatorFP::op00Cn(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op00Cn_masked(uint16_t opcode)
+void Chip8GenericEmulator::op00Cn_masked(uint16_t opcode)
 { // Scroll DOWN masked
     auto n = (opcode & 0xf);
     if(!_isHires) n <<= 1;
-    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
-    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    auto width = getCurrentScreenWidth();
+    auto height = getCurrentScreenHeight();
     for(int sy = height - n - 1; sy >= 0; --sy) {
         for(int sx = 0; sx < width; ++sx) {
             _screen.movePixelMasked(sx, sy, sx, sy + n, _planes);
@@ -532,19 +963,19 @@ void Chip8EmulatorFP::op00Cn_masked(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op00Dn(uint16_t opcode)
+void Chip8GenericEmulator::op00Dn(uint16_t opcode)
 { // Scroll UP
     auto n = (opcode & 0xf);
     _screen.scrollUp(_isHires || _options.optHalfPixelScroll ? n : (n<<1));
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
+void Chip8GenericEmulator::op00Dn_masked(uint16_t opcode)
 { // Scroll UP masked
     auto n = (opcode & 0xf);
     if(!_isHires) n <<= 1;
-    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
-    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    auto width = getCurrentScreenWidth();
+    auto height = getCurrentScreenHeight();
     for(int sy = n; sy < height; ++sy) {
         for(int sx = 0; sx < width; ++sx) {
             _screen.movePixelMasked(sx, sy, sx, sy - n, _planes);
@@ -558,7 +989,7 @@ void Chip8EmulatorFP::op00Dn_masked(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op00E0(uint16_t opcode)
+void Chip8GenericEmulator::op00E0(uint16_t opcode)
 {
     _host.preClear();
     clearScreen();
@@ -566,7 +997,7 @@ void Chip8EmulatorFP::op00E0(uint16_t opcode)
     ++_clearCounter;
 }
 
-void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
+void Chip8GenericEmulator::op00E0_megachip(uint16_t opcode)
 {
     _host.preClear();
     swapMegaSchreens();
@@ -576,12 +1007,12 @@ void Chip8EmulatorFP::op00E0_megachip(uint16_t opcode)
     _cycleCounter = calcNextFrame() - 1;
 }
 
-void Chip8EmulatorFP::op00ED_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op00ED_c8e(uint16_t opcode)
 {
     halt();
 }
 
-void Chip8EmulatorFP::op00EE(uint16_t opcode)
+void Chip8GenericEmulator::op00EE(uint16_t opcode)
 {
     if(!_rSP)
         errorHalt("STACK UNDERFLOW");
@@ -592,14 +1023,14 @@ void Chip8EmulatorFP::op00EE(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op00EE_cyclic(uint16_t opcode)
+void Chip8GenericEmulator::op00EE_cyclic(uint16_t opcode)
 {
     _rPC = _stack[(--_rSP)&0xF];
     if (_execMode == eSTEPOUT)
         _execMode = ePAUSED;
 }
 
-void Chip8EmulatorFP::op00FB(uint16_t opcode)
+void Chip8GenericEmulator::op00FB(uint16_t opcode)
 { // Scroll right 4 pixel
     if(_isMegaChipMode) {
         _screen.scrollRight(4);
@@ -612,12 +1043,12 @@ void Chip8EmulatorFP::op00FB(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op00FB_masked(uint16_t opcode)
+void Chip8GenericEmulator::op00FB_masked(uint16_t opcode)
 { // Scroll right 4 pixel masked
     auto n = 4;
     if(!_isHires) n <<= 1;
-    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
-    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    auto width = getCurrentScreenWidth();
+    auto height = getCurrentScreenHeight();
     for(int sy = 0; sy < height; ++sy) {
         for(int sx = width - n - 1; sx >= 0; --sx) {
             _screen.movePixelMasked(sx, sy, sx + n, sy, _planes);
@@ -629,7 +1060,7 @@ void Chip8EmulatorFP::op00FB_masked(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op00FC(uint16_t opcode)
+void Chip8GenericEmulator::op00FC(uint16_t opcode)
 { // Scroll left 4 pixel
     if(_isMegaChipMode) {
         _screen.scrollLeft(4);
@@ -642,12 +1073,12 @@ void Chip8EmulatorFP::op00FC(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op00FC_masked(uint16_t opcode)
+void Chip8GenericEmulator::op00FC_masked(uint16_t opcode)
 { // Scroll left 4 pixels masked
     auto n = 4;
     if(!_isHires) n <<= 1;
-    auto width = Chip8EmulatorBase::getCurrentScreenWidth();
-    auto height = Chip8EmulatorBase::getCurrentScreenHeight();
+    auto width = getCurrentScreenWidth();
+    auto height = getCurrentScreenHeight();
     for(int sy = 0; sy < height; ++sy) {
         for(int sx = n; sx < width; ++sx) {
             _screen.movePixelMasked(sx, sy, sx - n, sy, _planes);
@@ -659,19 +1090,19 @@ void Chip8EmulatorFP::op00FC_masked(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op00FD(uint16_t opcode)
+void Chip8GenericEmulator::op00FD(uint16_t opcode)
 {
     halt();
 }
 
-void Chip8EmulatorFP::op00FE(uint16_t opcode)
+void Chip8GenericEmulator::op00FE(uint16_t opcode)
 {
     _host.preClear();
     _isHires = false;
     _isInstantDxyn = _options.optInstantDxyn;
 }
 
-void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
+void Chip8GenericEmulator::op00FE_withClear(uint16_t opcode)
 {
     _host.preClear();
     _isHires = false;
@@ -681,7 +1112,7 @@ void Chip8EmulatorFP::op00FE_withClear(uint16_t opcode)
     ++_clearCounter;
 }
 
-void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
+void Chip8GenericEmulator::op00FE_megachip(uint16_t opcode)
 {
     if(_isHires && !_isMegaChipMode) {
         _host.preClear();
@@ -693,14 +1124,14 @@ void Chip8EmulatorFP::op00FE_megachip(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op00FF(uint16_t opcode)
+void Chip8GenericEmulator::op00FF(uint16_t opcode)
 {
     _host.preClear();
     _isHires = true;
     _isInstantDxyn = true;
 }
 
-void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
+void Chip8GenericEmulator::op00FF_withClear(uint16_t opcode)
 {
     _host.preClear();
     _isHires = true;
@@ -710,7 +1141,7 @@ void Chip8EmulatorFP::op00FF_withClear(uint16_t opcode)
     ++_clearCounter;
 }
 
-void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
+void Chip8GenericEmulator::op00FF_megachip(uint16_t opcode)
 {
     if(!_isHires && !_isMegaChipMode) {
         _host.preClear();
@@ -722,36 +1153,36 @@ void Chip8EmulatorFP::op00FF_megachip(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op0151_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op0151_c8e(uint16_t opcode)
 {
     if(_rDT) {
         _rPC -= 2;
-        _cpuState = eWAITING;
+        _cpuState = eWAIT;
     }
     else {
         _cpuState = eNORMAL;
     }
 }
 
-void Chip8EmulatorFP::op0188_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op0188_c8e(uint16_t opcode)
 {
     _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::op01nn(uint16_t opcode)
+void Chip8GenericEmulator::op01nn(uint16_t opcode)
 {
     _rI = ((opcode & 0xFF) << 16 | (_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
     _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::op02A0_c8x(uint16_t opcode)
+void Chip8GenericEmulator::op02A0_c8x(uint16_t opcode)
 {
     _chip8xBackgroundColor = (_chip8xBackgroundColor + 1) & 3;
     _screen.setOverlayBackground(_chip8xBackgroundColor);
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::op02nn(uint16_t opcode)
+void Chip8GenericEmulator::op02nn(uint16_t opcode)
 {
     auto numCols = opcode & 0xFF;
     std::vector<uint32_t> cols;
@@ -768,49 +1199,49 @@ void Chip8EmulatorFP::op02nn(uint16_t opcode)
     _host.updatePalette(cols, 1);
 }
 
-void Chip8EmulatorFP::op03nn(uint16_t opcode)
+void Chip8GenericEmulator::op03nn(uint16_t opcode)
 {
     _spriteWidth = opcode & 0xFF;
     if(!_spriteWidth)
         _spriteWidth = 256;
 }
 
-void Chip8EmulatorFP::op04nn(uint16_t opcode)
+void Chip8GenericEmulator::op04nn(uint16_t opcode)
 {
     _spriteHeight = opcode & 0xFF;
     if(!_spriteHeight)
         _spriteHeight = 256;
 }
 
-void Chip8EmulatorFP::op05nn(uint16_t opcode)
+void Chip8GenericEmulator::op05nn(uint16_t opcode)
 {
     _screenAlpha = opcode & 0xFF;
 }
 
-void Chip8EmulatorFP::op060n(uint16_t opcode)
+void Chip8GenericEmulator::op060n(uint16_t opcode)
 {
     uint32_t frequency = (_memory[_rI & ADDRESS_MASK] << 8) | _memory[(_rI + 1) & ADDRESS_MASK];
     uint32_t length = (_memory[(_rI + 2) & ADDRESS_MASK] << 16) | (_memory[(_rI + 3) & ADDRESS_MASK] << 8) | _memory[(_rI + 4) & ADDRESS_MASK];
-    _sampleStart.store(_rI + 6);
-    _sampleStep.store(frequency / 44100.0f);
-    _sampleLength.store(length);
+    _sampleStart = _rI + 6;
+    _sampleStep = frequency / 44100.0f;
+    _sampleLength = length;;
     _sampleLoop = (opcode & 0xf) == 0;
-    _mcSamplePos.store(0);
+    _mcSamplePos = 0;
 }
 
-void Chip8EmulatorFP::op0700(uint16_t opcode)
+void Chip8GenericEmulator::op0700(uint16_t opcode)
 {
-    _sampleLength.store(0);
-    _mcSamplePos.store(0);
+    _sampleLength = 0;
+    _mcSamplePos = 0;
 }
 
-void Chip8EmulatorFP::op080n(uint16_t opcode)
+void Chip8GenericEmulator::op080n(uint16_t opcode)
 {
     auto bm = opcode & 0xF;
     _blendMode = bm < 6 ? MegaChipBlendMode(bm) : eBLEND_NORMAL;
 }
 
-void Chip8EmulatorFP::op09nn(uint16_t opcode)
+void Chip8GenericEmulator::op09nn(uint16_t opcode)
 {
     _collisionColor = opcode & 0xFF;
 }
@@ -824,7 +1255,7 @@ int64_t maxLoop = 0;
 double avgLoop = 0;
 #endif
 
-void Chip8EmulatorFP::op1nnn(uint16_t opcode)
+void Chip8GenericEmulator::op1nnn(uint16_t opcode)
 {
     if((opcode & 0xFFF) == _rPC - 2)
         _execMode = ePAUSED;
@@ -843,7 +1274,7 @@ void Chip8EmulatorFP::op1nnn(uint16_t opcode)
 #endif
 }
 
-void Chip8EmulatorFP::op2nnn(uint16_t opcode)
+void Chip8GenericEmulator::op2nnn(uint16_t opcode)
 {
     if(_rSP == 16)
         errorHalt("STACK OVERFLOW");
@@ -853,13 +1284,13 @@ void Chip8EmulatorFP::op2nnn(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op2nnn_cyclic(uint16_t opcode)
+void Chip8GenericEmulator::op2nnn_cyclic(uint16_t opcode)
 {
     _stack[(_rSP++)&0xF] = _rPC;
     _rPC = opcode & 0xFFF;
 }
 
-void Chip8EmulatorFP::op3xnn(uint16_t opcode)
+void Chip8GenericEmulator::op3xnn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
         _rPC += 2;
@@ -868,75 +1299,75 @@ void Chip8EmulatorFP::op3xnn(uint16_t opcode)
 
 #define CONDITIONAL_SKIP_DISTANCE(ifOpcode,mask) ((_memory[_rPC]&(mask>>8)) == (ifOpcode>>8) && (_memory[(_rPC + 1)]&(mask&0xff)) == (ifOpcode&0xff) ? 4 : 2)
 
-void Chip8EmulatorFP::op3xnn_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::op3xnn_with_F000(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000,0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op3xnn_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::op3xnn_with_01nn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == (opcode & 0xff)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100,0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op4xnn(uint16_t opcode)
+void Chip8GenericEmulator::op4xnn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
         _rPC += 2;
     }
 }
 
-void Chip8EmulatorFP::op4xnn_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::op4xnn_with_F000(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op4xnn_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::op4xnn_with_01nn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != (opcode & 0xFF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op5xy0(uint16_t opcode)
+void Chip8GenericEmulator::op5xy0(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
         _rPC += 2;
     }
 }
 
-void Chip8EmulatorFP::op5xy0_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::op5xy0_with_F000(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op5xy0_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::op5xy0_with_01nn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] == _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op5xy1_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op5xy1_c8e(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] > _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + 2) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op5xy1_c8x(uint16_t opcode)
+void Chip8GenericEmulator::op5xy1_c8x(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = ((_rV[(opcode >> 8) & 0xF] & 0x77) + (_rV[(opcode >> 4) & 0xF] & 0x77)) & 0x77;
 }
 
-void Chip8EmulatorFP::op5xy2(uint16_t opcode)
+void Chip8GenericEmulator::op5xy2(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
@@ -945,7 +1376,7 @@ void Chip8EmulatorFP::op5xy2(uint16_t opcode)
         write(_rI + i, _rV[x < y ? x + i : x - i]);
 }
 
-void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op5xy2_c8e(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
@@ -957,7 +1388,7 @@ void Chip8EmulatorFP::op5xy2_c8e(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op5xy3(uint16_t opcode)
+void Chip8GenericEmulator::op5xy3(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
@@ -965,7 +1396,7 @@ void Chip8EmulatorFP::op5xy3(uint16_t opcode)
         _rV[x < y ? x + i : x - i] = read(_rI + i);
 }
 
-void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
+void Chip8GenericEmulator::op5xy3_c8e(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
@@ -977,7 +1408,7 @@ void Chip8EmulatorFP::op5xy3_c8e(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::op5xy4(uint16_t opcode)
+void Chip8GenericEmulator::op5xy4(uint16_t opcode)
 {
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
@@ -986,90 +1417,90 @@ void Chip8EmulatorFP::op5xy4(uint16_t opcode)
     _host.updatePalette(_xxoPalette);
 }
 
-void Chip8EmulatorFP::op6xnn(uint16_t opcode)
+void Chip8GenericEmulator::op6xnn(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = opcode & 0xFF;
 }
 
-void Chip8EmulatorFP::op7xnn(uint16_t opcode)
+void Chip8GenericEmulator::op7xnn(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] += opcode & 0xFF;
 }
 
-void Chip8EmulatorFP::op8xy0(uint16_t opcode)
+void Chip8GenericEmulator::op8xy0(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF];
 }
 
-void Chip8EmulatorFP::op8xy1(uint16_t opcode)
+void Chip8GenericEmulator::op8xy1(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] |= _rV[(opcode >> 4) & 0xF];
     _rV[0xF] = 0;
 }
 
-void Chip8EmulatorFP::op8xy1_dontResetVf(uint16_t opcode)
+void Chip8GenericEmulator::op8xy1_dontResetVf(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] |= _rV[(opcode >> 4) & 0xF];
 }
 
-void Chip8EmulatorFP::op8xy2(uint16_t opcode)
+void Chip8GenericEmulator::op8xy2(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] &= _rV[(opcode >> 4) & 0xF];
     _rV[0xF] = 0;
 }
 
-void Chip8EmulatorFP::op8xy2_dontResetVf(uint16_t opcode)
+void Chip8GenericEmulator::op8xy2_dontResetVf(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] &= _rV[(opcode >> 4) & 0xF];
 }
 
-void Chip8EmulatorFP::op8xy3(uint16_t opcode)
+void Chip8GenericEmulator::op8xy3(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] ^= _rV[(opcode >> 4) & 0xF];
     _rV[0xF] = 0;
 }
 
-void Chip8EmulatorFP::op8xy3_dontResetVf(uint16_t opcode)
+void Chip8GenericEmulator::op8xy3_dontResetVf(uint16_t opcode)
 {   
     _rV[(opcode >> 8) & 0xF] ^= _rV[(opcode >> 4) & 0xF];
 }
 
-void Chip8EmulatorFP::op8xy4(uint16_t opcode)
+void Chip8GenericEmulator::op8xy4(uint16_t opcode)
 {   
     uint16_t result = _rV[(opcode >> 8) & 0xF] + _rV[(opcode >> 4) & 0xF];
     _rV[(opcode >> 8) & 0xF] = result;
     _rV[0xF] = result>>8;
 }
 
-void Chip8EmulatorFP::op8xy5(uint16_t opcode)
+void Chip8GenericEmulator::op8xy5(uint16_t opcode)
 {   
     uint16_t result = _rV[(opcode >> 8) & 0xF] - _rV[(opcode >> 4) & 0xF];
     _rV[(opcode >> 8) & 0xF] = result;
     _rV[0xF] = result > 255 ? 0 : 1;
 }
 
-void Chip8EmulatorFP::op8xy6(uint16_t opcode)
+void Chip8GenericEmulator::op8xy6(uint16_t opcode)
 {   
     uint8_t carry = _rV[(opcode >> 4) & 0xF] & 1;
     _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF] >> 1;
     _rV[0xF] = carry;
 }
 
-void Chip8EmulatorFP::op8xy6_justShiftVx(uint16_t opcode)
+void Chip8GenericEmulator::op8xy6_justShiftVx(uint16_t opcode)
 {   
     uint8_t carry = _rV[(opcode >> 8) & 0xF] & 1;
     _rV[(opcode >> 8) & 0xF] >>= 1;
     _rV[0xF] = carry;
 }
 
-void Chip8EmulatorFP::op8xy7(uint16_t opcode)
+void Chip8GenericEmulator::op8xy7(uint16_t opcode)
 {   
     uint16_t result = _rV[(opcode >> 4) & 0xF] - _rV[(opcode >> 8) & 0xF];
     _rV[(opcode >> 8) & 0xF] = result;
     _rV[0xF] = result > 255 ? 0 : 1;
 }
 
-void Chip8EmulatorFP::op8xyE(uint16_t opcode)
+void Chip8GenericEmulator::op8xyE(uint16_t opcode)
 {
 #if 1
     uint8_t carry = _rV[(opcode >> 4) & 0xF] >> 7;
@@ -1081,50 +1512,50 @@ void Chip8EmulatorFP::op8xyE(uint16_t opcode)
 #endif
 }
 
-void Chip8EmulatorFP::op8xyE_justShiftVx(uint16_t opcode)
+void Chip8GenericEmulator::op8xyE_justShiftVx(uint16_t opcode)
 {   
     uint8_t carry = _rV[(opcode >> 8) & 0xF] >> 7;
     _rV[(opcode >> 8) & 0xF] <<= 1;
     _rV[0xF] = carry;
 }
 
-void Chip8EmulatorFP::op9xy0(uint16_t opcode)
+void Chip8GenericEmulator::op9xy0(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
         _rPC += 2;
     }
 }
 
-void Chip8EmulatorFP::op9xy0_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::op9xy0_with_F000(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::op9xy0_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::op9xy0_with_01nn(uint16_t opcode)
 {
     if (_rV[(opcode >> 8) & 0xF] != _rV[(opcode >> 4) & 0xF]) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::opAnnn(uint16_t opcode)
+void Chip8GenericEmulator::opAnnn(uint16_t opcode)
 {
     _rI = opcode & 0xFFF;
 }
 
-void Chip8EmulatorFP::opBBnn_c8e(uint16_t opcode)
+void Chip8GenericEmulator::opBBnn_c8e(uint16_t opcode)
 {
     _rPC = (_rPC - 2 - (opcode & 0xff)) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opBFnn_c8e(uint16_t opcode)
+void Chip8GenericEmulator::opBFnn_c8e(uint16_t opcode)
 {
     _rPC = (_rPC - 2 + (opcode & 0xff)) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opBxy0_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opBxy0_c8x(uint16_t opcode)
 {
     auto rx = _rV[(opcode >> 8) & 0xF];
     auto ry = _rV[((opcode >> 8) & 0xF) + 1];
@@ -1142,7 +1573,7 @@ void Chip8EmulatorFP::opBxy0_c8x(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::opBxyn_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opBxyn_c8x(uint16_t opcode)
 {
     auto rx = _rV[(opcode >> 8) & 0xF];
     auto ry = _rV[((opcode >> 8) & 0xF) + 1];
@@ -1157,12 +1588,12 @@ void Chip8EmulatorFP::opBxyn_c8x(uint16_t opcode)
     _screenNeedsUpdate = true;
 }
 
-void Chip8EmulatorFP::opBnnn(uint16_t opcode)
+void Chip8GenericEmulator::opBnnn(uint16_t opcode)
 {
     _rPC = (_rV[0] + (opcode & 0xFFF)) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opBxnn(uint16_t opcode)
+void Chip8GenericEmulator::opBxnn(uint16_t opcode)
 {
     _rPC = (_rV[(opcode >> 8) & 0xF] + (opcode & 0xFFF)) & ADDRESS_MASK;
 }
@@ -1178,12 +1609,12 @@ inline uint8_t countingRand(uint32_t& state)
     return state++;
 }
 
-void Chip8EmulatorFP::opCxnn(uint16_t opcode)
+void Chip8GenericEmulator::opCxnn(uint16_t opcode)
 {
-    if(_options.behaviorBase < emu::Chip8EmulatorOptions::eSCHIP10) {
+    if(_options.behaviorBase < emu::Chip8GenericOptions::eSCHIP10) {
         ++_randomSeed;
         uint16_t val = _randomSeed >> 8;
-        val += _chip8_cosmac_vip[0x100 + (_randomSeed & 0xFF)];
+        val += _chip8_cvip[0x100 + (_randomSeed & 0xFF)];
         uint8_t result = val;
         val >>= 1;
         val += result;
@@ -1196,12 +1627,12 @@ void Chip8EmulatorFP::opCxnn(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opCxnn_randLCG(uint16_t opcode)
+void Chip8GenericEmulator::opCxnn_randLCG(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = classicRand(_simpleRandState) & (opcode & 0xFF);
 }
 
-void Chip8EmulatorFP::opCxnn_counting(uint16_t opcode)
+void Chip8GenericEmulator::opCxnn_counting(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = countingRand(_simpleRandState) & (opcode & 0xFF);
 }
@@ -1240,7 +1671,7 @@ static void blendColorsMul(uint32_t* dest, const uint32_t* col)
     *dst = 255;
 }
 
-void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
+void Chip8GenericEmulator::opDxyn_megaChip(uint16_t opcode)
 {
     if(!_isMegaChipMode)
         opDxyn<HiresSupport>(opcode);
@@ -1302,22 +1733,22 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
                             _rV[0xF] = 1;
                         *pixelBuffer = col;
                         switch (_blendMode) {
-                            case Chip8EmulatorBase::eBLEND_ALPHA_25:
+                            case eBLEND_ALPHA_25:
                                 blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 63);
                                 break;
-                            case Chip8EmulatorBase::eBLEND_ALPHA_50:
+                            case eBLEND_ALPHA_50:
                                 blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 127);
                                 break;
-                            case Chip8EmulatorBase::eBLEND_ALPHA_75:
+                            case eBLEND_ALPHA_75:
                                 blendColorsAlpha(pixelBuffer32, &_mcPalette[col], 191);
                                 break;
-                            case Chip8EmulatorBase::eBLEND_ADD:
+                            case eBLEND_ADD:
                                 blendColorsAdd(pixelBuffer32, &_mcPalette[col]);
                                 break;
-                            case Chip8EmulatorBase::eBLEND_MUL:
+                            case eBLEND_MUL:
                                 blendColorsMul(pixelBuffer32, &_mcPalette[col]);
                                 break;
-                            case Chip8EmulatorBase::eBLEND_NORMAL:
+                            case eBLEND_NORMAL:
                             default:
                                 *pixelBuffer32 = _mcPalette[col];
                                 break;
@@ -1329,70 +1760,70 @@ void Chip8EmulatorFP::opDxyn_megaChip(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opEx9E(uint16_t opcode)
+void Chip8GenericEmulator::opEx9E(uint16_t opcode)
 {
     if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC += 2;
     }
 }
 
-void Chip8EmulatorFP::opEx9E_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::opEx9E_with_F000(uint16_t opcode)
 {
     if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::opEx9E_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::opEx9E_with_01nn(uint16_t opcode)
 {
     if (_host.isKeyDown(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::opExA1(uint16_t opcode)
+void Chip8GenericEmulator::opExA1(uint16_t opcode)
 {
     if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC += 2;
     }
 }
 
-void Chip8EmulatorFP::opExA1_with_F000(uint16_t opcode)
+void Chip8GenericEmulator::opExA1_with_F000(uint16_t opcode)
 {
     if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0xF000, 0xFFFF)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::opExA1_with_01nn(uint16_t opcode)
+void Chip8GenericEmulator::opExA1_with_01nn(uint16_t opcode)
 {
     if (_host.isKeyUp(_rV[(opcode >> 8) & 0xF] & 0xF)) {
         _rPC = (_rPC + CONDITIONAL_SKIP_DISTANCE(0x0100, 0xFF00)) & ADDRESS_MASK;
     }
 }
 
-void Chip8EmulatorFP::opExF2_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opExF2_c8x(uint16_t opcode)
 {
     // still nop
 }
 
-void Chip8EmulatorFP::opExF5_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opExF5_c8x(uint16_t opcode)
 {
     _rPC += 2;
 }
 
-void Chip8EmulatorFP::opF000(uint16_t opcode)
+void Chip8GenericEmulator::opF000(uint16_t opcode)
 {
     _rI = ((_memory[_rPC & ADDRESS_MASK] << 8) | _memory[(_rPC + 1) & ADDRESS_MASK]) & ADDRESS_MASK;
     _rPC = (_rPC + 2) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx01(uint16_t opcode)
+void Chip8GenericEmulator::opFx01(uint16_t opcode)
 {
     _planes = (opcode >> 8) & 0xF;
 }
 
-void Chip8EmulatorFP::opF002(uint16_t opcode)
+void Chip8GenericEmulator::opF002(uint16_t opcode)
 {
     uint8_t anyBit = 0;
 #ifndef EMU_AUDIO_DEBUG
@@ -1412,7 +1843,7 @@ void Chip8EmulatorFP::opF002(uint16_t opcode)
     _xoSilencePattern = anyBit != 0;
 }
 
-void Chip8EmulatorFP::opFx07(uint16_t opcode)
+void Chip8GenericEmulator::opFx07(uint16_t opcode)
 {
     _rV[(opcode >> 8) & 0xF] = _rDT;
 #ifdef ALIEN_INV8SION_BENCH
@@ -1423,7 +1854,7 @@ void Chip8EmulatorFP::opFx07(uint16_t opcode)
 #endif
 }
 
-void Chip8EmulatorFP::opFx0A(uint16_t opcode)
+void Chip8GenericEmulator::opFx0A(uint16_t opcode)
 {
     auto key = _host.getKeyPressed();
     if (key > 0) {
@@ -1436,18 +1867,18 @@ void Chip8EmulatorFP::opFx0A(uint16_t opcode)
         if(key < 0)
             _rST = 4;
         //--_cycleCounter;
-        if(_isMegaChipMode && _cpuState != eWAITING)
+        if(_isMegaChipMode && _cpuState != eWAIT)
             _host.updateScreen();
-        _cpuState = eWAITING;
+        _cpuState = eWAIT;
     }
 }
 
-void Chip8EmulatorFP::opFx15(uint16_t opcode)
+void Chip8GenericEmulator::opFx15(uint16_t opcode)
 {
     _rDT = _rV[(opcode >> 8) & 0xF];
 }
 
-void Chip8EmulatorFP::opFx18(uint16_t opcode)
+void Chip8GenericEmulator::opFx18(uint16_t opcode)
 {
     _rST = _rV[(opcode >> 8) & 0xF];
     if(!_rST) _wavePhase = 0;
@@ -1456,33 +1887,33 @@ void Chip8EmulatorFP::opFx18(uint16_t opcode)
 #endif
 }
 
-void Chip8EmulatorFP::opFx1B_c8e(uint16_t opcode)
+void Chip8GenericEmulator::opFx1B_c8e(uint16_t opcode)
 {
     _rPC = (_rPC + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx1E(uint16_t opcode)
+void Chip8GenericEmulator::opFx1E(uint16_t opcode)
 {
     _rI = (_rI + _rV[(opcode >> 8) & 0xF]) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx29(uint16_t opcode)
+void Chip8GenericEmulator::opFx29(uint16_t opcode)
 {
     _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 5;
 }
 
-void Chip8EmulatorFP::opFx29_ship10Beta(uint16_t opcode)
+void Chip8GenericEmulator::opFx29_ship10Beta(uint16_t opcode)
 {
     auto n = _rV[(opcode >> 8) & 0xF];
     _rI = (n >= 10 && n <=19) ? (n-10) * 10 + 16*5 : (n & 0xF) * 5;
 }
 
-void Chip8EmulatorFP::opFx30(uint16_t opcode)
+void Chip8GenericEmulator::opFx30(uint16_t opcode)
 {
     _rI = (_rV[(opcode >> 8) & 0xF] & 0xF) * 10 + 16*5;
 }
 
-void Chip8EmulatorFP::opFx33(uint16_t opcode)
+void Chip8GenericEmulator::opFx33(uint16_t opcode)
 {
     uint8_t val = _rV[(opcode >> 8) & 0xF];
     write(_rI, val / 100);
@@ -1490,21 +1921,21 @@ void Chip8EmulatorFP::opFx33(uint16_t opcode)
     write(_rI + 2, val % 10);
 }
 
-void Chip8EmulatorFP::opFx3A(uint16_t opcode)
+void Chip8GenericEmulator::opFx3A(uint16_t opcode)
 {
-    _xoPitch.store(_rV[(opcode >> 8) & 0xF]);
+    _xoPitch = _rV[(opcode >> 8) & 0xF];
 #ifdef EMU_AUDIO_DEBUG
     std::clog << "pitch: " << (int)_xoPitch.load() << std::endl;
 #endif
 }
 
-void Chip8EmulatorFP::opFx4F_c8e(uint16_t opcode)
+void Chip8GenericEmulator::opFx4F_c8e(uint16_t opcode)
 {
-    if(_cpuState != eWAITING) {
+    if(_cpuState != eWAIT) {
         _rDT = _rV[(opcode >> 8) & 0xF];
-        _cpuState = eWAITING;
+        _cpuState = eWAIT;
     }
-    if(_rDT && (_cpuState == eWAITING)) {
+    if(_rDT && (_cpuState == eWAIT)) {
         _rPC -= 2;
     }
     else {
@@ -1512,7 +1943,7 @@ void Chip8EmulatorFP::opFx4F_c8e(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opFx55(uint16_t opcode)
+void Chip8GenericEmulator::opFx55(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1521,7 +1952,7 @@ void Chip8EmulatorFP::opFx55(uint16_t opcode)
     _rI = (_rI + upto + 1) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx55_loadStoreIncIByX(uint16_t opcode)
+void Chip8GenericEmulator::opFx55_loadStoreIncIByX(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1530,7 +1961,7 @@ void Chip8EmulatorFP::opFx55_loadStoreIncIByX(uint16_t opcode)
     _rI = (_rI + upto) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx55_loadStoreDontIncI(uint16_t opcode)
+void Chip8GenericEmulator::opFx55_loadStoreDontIncI(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1538,7 +1969,7 @@ void Chip8EmulatorFP::opFx55_loadStoreDontIncI(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opFx65(uint16_t opcode)
+void Chip8GenericEmulator::opFx65(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1547,7 +1978,7 @@ void Chip8EmulatorFP::opFx65(uint16_t opcode)
     _rI = (_rI + upto + 1) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx65_loadStoreIncIByX(uint16_t opcode)
+void Chip8GenericEmulator::opFx65_loadStoreIncIByX(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1556,7 +1987,7 @@ void Chip8EmulatorFP::opFx65_loadStoreIncIByX(uint16_t opcode)
     _rI = (_rI + upto) & ADDRESS_MASK;
 }
 
-void Chip8EmulatorFP::opFx65_loadStoreDontIncI(uint16_t opcode)
+void Chip8GenericEmulator::opFx65_loadStoreDontIncI(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1566,7 +1997,7 @@ void Chip8EmulatorFP::opFx65_loadStoreDontIncI(uint16_t opcode)
 
 static uint8_t registerSpace[16]{};
 
-void Chip8EmulatorFP::opFx75(uint16_t opcode)
+void Chip8GenericEmulator::opFx75(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1574,7 +2005,7 @@ void Chip8EmulatorFP::opFx75(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opFx85(uint16_t opcode)
+void Chip8GenericEmulator::opFx85(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
     for (int i = 0; i <= upto; ++i) {
@@ -1582,13 +2013,13 @@ void Chip8EmulatorFP::opFx85(uint16_t opcode)
     }
 }
 
-void Chip8EmulatorFP::opFxF8_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opFxF8_c8x(uint16_t opcode)
 {
     uint8_t val = _rV[(opcode >> 8) & 0xF];
     _vp595Frequency = val ? val : 0x80; // Emulate VP-595 using a CD4002 and a CD4011 to force 0x80 into the CDP1863 latch when 0 is written.
 }
 
-void Chip8EmulatorFP::opFxFB_c8x(uint16_t opcode)
+void Chip8GenericEmulator::opFxFB_c8x(uint16_t opcode)
 {
     // still nop
 }
@@ -1656,7 +2087,7 @@ static uint16_t g_vipWave[] = {
     0x350b, 0x32b4
 };
 
-void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
+void Chip8GenericEmulator::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
 #ifdef EMU_AUDIO_DEBUG
     std::clog << fmt::format("render {} (ST:{})", frames, _rST) << std::endl;
@@ -1675,20 +2106,20 @@ void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFre
                 _wavePhase = std::fmod(_wavePhase + step, 1.0f);
             }
         }
-        else if(_options.behaviorBase >= Chip8EmulatorOptions::eCHIP48 && _options.behaviorBase <= Chip8EmulatorOptions::eSCHPC) {
+        else if(_options.behaviorBase >= Chip8GenericOptions::eCHIP48 && _options.behaviorBase <= Chip8GenericOptions::eSCHPC) {
             for (int i = 0; i < frames; ++i) {
                 *samples++ =  static_cast<int16_t>(g_hp48Wave[(int)_wavePhase]);
                 _wavePhase = std::fmod(_wavePhase + 1, sizeof(g_hp48Wave) / 2);
             }
         }
-        else if(_options.behaviorBase < Chip8EmulatorOptions::eCHIP8X) {
+        else if(_options.behaviorBase < Chip8GenericOptions::eCHIP8X) {
             for (int i = 0; i < frames; ++i) {
                 *samples++ = static_cast<int16_t>(g_vipWave[(int)_wavePhase]);
                 _wavePhase = std::fmod(_wavePhase + 1, sizeof(g_vipWave) / 2);
             }
         }
         else {
-            auto audioFrequency = _options.behaviorBase == Chip8EmulatorOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1531.555f;
+            auto audioFrequency = _options.behaviorBase == Chip8GenericOptions::eCHIP8X ? 27535.0f / ((unsigned)_vp595Frequency + 1) : 1531.555f;
             const float step = audioFrequency / sampleFrequency;
             for (int i = 0; i < frames; ++i) {
                 *samples++ = (_wavePhase > 0.5f) ? 16384 : -16384;
@@ -1699,7 +2130,7 @@ void Chip8EmulatorFP::renderAudio(int16_t* samples, size_t frames, int sampleFre
     else {
         // Default is silence
         _wavePhase = 0;
-        IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+        IEmulationCore::renderAudio(samples, frames, sampleFrequency);
     }
 }
 

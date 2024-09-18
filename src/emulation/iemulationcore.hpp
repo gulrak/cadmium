@@ -42,10 +42,6 @@ class IEmulationCore {
 public:
     enum CoreState { ECS_NORMAL, ECS_WAITING, ECS_ERROR };
     struct PixelRatio { int x{1}, y{1}; };
-    static constexpr int SUPPORTED_SCREEN_WIDTH = 256;
-    static constexpr int SUPPORTED_SCREEN_HEIGHT = 192;
-    using VideoType = VideoScreen<uint8_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
-    using VideoRGBAType = VideoScreen<uint32_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
 
     virtual ~IEmulationCore() = default;
 

@@ -112,7 +112,7 @@ TEST_CASE("Emulation timing")
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP8);
         Chip8HeadlessTestHost host(opts);
-        std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8EmulatorFP>(host, opts);
+        std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8GenericEmulator>(host, opts);
         chip8fp->reset();
         write(chip8fp, 0x200, {0x6000, 0x1200});
         chip8fp->executeFor(10000000); // execute 10s
@@ -134,7 +134,7 @@ TEST_CASE("Emulation timing")
     {
         auto opts = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
         Chip8HeadlessTestHost host(opts);
-        std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8EmulatorFP>(host, opts);
+        std::unique_ptr<IChip8Emulator> chip8fp = std::make_unique<emu::Chip8GenericEmulator>(host, opts);
         chip8fp->reset();
         write(chip8fp, 0x200, {0x6000, 0x1200});
         chip8fp->executeFor(10000000); // execute 10s

@@ -74,7 +74,9 @@ CoreRegistry::CoreRegistry()
                 supportedExtensions.insert(defaultExtensions.begin(), defaultExtensions.end());
             }
         }
+        orderedFactories.emplace_back(key, info.get());
     }
+    std::sort(orderedFactories.begin(), orderedFactories.end(), [](const auto& lhs, const auto& rhs) { return lhs.second->score < rhs.second->score; });
 }
 
 CoreRegistry::FactoryMap& CoreRegistry::factoryMap()

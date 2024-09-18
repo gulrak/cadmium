@@ -27,6 +27,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <stdendian/stdendian.h>
 
 namespace emu {

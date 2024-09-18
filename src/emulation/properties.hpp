@@ -25,16 +25,18 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <chiplet/utility.hpp>
+
 #include <algorithm>
 #include <cstddef>
 #include <map>
-#include <unordered_map>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <unordered_map>
 #include <variant>
 #include <vector>
-#include <tuple>
-#include <chiplet/utility.hpp>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -51,6 +53,11 @@ visitor(Ts...) -> visitor<Ts...>;
 class Property
 {
 public:
+    struct NameAndKeyName
+    {
+        std::string name;
+        std::string keyName;
+    };
     struct Combo
     {
         Combo(std::initializer_list<std::string> opts)
@@ -91,9 +98,12 @@ public:
 
     Property(const std::string& name, Value val, std::string description, std::string additionalInfo, bool isReadOnly = true);
     Property(const std::string& name, Value val, std::string description, bool isReadOnly = true);
+    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, bool isReadOnly = true);
+    Property(const NameAndKeyName& nameAndKey, Value val, bool isReadOnly = true);
     Property(const Property& other);
     const std::string& getName() const { return _name; }
     const std::string& getJsonKey() const { return _jsonKey; }
+    const std::string& getOptionName() const { return _optionName; }
     void setJsonKey(const std::string& jsonKey) { _jsonKey = jsonKey; }
     const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
@@ -135,6 +145,7 @@ public:
 private:
     std::string _name;
     std::string _jsonKey;
+    std::string _optionName;
     Value _value;
     std::string _description;
     std::string _additionalInfo;

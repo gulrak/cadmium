@@ -52,8 +52,9 @@ public:
             size_t index{0};
             bool isCustom{true};
         };
-        IFactoryInfo(std::string  coreDescription)
+        IFactoryInfo(int orderScore, std::string  coreDescription)
             : description(std::move(coreDescription))
+            , score(orderScore)
         {}
         virtual ~IFactoryInfo() = default;
         virtual std::string prefix() const = 0;
@@ -71,12 +72,13 @@ public:
         virtual std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const = 0;
         std::string description;
         std::string variantsCombo{};
+        int score{0};
         mutable std::map<std::string,size_t> presetMappings{};
     };
     template<typename CoreType, typename PresetType, typename OptionsType>
     struct FactoryInfo : public IFactoryInfo
     {
-        FactoryInfo(ghc::span<const PresetType> presetSet, std::string coreDescription) : IFactoryInfo(std::move(coreDescription)), presets(presetSet) {}
+        FactoryInfo(int orderScore, ghc::span<const PresetType> presetSet, std::string coreDescription) : IFactoryInfo(orderScore, std::move(coreDescription)), presets(presetSet) {}
         Properties propertiesPrototype() const override
         {
             return presets[0].options.asProperties();
@@ -140,15 +142,15 @@ public:
         using value_type        = std::pair<std::string_view,const IFactoryInfo*>;
         using pointer           = value_type*;
         using reference         = value_type&;
-        explicit Iterator(FactoryMap::iterator iter) : _iter(iter) {}
-        reference operator*() const { _val = {_iter->first, _iter->second.get()}; return _val; }
+        explicit Iterator(std::vector<value_type>::iterator iter) : _iter(iter) {}
+        reference operator*() const { _val = {_iter->first, _iter->second}; return _val; }
         pointer operator->() const { return &(operator*()); }
-        Iterator& operator++() { _iter++; return *this; }
+        Iterator& operator++() { ++_iter; return *this; }
         Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
         friend bool operator== (const Iterator& a, const Iterator& b) { return a._iter == b._iter; };
         friend bool operator!= (const Iterator& a, const Iterator& b) { return a._iter != b._iter; };
     private:
-        FactoryMap::iterator _iter;
+        std::vector<value_type>::iterator _iter;
         mutable value_type _val;
     };
 
@@ -219,11 +221,11 @@ public:
 
     Iterator begin() const
     {
-        return Iterator(factoryMap().begin());
+        return Iterator(orderedFactories.begin());
     }
     Iterator end() const
     {
-        return Iterator(factoryMap().end());
+        return Iterator(orderedFactories.end());
     }
 
     const IFactoryInfo& operator[](size_t index) const
@@ -243,6 +245,7 @@ public:
 private:
     std::string coresCombo{};
     std::set<std::string> supportedExtensions{};
+    mutable std::vector<Iterator::value_type> orderedFactories;
     static FactoryMap& factoryMap();
 };
 

@@ -26,7 +26,7 @@
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/utility.hpp>
 #include <emuhostex.hpp>
-//#include <emulation/chip8cores.hpp>
+//#include <emulation/chip8generic.hpp>
 #include <emulation/iemulationcore.hpp>
 #include <librarian.hpp>
 

@@ -54,7 +54,7 @@ struct Chip8StrictSetupInfo {
 };
 
 // clang-format off
-static Chip8StrictSetupInfo strictPresets[] = {
+Chip8StrictSetupInfo strictPresets[] = {
     {
         "chip-8",
         "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
@@ -67,7 +67,7 @@ static Chip8StrictSetupInfo strictPresets[] = {
 struct StrictFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8StrictEmulator, Chip8StrictSetupInfo, Chip8StrictOptions>
 {
     explicit StrictFactoryInfo(const char* description)
-        : FactoryInfo(strictPresets, description)
+        : FactoryInfo(20, strictPresets, description)
     {}
     std::string prefix() const override
     {
@@ -79,6 +79,6 @@ struct StrictFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8StrictEmu
     }
 };
 
-static bool registeredVIP = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<StrictFactoryInfo>("First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP"));
+static bool registeredStrictC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<StrictFactoryInfo>("First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP"));
 
 }

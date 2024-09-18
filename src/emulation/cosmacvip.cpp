@@ -120,7 +120,7 @@ static CosmacVipSetupInfo vipPresets[] = {
     {
         "CHIP-8",
         "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
-        ".ch8;.c8vip",
+        ".ch8;.c8vip;.hc8",
         { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8, .startAddress = 512}
     },
     {
@@ -149,7 +149,7 @@ static CosmacVipSetupInfo vipPresets[] = {
     },
     {
         "CHIP-8X",
-        "An official update to CHIP-8 by RCA, requiring the color extensipn VP-590 and the simple sound board VP-595, 1980",
+        "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
         ".c8x",
         { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8X, .startAddress = 768}
     },
@@ -177,7 +177,7 @@ static CosmacVipSetupInfo vipPresets[] = {
 struct VIPFactoryInfo final : public CoreRegistry::FactoryInfo<CosmacVIP, CosmacVipSetupInfo, CosmacVIPOptions>
 {
     explicit VIPFactoryInfo(const char* description)
-        : FactoryInfo(vipPresets, description)
+        : FactoryInfo(100, vipPresets, description)
     {}
     std::string prefix() const override
     {
@@ -1063,7 +1063,7 @@ uint16_t CosmacVIP::getMaxScreenHeight() const
     return 128;
 }
 
-const IChip8Emulator::VideoType* CosmacVIP::getScreen() const
+const VideoType* CosmacVIP::getScreen() const
 {
     return &_impl->_video.getScreen();
 }

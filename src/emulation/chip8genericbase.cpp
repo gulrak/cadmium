@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8emulatorbase.hpp
+// src/emulation/chip8genericbase.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2024, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,11 +23,8 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8emulatorbase.hpp>
-#include <emulation/dream6800.hpp>
-#include <emulation/logger.hpp>
-#include <emulation/properties.hpp>
+
+#include <emulation/chip8genericbase.hpp>
 
 namespace emu {
 
@@ -191,7 +188,7 @@ static uint8_t g_octoBigFont[] = {
     0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0  // F
 };
 
-std::pair<const uint8_t*, size_t> Chip8EmulatorBase::smallFontData(Chip8Font font)
+std::pair<const uint8_t*, size_t> Chip8GenericBase::smallFontData(Chip8Font font)
 {
     switch(font) {
         case C8F5_CHIP48: return {g_chip48Font, sizeof(g_chip48Font)};
@@ -201,7 +198,7 @@ std::pair<const uint8_t*, size_t> Chip8EmulatorBase::smallFontData(Chip8Font fon
     }
 }
 
-std::pair<const uint8_t*, size_t> Chip8EmulatorBase::bigFontData(Chip8BigFont font)
+std::pair<const uint8_t*, size_t> Chip8GenericBase::bigFontData(Chip8BigFont font)
 {
     switch(font) {
         case C8F10_SCHIP10: return {g_ship10BigFont, sizeof(g_ship10BigFont)};
@@ -211,238 +208,89 @@ std::pair<const uint8_t*, size_t> Chip8EmulatorBase::bigFontData(Chip8BigFont fo
     }
 }
 
-std::pair<const uint8_t*, size_t> Chip8EmulatorBase::getSmallFontData() const
+Chip8GenericBase::Chip8GenericBase(Chip8Variant variant, std::optional<uint64_t> clockRate)
+    : _disassembler(variant)
+    , _systemTime(clockRate ? *clockRate : 1000000)
 {
-    switch (_options.behaviorBase) {
-        case Chip8EmulatorOptions::eCHIP48:
-        case Chip8EmulatorOptions::eSCHIP10:
-        case Chip8EmulatorOptions::eSCHIP11:
-        case Chip8EmulatorOptions::eSCHPC:
-        case Chip8EmulatorOptions::eSCHIP_MODERN:
-        case Chip8EmulatorOptions::eMEGACHIP:
-        case Chip8EmulatorOptions::eXOCHIP:
-        case Chip8EmulatorOptions::eCHICUEYI:
-            return smallFontData(C8F5_CHIP48);
-        case Chip8EmulatorOptions::eCHIP8:
-        case Chip8EmulatorOptions::eCHIP10:
-        case Chip8EmulatorOptions::eCHIP8VIP:
-        default:
-            return smallFontData(C8F5_COSMAC);
-    }
-}
-std::pair<const uint8_t*, size_t> Chip8EmulatorBase::getBigFontData() const
-{
-    switch (_options.behaviorBase) {
-        case Chip8EmulatorOptions::eSCHIP10:
-            return bigFontData(C8F10_SCHIP10);
-        case Chip8EmulatorOptions::eSCHIP11:
-        case Chip8EmulatorOptions::eSCHPC:
-        case Chip8EmulatorOptions::eSCHIP_MODERN:
-        case Chip8EmulatorOptions::eCHICUEYI:
-            return bigFontData(C8F10_SCHIP11);
-        case Chip8EmulatorOptions::eMEGACHIP:
-            return bigFontData(C8F10_MEGACHIP);
-        case Chip8EmulatorOptions::eXOCHIP:
-            return bigFontData(C8F10_XOCHIP);
-        case Chip8EmulatorOptions::eCHIP8:
-        case Chip8EmulatorOptions::eCHIP10:
-        case Chip8EmulatorOptions::eCHIP48:
-        case Chip8EmulatorOptions::eCHIP8VIP:
-        default:
-            return {nullptr, 0};
-    }
 }
 
-#if 0
-std::unique_ptr<IChip8Emulator> Chip8EmulatorBase::create(Chip8EmulatorHost& host, Engine engine, Chip8EmulatorOptions& options, IChip8Emulator* iother)
+std::tuple<uint16_t, uint16_t, std::string> Chip8GenericBase::disassembleInstruction(const uint8_t* code, const uint8_t* end) const
 {
-    if(engine == eCHIP8TS) {
-        if (options.optAllowHires) {
-            if (options.optHas16BitAddr) {
-                if (options.optAllowColors) {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | MultiColor>>(host, options, iother);
-                }
-                else {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, HiresSupport | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<16, HiresSupport>>(host, options, iother);
-                }
-            }
-            else {
-                if (options.optAllowColors) {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | MultiColor>>(host, options, iother);
-                }
-                else {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, HiresSupport | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<12, HiresSupport>>(host, options, iother);
-                }
-            }
-        }
-        else {
-            if (options.optHas16BitAddr) {
-                if (options.optAllowColors) {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, MultiColor | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<16, MultiColor>>(host, options, iother);
-                }
-                else {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<16, WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<16, 0>>(host, options, iother);
-                }
-            }
-            else {
-                if (options.optAllowColors) {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, MultiColor | WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<12, MultiColor>>(host, options, iother);
-                }
-                else {
-                    if (options.optWrapSprites)
-                        return std::make_unique<Chip8Emulator<12, WrapSprite>>(host, options, iother);
-                    else
-                        return std::make_unique<Chip8Emulator<12, 0>>(host, options, iother);
-                }
-            }
-        }
-    }
-    else if(engine == eCHIP8MPT) {
-        return std::make_unique<Chip8GenericEmulator>(host, options, iother);
-    }
-    else if(engine == eCHIP8VIP) {
-        return std::make_unique<CosmacVIP>(host, options, iother);
-    }
-    else if(engine == eCHIP8DREAM) {
-        return std::make_unique<Dream6800>(host, options, iother);
-    }
-    return std::make_unique<Chip8EmulatorVIP>(host, options, iother);
+    return _disassembler.disassembleInstruction(code, end);
 }
-#endif
-
-void Chip8EmulatorBase::reset()
+std::string Chip8GenericBase::disassembleInstructionWithBytes(int32_t pc, int* bytes) const
 {
-    //auto& props = Properties::getProperties("Gene");
-    //static const uint8_t defaultPalette[16] = {37, 255, 114, 41, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
-    static const uint8_t defaultPalette[16] = {0, 255, 182, 109, 224, 28, 3, 252, 160, 20, 2, 204, 227, 31, 162, 22};
-    //static const uint8_t defaultPalette[16] = {172, 248, 236, 100, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
-    _cycleCounter = 0;
-    _frameCounter = 0;
-    _clearCounter = 0;
-    _systemTime.reset();
-    if(_options.optTraceLog)
-        Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
-    _rI = 0;
-    _rPC = _options.startAddress;
-    std::memset(_stack.data(), 0, 16 * 2);
-    _rSP = 0;
-    _rDT = 0;
-    _rST = 0;
-    std::memset(_rV.data(), 0, 16);
-    std::memset(_memory.data(), 0, _memory.size());
-    auto [smallFont, smallSize] = getSmallFontData();
-    std::memcpy(_memory.data(), smallFont, smallSize);
-    auto [bigFont, bigSize] = getBigFontData();
-    if(bigSize)
-        std::memcpy(_memory.data() + 16*5, bigFont, bigSize);
-    std::memcpy(_xxoPalette.data(), defaultPalette, 16);
-    std::memset(_xoAudioPattern.data(), 0, 16);
-    _xoSilencePattern = true;
-    _xoPitch = 64;
-    _planes = 0xff;
-    _screenAlpha = 0xff;
-    _screenRGBA = &_screenRGBA1;
-    _workRGBA = &_screenRGBA2;
-    _screen.setAll(0);
-    _screenRGBA1.setAll(0);
-    _screenRGBA2.setAll(0);
-    //_host.updatePalette(_xxoPalette);
-    _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
-    _cpuState = eNORMAL;
-    _errorMessage.clear();
-    _isHires = _options.optOnlyHires ? true : false;
-    _isInstantDxyn = _options.optInstantDxyn;
-    _isMegaChipMode = false;
-    _planes = 1;
-    _spriteWidth = 0;
-    _spriteHeight = 0;
-    _collisionColor = 1;
-    _sampleLength = 0;
-    _sampleStep = 0;
-    _mcSamplePos = 0;
-    _blendMode = eBLEND_NORMAL;
-    _mcPalette.fill(0x00);
-    _mcPalette[1] = 0xffffffff;
-    _mcPalette[254] = 0xffffffff;
+    if(pc < 0) pc = _rPC;
+    uint8_t code[4];
+    for(size_t i = 0; i < 4; ++i) {
+        code[i] = readMemoryByte(pc + i);
+    }
+    auto [size, opcode, instruction] = _disassembler.disassembleInstruction(code, code + 4);
+    if(bytes)
+        *bytes = size;
+    if (size == 2)
+        return fmt::format("{:04X}: {:04X}       {}", pc, (code[0] << 8)|code[1], instruction);
+    return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
+}
+std::string Chip8GenericBase::dumpStateLine() const
+{
+    return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
+                       _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);
 }
 
-int64_t Chip8EmulatorBase::executeFor(int64_t micros)
+bool Chip8GenericBase::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
 {
-    if (_execMode == ePAUSED || _cpuState == eERROR) {
-        setExecMode(ePAUSED);
-        return 0;
+    auto offset = loadAddress ? *loadAddress : 0x200;
+    if(offset < _memory.size()) {
+        auto size = std::min(_memory.size() - offset, data.size());
+        std::memcpy(_memory.data() + offset, data.data(), size);
+        return true;
     }
-    if(_options.instructionsPerFrame) {
-        auto startTime = _cycleCounter;
-        auto microsPerCycle = 1000000.0 / ((int64_t)_options.instructionsPerFrame * _options.frameRate);
-        auto endCycles = startTime + int64_t(micros/microsPerCycle);
-        auto nextFrame = calcNextFrame();
-        while(_execMode != ePAUSED && nextFrame <= endCycles) {
-            executeInstructions(nextFrame - _cycleCounter);
-            if(_cycleCounter == nextFrame) {
-                handleTimer();
-                nextFrame += _options.instructionsPerFrame;
-            }
-        }
-        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
-            executeInstruction();
-        }
-        auto excessTime = int64_t((endCycles - _cycleCounter) * microsPerCycle);
-        return excessTime;// > 0 ? excessTime : 0;
-    }
-    else {
-        using namespace std::chrono;
-        handleTimer();
-        auto start = _cycleCounter;
-        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros * 3 / 4 : 0);
-        do {
-            executeInstructions(487);
-        }
-        while(_execMode != ePAUSED && steady_clock::now() < endTime);
-        uint32_t actualIPF = _cycleCounter - start;
-        _systemTime.setFrequency((_systemTime.getClockFreq() + actualIPF)>>1);
-    }
-    return 0;
+    return false;
 }
 
-void Chip8EmulatorBase::executeFrame()
-{
-    if(!_options.instructionsPerFrame) {
-        handleTimer();
-        auto start = std::chrono::steady_clock::now();
-        do {
-            executeInstructions(487);
-        }
-        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
-    }
-    else {
-        auto instructionsLeft = calcNextFrame() - _cycleCounter;
-        if(instructionsLeft == _options.instructionsPerFrame) {
-            handleTimer();
-        }
-        executeInstructions(instructionsLeft);
-    }
+const std::vector<std::string>& Chip8GenericBase::registerNames() const {
+    static const std::vector<std::string> registerNames = {
+        "V0", "V1", "V2", "V3", "V4", "V5", "V6", "V7",
+        "V8", "V9", "VA", "VB", "VC", "VD", "VE", "VF",
+        "I", "DT", "ST", "PC", "SP"
+    };
+    return registerNames;
 }
 
-}  // namespace emu
+GenericCpu::RegisterValue Chip8GenericBase::registerbyIndex(size_t index) const
+{
+    if(index < 16)
+        return {_rV[index], 8};
+    if(index == 16) {
+        uint32_t size = _memory.size()>65535 ? 24 : 16;
+        return {_rI, size};
+    }
+    if(index == 17)
+        return {_rDT, 8};
+    if(index == 18)
+        return {_rST, 8};
+    if(index == 19) {
+        uint32_t size = _memory.size()>65535 ? 24 : 16;
+        return {_rPC, size};
+    }
+    return {_rSP, 8};
+}
+void Chip8GenericBase::setRegister(size_t index, uint32_t value)
+{
+    if(index < 16)
+        _rV[index] = static_cast<uint8_t>(value);
+    else if(index == 16)
+        _rI = _memory.size()>65535 ? value : _memory.size() > 4095 ? value & 0xFFFF : value & 0xFFF;
+    else if(index == 17)
+        _rDT = static_cast<uint8_t>(value);
+    else if(index == 18)
+        _rST = static_cast<uint8_t>(value);
+    else if(index == 19)
+        _rPC = _memory.size()>65535 ? value : _memory.size() > 4095 ? value & 0xFFFF : value & 0xFFF;
+    else
+        _rSP = static_cast<uint8_t>(value);
+}
+
+} // emu
+

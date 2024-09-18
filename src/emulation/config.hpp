@@ -26,6 +26,7 @@
 #pragma once
 
 //#include <emulation/sigslot.hpp>
+#include <emulation/videoscreen.hpp>
 #include <nlohmann/json_fwd.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -42,6 +43,11 @@ namespace emu {
 using json = nlohmann::ordered_json;
 
 using cycles_t = uint64_t;
+
+static constexpr int SUPPORTED_SCREEN_WIDTH = 256;
+static constexpr int SUPPORTED_SCREEN_HEIGHT = 192;
+using VideoType = VideoScreen<uint8_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
+using VideoRGBAType = VideoScreen<uint32_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
 
 class InternalErrorException : public std::exception
 {

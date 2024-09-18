@@ -32,7 +32,7 @@
 #include <configuration.hpp>
 #include <emulation/c8bfile.hpp>
 #include <emulation/coreregistry.hpp>
-//#include <emulation/chip8cores.hpp>
+//#include <emulation/chip8generic.hpp>
 //#include <emulation/chip8strict.hpp>
 //#include <emulation/cosmacvip.hpp>
 //#include <emulation/dream6800.hpp>
@@ -159,7 +159,7 @@ std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmula
         }
     }
     else if(engine == IChip8Emulator::eCHIP8MPT) {
-        return std::make_unique<Chip8EmulatorFP>(*this, options, iother);
+        return std::make_unique<Chip8GenericEmulator>(*this, options, iother);
     }
     else if(engine == IChip8Emulator::eCHIP8VIP) {
         return std::make_unique<CosmacVIP>(*this, options, iother);

@@ -43,7 +43,7 @@ class Chip8RealCoreBase : public IEmulationCore, public IChip8Emulator, public C
 {
 public:
     explicit Chip8RealCoreBase(EmulatorHost& host)
-        : Chip8OpcodeDisassembler()
+        : Chip8OpcodeDisassembler(Chip8Variant::CHIP_8)
         , _host(host)
     {
     }

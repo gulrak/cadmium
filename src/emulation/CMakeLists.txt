@@ -1,9 +1,11 @@
 
 set(CHIP8_EMU_SOURCE
-    #chip8cores.cpp
-    #chip8cores.hpp
+    chip8generic.cpp
+    chip8generic.hpp
     #chip8emulatorbase.cpp
     #chip8emulatorbase.hpp
+    chip8genericbase.cpp
+    chip8genericbase.hpp
     chip8opcodedisass.cpp
     chip8opcodedisass.hpp
     chip8options.cpp
@@ -31,7 +33,7 @@ set(CHIP8_EMU_SOURCE
     time.cpp
     time.hpp
     utility.cpp
-        #octocartridge.cpp
+    #octocartridge.cpp
     #octocartridge.hpp
 )
 
