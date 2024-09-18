@@ -61,6 +61,10 @@ Properties CoreRegistry::IFactoryInfo::variantProperties(const std::string& vari
 CoreRegistry::CoreRegistry()
 {
     for(auto& [key, info] : factoryMap()) {
+        orderedFactories.emplace_back(key, info.get());
+    }
+    std::sort(orderedFactories.begin(), orderedFactories.end(), [](const auto& lhs, const auto& rhs) { return lhs.second->score < rhs.second->score; });
+    for(auto& [key, info] : orderedFactories) {
         if(!coresCombo.empty())
             coresCombo += ";";
         coresCombo += key;
@@ -74,9 +78,8 @@ CoreRegistry::CoreRegistry()
                 supportedExtensions.insert(defaultExtensions.begin(), defaultExtensions.end());
             }
         }
-        orderedFactories.emplace_back(key, info.get());
+
     }
-    std::sort(orderedFactories.begin(), orderedFactories.end(), [](const auto& lhs, const auto& rhs) { return lhs.second->score < rhs.second->score; });
 }
 
 CoreRegistry::FactoryMap& CoreRegistry::factoryMap()

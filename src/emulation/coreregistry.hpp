@@ -139,7 +139,7 @@ public:
     {
         using iterator_category = std::forward_iterator_tag;
         using difference_type   = std::ptrdiff_t;
-        using value_type        = std::pair<std::string_view,const IFactoryInfo*>;
+        using value_type        = std::pair<std::string_view,IFactoryInfo*>;
         using pointer           = value_type*;
         using reference         = value_type&;
         explicit Iterator(std::vector<value_type>::iterator iter) : _iter(iter) {}
