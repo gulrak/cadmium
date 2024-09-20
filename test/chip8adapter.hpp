@@ -26,7 +26,7 @@
 #pragma once
 
 #include <emulation/ichip8.hpp>
-#include <emulation/chip8emulatorhost.hpp>
+#include <emulation/emulatorhost.hpp>
 #include <emulation/chip8options.hpp>
 #include <memory>
 

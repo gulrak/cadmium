@@ -71,6 +71,7 @@ static const std::string PROP_Q_PAL_VIDEO = "PAL video format";
 Properties Chip8GenericOptions::asProperties() const
 {
     auto result = registeredPrototype();
+    result[PROP_BEHAVIOR_BASE].setSelectedIndex(behaviorBase);
     result[PROP_TRACE_LOG].setBool(traceLog);
     result[PROP_INSTRUCTIONS_PER_FRAME].setInt(instructionsPerFrame);
     result[PROP_FRAME_RATE].setInt(frameRate);
@@ -104,6 +105,7 @@ Properties Chip8GenericOptions::asProperties() const
 Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
 {
     Chip8GenericOptions opts{};
+    opts.behaviorBase = static_cast<SupportedPreset>(props[PROP_BEHAVIOR_BASE].getSelectedIndex());
     opts.traceLog = props[PROP_TRACE_LOG].getBool();
     opts.instructionsPerFrame = props[PROP_INSTRUCTIONS_PER_FRAME].getInt();
     opts.frameRate = props[PROP_FRAME_RATE].getInt();
@@ -139,35 +141,36 @@ Properties& Chip8GenericOptions::registeredPrototype()
     using namespace std::string_literals;
     auto& prototype = Properties::getProperties(PROP_CLASS);
     if(!prototype) {
-        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", false});
-
-        prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", false});
-        prototype.registerProperty({PROP_FRAME_RATE, Property::Integer{60, 50, 100}, "Number of frames per second, default 60", false});
-        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", false});
-        prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", false});
-        prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x200, 0, 0x7f0}, "Number of instructions per frame, default depends on variant", false});
-        prototype.registerProperty({{PROP_Q_JUST_SHIFT_VX, "just-Shift-Vx"}, false, false});
-        prototype.registerProperty({{PROP_Q_DONT_RESET_VF, "dont-Reset-Vf"}, false, false});
-        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE, "load-Store-Inc-I-By-X-Plus-1"}, true, false});
-        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X, "load-Store-Inc-I-ByX"}, false, false});
-        prototype.registerProperty({{PROP_Q_WRAP_SPRITES, "wrap-sprites"}, false, false});
-        prototype.registerProperty({{PROP_Q_INSTANT_DXYN, "instand-dxyn"}, false, false});
-        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_8X16, "lores-Dxy0-Is-8x16"}, false, false});
-        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_16X16, "lores-Dxy0-Is-16x16"}, false, false});
-        prototype.registerProperty({{PROP_Q_SC11_COLLISION, "schip-11-Collision"}, false, false});
-        prototype.registerProperty({{PROP_Q_SC_LORES_DRAWING, "schip-Lores-Drawing"}, false, false});
-        prototype.registerProperty({{PROP_Q_HALF_PIXEL_SCROLL, "half-Pixel-Scroll"}, false, false});
-        prototype.registerProperty({{PROP_Q_MODE_CHANGE_CLEAR, "mode-Change-Clear"}, false, false});
-        prototype.registerProperty({{PROP_Q_JUMP0_BXNN, "jump0-Bxnn"}, false, false});
-        prototype.registerProperty({{PROP_Q_ALLOW_HIRES, "allow-Hires"}, false, false});
-        prototype.registerProperty({{PROP_Q_ONLY_HIRES, "only-Hires"}, false, false});
-        prototype.registerProperty({{PROP_Q_ALLOW_COLORS, "allow-Colors"}, false, false});
-        prototype.registerProperty({{PROP_Q_CYCLIC_STACK, "cyclic-Stack"}, false, false});
-        prototype.registerProperty({{PROP_Q_HAS_16BIT_ADDR, "has-16Bit-Addr"}, false, false});
-        prototype.registerProperty({{PROP_Q_XO_CHIP_SOUND, "xo-Chip-Sound"}, false, false});
-        prototype.registerProperty({{PROP_Q_EXTENDED_VBLANK, "extended-Vblank"}, false, false});
-        prototype.registerProperty({{PROP_Q_PAL_VIDEO, "pal-Video"}, false, false});
-}
+        prototype.registerProperty({PROP_BEHAVIOR_BASE, Property::Combo{"CHIP-8"s, "CHIP-10"s, "CHIP-8E"s, "CHIP-8X"s, "CHIP-48"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHIPC"s, "SCHIP-MODERN"s, "MEGACHIP"s, "XO-CHIP"s}, "CHIP-8 variant", eInvisible});
+        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
+        prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", eWritable});
+        prototype.registerProperty({PROP_FRAME_RATE, Property::Integer{60, 50, 100}, "Number of frames per second, default 60", eWritable});
+        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", eWritable});
+        prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x200, 0, 0x7f0}, "Number of instructions per frame, default depends on variant", eReadOnly});
+        prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
+        prototype.registerProperty({{PROP_Q_JUST_SHIFT_VX, "just-Shift-Vx"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_DONT_RESET_VF, "dont-Reset-Vf"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE, "load-Store-Inc-I-By-X-Plus-1"}, true, eWritable});
+        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X, "load-Store-Inc-I-ByX"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_WRAP_SPRITES, "wrap-sprites"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_INSTANT_DXYN, "instant-dxyn"}, false, eWritable});
+        prototype.registerProperty({"", nullptr, ""});
+        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_8X16, "lores-Dxy0-Is-8x16"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_16X16, "lores-Dxy0-Is-16x16"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_SC11_COLLISION, "schip-11-Collision"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_SC_LORES_DRAWING, "schip-Lores-Drawing"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_HALF_PIXEL_SCROLL, "half-Pixel-Scroll"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_MODE_CHANGE_CLEAR, "mode-Change-Clear"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_JUMP0_BXNN, "jump0-Bxnn"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_ALLOW_HIRES, "allow-Hires"}, false, eInvisible});
+        prototype.registerProperty({{PROP_Q_ONLY_HIRES, "only-Hires"}, false, eInvisible});
+        prototype.registerProperty({{PROP_Q_ALLOW_COLORS, "allow-Colors"}, false, eInvisible});
+        prototype.registerProperty({{PROP_Q_CYCLIC_STACK, "cyclic-Stack"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_HAS_16BIT_ADDR, "has-16Bit-Addr"}, false, eInvisible});
+        prototype.registerProperty({{PROP_Q_XO_CHIP_SOUND, "xo-Chip-Sound"}, false, eInvisible});
+        prototype.registerProperty({{PROP_Q_EXTENDED_VBLANK, "extended-Vblank"}, false, eWritable});
+        prototype.registerProperty({{PROP_Q_PAL_VIDEO, "pal-Video"}, false, eInvisible});
+    }
     return prototype;
 }
 
@@ -175,7 +178,6 @@ Chip8Variant Chip8GenericOptions::variant() const
 {
     switch(behaviorBase) {
         case eCHIP8: return Chip8Variant::CHIP_8;
-        case eCHIP8TE: return Chip8Variant::CHIP_8;
         case eCHIP10: return Chip8Variant::CHIP_10;
         case eCHIP8E: return Chip8Variant::CHIP_8E;
         case eCHIP8X: return Chip8Variant::CHIP_8X;
@@ -186,16 +188,6 @@ Chip8Variant Chip8GenericOptions::variant() const
         case eSCHIP_MODERN: return Chip8Variant::SCHIP_MODERN;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
-        case eCHIP8VIP: return Chip8Variant::CHIP_8;
-        case eCHIP8VIP_TPD: return Chip8Variant::CHIP_8_TPD;
-        case eCHIP8VIP_FPD: return Chip8Variant::HI_RES_CHIP_8;
-        case eCHIP8EVIP: return Chip8Variant::CHIP_8E;
-        case eCHIP8XVIP: return Chip8Variant::CHIP_8X;
-        case eCHIP8XVIP_TPD: return Chip8Variant::CHIP_8X_TPD;
-        case eCHIP8XVIP_FPD: return Chip8Variant::HI_RES_CHIP_8X;
-        case eCHIP8DREAM: return Chip8Variant::CHIP_8_D6800;
-        case eC8D68CHIPOSLO: return Chip8Variant::CHIP_8_D6800;
-        case eCHICUEYI: return Chip8Variant::XO_CHIP;
         default: return Chip8Variant::CHIP_8;
     }
 }
@@ -212,67 +204,67 @@ struct Chip8GenericSetupInfo
 Chip8GenericSetupInfo genericPresets[] = {
     {
         "CHIP-8",
-        "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
+        "The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker, 1977",
         ".ch8",
-        {Chip8GenericOptions::eCHIP8}
+        {.behaviorBase = Chip8GenericOptions::eCHIP8, .optExtendedVBlank = true}
     },
     {
         "CHIP-10",
         "128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979",
         ".ch10",
-        {.behaviorBase = Chip8GenericOptions::eCHIP10, .optAllowHires = true, .optOnlyHires = true}
+        {.behaviorBase = Chip8GenericOptions::eCHIP10, .optAllowHires = true, .optOnlyHires = true, .optExtendedVBlank = true}
     },
     {
         "CHIP-8E",
         "CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9",
         ".c8e",
-        {.behaviorBase = Chip8GenericOptions::eCHIP8E}
+        {.behaviorBase = Chip8GenericOptions::eCHIP8E, .optExtendedVBlank = true}
     },
     {
         "CHIP-8X",
         "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
         ".c8x",
-        {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .instructionsPerFrame = 18}
+        {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .optExtendedVBlank = true, .instructionsPerFrame = 18}
     },
     {
         "CHIP-48",
-        "The initial CHIP-8 port to the HP-48SX",
+        "The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson, 1990",
         ".ch48;.c48",
         {.behaviorBase = Chip8GenericOptions::eCHIP48, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optJump0Bxnn = true, .instructionsPerFrame = 15, .frameRate = 64}
     },
     {
         "SCHIP-1.0",
-        "SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode",
+        "SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
         ".sc10",
         {.behaviorBase = Chip8GenericOptions::eSCHIP10, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIP-1.1",
-        "SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode",
-        ".sc10",
+        "SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
+        ".sc8;.sc11",
         {.behaviorBase = Chip8GenericOptions::eSCHIP11, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIPC",
-        "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore",
+        "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017",
         ".scc",
         {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIP-MODERN",
-        "Modern SUPER-CHIP interpretation as done in Octo by John Earnest",
+        "Modern SUPER-CHIP interpretation as done in Octo by John Earnest, 2014",
         ".scm",
-        {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "MEGACHIP",
-        "MegaChip as specified by Martijn Wanting/Revival-Studios",
+        "MegaChip as specified by Martijn Wanting, Revival-Studios, 2007",
         ".mc8",
         {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
     },
     {
         "XO-CHIP",
-        "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo, by John Earnest",
+        "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014",
         "xo8",
         {.behaviorBase = Chip8GenericOptions::eXOCHIP, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
     }
@@ -301,7 +293,8 @@ struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8Generi
     }
     VariantIndex variantIndex(const Properties& props) const override
     {
-        return {0, genericPresets[0].options.asProperties() == props};
+        auto idx = props[PROP_BEHAVIOR_BASE].getSelectedIndex();
+        return {idx, genericPresets[idx].options.asProperties() == props};
     }
 };
 
@@ -310,21 +303,19 @@ static bool registeredHleC8 = CoreRegistry::registerFactory(PROP_CLASS, std::mak
 
 Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other)
 : Chip8GenericBase(Chip8GenericOptions::fromProperties(props).variant(), {})
-, _host(_host)
+, _host(host)
 , _options(Chip8GenericOptions::fromProperties(props))
-, ADDRESS_MASK(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.optHas16BitAddr ? 0xFFFF : 0xFFF)
-, SCREEN_WIDTH(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : _options.optAllowHires ? 128 : 64)
-, SCREEN_HEIGHT(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : _options.optAllowHires ? 64 : _options.optPalVideo ? 48 : 32)
 , _opcodeHandler(0x10000, &Chip8GenericEmulator::opInvalid)
 {
+    ADDRESS_MASK = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.ramSize>4096 ? 0xFFFF : 0xFFF;
+    SCREEN_WIDTH = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : (_options.optAllowHires ? 128 : 64);
+    SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32));
+    _memory.resize(_options.ramSize, 0);
     _rV = _rVData.data();
     _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA1.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA2.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     setHandler();
-    if(!other) {
-        reset();
-    }
 }
 
 
@@ -338,11 +329,9 @@ static Chip8GenericBase::Chip8Font getSmallFontId(Chip8GenericOptions::Supported
         case Chip8GenericOptions::eSCHIP_MODERN:
         case Chip8GenericOptions::eMEGACHIP:
         case Chip8GenericOptions::eXOCHIP:
-        case Chip8GenericOptions::eCHICUEYI:
             return Chip8GenericBase::C8F5_CHIP48;
         case Chip8GenericOptions::eCHIP8:
         case Chip8GenericOptions::eCHIP10:
-        case Chip8GenericOptions::eCHIP8VIP:
         default:
             return Chip8GenericBase::C8F5_COSMAC;
     }
@@ -355,7 +344,6 @@ static Chip8GenericBase::Chip8BigFont getBigFontId(Chip8GenericOptions::Supporte
         case Chip8GenericOptions::eSCHIP11:
         case Chip8GenericOptions::eSCHPC:
         case Chip8GenericOptions::eSCHIP_MODERN:
-        case Chip8GenericOptions::eCHICUEYI:
             return Chip8GenericBase::C8F10_SCHIP11;
         case Chip8GenericOptions::eMEGACHIP:
             return Chip8GenericBase::C8F10_MEGACHIP;
@@ -364,7 +352,6 @@ static Chip8GenericBase::Chip8BigFont getBigFontId(Chip8GenericOptions::Supporte
         case Chip8GenericOptions::eCHIP8:
         case Chip8GenericOptions::eCHIP10:
         case Chip8GenericOptions::eCHIP48:
-        case Chip8GenericOptions::eCHIP8VIP:
         default:
             return Chip8GenericBase::C8F10_NONE;
     }
@@ -416,7 +403,7 @@ void Chip8GenericEmulator::reset()
     _errorMessage.clear();
     _wavePhase = 0;
     _simpleRandState = _simpleRandSeed;
-    _isHires = _options.optOnlyHires ? true : false;
+    _isHires = _options.optOnlyHires;
     _isInstantDxyn = _options.optInstantDxyn;
     _isMegaChipMode = false;
     _planes = 1;
@@ -639,29 +626,6 @@ void Chip8GenericEmulator::setHandler()
             on(0xF0FF, 0xF075, &Chip8GenericEmulator::opFx75);
             on(0xF0FF, 0xF085, &Chip8GenericEmulator::opFx85);
             break;
-        case Chip8GenericOptions::eCHICUEYI:
-            on(0xFFF0, 0x00C0, &Chip8GenericEmulator::op00Cn_masked);
-            on(0xFFF0, 0x00D0, &Chip8GenericEmulator::op00Dn_masked);
-            on(0xFFFF, 0x00FB, &Chip8GenericEmulator::op00FB_masked);
-            on(0xFFFF, 0x00FC, &Chip8GenericEmulator::op00FC_masked);
-            on(0xFFFF, 0x00FD, &Chip8GenericEmulator::op00FD);
-            on(0xFFFF, 0x00FE, &Chip8GenericEmulator::op00FE_withClear);
-            on(0xFFFF, 0x00FF, &Chip8GenericEmulator::op00FF_withClear);
-            on(0xF000, 0x3000, &Chip8GenericEmulator::op3xnn_with_F000);
-            on(0xF000, 0x4000, &Chip8GenericEmulator::op4xnn_with_F000);
-            on(0xF00F, 0x5000, &Chip8GenericEmulator::op5xy0_with_F000);
-            on(0xF00F, 0x5002, &Chip8GenericEmulator::op5xy2);
-            on(0xF00F, 0x5003, &Chip8GenericEmulator::op5xy3);
-            on(0xF00F, 0x5004, &Chip8GenericEmulator::op5xy4);
-            on(0xF00F, 0x9000, &Chip8GenericEmulator::op9xy0_with_F000);
-            on(0xF0FF, 0xE09E, &Chip8GenericEmulator::opEx9E_with_F000);
-            on(0xF0FF, 0xE0A1, &Chip8GenericEmulator::opExA1_with_F000);
-            on(0xFFFF, 0xF000, &Chip8GenericEmulator::opF000);
-            on(0xF0FF, 0xF001, &Chip8GenericEmulator::opFx01);
-            on(0xFFFF, 0xF002, &Chip8GenericEmulator::opF002);
-            on(0xF0FF, 0xF030, &Chip8GenericEmulator::opFx30);
-            on(0xF0FF, 0xF03A, &Chip8GenericEmulator::opFx3A);
-            break;
         default: break;
     }
 }
@@ -735,6 +699,28 @@ void Chip8GenericEmulator::executeFrame()
             handleTimer();
         }
         executeInstructions(instructionsLeft);
+    }
+}
+
+void Chip8GenericEmulator::handleTimer()
+{
+    if(_execMode != ePAUSED) {
+        ++_frameCounter;
+        ++_randomSeed;
+        _host.vblank();
+#ifdef EMU_AUDIO_DEBUG
+        std::clog << "handle-timer" << std::endl;
+#endif
+        if (_rDT > 0)
+            --_rDT;
+        if (_rST > 0)
+            --_rST;
+        if (!_rST)
+            _wavePhase = 0;
+        if(_screenNeedsUpdate) {
+            _host.updateScreen();
+            _screenNeedsUpdate = false;
+        }
     }
 }
 

@@ -41,7 +41,7 @@ class Chip8OpcodeDisassembler
 {
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8Variant variant, SymbolResolver resolver = {});
+    explicit Chip8OpcodeDisassembler(Chip8Variant variant, SymbolResolver resolver = {});
     std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const;
 protected:
     SymbolResolver _labelOrAddress;

@@ -38,10 +38,10 @@ Properties& Chip8StrictOptions::registeredPrototype()
     using namespace std::string_literals;
     auto& prototype = Properties::getProperties(PROP_CLASS);
     if(!prototype) {
-        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", false});
-        prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", false});
-        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", false});
-        prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", false});
+        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
+        prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", eWritable});
+        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", eWritable});
+        prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
     }
     return prototype;
 }

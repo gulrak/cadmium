@@ -49,6 +49,35 @@ template<class... Ts>
 
 visitor(Ts...) -> visitor<Ts...>;
 
+enum PropertyAccess { eReadOnly, eWritable, eInvisible };
+
+
+class Palette
+{
+public:
+    struct Color {
+        uint8_t r, g, b;
+    };
+    Palette(std::initializer_list<Color> colors)
+        : _colors(colors)
+    {}
+    Palette(std::initializer_list<std::string> colors)
+    {
+        _colors.reserve(colors.size());
+        for(const auto& col : colors) {
+            if(col.length()>1 && col[0] == '#') {
+                uint32_t colInt = std::strtoul(col.data() + 1, nullptr, 16);
+                _colors.emplace_back(colInt>>16, colInt>>8, colInt);
+            }
+            else {
+                _colors.emplace_back(0,0,0);
+            }
+        }
+    }
+
+private:
+    std::vector<Color> _colors;
+};
 
 class Property
 {
@@ -96,10 +125,10 @@ public:
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, bool isReadOnly = true);
-    Property(const std::string& name, Value val, std::string description, bool isReadOnly = true);
-    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, bool isReadOnly = true);
-    Property(const NameAndKeyName& nameAndKey, Value val, bool isReadOnly = true);
+    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyAccess access_ = eReadOnly);
+    Property(const std::string& name, Value val, std::string description, PropertyAccess access_ = eReadOnly);
+    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, PropertyAccess access_ = eReadOnly);
+    Property(const NameAndKeyName& nameAndKey, Value val, PropertyAccess access_ = eReadOnly);
     Property(const Property& other);
     const std::string& getName() const { return _name; }
     const std::string& getJsonKey() const { return _jsonKey; }
@@ -108,7 +137,7 @@ public:
     const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
-    bool isReadonly() const { return _isReadonly; }
+    PropertyAccess access() const { return _access; }
     bool isValid() const { return !std::holds_alternative<std::nullptr_t>(_value); }
     explicit operator bool() const { return isValid(); }
     Value& getValue() { return _value; }
@@ -149,7 +178,7 @@ private:
     Value _value;
     std::string _description;
     std::string _additionalInfo;
-    bool _isReadonly{true};
+    PropertyAccess _access{eReadOnly};
 };
 
 class Properties
@@ -213,10 +242,10 @@ public:
         }
         return iter->second;
     }
-    bool isReadonly(size_t index) const
+    PropertyAccess access(size_t index) const
     {
         auto iter = _valueMap.find(_valueList[index]);
-        return iter == _valueMap.end() || iter->second.isReadonly();
+        return iter == _valueMap.end() ? eInvisible : iter->second.access();
     }
     Property& operator[](const std::string& key)
     {

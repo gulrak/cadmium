@@ -49,7 +49,7 @@ EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
 , _librarian(_cfg)
 {
 #ifndef PLATFORM_WEB
-    _currentDirectory = _cfg.workingDirectory;
+    _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
     _databaseDirectory = _cfg.databaseDirectory;
     _librarian.fetchDir(_currentDirectory);
 #endif

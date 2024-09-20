@@ -68,7 +68,7 @@ public:
         int pixelAspect{1};
         std::vector<uint32_t> pixel;
     };
-    Librarian(const CadmiumConfiguration& cfg);
+    explicit Librarian(const CadmiumConfiguration& cfg);
     std::string currentDirectory() const { return _currentPath; }
     std::string fullPath(std::string file) const;
     bool fetchDir(std::string directory);

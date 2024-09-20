@@ -637,6 +637,7 @@ public:
 #ifdef PLATFORM_WEB
         JsClipboard_AddJsHook();
 #else
+        _cfgPath = (fs::path(dataPath())/"config.json").string();
         _volume = _volumeSlider = _cfg.volume;
         _styleManager.updateStyle(_cfg.guiHue, _cfg.guiSat, false);
 #endif
@@ -884,7 +885,7 @@ public:
         return Vector3Distance(labC1, labC2);;
     }
 
-    static inline uint32_t rgb332To888(uint8_t c)
+    static uint32_t rgb332To888(uint8_t c)
     {
         static uint8_t b3[] = {0, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xff};
         static uint8_t b2[] = {0, 0x60, 0xA0, 0xff};
@@ -975,9 +976,11 @@ public:
             }
             else {
                 // TraceLog(LOG_INFO, "Updating MC8 screen!");
-                const auto* screen = _chipEmu->getScreenRGBA();
-                screen->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                UpdateTexture(_screenTexture, _screen.data);
+                const auto* screenRgb = _chipEmu->getScreenRGBA();
+                if(screenRgb) {
+                    screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                    UpdateTexture(_screenTexture, _screen.data);
+                }
             }
         }
     }
@@ -1667,22 +1670,22 @@ public:
 
     static int editProperty(emu::Property& prop, bool forceUpdate, PropertyAlign pa = PA_RIGHT)
     {
-        gui::BeginColumns();
-        gui::SetSpacing(4);
-        gui::SetNextWidth(90);
         auto prevTextAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
         if(pa == PA_RIGHT) {
+            gui::BeginColumns();
+            gui::SetSpacing(4);
+            gui::SetNextWidth(90);
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
             gui::Label(fmt::format("{}", prop.getName()).c_str());
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
         }
         //gui::SetNextWidth(150);
-        if (prop.isReadonly())
+        if (prop.access() != emu::eWritable)
             GuiDisable();
         const auto rc = std::visit(emu::visitor{
                                 [](std::nullptr_t) -> int { gui::Label(""); return 0; },
                                 [pa, &prop](bool& val) -> int { val = gui::CheckBox(pa == PA_RIGHT ? "" : prop.getName().c_str(), val); return val ? 1 : 0; },
-                                [](emu::Property::Integer& val) -> int { gui::Spinner("", &val.intValue, val.minValue, val.maxValue); return val.intValue; },
+                                [pa, &prop](emu::Property::Integer& val) -> int { gui::Spinner(pa == PA_RIGHT ? "" : prop.getName().c_str(), &val.intValue, val.minValue, val.maxValue); return val.intValue; },
                                 [](std::string& val) -> int {
                                     auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
                                     gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
@@ -1696,9 +1699,11 @@ public:
                                     return val.index;
                                 }},
                    prop.getValue());
-        if (prop.isReadonly())
+        if (prop.access() != emu::eWritable)
             GuiEnable();
-        gui::EndColumns();
+        if(pa == PA_RIGHT) {
+            gui::EndColumns();
+        }
         return rc;
     }
 
@@ -1718,7 +1723,7 @@ public:
     int editPropertySpinner(std::string_view key, bool forceUpdate, int defaultValue = 0)
     {
         if(_properties.containsFuzzy(key)) {
-            return editProperty(_properties.at(key), forceUpdate);
+            return editProperty(_properties.at(key), forceUpdate, PA_LEFT);
         }
         static int dummyInt = defaultValue;
         GuiDisable();
@@ -1863,32 +1868,34 @@ public:
             SetNextWidth(colWidth1);
             Begin();
             SetSpacing(2);
-            auto* rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
-            if(rcb) {
-                static emu::Properties propsMemento;
-                auto& props = _properties;
-                if(props != propsMemento)
-                    propsMemento = props;
-                for(size_t i = 0; i < props.numProperties(); ++i) {
-                    auto& prop = props[i];
-                    if(prop.getName().empty()) {
-                        auto used = GetCurrentPos().y - startY;
-                        Space(quirksHeight - used - 4);
-                        End();
-                        Begin();
-                        SetSpacing(2);
-                    }
-                    else if(!fuzzyAnyOf(prop.getName(), {"TraceLog"})) {
-                        editProperty(prop, forceUpdate);
-                        ++rowCount;
-                    }
+            static emu::Properties propsMemento;
+            auto& props = _properties;
+            if(props != propsMemento)
+                propsMemento = props;
+            for(size_t i = 0; i < props.numProperties(); ++i) {
+                auto& prop = props[i];
+                if(prop.getName().empty()) {
+                    auto used = GetCurrentPos().y - startY;
+                    Space(quirksHeight - used - 4);
+                    End();
+                    Begin();
+                    SetSpacing(2);
                 }
-                /*auto* changedProp = props.changedProperty(propsMemento);
-                if(changedProp) {
-                    // on change...
-                    updateEmulatorOptions(_options);
-                    //rcb->updateProperties(*changedProp);
-                }*/
+                else if(prop.access() != emu::eInvisible && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+                    if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
+                        editProperty(prop, forceUpdate, PA_LEFT);
+                    }
+                    else {
+                        editProperty(prop, forceUpdate);
+                    }
+                    ++rowCount;
+                }
+            }
+            auto* changedProp = props.changedProperty(propsMemento);
+            if(changedProp) {
+                // on change...
+                updateEmulatorOptions(props);
+                //rcb->updateProperties(*changedProp);
             }
             auto used = GetCurrentPos().y - startY;
             Space(quirksHeight - used - 4);
@@ -1901,18 +1908,21 @@ public:
             StyleManager::Scope guard;
             BeginColumns();
             auto pos = GetCurrentPos();
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
             SetNextWidth(52.0f + 16*18);
             Label("Colors:");
             for (int i = 0; i < 16; ++i) {
-                DrawRectangle(pos.x + 52 + i * 18 + 2, pos.y + 2 , 12, 12, GetColor(_colorPalette[i]));
                 bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + 52 + i * 18, pos.y, 16, 16});
+                DrawRectangle(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
+                DrawRectangle(pos.x + 52 + i * 18 + 1, pos.y + 1 , 14, 14, GetColor(guard.getStyle(Style::BACKGROUND_COLOR)));
+                DrawRectangle(pos.x + 52 + i * 18 + 2, pos.y + 2 , 12, 12, GetColor(_colorPalette[i]));
                 if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
                     _selectedColor = &_colorPalette[i];
                     _previousColor = _colorPalette[i];
                     _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
                     _colorSelectOpen = true;
                 }
-                DrawRectangleLines(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
             }
             static std::vector<uint32_t> prevPalette(_colorPalette.begin(), _colorPalette.end());
             if(std::memcmp(prevPalette.data(), _colorPalette.data(), 16*sizeof(uint32_t)) != 0) {
@@ -2175,7 +2185,7 @@ public:
                     //}
                     // TODO: Fix this
                     // auto options = _options;
-                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::None);
+                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::DontChangeOptions);
                     // TODO: Fix this
                     // updateEmulatorOptions(options);
                     _mainView = _lastView;
@@ -2321,7 +2331,6 @@ public:
 
     void saveConfig()
     {
-        return; // TODO: Reactivate config saving
 #ifndef PLATFORM_WEB
         if(!_cfgPath.empty()) {
             auto opt = _properties;
@@ -2330,7 +2339,7 @@ public:
                 pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
             }
             // opt.advanced["palette"] = pal;
-            _cfg.emuOptions = _properties;
+            _cfg.emuProperties = _properties;
             _cfg.workingDirectory = _currentDirectory;
             _cfg.databaseDirectory = _databaseDirectory;
             if(!_cfg.save(_cfgPath)) {
@@ -2342,22 +2351,10 @@ public:
 
     void updateBehaviorSelects()
     {
-        _subBehaviorSel = static_cast<int>(emu::CoreRegistry::variantIndex(_properties).index);
-        // TODO: Fix this
-        /*
-        auto result = std::find_if(_presetMapping.begin(), _presetMapping.end(), [this](const auto& pair) {return pair.second == _options.behaviorBase; });
-        if(result != _presetMapping.end()) {
-            _behaviorSel = result->first.first;
-            if(_behaviorSel == 12)
-                _subBehaviorSel = result->first.second, _subBehaviorSel2 = 0;
-            else if(_behaviorSel == 13)
-                _subBehaviorSel2 = result->first.second, _subBehaviorSel = 0;
-            else
-                _subBehaviorSel = _subBehaviorSel2 = 0;
+        if (auto idx = _cores.classIndex(_properties); idx >= 0) {
+            _behaviorSel = idx;
+            _subBehaviorSel = static_cast<int>(emu::CoreRegistry::variantIndex(_properties).index);
         }
-        else
-            _behaviorSel = emu::Chip8EmulatorOptions::eXOCHIP;
-        */
     }
 
     void whenEmuChanged(emu::IEmulationCore& emu) override
@@ -2842,7 +2839,7 @@ int main(int argc, char* argv[])
         auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, info->prefix().empty() ? "default" : toOptionName(info->prefix())));
         for(size_t i = 0; i < proto.numProperties(); ++i) {
             auto& prop = proto[i];
-            if(!prop.isReadonly()) {
+            if(prop.access() == emu::eWritable) {
                 auto dependencyCheck = [&presetName, info](){ return info->hasVariant(presetName); };
                 std::visit(emu::visitor{
                    [](std::nullptr_t) -> void {  },
@@ -2913,7 +2910,7 @@ int main(int argc, char* argv[])
     CadmiumConfiguration config;
     auto cfgPath = (fs::path(dataPath())/"config.json").string();
     if(config.load(cfgPath)) {
-        coreProperties = config.emuOptions;
+        coreProperties = config.emuProperties;
     }
 
     try {

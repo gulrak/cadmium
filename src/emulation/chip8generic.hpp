@@ -49,7 +49,7 @@ struct Chip8GenericOptions
     static Chip8GenericOptions fromProperties(const Properties& props);
     static Properties& registeredPrototype();
     Chip8Variant variant() const;
-    enum SupportedPreset { eCHIP8, eCHIP8TE, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eCHIP8VIP, eCHIP8VIP_TPD, eCHIP8VIP_FPD, eCHIP8EVIP, eCHIP8XVIP, eCHIP8XVIP_TPD, eCHIP8XVIP_FPD, eRAWVIP, eCHIP8DREAM, eC8D68CHIPOSLO, eCHICUEYI, ePORTABLE, eNUM_PRESETS };
+    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
     SupportedPreset behaviorBase{eCHIP8};
     uint32_t ramSize{4096};
     uint16_t startAddress{0x200};
@@ -74,7 +74,7 @@ struct Chip8GenericOptions
     bool optHas16BitAddr{false};
     bool optXOChipSound{false};
     bool optChicueyiSound{false};
-    bool optExtendedVBlank{true};
+    bool optExtendedVBlank{false};
     bool optPalVideo{false};
     bool traceLog{false};
     int instructionsPerFrame{15};
@@ -88,9 +88,9 @@ class Chip8GenericEmulator : public Chip8GenericBase
 {
 public:
     using OpcodeHandler = void (Chip8GenericEmulator::*)(uint16_t);
-    const uint32_t ADDRESS_MASK;
-    const int SCREEN_WIDTH;
-    const int SCREEN_HEIGHT;
+    uint32_t ADDRESS_MASK;
+    int SCREEN_WIDTH;
+    int SCREEN_HEIGHT;
     
     Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other = nullptr);
     ~Chip8GenericEmulator() override;
@@ -107,6 +107,16 @@ public:
     void executeInstructions(int numInstructions) override;
     int64_t executeFor(int64_t microseconds) override;
     void executeFrame() override;
+    void handleTimer() override;
+    bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
+    uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }
+    uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
+    uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : 128; }
+    uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : 64; }
+    const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
+    const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
+    uint8_t getScreenAlpha() const override { return _screenAlpha; }
+    bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
 
     uint8_t getNextMCSample();
 
@@ -489,6 +499,7 @@ private:
     uint32_t _simpleRandState{12345};
     int _chip8xBackgroundColor{0};
     uint8_t _vp595Frequency{0x80};
+    int64_t _waitCycles{0};
 #ifdef GEN_OPCODE_STATS
     std::map<uint16_t,int64_t> _opcodeStats;
 #endif

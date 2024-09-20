@@ -74,11 +74,11 @@ struct CosmacVIPOptions
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", false});
+            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
             prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", false});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", false});
-            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", false});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", eWritable});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", eWritable});
+            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
             prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}, "Video hardware, default cdp1861"});
             prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
             prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});

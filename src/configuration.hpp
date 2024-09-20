@@ -38,7 +38,7 @@ struct CadmiumConfiguration
     uint8_t guiSat{80};
     std::string workingDirectory;
     std::string databaseDirectory;
-    emu::Properties emuOptions;
+    emu::Properties emuProperties;
     std::map<std::string,emu::Properties> romConfigs;
     bool load(const std::string& filepath);
     bool save(const std::string& filepath);

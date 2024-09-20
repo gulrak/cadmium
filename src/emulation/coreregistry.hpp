@@ -121,10 +121,13 @@ public:
         }
         std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const override
         {
-            std::string variant = prefix() + "-CUSTOM";
+            std::string variant = prefix().empty() ? "CUSTOM" : prefix() + "-CUSTOM";
             for(const auto& setupInfo : presets) {
                 if(props == setupInfo.options.asProperties()) {
-                    variant = !std::strcmp(setupInfo.presetName, "NONE") ? prefix() : prefix() + "-" + setupInfo.presetName;
+                    if(prefix().empty())
+                        variant = setupInfo.presetName;
+                    else
+                        variant = !std::strcmp(setupInfo.presetName, "NONE") ? prefix() : prefix() + "-" + setupInfo.presetName;
                 }
             }
             auto options = OptionsType::fromProperties(props);
@@ -198,6 +201,15 @@ public:
         return {};
     }
 
+    int classIndex(const Properties& props) const
+    {
+        for(int idx = 0; idx < orderedFactories.size(); ++idx) {
+            if(fuzzyCompare(orderedFactories[idx].first, props.propertyClass())) {
+                return idx;
+            }
+        }
+        return -1;
+    }
     static IFactoryInfo::VariantIndex variantIndex(const Properties& props)
     {
         if (auto iter = factoryMap().find(props.propertyClass()); iter != factoryMap().end()) {
@@ -230,12 +242,7 @@ public:
 
     const IFactoryInfo& operator[](size_t index) const
     {
-        auto iter = begin();
-        while(iter != end() && index) {
-            ++iter;
-            --index;
-        }
-        return iter == end() ? *begin()->second : *iter->second;
+        return index < orderedFactories.size() ? *orderedFactories[index].second : *orderedFactories.front().second;
     }
 
     CoreRegistry();

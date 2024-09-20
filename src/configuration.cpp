@@ -35,7 +35,7 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
         {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
         {"databaseDirectory", cc.databaseDirectory},
-        {"emuOptions", cc.emuOptions},
+        {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
     };
 }
@@ -47,7 +47,7 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     cc.guiHue = j.value("guiHue", 192);
     cc.guiSat = j.value("guiSaturation", 90);
     try {
-        j.at("emuOptions").get_to(cc.emuOptions);
+        j.at("emuProperties").get_to(cc.emuProperties);
     }
     catch(...) {}
     try {

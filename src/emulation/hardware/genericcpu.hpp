@@ -143,7 +143,7 @@ public:
     }
     virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
 protected:
-    mutable ExecMode _execMode{eRUNNING};
+    mutable ExecMode _execMode{ePAUSED};
     CpuState _cpuState{eNORMAL};
     uint32_t _stepOverSP{};
     std::array<uint8_t,4096> _breakMap{};

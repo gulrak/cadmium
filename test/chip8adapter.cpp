@@ -90,7 +90,6 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
 }
 
 #elif defined(TEST_CHIP8EMULATOR_STRICT)
-#include <emulation/chip8cores.hpp>
 #include <emulation/chip8strict.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
