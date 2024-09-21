@@ -82,7 +82,7 @@ private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
     SubMode _subMode{eNONE};
-    std::array<uint32_t,256> _cdp1862Palette;
+    std::array<uint32_t,256> _cdp1862Palette{};
     VideoScreen<uint8_t,256,192> _screen;
     int _frameCycle{0};
     int _frameCounter{0};

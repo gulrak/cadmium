@@ -79,6 +79,7 @@ struct Chip8GenericOptions
     bool traceLog{false};
     int instructionsPerFrame{15};
     int frameRate{60};
+    Palette palette;
 };
 
 //---------------------------------------------------------------------------------------
@@ -117,6 +118,7 @@ public:
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
     uint8_t getScreenAlpha() const override { return _screenAlpha; }
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
+    bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
 
     uint8_t getNextMCSample();
 

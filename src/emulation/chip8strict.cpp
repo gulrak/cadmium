@@ -20,6 +20,7 @@ Properties Chip8StrictOptions::asProperties() const
     result[PROP_CLOCK].setInt(clockFrequency);
     result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
     result[PROP_CLEAN_RAM].setBool(cleanRam);
+    result.palette() = palette;
     return result;
 }
 
@@ -30,6 +31,7 @@ Chip8StrictOptions Chip8StrictOptions::fromProperties(const Properties& props)
     opts.clockFrequency = props[PROP_CLOCK].getInt();
     opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
     opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
+    opts.palette = props.palette();
     return opts;
 }
 

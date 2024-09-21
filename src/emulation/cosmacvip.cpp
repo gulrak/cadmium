@@ -51,6 +51,7 @@ struct CosmacVIPOptions
         result[PROP_ROM_NAME].setString(romName);
         result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
         result[PROP_START_ADDRESS].setInt(startAddress);
+        result.palette() = palette;
         return result;
     }
     static CosmacVIPOptions fromProperties(const Properties& props)
@@ -67,6 +68,7 @@ struct CosmacVIPOptions
         opts.romName = props[PROP_ROM_NAME].getString();
         opts.interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
         opts.startAddress = props[PROP_START_ADDRESS].getInt();
+        opts.palette = props.palette();
         return opts;
     }
     static Properties& registeredPrototype()
@@ -100,6 +102,7 @@ struct CosmacVIPOptions
     std::string romName;
     VIPChip8Interpreter interpreter;
     uint16_t startAddress;
+    Palette palette;
 };
 
 struct CosmacVipSetupInfo {
@@ -220,7 +223,7 @@ public:
     uint32_t _memorySize{4096};
     Cdp1802 _cpu;
     Cdp186x _video;
-    int64_t _irqStart{0};
+    //int64_t _irqStart{0};
     int64_t _nextFrame{0};
     uint8_t _keyLatch{0};
     uint8_t _frequencyLatch{0};
@@ -235,7 +238,7 @@ public:
     bool _powerOn{true};
     float _wavePhase{0};
     std::vector<uint8_t> _ram{};
-    std::array<uint8_t,1024> _colorRam{};
+    std::array<uint8_t,256> _colorRam{};
     std::array<uint8_t,512> _rom{};
     VideoType _screen;
 };
@@ -664,7 +667,7 @@ void CosmacVIP::reset()
     std::memset(_impl->_colorRam.data(), 0, _impl->_colorRam.size());
     if(_isHybridChipMode) {
         std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
-        _impl->_startAddress = 0x200;
+        _impl->_startAddress = _impl->_options.startAddress;
         _impl->_fetchEntry = 0x1B;
         if (_impl->_options.interpreter != VC8I_CHIP8) {
             auto size = patchRAM(_impl->_options.interpreter, _impl->_ram.data(), _impl->_ram.size());
@@ -674,6 +677,8 @@ void CosmacVIP::reset()
         }
     }
     else {
+        _impl->_startAddress = 0;
+        _impl->_fetchEntry = 0;
         _impl->_properties[PROP_INTERPRETER].setSelectedIndex(VIPChip8Interpreter::VC8I_NONE);
         _impl->_properties[PROP_INTERPRETER].setAdditionalInfo("No CHIP-8 interpreter used");
     }
@@ -684,8 +689,10 @@ void CosmacVIP::reset()
     _frames = 0;
     _impl->_nextFrame = 0;
     _impl->_lastOpcode = 0;
+    _impl->_currentOpcode = 0;
     _impl->_initialChip8SP = 0;
     _impl->_frequencyLatch = 0x80;
+    _impl->_keyLatch = 0;
     _impl->_mapRam = false;
     _impl->_wavePhase = 0;
     _cpuState = eNORMAL;

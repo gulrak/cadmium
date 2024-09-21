@@ -121,14 +121,15 @@ public:
         }
         std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const override
         {
-            std::string variant = prefix().empty() ? "CUSTOM" : prefix() + "-CUSTOM";
-            for(const auto& setupInfo : presets) {
-                if(props == setupInfo.options.asProperties()) {
-                    if(prefix().empty())
-                        variant = setupInfo.presetName;
-                    else
-                        variant = !std::strcmp(setupInfo.presetName, "NONE") ? prefix() : prefix() + "-" + setupInfo.presetName;
-                }
+            std::string variant;
+            auto idx = variantIndex(props);
+            const auto& info = presets[idx.index];
+            if(prefix().empty())
+                variant = info.presetName;
+            else
+                variant = !std::strcmp(info.presetName, "NONE") ? prefix() : prefix() + "-" + info.presetName;
+            if(props != info.options.asProperties()) {
+                variant += "*";
             }
             auto options = OptionsType::fromProperties(props);
             return {variant, std::make_unique<CoreType>(host, props)};

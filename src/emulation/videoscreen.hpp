@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <cstring>
 #include <stdendian/stdendian.h>
+#include <emulation/properties.hpp>
 
 namespace emu {
 
@@ -71,6 +72,12 @@ public:
     {
         for(int i = 0; i < palette.size(); ++i) {
             _palette[i] = be32(palette[i]);
+        }
+    }
+    void setPalette(const Palette& palette)
+    {
+        for(int i = 0; i < palette.size(); ++i) {
+            _palette[i] = be32(palette.colors[i].toRGBAInt());
         }
     }
     uint32_t getPixel(int x, int y) const

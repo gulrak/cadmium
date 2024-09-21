@@ -99,6 +99,7 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_Q_XO_CHIP_SOUND].setBool(optXOChipSound);
     result[PROP_Q_EXTENDED_VBLANK].setBool(optExtendedVBlank);
     result[PROP_Q_PAL_VIDEO].setBool(optPalVideo);
+    result.palette() = palette;
     return result;
 }
 
@@ -133,6 +134,7 @@ Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
     opts.optXOChipSound = props[PROP_Q_XO_CHIP_SOUND].getBool();
     opts.optExtendedVBlank = props[PROP_Q_EXTENDED_VBLANK].getBool();
     opts.optPalVideo = props[PROP_Q_PAL_VIDEO].getBool();
+    opts.palette = props.palette();
     return opts;
 }
 
@@ -145,7 +147,7 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
         prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", eWritable});
         prototype.registerProperty({PROP_FRAME_RATE, Property::Integer{60, 50, 100}, "Number of frames per second, default 60", eWritable});
-        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", eWritable});
+        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "16384"s, "32768"s, "65536"s, "16777216"s}, "Size of ram in bytes", eWritable});
         prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x200, 0, 0x7f0}, "Number of instructions per frame, default depends on variant", eReadOnly});
         prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
         prototype.registerProperty({{PROP_Q_JUST_SHIFT_VX, "just-Shift-Vx"}, false, eWritable});
@@ -224,7 +226,9 @@ Chip8GenericSetupInfo genericPresets[] = {
         "CHIP-8X",
         "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
         ".c8x",
-        {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .optExtendedVBlank = true, .instructionsPerFrame = 18}
+        {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .optExtendedVBlank = true, .instructionsPerFrame = 18,
+            .palette = {"#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"}
+        }
     },
     {
         "CHIP-48",
@@ -260,13 +264,13 @@ Chip8GenericSetupInfo genericPresets[] = {
         "MEGACHIP",
         "MegaChip as specified by Martijn Wanting, Revival-Studios, 2007",
         ".mc8",
-        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
+        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
     },
     {
         "XO-CHIP",
         "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014",
         "xo8",
-        {.behaviorBase = Chip8GenericOptions::eXOCHIP, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
+        {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
     }
     /*{Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
     {Opts::eCHIP8E, R"({})"},
@@ -307,7 +311,7 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
 , _options(Chip8GenericOptions::fromProperties(props))
 , _opcodeHandler(0x10000, &Chip8GenericEmulator::opInvalid)
 {
-    ADDRESS_MASK = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.ramSize>4096 ? 0xFFFF : 0xFFF;
+    ADDRESS_MASK = _options.ramSize - 1; //_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.ramSize>4096 ? 0xFFFF : 0xFFF;
     SCREEN_WIDTH = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : (_options.optAllowHires ? 128 : 64);
     SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32));
     _memory.resize(_options.ramSize, 0);
@@ -417,6 +421,11 @@ void Chip8GenericEmulator::reset()
     _mcPalette.fill(0x00);
     _mcPalette[1] = 0xffffffff;
     _mcPalette[254] = 0xffffffff;
+}
+
+bool Chip8GenericEmulator::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
+{
+    return Chip8GenericBase::loadData(data, loadAddress ? loadAddress : _options.startAddress);
 }
 
 void Chip8GenericEmulator::setHandler()
@@ -691,7 +700,11 @@ void Chip8GenericEmulator::executeFrame()
         do {
             executeInstructions(487);
         }
+#ifdef PLATFORM_WEB
         while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
+#else
+        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 15);
+#endif
     }
     else {
         auto instructionsLeft = calcNextFrame() - _cycleCounter;

@@ -35,6 +35,11 @@ namespace emu {
 
 std::map<std::string_view,Properties> Properties::propertyRegistry{};
 
+std::string Palette::Color::toString() const
+{
+    return fmt::format("#{:02x}{:02x}{:02x}", r, g, b);
+}
+
 
 Property::Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyAccess access_)
     : _name(name)
@@ -96,12 +101,15 @@ void to_json(nlohmann::json& j, const Properties& props)
                        [&](const emu::Property::Combo& val) { j[name] = val.selectedText(); }
                    }, prop.getValue());
     }
+    if(!props.palette().empty()) {
+        j["palette"] = props.palette();
+    }
 }
 
 void from_json(const nlohmann::json& j, Properties& props)
 {
     if(j.is_object()) {
-        auto cls = j.value("class", "GenericCore");
+        auto cls = j.value("class", "CHIP-8 GENERIC");
         props = Properties::getProperties(cls);
         if(props) {
             for(size_t i = 0; i < props.numProperties(); ++i) {
@@ -116,8 +124,29 @@ void from_json(const nlohmann::json& j, Properties& props)
                 }, prop.getValue());
             }
         }
+        if(j.contains("palette")) {
+            j["palette"].get_to(props.palette());
+        }
     }
 }
 
+void to_json(nlohmann::json& j, const Palette& pal)
+{
+    j = nlohmann::json::array();
+    for(const auto& c : pal.colors) {
+        j.push_back(c.toString());
+    }
+}
+
+void from_json(const nlohmann::json& j, Palette& pal)
+{
+    if(j.is_array()) {
+        pal.colors.clear();
+        pal.colors.reserve(j.size());
+        for(const std::string col : j) {
+            pal.colors.emplace_back(col);
+        }
+    }
+}
 
 }

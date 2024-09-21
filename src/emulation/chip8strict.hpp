@@ -43,10 +43,11 @@ struct Chip8StrictOptions {
     Properties asProperties() const;
     static Chip8StrictOptions fromProperties(const Properties& props);
     static Properties& registeredPrototype();
-    int clockFrequency;
-    size_t ramSize;
-    bool cleanRam;
-    bool traceLog;
+    int clockFrequency{};
+    size_t ramSize{};
+    bool cleanRam{};
+    bool traceLog{};
+    Palette palette;
 };
 
 class Chip8StrictEmulator : public Chip8GenericBase

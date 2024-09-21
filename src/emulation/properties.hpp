@@ -56,27 +56,48 @@ class Palette
 {
 public:
     struct Color {
-        uint8_t r, g, b;
-    };
-    Palette(std::initializer_list<Color> colors)
-        : _colors(colors)
-    {}
-    Palette(std::initializer_list<std::string> colors)
-    {
-        _colors.reserve(colors.size());
-        for(const auto& col : colors) {
-            if(col.length()>1 && col[0] == '#') {
-                uint32_t colInt = std::strtoul(col.data() + 1, nullptr, 16);
-                _colors.emplace_back(colInt>>16, colInt>>8, colInt);
+        Color(const uint8_t rval, const uint8_t gval, const uint8_t bval) : r(rval), g(gval), b(bval) {}
+        explicit Color(uint32_t val) : r(val >> 16), g(val >> 8), b(val) {}
+        explicit Color(std::string_view hex)
+        {
+            if(hex.length()>1 && hex[0] == '#') {
+                uint32_t colInt = std::strtoul(hex.data() + 1, nullptr, 16);
+                r = colInt>>16;
+                g = colInt>>8;
+                b = colInt;
             }
             else {
-                _colors.emplace_back(0,0,0);
+                r = 0, g = 0, b = 0;
             }
+        }
+        uint32_t toRGBInt() const
+        {
+            return (r << 16u) | (g << 8u) | b;
+        }
+        uint32_t toRGBAInt(const uint8_t alpha = 255) const
+        {
+            return (r << 24u) | (g << 16u) | (b << 8) | alpha;
+        }
+        std::string toString() const;
+        static Color fromRGBA(const uint32_t val) { return Color( val >> 24, val >> 16, val >> 8); }
+        uint8_t r, g, b;
+    };
+    Palette() = default;
+    Palette(const std::initializer_list<Color> cols)
+        : colors(cols)
+    {}
+    Palette(const std::initializer_list<std::string> cols)
+    {
+        colors.reserve(cols.size());
+        for(const auto& col : cols) {
+            colors.emplace_back(col);
         }
     }
 
-private:
-    std::vector<Color> _colors;
+    bool empty() const { return colors.empty(); }
+    size_t size() const { return colors.size(); }
+
+    std::vector<Color> colors;
 };
 
 class Property
@@ -328,18 +349,24 @@ public:
         return key;
     }
 
+    Palette& palette() { return _palette; }
+    const Palette& palette() const { return _palette; }
+
     RegistryMaps& getRegistryMaps();
 
 private:
     std::string _class;
     std::vector<std::string> _valueList;
     std::map<std::string, Property> _valueMap;
+    Palette _palette;
     static std::map<std::string_view,Properties> propertyRegistry;
     static std::unordered_map<std::string,std::string> registeredKeys;
     static std::unordered_map<std::string,std::string> registeredJsonKeys;
 };
 
-void to_json(nlohmann::json& j, const Properties& cc);
-void from_json(const nlohmann::json& j, Properties& cc);
+void to_json(nlohmann::json& j, const Properties& props);
+void from_json(const nlohmann::json& j, Properties& props);
+void to_json(nlohmann::json& j, const Palette& pal);
+void from_json(const nlohmann::json& j, Palette& pal);
 
 }
