@@ -75,9 +75,6 @@ public:
     uint32_t getPC() const override { auto pcstr = std::to_string(_state.pc); return _state.pc; }
     uint32_t getI() const override { return _state.i; }
     uint32_t getSP() const override { return _state.sp; }
-    std::span<const uint8_t> stack() const override { return {}; }
-    uint8_t stackSize() const override { return 12; }
-    const uint16_t* stackElements() const override { return _state.s.data(); }
     uint8_t delayTimer() const override { return _state.dt; }
     uint8_t soundTimer() const override { return _state.st; }
 

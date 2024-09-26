@@ -506,7 +506,8 @@ public:
     {
         return _bus.readDebugByte(addr);
     }
-    std::span<const uint8_t> stack() const override
+    unsigned stackSize() const override { return 0; }
+    StackContent stack() const override
     {
         return {};
     }

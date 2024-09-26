@@ -60,9 +60,6 @@ public:
 
     virtual uint8_t getV(uint8_t index) const = 0;
     virtual uint32_t getI() const = 0;
-    //virtual uint8_t getSP() const = 0;
-    virtual uint8_t stackSize() const = 0;
-    virtual const uint16_t* stackElements() const = 0;
 
     virtual uint8_t* memory() = 0;
     virtual int memSize() const = 0;

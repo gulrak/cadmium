@@ -102,6 +102,7 @@ public:
     }
     uint32_t cpuID() const override { return 0xC8; }
     void reset() override;
+    bool updateProperties(Properties& props, Property& changed) override;
     int64_t machineCycles() const override { return 0; }
     int executeInstruction() override;
     void executeInstructionNoBreakpoints();
@@ -119,6 +120,8 @@ public:
     uint8_t getScreenAlpha() const override { return _screenAlpha; }
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
+    unsigned stackSize() const override { return 16; }
+    StackContent stack() const override;
 
     uint8_t getNextMCSample();
 

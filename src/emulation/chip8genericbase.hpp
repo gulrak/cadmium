@@ -54,9 +54,6 @@ public:
     uint32_t getPC() const override { return _rPC; }
     uint32_t getI() const override { return _rI; }
     uint32_t getSP() const override { return _rSP; }
-    uint8_t stackSize() const override { return 24; }
-    std::span<const uint8_t> stack() const override { return {}; }
-    const uint16_t* stackElements() const override { return nullptr; }
     uint8_t delayTimer() const override { return _rDT; }
     uint8_t soundTimer() const override { return _rST; }
     uint8_t* memory() override { return _memory.data(); }

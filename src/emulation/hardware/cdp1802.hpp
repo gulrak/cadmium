@@ -722,7 +722,8 @@ public:
     ~Cdp1802() override = default;
     uint8_t readMemoryByte(uint32_t addr) const override { return _bus.readByteDMA(addr);
     }
-    std::span<const uint8_t> stack() const override { return {}; }
+    unsigned stackSize() const override { return 0; }
+    StackContent stack() const override { return {}; }
     bool inErrorState() const override { return _cpuState == eERROR; }
     uint32_t cpuID() const override { return 1802; }
     std::string name() const override { static const std::string name = "CDP1802"; return name; }

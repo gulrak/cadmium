@@ -44,6 +44,8 @@ class GenericCpu
 public:
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
     enum CpuState { eNORMAL, eIDLE, eWAIT = eIDLE, eHALT, eERROR };
+    enum StackDirection { eDOWNWARDS, eUPWARDS };
+    enum Endianness { eNATIVE, eLITTLE, eBIG };
     struct BreakpointInfo {
         enum Type { eTRANSIENT, eCODED };
         std::string label;
@@ -53,6 +55,13 @@ public:
     struct RegisterValue {
         uint32_t value{};
         uint32_t size{};
+    };
+    struct StackContent
+    {
+        int entrySize{2};
+        Endianness endianness{eLITTLE};
+        StackDirection stackDirection{eDOWNWARDS};
+        std::span<const uint8_t> content{};
     };
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
@@ -82,7 +91,8 @@ public:
     virtual int64_t cycles() const = 0;
     virtual const ClockedTime& time() const = 0;
     virtual uint8_t readMemoryByte(uint32_t addr) const = 0;
-    virtual std::span<const uint8_t> stack() const = 0;
+    virtual unsigned stackSize() const = 0;
+    virtual StackContent stack() const = 0;
 
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 

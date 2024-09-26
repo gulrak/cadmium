@@ -176,9 +176,11 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
 {
     // TODO: Fix this
     if(_previousProperties != properties || !_chipEmu) {
+
         if(&properties != &_properties) {
-            _previousProperties = _properties = properties;
+            _properties = properties;
         }
+        _previousProperties = properties;
         _chipEmu = create(_properties, _chipEmu.get());
         if(_chipEmu->getScreen())
             (void)_chipEmu->getScreen();

@@ -110,12 +110,18 @@ public:
         _wavePhase = 0;
     }
 
-    inline uint16_t readWord(uint32_t addr) const
+    bool updateProperties(Properties& props, Property& changed) override;
+
+    uint16_t readWord(uint32_t addr) const
     {
         return (readByte(addr) << 8) | readByte(addr + 1);
     }
 
     int64_t machineCycles() const override { return _machineCycles; }
+
+    unsigned stackSize() const override { return 24; }
+
+    StackContent stack() const override;
 
     int64_t executeFor(int64_t microseconds) override
     {

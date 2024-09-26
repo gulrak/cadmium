@@ -47,6 +47,8 @@ public:
 
     virtual void reset() = 0;
 
+    virtual bool updateProperties(Properties& props, Property& changed) = 0;
+
     virtual std::string name() const = 0;
     virtual CoreState coreState() const { return ECS_NORMAL; }
     virtual const std::string& errorMessage() const { static std::string none; return none; }

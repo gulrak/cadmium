@@ -26,6 +26,7 @@
 
 #include "icons.h"
 #include <rlguipp/rlguipp4.hpp>
+#include <ghc/bit.hpp>
 #include <stylemanager.hpp>
 #include "debugger.hpp"
 
@@ -56,20 +57,74 @@ void Debugger::captureStates()
     auto unit = _core->executionUnit(0);
     _memBackup.resize(_core->memSize());
     std::memcpy(_memBackup.data(), _core->memory(), _core->memSize());
-    if(chip8Core()) {
-        _chip8StackBackup.resize(chip8Core()->stackSize());
-        // TODO: Fix this
-        //std::memcpy(_chip8StackBackup.data(), chip8Core()->stackElements(), sizeof(uint16_t) * chip8Core()->stackSize());
-    }
     _cpuStatesBackup.resize(_core->numberOfExecutionUnits());
+    _stackBackup.resize(_core->numberOfExecutionUnits());
     for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
         _core->executionUnit(i)->fetchAllRegisters(_cpuStatesBackup[i]);
+        auto stack = _core->executionUnit(i)->stack();
+        _stackBackup[i].assign(stack.content.begin(), stack.content.end());
     }
 }
 
 emu::IChip8Emulator* Debugger::chip8Core()
 {
     return dynamic_cast<emu::IChip8Emulator*>(_core->executionUnit(0));
+}
+
+template<typename T>
+T readStackEntry(const uint8_t* address, emu::GenericCpu::Endianness endianness)
+{
+    switch(endianness) {
+        case emu::GenericCpu::eNATIVE:
+            return *reinterpret_cast<const T*>(address);
+        case emu::GenericCpu::eBIG: {
+            T result = 0;
+            for (int i = sizeof(T) - 1; i >= 0; --i) {
+                result |= static_cast<T>(address[i]) << (8 * i);
+            }
+            return result;
+        }
+        case emu::GenericCpu::eLITTLE: {
+            T result = 0;
+            for (int i = 0; i < sizeof(T); ++i) {
+                result |= static_cast<T>(address[i]) << (8 * i);
+            }
+            return result;
+        }
+    }
+    return 0;
+}
+
+static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::StackContent& stack, size_t index, const uint8_t* backup)
+{
+    static char buffer[64];
+    if(stack.content.empty() || !stack.entrySize || index * stack.entrySize > stack.content.size()) {
+        buffer[0] = 0;
+        return {buffer, false};
+    }
+    auto offset = stack.stackDirection == emu::GenericCpu::eUPWARDS ? index * stack.entrySize : stack.content.size() - (index + 1) * stack.entrySize;
+    const uint8_t* entry = &stack.content[offset];
+    backup += offset;
+    bool changed = false;
+    switch(stack.entrySize) {
+        case 1: {
+            auto val = readStackEntry<uint8_t>(entry, stack.endianness);
+            changed = val != readStackEntry<uint8_t>(backup, stack.endianness);
+            fmt::format_to_n(buffer, 64, "{:02X}\0", val); break;
+        }
+        case 2: {
+            auto val = readStackEntry<uint16_t>(entry, stack.endianness);
+            changed = val != readStackEntry<uint16_t>(backup, stack.endianness);
+            fmt::format_to_n(buffer, 64, "{:04X}\0", val); break;
+        }
+        case 4: {
+            auto val = readStackEntry<uint32_t>(entry, stack.endianness);
+            changed = val != readStackEntry<uint32_t>(backup, stack.endianness);
+            fmt::format_to_n(buffer, 64, "{:06X}\0", val); break;
+        }
+        default: buffer[0] = 0;
+    }
+    return {buffer, changed};
 }
 
 void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
@@ -152,15 +207,11 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
             auto area = GetContentAvailable();
             pos.x += 0;
             Space(area.height);
-            // TODO: Fix this
-            /*
-            auto stackSize = _core->focussedExecutionUnit()->stackSize();
-            const auto* stack = _core->focussedExecutionUnit()->stackElements();
-            bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
-            for (int i = 0; i < stackSize; ++i) {
-                DrawTextEx(font, fourDigitStack ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
+            auto stack = _core->focussedExecutionUnit()->stack();
+            for (int i = 0; i < _core->focussedExecutionUnit()->stackSize(); ++i) {
+                auto element = formatStackElement(stack, i, _stackBackup[0].data());
+                DrawTextEx(font, TextFormat("%X:%s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
             }
-            */
         }
     }
     else {

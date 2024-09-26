@@ -63,7 +63,7 @@ private:
     bool _memViewFollow{true};
     std::vector<RegPack> _cpuStates;
     std::vector<RegPack> _cpuStatesBackup;
-    std::vector<uint16_t> _chip8StackBackup;
+    std::vector<std::vector<uint8_t>> _stackBackup;
     std::vector<uint8_t> _memBackup;
 };
 

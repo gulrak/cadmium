@@ -1737,6 +1737,10 @@ public:
         using namespace gui;
         auto oldProps = _properties;
         bool forceUpdate = false;
+        static emu::Properties propsMemento;
+        auto& props = _properties;
+        if(props != propsMemento)
+            propsMemento = props;
         BeginColumns();
         SetNextWidth(0.42f);
         BeginGroupBox("CHIP-8 variant / Core");
@@ -1855,54 +1859,51 @@ public:
         }
         //else if(!_chipEmu->isGenericEmulation()) {
 #endif
-        if(true) {
-            BeginGroupBox("System Configuration");
-            auto startY = GetCurrentPos().y;
-            auto colWidth1 = GetContentAvailable().width / 2 - 1;
-            auto colWidth2 = GetContentAvailable().width - colWidth1 - 1;
-            auto colHeight = GetContentAvailable().height;
-            auto rowCount = 0;
-            Space(5);
-            BeginColumns();
-            SetSpacing(2);
-            SetNextWidth(colWidth1);
-            Begin();
-            SetSpacing(2);
-            static emu::Properties propsMemento;
-            auto& props = _properties;
-            if(props != propsMemento)
-                propsMemento = props;
-            for(size_t i = 0; i < props.numProperties(); ++i) {
-                auto& prop = props[i];
-                if(prop.getName().empty()) {
-                    auto used = GetCurrentPos().y - startY;
-                    Space(quirksHeight - used - 4);
-                    End();
-                    Begin();
-                    SetSpacing(2);
-                }
-                else if(prop.access() != emu::eInvisible && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
-                    if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
-                        editProperty(prop, forceUpdate, PA_LEFT);
-                    }
-                    else {
-                        editProperty(prop, forceUpdate);
-                    }
-                    ++rowCount;
-                }
+        BeginGroupBox("System Configuration");
+        auto startY = GetCurrentPos().y;
+        auto colWidth1 = GetContentAvailable().width / 2 - 1;
+        auto colWidth2 = GetContentAvailable().width - colWidth1 - 1;
+        auto colHeight = GetContentAvailable().height;
+        auto rowCount = 0;
+        Space(5);
+        BeginColumns();
+        SetSpacing(2);
+        SetNextWidth(colWidth1);
+        Begin();
+        SetSpacing(2);
+        for(size_t i = 0; i < props.numProperties(); ++i) {
+            auto& prop = props[i];
+            if(prop.getName().empty()) {
+                auto used = GetCurrentPos().y - startY;
+                Space(quirksHeight - used - 4);
+                End();
+                Begin();
+                SetSpacing(2);
             }
-            auto* changedProp = props.changedProperty(propsMemento);
-            if(changedProp) {
-                // on change...
-                updateEmulatorOptions(props);
-                //rcb->updateProperties(*changedProp);
+            else if(prop.access() != emu::eInvisible && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+                if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
+                    editProperty(prop, forceUpdate, PA_LEFT);
+                }
+                else {
+                    editProperty(prop, forceUpdate);
+                }
+                ++rowCount;
             }
-            auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used - 4);
-            End();
-            EndColumns();
-            EndGroupBox();
         }
+        auto* changedProp = props.changedProperty(propsMemento);
+        if(changedProp) {
+            // on change...
+            if(_chipEmu->updateProperties(props, *changedProp)) {
+                // core asks for a cold start...
+                updateEmulatorOptions(props);
+            }
+        }
+        auto used = GetCurrentPos().y - startY;
+        Space(quirksHeight - used - 4);
+        End();
+        EndColumns();
+        EndGroupBox();
+
         Space(14);
         {
             StyleManager::Scope guard;
@@ -1930,7 +1931,6 @@ public:
                 prevPalette.assign(_colorPalette.begin(), _colorPalette.end());
             }
             static int sel = 5;
-
             if(DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;Custom", &sel, true)) {
                 switch(sel) {
                     case 0:
@@ -2011,11 +2011,6 @@ public:
             EndColumns();
         }
         Space(8);
-        // TODO: Fix this
-        /*if(forceUpdate || oldOptions != _options) {
-            updateEmulatorOptions(_options);
-            saveConfig();
-        }*/
         BeginColumns();
         Space(100);
         SetNextWidth(0.21f);
@@ -2170,9 +2165,6 @@ public:
                 SetNextWidth(80);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
-                    //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
-                    //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
-                    //}
                     auto mainView = _mainView;
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::None);
                     if(_mainView == mainView)
@@ -2180,14 +2172,8 @@ public:
                 }
                 SetNextWidth(110);
                 if(Button("Load w/o Config") && selectedInfo.analyzed) {
-                    //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
-                    //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
-                    //}
-                    // TODO: Fix this
-                    // auto options = _options;
+                    _chipEmu->reset();
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::DontChangeOptions);
-                    // TODO: Fix this
-                    // updateEmulatorOptions(options);
                     _mainView = _lastView;
                 }
                 GuiEnable();

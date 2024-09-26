@@ -52,6 +52,7 @@ struct Chip8StrictSetupInfo {
     const char* presetName;
     const char* description;
     const char* defaultExtensions;
+    chip8::VariantSet supportedChip8Variants{chip8::Variant::NONE};
     Chip8StrictOptions options;
 };
 
@@ -61,6 +62,7 @@ Chip8StrictSetupInfo strictPresets[] = {
         "chip-8",
         "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
         ".ch8;.c8vip",
+        .supportedChip8Variants = {chip8::Variant::CHIP_8 | chip8::Variant::CHIP_8_COSMAC_VIP},
         { .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false}
     }
 };
@@ -82,5 +84,19 @@ struct StrictFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8StrictEmu
 };
 
 static bool registeredStrictC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<StrictFactoryInfo>("First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP"));
+
+bool Chip8StrictEmulator::updateProperties(Properties& props, Property& changed)
+{
+    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+        _options = Chip8StrictOptions::fromProperties(props);
+        return false;
+    }
+    return true;
+}
+
+GenericCpu::StackContent Chip8StrictEmulator::stack() const
+{
+    return {2, eBIG, eDOWNWARDS, std::span(_memory.data() + _options.ramSize - 0x160, 48)};
+}
 
 }

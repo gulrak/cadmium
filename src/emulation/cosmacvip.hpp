@@ -54,6 +54,7 @@ public:
     ~CosmacVIP() override;
 
     void reset() override;
+    bool updateProperties(Properties& props, Property& changed) override;
     std::string name() const override;
 
     // IEmulationCore
@@ -77,6 +78,8 @@ public:
 
     uint8_t* memory() override;
     int memSize() const override;
+    unsigned stackSize() const override;
+    StackContent stack() const override;
 
     int64_t frames() const override;
 
