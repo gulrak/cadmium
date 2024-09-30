@@ -109,6 +109,7 @@ public:
     void executeInstructions(int numInstructions) override;
     int64_t executeFor(int64_t microseconds) override;
     void executeFrame() override;
+    bool supportsFrameBoost() const override { return _options.instructionsPerFrame != 0; }
     void handleTimer() override;
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
     uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }

@@ -29,6 +29,7 @@
 #include <emulation/hardware/genericcpu.hpp>
 #include <emulation/videoscreen.hpp>
 
+#include <cassert>
 #include <optional>
 #include <span>
 
@@ -42,6 +43,25 @@ class IEmulationCore {
 public:
     enum CoreState { ECS_NORMAL, ECS_WAITING, ECS_ERROR };
     struct PixelRatio { int x{1}, y{1}; };
+
+    struct Iterator
+    {
+        using iterator_category = std::forward_iterator_tag;
+        using difference_type   = std::ptrdiff_t;
+        using value_type        = GenericCpu;
+        using pointer           = value_type*;
+        using reference         = value_type&;
+        explicit Iterator(IEmulationCore& core, size_t idx) : _core(core), _idx(idx) {}
+        reference operator*() { assert(_idx < _core.numberOfExecutionUnits()); return *_core.executionUnit(_idx); }
+        pointer operator->() { return &(operator*()); }
+        Iterator& operator++() { if(_idx < _core.numberOfExecutionUnits()) ++_idx; return *this; }
+        Iterator operator++(int) { Iterator tmp = *this; ++(*this); return tmp; }
+        friend bool operator== (const Iterator& a, const Iterator& b) { return a._idx == b._idx; };
+        friend bool operator!= (const Iterator& a, const Iterator& b) { return a._idx != b._idx; };
+    private:
+        IEmulationCore& _core;;
+        size_t _idx;
+    };
 
     virtual ~IEmulationCore() = default;
 
@@ -58,6 +78,9 @@ public:
     virtual GenericCpu* executionUnit(size_t index) = 0;
     virtual void setFocussedExecutionUnit(GenericCpu* unit) = 0;
     virtual GenericCpu* focussedExecutionUnit() = 0;
+
+    Iterator begin() { return Iterator(*this, 0); }
+    Iterator end() { return Iterator(*this, numberOfExecutionUnits()); }
 
     virtual GenericCpu::ExecMode execMode() const = 0;
     virtual void setExecMode(GenericCpu::ExecMode mode) = 0;

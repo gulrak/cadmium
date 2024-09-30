@@ -916,7 +916,7 @@ public:
             drawChar(_fontImage, c, (glyphCount % 32) * 6, (glyphCount / 32) * 8, WHITE);
             ++glyphCount;
         }
-#if !defined(NDEBUG) && defined(EXPORT_FONT)
+#if !defined(NDEBUG) // && defined(EXPORT_FONT)
         ExportImage(_fontImage, "Test.png");
         {
             std::ofstream fos("font.txt");
@@ -958,8 +958,7 @@ public:
         return _updateScreen;
     }
 
-    // TODO: Fix this
-    int getFrameBoost() const { return 1; /*_frameBoost > 0 && getInstrPerFrame() > 0 ? _frameBoost : 1;*/ }
+    int getFrameBoost() const { return _chipEmu->supportsFrameBoost() && _frameBoost > 0 ? _frameBoost : 1; }
 
     void updateScreen() override
     {
@@ -1072,9 +1071,10 @@ public:
                     _partialFrameTime -= 1000;
                     for(int i = 0; i < getFrameBoost(); ++i) {
                         _chipEmu->executeFrame();
-                        // TODO: Fix this
-                        //if(_chipEmu->isBreakpointTriggered())
-                        //    _mainView = eDEBUGGER;
+                        for(auto& unit : *_chipEmu) {
+                            if(unit.isBreakpointTriggered())
+                                _mainView = eDEBUGGER;
+                        }
                     }
                     _fps.add(GetTime()*1000);
                 }
@@ -1305,8 +1305,9 @@ public:
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
-                        // TODO: Fix this
-                        //_chipEmu->removeAllBreakpoints();
+                        for(auto& unit : *_chipEmu) {
+                            unit.removeAllBreakpoints();
+                        }
                     }
                     if (LabelButton(" Open... [^O]") || (IsSysKeyDown() && IsKeyPressed(KEY_O))) {
 #ifdef PLATFORM_WEB
@@ -2295,23 +2296,6 @@ public:
             open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram';
             open_file_element.click();
         });
-    }
-#endif
-
-    // TODO: Fix this
-#if 0
-    const std::string& romExtension()
-    {
-        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".mc8", ".xo8", ".c8h"};
-        switch(_options.behaviorBase) {
-            case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
-            case emu::Chip8EmulatorOptions::eSCHIP10:
-            case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
-            case emu::Chip8EmulatorOptions::eMEGACHIP: return extensions[3];
-            case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[4];
-            case emu::Chip8EmulatorOptions::eCHIP8VIP_TPD: return extensions[5];
-            default: return extensions[0];
-        }
     }
 #endif
 

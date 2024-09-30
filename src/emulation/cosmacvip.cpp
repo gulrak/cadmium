@@ -251,6 +251,7 @@ public:
     std::vector<uint8_t> _ram{};
     std::array<uint8_t,256> _colorRam{};
     std::array<uint8_t,512> _rom{};
+    std::span<uint8_t> _stackSpan{};
     VideoType _screen;
 };
 
@@ -764,7 +765,22 @@ unsigned CosmacVIP::stackSize() const
 
 GenericCpu::StackContent CosmacVIP::stack() const
 {
-    return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x160, 48)};
+    switch(_impl->_options.interpreter) {
+        case VC8I_CHIP8:
+        case VC8I_CHIP8RB:
+        case VC8I_CHIP8E:
+        case VC8I_CHIP8X:
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x160, 48)};
+        case VC8I_CHIP10:
+        case VC8I_CHIP8FPD:
+        case VC8I_CHIP8XFPD:
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x460, 48)};
+        case VC8I_CHIP8TPD:
+        case VC8I_CHIP8XTPD:
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x260, 48)};
+        default:
+            return {};
+    }
 }
 
 size_t CosmacVIP::numberOfExecutionUnits() const

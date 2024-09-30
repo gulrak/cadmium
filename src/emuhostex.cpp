@@ -293,20 +293,25 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             return true;
         }
     }
-    else if(loadOpt & DontChangeOptions) {
-        _chipEmu->reset();
-        if(_chipEmu->loadData(binary, {})) {
-            romImage.assign(binary.data(), binary.data() + binary.size());
-            valid = true;
-        }
-    }
-    else{
-        if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
-            updateEmulatorOptions(extensionProps);
+    else {
+        std::optional<uint32_t> loadAddress;
+        if(Librarian::isPrefixedTPDRom(binary.data(), binary.size()))
+            loadAddress = 0x200;
+        if(loadOpt & DontChangeOptions) {
             _chipEmu->reset();
-            if(_chipEmu->loadData(binary, {})) {
+            if(_chipEmu->loadData(binary, loadAddress)) {
                 romImage.assign(binary.data(), binary.data() + binary.size());
                 valid = true;
+            }
+        }
+        else{
+            if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
+                updateEmulatorOptions(extensionProps);
+                _chipEmu->reset();
+                if(_chipEmu->loadData(binary, loadAddress)) {
+                    romImage.assign(binary.data(), binary.data() + binary.size());
+                    valid = true;
+                }
             }
         }
     }

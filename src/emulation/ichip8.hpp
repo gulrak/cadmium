@@ -80,7 +80,7 @@ public:
 
     // defaults for unused debugger support
     virtual uint16_t opcode() {
-        return (memory()[getPC()] << 8) | memory()[getPC() + 1];
+        return (readMemoryByte(getPC()) << 8) | readMemoryByte(getPC() + 1);
     }
     virtual int64_t machineCycles() const { return cycles(); }
 
