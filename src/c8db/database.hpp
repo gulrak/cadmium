@@ -26,7 +26,7 @@
 #pragma once
 
 #include <cstdint>
-#include <stdexcept>
+#include <system_error>
 #include <fstream>
 #include <map>
 #include <optional>
@@ -41,6 +41,11 @@
 
 namespace c8db {
 using json = nlohmann::json;
+
+enum class DatabaseError {
+    OK = 0,
+
+};
 
 enum class OriginType {
     UNKNOWN, GAMEJAM, EVENT, MAGAZINE, MANUAL
@@ -303,12 +308,22 @@ public:
 private:
     std::vector<Platform> readPlatforms(const std::string& filepath)
     {
+        static const char* platformsFallback = R"(
+            [
+              {"id": "originalChip8", "name": "Cosmac VIP CHIP-8", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "hybridVIP", "name": "CHIP-8 with Cosmac VIP instructions", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "modernChip8", "name": "Modern CHIP-8", "defaultTickrate": 12, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": false, "logic": false}},
+              {"id": "chip8x", "name": "CHIP-8X", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "chip48", "name": "CHIP48 for the HP48", "defaultTickrate": 30, "quirks": {"shift": true, "memoryIncrementByX": true, "memoryLeaveIUnchanged": false, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "superchip1", "name": "Superchip 1.0", "defaultTickrate": 30, "quirks": {"shift": true, "memoryIncrementByX": true, "memoryLeaveIUnchanged": false, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "superchip", "name": "Superchip 1.1", "defaultTickrate": 30, "quirks": {"shift": true, "memoryLeaveIUnchanged": true, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "megachip8", "name": "MEGA-CHIP", "defaultTickrate": 1000, "quirks": {"shift": true, "memoryLeaveIUnchanged": true, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "xochip", "name": "XO-CHIP", "defaultTickrate": 100, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": true, "jump": false, "vblank": false, "logic": false}}
+            ])";
         std::vector<Platform> result;
         std::ifstream ifs(filepath);
-        if(ifs.fail())
-            return result;
         try {
-            auto j = json::parse(ifs);
+            auto j = ifs.fail() ? json::parse(std::istringstream(platformsFallback)) : json::parse(ifs);
             if(j.is_array()) {
                 for(const auto& pObj : j) {
                     Platform p;

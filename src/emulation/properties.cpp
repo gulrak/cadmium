@@ -30,6 +30,7 @@
 #include <nlohmann/json.hpp>
 #include <utility>
 
+#include "c8db/database.hpp"
 
 namespace emu {
 
@@ -130,11 +131,34 @@ void from_json(const nlohmann::json& j, Properties& props)
     }
 }
 
+void to_json(nlohmann::json& j, const Palette::Color& col)
+{
+    j = col.toString();
+}
+
+void from_json(const nlohmann::json& j, Palette::Color& col)
+{
+    if(j.is_string()) {
+        col = Palette::Color(j.get<std::string>());
+    }
+    else {
+        col = {0,0,0};
+    }
+}
+
 void to_json(nlohmann::json& j, const Palette& pal)
 {
-    j = nlohmann::json::array();
-    for(const auto& c : pal.colors) {
-        j.push_back(c.toString());
+    if(pal.borderColor || pal.signalColor) {
+        j["colors"] = pal.colors;
+        if(pal.borderColor) {
+            j["border"] = pal.borderColor.value();
+        }
+        if(pal.signalColor) {
+            j["signal"] = pal.signalColor.value();
+        }
+    }
+    else {
+        j = pal.colors;
     }
 }
 
@@ -145,6 +169,21 @@ void from_json(const nlohmann::json& j, Palette& pal)
         pal.colors.reserve(j.size());
         for(const std::string col : j) {
             pal.colors.emplace_back(col);
+        }
+        pal.borderColor = {};
+        pal.signalColor = {};
+    }
+    else if(j.is_object()) {
+        pal.colors.clear();
+        pal.colors.reserve(j.size());
+        for(const std::string col : j["colors"]) {
+            pal.colors.emplace_back(col);
+        }
+        if(j.count("border")) {
+            pal.borderColor = Palette::Color(j.get<std::string>());
+        }
+        if(j.count("signal")) {
+            pal.signalColor = Palette::Color(j.get<std::string>());
         }
     }
 }

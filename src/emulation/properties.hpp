@@ -98,6 +98,8 @@ public:
     size_t size() const { return colors.size(); }
 
     std::vector<Color> colors;
+    std::optional<Color> borderColor{};
+    std::optional<Color> signalColor{};
 };
 
 class Property
