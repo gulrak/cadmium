@@ -61,6 +61,7 @@ static const uint8_t dream6800Rom[] = {
 
 std::array<uint8_t, 4096> dreamRAM;
 
+/*
 inline std::string trim(std::string s)
 {
     s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
@@ -69,6 +70,7 @@ inline std::string trim(std::string s)
     s.erase(end, s.end());
     return s;
 }
+*/
 
 struct M6k8Bus : public emu::M6800Bus<>
 {

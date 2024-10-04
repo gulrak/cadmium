@@ -29,6 +29,7 @@
 #include <emulation/ichip8.hpp>
 #include <emulation/iemulationcore.hpp>
 #include <emulation/properties.hpp>
+#include <chiplet/chip8variants.hpp>
 
 #include <iterator>
 #include <memory>
@@ -45,6 +46,15 @@ class CoreRegistry {
 public:
     using EmulatorInstance = std::unique_ptr<IEmulationCore>;
     //using FactoryMethod = std::pair<std::string, EmulatorInstance> (*)(const std::string&, Chip8EmulatorHost&, Properties&, PropertySelector);
+    template<typename T>
+    struct SetupInfo
+    {
+        const char* presetName{};
+        const char* description{};
+        const char* defaultExtensions{};
+        chip8::VariantSet supportedChip8Variants;
+        T options;
+    };
     struct IFactoryInfo
     {
         struct VariantIndex
@@ -65,6 +75,7 @@ public:
         virtual const char* variantExtensions(size_t index) const = 0;
         virtual Properties variantProperties(size_t index) const = 0;
         virtual VariantIndex variantIndex(const Properties& props) const = 0;
+        virtual chip8::VariantSet variantSupportedChip8(size_t index) const = 0;
         void cacheVariantMappings() const;
         bool hasVariant(const std::string& variant) const;
         Properties variantProperties(const std::string& variant) const;
@@ -102,6 +113,10 @@ public:
         Properties variantProperties(size_t index) const override
         {
             return index < numberOfVariants() ? presets[index].options.asProperties() : presets[0].options.asProperties();
+        }
+        chip8::VariantSet variantSupportedChip8(size_t index) const override
+        {
+            return index < numberOfVariants() ? presets[index].supportedChip8Variants : presets[0].supportedChip8Variants;
         }
         std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel) const override
         {

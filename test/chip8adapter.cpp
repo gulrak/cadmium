@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include "chip8adapter.hpp"
-#include <fmt/format.h>
+#include "../src/emulation/coreregistry.hpp"
 #include "../src/emuhostex.hpp"
 
 #ifdef TEST_CHIP8EMULATOR_TS
@@ -143,16 +143,17 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
 }
 
 #elif defined(TEST_CHIP8VIP)
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8vip.hpp>
+//#include <emulation/chip8cores.hpp>
+#include <emulation/cosmacvip.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
+    emu::CoreRegistry registry;
     static emu::Chip8EmulatorOptions options;
     switch(variant) {
         case C8TV_GENERIC:
-        case C8TV_C8:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            case C8TV_C8:
+            options = registry-> ::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
             break;
         default:
             return nullptr;

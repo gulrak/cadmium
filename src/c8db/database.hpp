@@ -43,9 +43,40 @@ namespace c8db {
 using json = nlohmann::json;
 
 enum class DatabaseError {
-    OK = 0,
-
+    OK,
+    FileError,
+    ParsingError
 };
+
+struct DatabaseErrorCategory : std::error_category
+{
+    const char* name() const noexcept override
+    {
+        return "database error";
+    }
+    std::string message(int ev) const override
+    {
+        using namespace std::string_literals;
+        switch (static_cast<DatabaseError>(ev)) {
+            case DatabaseError::OK: return "Ok"s;
+            case DatabaseError::FileError: return "File error"s;
+            case DatabaseError::ParsingError: return "Parsing error"s;
+        }
+        std::abort();
+    }
+};
+
+}
+
+template<>
+struct std::is_error_code_enum<c8db::DatabaseError> : std::true_type{};
+
+namespace c8db {
+
+inline std::error_code make_error_code(DatabaseError e)
+{
+    return {static_cast<int>(e), c8db::DatabaseErrorCategory()};
+}
 
 enum class OriginType {
     UNKNOWN, GAMEJAM, EVENT, MAGAZINE, MANUAL

@@ -221,10 +221,10 @@ public:
         : _bus(bus)
 #endif
     {
-
+        M6800::reset();
     }
 
-    void reset()
+    void reset() override
     {
         _rA = 0;
         _rB = 0;

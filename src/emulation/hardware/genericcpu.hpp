@@ -65,7 +65,7 @@ public:
     };
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
-
+    virtual void reset() = 0;
     virtual int executeInstruction() = 0;
     virtual int64_t executeFor(int64_t microseconds) = 0;
     virtual ExecMode execMode() const { return _execMode; }
@@ -93,6 +93,17 @@ public:
     virtual uint8_t readMemoryByte(uint32_t addr) const = 0;
     virtual unsigned stackSize() const = 0;
     virtual StackContent stack() const = 0;
+    uint32_t stackElement(size_t index) const
+    {
+        auto s = stack();
+        auto offset = s.stackDirection == emu::GenericCpu::eUPWARDS ? index * s.entrySize : s.content.size() - (index + 1) * s.entrySize;
+        switch(s.entrySize) {
+            case 1: return readStackEntry<uint8_t>(&s.content[offset], s.endianness);
+            case 2: return readStackEntry<uint16_t>(&s.content[offset], s.endianness);
+            case 4: return readStackEntry<uint32_t>(&s.content[offset], s.endianness);
+            default: return 0;
+        }
+    }
 
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 
@@ -153,6 +164,29 @@ public:
     }
     virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
 protected:
+    template<typename T>
+    T readStackEntry(const uint8_t* address, Endianness endianness) const
+    {
+        switch(endianness) {
+            case eNATIVE:
+                return *reinterpret_cast<const T*>(address);
+            case eBIG: {
+                T result = 0;
+                for (int i = 0; i < sizeof(T); ++i) {
+                    result |= static_cast<T>(address[i]) << (8 * (sizeof(T) - i - 1));
+                }
+                return result;
+            }
+            case eLITTLE: {
+                T result = 0;
+                for (int i = 0; i < sizeof(T); ++i) {
+                    result |= static_cast<T>(address[i]) << (8 * i);
+                }
+                return result;
+            }
+        }
+        return 0;
+    }
     mutable ExecMode _execMode{ePAUSED};
     CpuState _cpuState{eNORMAL};
     uint32_t _stepOverSP{};

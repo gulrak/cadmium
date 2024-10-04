@@ -100,10 +100,10 @@ public:
         _output = [](uint8_t, uint8_t){};
         _input = [](uint8_t){ return 0; };
         _inputNEF = [](uint8_t) { return true; };
-        reset();
+        Cdp1802::reset();
     }
 
-    void reset()
+    void reset() override
     {
         _rI = 0;
         _rN = 0;

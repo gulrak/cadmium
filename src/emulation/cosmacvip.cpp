@@ -770,14 +770,15 @@ GenericCpu::StackContent CosmacVIP::stack() const
         case VC8I_CHIP8RB:
         case VC8I_CHIP8E:
         case VC8I_CHIP8X:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x160, 48)};
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x15f, 46)};
         case VC8I_CHIP10:
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x45f, 46)};
         case VC8I_CHIP8FPD:
         case VC8I_CHIP8XFPD:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x460, 48)};
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x45f, 46)};
         case VC8I_CHIP8TPD:
         case VC8I_CHIP8XTPD:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x260, 48)};
+            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x25f, 46)};
         default:
             return {};
     }

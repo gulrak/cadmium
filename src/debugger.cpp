@@ -79,8 +79,8 @@ T readStackEntry(const uint8_t* address, emu::GenericCpu::Endianness endianness)
             return *reinterpret_cast<const T*>(address);
         case emu::GenericCpu::eBIG: {
             T result = 0;
-            for (int i = sizeof(T) - 1; i >= 0; --i) {
-                result |= static_cast<T>(address[i]) << (8 * i);
+            for (int i = 0; i < sizeof(T); ++i) {
+                result |= static_cast<T>(address[i]) << (8 * (sizeof(T) - i - 1));
             }
             return result;
         }
