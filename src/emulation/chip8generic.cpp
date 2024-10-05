@@ -209,28 +209,28 @@ Chip8GenericSetupInfo genericPresets[] = {
         "CHIP-8",
         "The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker, 1977",
         ".ch8",
-        .supportedChip8Variants = {chip8::Variant::CHIP_8},
+        chip8::Variant::CHIP_8,
         {.behaviorBase = Chip8GenericOptions::eCHIP8, .optExtendedVBlank = true}
     },
     {
         "CHIP-10",
         "128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979",
         ".ch10",
-        .supportedChip8Variants = {chip8::Variant::CHIP_10},
+        chip8::Variant::CHIP_10,
         {.behaviorBase = Chip8GenericOptions::eCHIP10, .optAllowHires = true, .optOnlyHires = true, .optExtendedVBlank = true}
     },
     {
         "CHIP-8E",
         "CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9",
         ".c8e",
-        .supportedChip8Variants = {chip8::Variant::CHIP_8E},
+        chip8::Variant::CHIP_8E,
         {.behaviorBase = Chip8GenericOptions::eCHIP8E, .optExtendedVBlank = true}
     },
     {
         "CHIP-8X",
         "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
         ".c8x",
-        .supportedChip8Variants = {chip8::Variant::CHIP_8X},
+        chip8::Variant::CHIP_8X,
         {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .optExtendedVBlank = true, .instructionsPerFrame = 18,
             .palette = {"#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"}
         }
@@ -239,49 +239,49 @@ Chip8GenericSetupInfo genericPresets[] = {
         "CHIP-48",
         "The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson, 1990",
         ".ch48;.c48",
-        .supportedChip8Variants = {chip8::Variant::CHIP_48},
+        chip8::Variant::CHIP_48,
         {.behaviorBase = Chip8GenericOptions::eCHIP48, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optJump0Bxnn = true, .instructionsPerFrame = 15, .frameRate = 64}
     },
     {
         "SCHIP-1.0",
         "SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
         ".sc10",
-        .supportedChip8Variants = {chip8::Variant::SCHIP_1_0},
+        chip8::Variant::SCHIP_1_0,
         {.behaviorBase = Chip8GenericOptions::eSCHIP10, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIP-1.1",
         "SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
         ".sc8;.sc11",
-        .supportedChip8Variants = {chip8::Variant::SCHIP_1_1},
+        chip8::Variant::SCHIP_1_1,
         {.behaviorBase = Chip8GenericOptions::eSCHIP11, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIPC",
         "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017",
         ".scc",
-        .supportedChip8Variants = {chip8::Variant::SCHIPC},
+        chip8::Variant::SCHIPC,
         {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "SCHIP-MODERN",
         "Modern SUPER-CHIP interpretation as done in Octo by John Earnest, 2014",
         ".scm",
-        .supportedChip8Variants = {chip8::Variant::SCHIP_MODERN},
+        chip8::Variant::SCHIP_MODERN,
         {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
     },
     {
         "MEGACHIP",
         "MegaChip as specified by Martijn Wanting, Revival-Studios, 2007",
         ".mc8",
-        .supportedChip8Variants = {chip8::Variant::MEGA_CHIP},
+        chip8::Variant::MEGA_CHIP,
         {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
     },
     {
         "XO-CHIP",
         "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014",
         "xo8",
-        .supportedChip8Variants = {chip8::Variant::XO_CHIP},
+        chip8::Variant::XO_CHIP,
         {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
     }
     /*{Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},

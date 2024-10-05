@@ -62,7 +62,7 @@ Chip8StrictSetupInfo strictPresets[] = {
         "chip-8",
         "The classic CHIP-8 that came from Joseph Weisbecker, 1977",
         ".ch8;.c8vip",
-        .supportedChip8Variants = {chip8::Variant::CHIP_8 | chip8::Variant::CHIP_8_COSMAC_VIP},
+        chip8::Variant::CHIP_8 | chip8::Variant::CHIP_8_COSMAC_VIP,
         { .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false}
     }
 };
