@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <span>
 #include <ranges>
 #include <string>
 #include <vector>
