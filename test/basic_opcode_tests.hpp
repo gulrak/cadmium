@@ -89,6 +89,38 @@ TEST_CASE(C8CORE ": 3xnn - skip if vx == nn")
     CheckState(core, {.i = 0, .pc = start + 8, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 == 0x42, should skip");
 }
 
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": 3xnn - skip long opcode if vx == nn")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x3304, 0x6542, 0x3542, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100)});
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 != 4, should not skip");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 4, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 := 0x42");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 10, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 == 0x42, should skip");
+}
+#endif
+
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": 4xnn - skip long opcode if vx != nn")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6312, 0x4312, 0x6542, 0x4540, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100)});
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 := 9x12");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 4, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 == 0x12, should not skip");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 6, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 := 0x42");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 != 0x40, should skip");
+}
+#endif
+
 TEST_CASE(C8CORE ": 4xnn - skip if vx != nn")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
@@ -118,6 +150,23 @@ TEST_CASE(C8CORE ": 5xy0 - skip if vx == vy")
     step(core); // #4
     CheckState(core, {.i = 0, .pc = start + 10, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0x12,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 == v5, should skip");
 }
+
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": 5xy0 - skip long opcode if vx == vy")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6312, 0x5310, 0x6512, 0x5350, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100)});
+    step(core); // #1
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 := 0x12");
+    step(core); // #2
+    CheckState(core, {.i = 0, .pc = start + 4, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 != v1, should not skip");
+    step(core); // #3
+    CheckState(core, {.i = 0, .pc = start + 6, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0x12,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 := 0x12");
+    step(core); // #4
+    CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0x12, 0,0x12,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 == v5, should skip");
+}
+#endif
 
 TEST_CASE(C8CORE ": 7xnn - vx += nn")
 {
@@ -522,6 +571,25 @@ TEST_CASE(C8CORE ": 9xy0 - skip if vx != vy")
     CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 != v5, should skip");
 }
 
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": 9xy0 - skip if vx != vy")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6112, 0x6312, 0x9310, 0x6542, 0x9350, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100)});
+    step(core); // #1
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v1 := 0x12");
+    step(core); // #2
+    CheckState(core, {.i = 0, .pc = start + 4, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 := 0x12");
+    step(core); // #3
+    CheckState(core, {.i = 0, .pc = start + 6, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0x12, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 == v1, should not skip");
+    step(core); // #4
+    CheckState(core, {.i = 0, .pc = start + 8, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v5 := 0x42");
+    step(core); // #5
+    CheckState(core, {.i = 0, .pc = start + 14, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0x12,0,0x12, 0,0x42,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v3 != v5, should skip");
+}
+#endif
+
 TEST_CASE(C8CORE ": Annn - i := nnn")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
@@ -575,6 +643,41 @@ TEST_CASE(C8CORE ": Cxnn - vx := random nn")
     CHECK(maskOr == 0xa5);
 }
 
+TEST_CASE(C8CORE ": Dxyn - sprite vx vy n")
+{
+    std::string pacImage = "..####.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6003, 0x6104, 0xA400, 0xD018, uint16_t(0x1000 + start + 8)});
+    write(core, 0x400, {0x3c7e, 0xdcf8, 0xf8fc, 0x7e3c, 0x8000});
+    step(core);
+    step(core);
+    step(core);
+    CheckState(core, {.i = 0x400, .pc = start + 6, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {3,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "set up draw");
+    while(core->getPC() == start + 6) {
+        step(core);
+    }
+    CheckState(core, {.i = 0x400, .pc = start + 8, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {3,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "sprite v0 v1 8");
+    host->executeFrame();
+    host->executeFrame();
+#if QUIRKS & QUIRK_SCALE_X2
+    auto scaleX = 2;
+#else
+    auto scaleX = 1;
+#endif
+#if QUIRKS & QUIRK_SCALE_Y4
+    auto scaleY = 4;
+#elif QUIRKS & QUIRK_SCALE_Y2
+    auto scaleY = 2;
+#else
+    auto scaleY = 1;
+#endif
+    auto [rect, content] = host->chip8UsedScreen(scaleX, scaleY);
+    CHECK(3 == rect.x);
+    CHECK(4 == rect.y);
+    CHECK(pacImage == content);
+}
+
 TEST_CASE(C8CORE ": Ex9E - if vx -key then")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
@@ -593,6 +696,26 @@ TEST_CASE(C8CORE ": Ex9E - if vx -key then")
     CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x12,4,0x34,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v0 := 0x12");
 }
 
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": Ex9E - skip long opcode if vx -key then")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6104, 0xE19E, 0x6012, 0xE19E, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100), 0x5555, 0x6234});
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v1 := 0x4");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 4, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "if v1 -key then");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 6, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x12,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v0 := 0x12");
+    host->keyDown(4);
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x12,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "if v1 -key then");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 14, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x12,4,0x34,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v0 := 0x12");
+}
+#endif
+
 TEST_CASE(C8CORE ": ExA1 - if vx key then")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
@@ -608,6 +731,24 @@ TEST_CASE(C8CORE ": ExA1 - if vx key then")
     step(core);
     CheckState(core, {.i = 0, .pc = start + 10, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x13,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v0 := 0x12");
 }
+
+#if QUIRKS & QUIRK_LONG_SKIP
+TEST_CASE(C8CORE ": ExA1 - skip long opcode if vx key then")
+{
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6104, 0xE1A1, uint16_t(std::string(C8CORE) == "xo-chip" ? 0xF000 : 0x0100), 0x5555, 0xE1A1, 0x6013, 0x6234});
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v1 := 0x4");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 8, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "if v1 key then");
+    host->keyDown(4);
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 10, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "if v1 key then");
+    step(core);
+    CheckState(core, {.i = 0, .pc = start + 12, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0x13,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "v0 := 0x12");
+}
+#endif
 
 TEST_CASE(C8CORE ": Fx15 - DT = vx")
 {

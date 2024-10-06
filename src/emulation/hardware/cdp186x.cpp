@@ -43,7 +43,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
     _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
     for(int i = 0; i < 256; ++i) {
         if(i & 0xF) {
-            _cdp1862Palette[i] = foregroundColors[i>>4];
+            _cdp1862Palette[i] = foregroundColors[(i>>4) & 7];
         }
         else {
             _cdp1862Palette[i] = _cdp1862BackgroundColors[0];

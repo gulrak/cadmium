@@ -117,11 +117,50 @@ public:
     {
         return _core->loadData(data, {});
     }
+    void writeByte(uint32_t address, uint8_t value)
+    {
+        if(address < _core->memSize()) {
+            _core->memory()[address] = value;
+        }
+    }
     void executeFrame()
     {
         _core->executeFrame();
     }
-    std::string chip8EmuScreen(bool hires = false)
+    struct Rect
+    {
+        int x{-1};
+        int y{-1};
+        int w{};
+        int h{};
+    };
+    Rect findContentRectangle(int scaleX, int scaleY) const
+    {
+        Rect result;
+        int right = -1;
+        int bottom = -1;
+        auto width = _core->getCurrentScreenWidth();
+        auto height = _core->getCurrentScreenHeight();
+        const auto* screen = _core->getScreen();
+        if(screen) {
+            for (int y = 0; y < height; y += scaleY) {
+                for (int x = 0; x < width; x += scaleX) {
+                    if(screen->getPixel(x, y) & 15) {
+                        if(result.x < 0 || result.x > x) result.x = x;
+                        if(result.y < 0) result.y = y;
+                        if(right < x) right = x;
+                        if(bottom < y) bottom = y;
+                    }
+                }
+            }
+            if(result.x < 0) return {0,0,0,0};
+            result.w = right - result.x + 1;
+            result.h = bottom - result.y + 1;
+            return result;
+        }
+        return {0,0,0,0};
+    }
+    std::string chip8EmuScreen(bool hires = false) const
     {
         std::string result;
         auto width = _core->getCurrentScreenWidth();
@@ -142,6 +181,32 @@ public:
         }
         return result;
     }
+    std::pair<Rect, std::string> chip8UsedScreen(int scaleX = 1, int scaleY = 1) const
+    {
+        std::string result;
+        auto width = _core->getCurrentScreenWidth();
+        auto height = _core->getCurrentScreenHeight();
+        const auto* screen = _core->getScreen();
+        if(screen) {
+            auto rect = findContentRectangle(scaleX, scaleY);
+            if(rect.w) {
+                result.reserve(rect.w * rect.h + rect.h);
+                for (int y = 0; y < height; y += scaleY) {
+                    if(y >= rect.y && y < rect.y + rect.h) {
+                        for (int x = 0; x < width; x += scaleX) {
+                            if(x >= rect.x && x < rect.x + rect.w) {
+                                result.push_back((screen->getPixel(x, y) & 15) ? '#' : '.');
+                            }
+                        }
+                        result.push_back('\n');
+                    }
+                }
+                return {{rect.x/scaleX, rect.y/scaleY, rect.w/scaleX, rect.h/scaleY}, result};
+            }
+        }
+        return {{0,0,0,0}, result};
+    }
+
 private:
     emu::Properties _props;
     std::unique_ptr<emu::IEmulationCore> _core;
