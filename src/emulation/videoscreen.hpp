@@ -87,6 +87,17 @@ public:
         }
         return _palette[_screenBuffer[y * _stride + x]];
     }
+    uint8_t getPixelIndex(int x, int y) const
+    {
+        if constexpr (isRGBA()) {
+            return 0;
+        }
+        if(_overlayCellHeight) {
+            auto overlayPtr = _colorOverlay.data() + (y/_overlayCellHeight)*_overlayCellHeight * 8;
+            return (_screenBuffer[y * _stride + x] & 0xf) | *overlayPtr << 4;
+        }
+        return _screenBuffer[y * _stride + x];
+    }
     PixelType& getPixelRef(int x, int y)
     {
         return _screenBuffer[y * _stride + x];
@@ -141,12 +152,11 @@ public:
                 auto dstPtr = destination + row * destinationStride;
                 auto overlayPtr = _colorOverlay.data() + (row/_overlayCellHeight)*_overlayCellHeight * 8;
                 for (unsigned x = 0; x < _width; ++x) {
-                    auto pxl = *srcPtr++;
-                    if(_overlayCellHeight < 0) {
-                        *dstPtr++ = pxl ? _palette[7+4] : _palette[_overlayBackground & 3];
+                    if(*srcPtr++) {
+                        *dstPtr++ = _overlayCellHeight < 0 ? _palette[0x71] : _palette[(overlayPtr[x >> 3]<<4) + 1];
                     }
                     else {
-                        *dstPtr++ = pxl ? _palette[overlayPtr[x >> 3] + 4] : _palette[_overlayBackground & 3];
+                        *dstPtr++ = _palette[_overlayBackground & 3];
                     }
                 }
             }

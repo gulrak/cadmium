@@ -316,6 +316,7 @@ struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8Generi
 
 static bool registeredHleC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<C8GenericFactoryInfo>("Default HLE CHIP-8 emulation"));
 
+static constexpr uint32_t cdp1862BackgroundColors[4] = { 0x000080FF, 0x000000FF, 0x008000FF, 0x800000FF };
 
 Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other)
 : Chip8GenericBase(Chip8GenericOptions::fromProperties(props).variant(), {})
@@ -335,6 +336,7 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
         _screen.setPalette(props.palette());
     }
     setHandler();
+    Chip8GenericEmulator::reset();
 }
 
 GenericCpu::StackContent Chip8GenericEmulator::stack() const
@@ -437,9 +439,27 @@ void Chip8GenericEmulator::reset()
     _sampleStep = 0;
     _mcSamplePos = 0;
     _blendMode = eBLEND_NORMAL;
-    _mcPalette.fill(0x00);
-    _mcPalette[1] = 0xffffffff;
-    _mcPalette[254] = 0xffffffff;
+    _simpleRandState = _simpleRandSeed;
+    if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X) {
+        static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
+        _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
+        _screen.setOverlayCellHeight(-1); // reset
+        _chip8xBackgroundColor = 0;
+        for(int i = 0; i < 256; ++i) {
+            if(i & 0xF) {
+                _mcPalette[i] = foregroundColors[(i>>4) & 7];
+            }
+            else {
+                _mcPalette[i] = cdp1862BackgroundColors[0];
+            }
+        }
+        _screen.setPalette(_mcPalette);
+    }
+    else if(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP) {
+        _mcPalette.fill(0x00);
+        _mcPalette[1] = 0xffffffff;
+        _mcPalette[254] = 0xffffffff;
+    }
 }
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)

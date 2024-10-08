@@ -40,7 +40,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 , _traceLog(traceLog)
 {
     static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
-    _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
+    _screen.setMode(256, 192, _type == eCDP1861_C10 ? 1 : 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
     for(int i = 0; i < 256; ++i) {
         if(i & 0xF) {
             _cdp1862Palette[i] = foregroundColors[(i>>4) & 7];
@@ -128,8 +128,17 @@ std::pair<int,bool> Cdp186x::executeStep()
                 if(mask)
                     highBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
                 //std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
+                auto y = (line - VIDEO_FIRST_VISIBLE_LINE);
+                auto x = 0;
+                if(_type == eCDP1861_C10) {
+                    if(y & 1) x = 64;
+                    y >>= 1;
+                }
                 for (int j = 0; j < 8; ++j) {
-                    _screen.setPixel(i * 8 + j, (line - VIDEO_FIRST_VISIBLE_LINE), highBits | ((data >> (7 - j)) & 1));
+                    _screen.setPixel(x + i * 8 + j, y, highBits | ((data >> (7 - j)) & 1));
+                    if(_type == eCDP1861_C10 && y == 63) {
+                        _screen.setPixel(x + i * 8 + j, 0, highBits | ((data >> (7 - j)) & 1));
+                    }
                 }
             }
             if (_displayEnabledLatch) {

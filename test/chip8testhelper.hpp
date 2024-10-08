@@ -173,7 +173,7 @@ public:
                 result.reserve(width * height + height);
                 for (int y = 0; y < height; y += scaleY) {
                     for (int x = 0; x < width; x += scaleX) {
-                        result.push_back(screen->getPixel(x, y) ? '#' : '.');
+                        result.push_back(screen->getPixelIndex(x, y) & 0xf ? '#' : '.');
                     }
                     result.push_back('\n');
                 }
@@ -195,7 +195,7 @@ public:
                     if(y >= rect.y && y < rect.y + rect.h) {
                         for (int x = 0; x < width; x += scaleX) {
                             if(x >= rect.x && x < rect.x + rect.w) {
-                                result.push_back((screen->getPixel(x, y) & 15) ? '#' : '.');
+                                result.push_back((screen->getPixelIndex(x, y) & 15) ? '#' : '.');
                             }
                         }
                         result.push_back('\n');

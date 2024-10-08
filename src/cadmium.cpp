@@ -1101,10 +1101,12 @@ public:
                            (Vector2){0, 0}, 0.0f, WHITE);
 #else
             if (_scaleBy2) {
+                drawScreen({_screenOverlay.x * 2, _screenOverlay.y * 2, _screenOverlay.width * 2, _screenOverlay.height * 2}, _screenScale);
                 DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * 2, (float)_renderTexture.texture.height * 2},
                                (Vector2){0, 0}, 0.0f, WHITE);
             }
             else {
+                drawScreen(_screenOverlay, _screenScale);
                 DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
 #endif
@@ -1130,24 +1132,23 @@ public:
     void drawScreen(Rectangle dest, int gridScale)
     {
         const Color gridLineCol{40,40,40,255};
-        bool crt = _renderCrt;
-        int scrWidth = crt ? 130 : _chipEmu->getCurrentScreenWidth();
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
         //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
-        int scrHeight = crt ? 385 : _chipEmu->getCurrentScreenHeight();
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
         auto videoScaleX = dest.width / scrWidth;
-        auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScaleX : videoScaleX/4;
-        auto videoX = crt ? (dest.width - scrWidth * videoScaleX) / 2 + dest.x : (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
-        auto videoY = crt ? (dest.height - scrHeight * videoScaleY) / 2 + dest.y : (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
+        auto videoScaleY = _chipEmu->getScreen() && _chipEmu->getScreen()->ratio() ? videoScaleX / _chipEmu->getScreen()->ratio() : videoScaleX;
+        auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
         if(_chipEmu->getMaxScreenWidth() > 128)
             DrawRectangleRec(dest, {0,0,0,255});
         else
             DrawRectangleRec(dest, {0,12,24,255});
-        if(crt)
-            DrawTexturePro(_crtTexture, {1, 1, (float)scrWidth-2, (float)scrHeight-2}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
-        else
-            DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
-//        DrawRectangleLines(videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY, RED);
-        if (_grid && !crt) {
+
+        //BeginShaderMode(_scanLineShader);
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+        //EndShaderMode();
+
+        if (_grid) {
             for (short x = 0; x < scrWidth; ++x) {
                 DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScaleY, gridLineCol);
             }
@@ -1491,14 +1492,25 @@ public:
             switch (_mainView) {
                 case eDEBUGGER: {
                     _lastView = _lastRunView = _mainView;
-                    _debugger.render(_font, [this](Rectangle video, int scale) { drawScreen(video, scale); });
+                    _debugger.render(_font, [this](Rectangle video, int scale) {
+                        _screenOverlay = video;
+                        _screenScale = scale;
+                        rlSetBlendFactors(1, 0, 0x8006);
+                        rlSetBlendMode(RL_BLEND_CUSTOM);
+                        DrawRectangleRec(_screenOverlay, {0,0,0,0});
+                        rlSetBlendMode(RL_BLEND_ALPHA);
+                    });
                     break;
                 }
                 case eVIDEO: {
                     _lastView = _lastRunView = _mainView;
                     gridScale = _screenWidth / _chipEmu->getCurrentScreenWidth();
-                    video = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
-                    drawScreen(video, gridScale);
+                    _screenOverlay = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
+                    _screenScale = gridScale;
+                    rlSetBlendFactors(1, 0, 0x8006);
+                    rlSetBlendMode(RL_BLEND_CUSTOM);
+                    DrawRectangleRec(_screenOverlay, {0,0,0,0});
+                    rlSetBlendMode(RL_BLEND_ALPHA);
                     break;
                 }
                 case eEDITOR:
@@ -2433,6 +2445,8 @@ private:
     uint32_t* _selectedColor{nullptr};
     std::string _colorText;
     uint32_t _previousColor{};
+    Rectangle _screenOverlay{};
+    int _screenScale{1};
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;

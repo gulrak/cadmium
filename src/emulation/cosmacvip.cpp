@@ -134,7 +134,7 @@ static CosmacVipSetupInfo vipPresets[] = {
         "128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979",
         ".ch10;.c10",
         chip8::Variant::CHIP_10,
-        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP10, .startAddress = 512}
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861_C10_HIRES, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP10, .startAddress = 512}
     },
     {
         "CHIP-8 RB",
@@ -215,7 +215,7 @@ public:
         , _properties(properties)
         , _options(CosmacVIPOptions::fromProperties(properties))
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
-        , _video(_options.videoType == VVT_CDP1861 ? Cdp186x::eCDP1861 : Cdp186x::eVP590, _cpu, false)
+        , _video(_options.videoType == VVT_CDP1861 ? Cdp186x::eCDP1861 : _options.videoType == VVT_CDP1861_C10_HIRES ? Cdp186x::eCDP1861_C10 : Cdp186x::eVP590, _cpu, false)
     {
         using namespace std::string_literals;
         (void)registeredVIP;
@@ -1099,22 +1099,22 @@ void CosmacVIP::renderAudio(int16_t* samples, size_t frames, int sampleFrequency
 
 uint16_t CosmacVIP::getCurrentScreenWidth() const
 {
-    return 64;
+    return _impl->_options.videoType == VVT_CDP1861_C10_HIRES ? 128 : 64;
 }
 
 uint16_t CosmacVIP::getCurrentScreenHeight() const
 {
-    return 128;
+    return _impl->_options.videoType == VVT_CDP1861_C10_HIRES ? 64 : 128;
 }
 
 uint16_t CosmacVIP::getMaxScreenWidth() const
 {
-    return 64;
+    return _impl->_options.videoType == VVT_CDP1861_C10_HIRES ? 128 : 64;
 }
 
 uint16_t CosmacVIP::getMaxScreenHeight() const
 {
-    return 128;
+    return _impl->_options.videoType == VVT_CDP1861_C10_HIRES ? 64 : 128;
 }
 
 const VideoType* CosmacVIP::getScreen() const
