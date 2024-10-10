@@ -37,6 +37,9 @@ const uint32_t Cdp186x::_cdp1862BackgroundColors[4] = { 0x000080FF, 0x000000FF, 
 Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 : _cpu(cpu)
 , _type(type)
+, VIDEO_FIRST_VISIBLE_LINE(80)
+, VIDEO_FIRST_INVISIBLE_LINE(type == eCDP1864 ? VIDEO_FIRST_VISIBLE_LINE + 192 : VIDEO_FIRST_VISIBLE_LINE + 128)
+, VIDEO_CYCLES_PER_FRAME(type == eCDP1864 ? 4368 : 3668)
 , _traceLog(traceLog)
 {
     static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
@@ -64,19 +67,23 @@ void Cdp186x::reset()
         _screen.setPalette(_cdp1862Palette);
     }
     _frameCounter = 0;
-    _displayEnabledLatch = false;
+    _displayEnabledLatch = _displayEnabled = _type == eCDP1864;
     disableDisplay();
 }
 
 void Cdp186x::enableDisplay()
 {
-    _displayEnabled = true;
+    if(_type != eCDP1864) {
+        _displayEnabled = true;
+    }
 }
 
 void Cdp186x::disableDisplay()
 {
-    _screen.setAll(0);
-    _displayEnabled = false;
+    if(_type != eCDP1864) {
+        _screen.setAll(0);
+        _displayEnabled = false;
+    }
 }
 
 bool Cdp186x::getNEFX() const
@@ -91,7 +98,7 @@ const Cdp186x::VideoType& Cdp186x::getScreen() const
 
 std::pair<int,bool> Cdp186x::executeStep()
 {
-    auto fc = static_cast<int>((_cpu.cycles() >> 3) % 3668);
+    auto fc = static_cast<int>((_cpu.cycles() >> 3) % VIDEO_CYCLES_PER_FRAME);
     bool vsync = false;
     if(fc < _frameCycle) {
         vsync = true;
@@ -147,7 +154,7 @@ std::pair<int,bool> Cdp186x::executeStep()
             }
         }
     }
-    return {(_cpu.cycles() >> 3) % 3668, vsync};
+    return {(_cpu.cycles() >> 3) % VIDEO_CYCLES_PER_FRAME, vsync};
 }
 
 void Cdp186x::incrementBackground()

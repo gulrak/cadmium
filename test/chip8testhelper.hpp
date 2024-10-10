@@ -101,11 +101,21 @@ public:
     explicit HeadlessTestHost(const emu::Properties& props) : _props(props) {}
     ~HeadlessTestHost() override = default;
     bool isHeadless() const override { return true; }
-    int getKeyPressed() override { return 0; }
+    int getKeyPressed() override
+    {
+        auto released = (_keys ^ _lastKeys) & ~_keys;
+        for(uint8_t i = 0; i < 16; ++i) {
+            if(released & (1 << i)) {
+                _lastKeys &= ~(1 << i);
+                return i + 1;
+            }
+        }
+        return -1;
+    }
     bool isKeyDown(uint8_t key) override { return key < 16 ? _keys & (1 << key) : false; }
     const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
     void updateScreen() override {}
-    void vblank() override { _lastKeys = _keys; }
+    void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
     void setCore(std::unique_ptr<emu::IEmulationCore>&& core) { _core = std::move(core); }
@@ -125,6 +135,7 @@ public:
     }
     void executeFrame()
     {
+        _core->setExecMode(emu::GenericCpu::eRUNNING);
         _core->executeFrame();
     }
     struct Rect
@@ -181,12 +192,14 @@ public:
         }
         return result;
     }
-    std::pair<Rect, std::string> chip8UsedScreen(int scaleX = 1, int scaleY = 1) const
+    std::pair<Rect, std::string> chip8UsedScreen(int scaleX = 1, int scaleY = 1)
     {
         std::string result;
         auto width = _core->getCurrentScreenWidth();
         auto height = _core->getCurrentScreenHeight();
         const auto* screen = _core->getScreen();
+        executeFrame();
+        executeFrame();
         if(screen) {
             auto rect = findContentRectangle(scaleX, scaleY);
             if(rect.w) {
@@ -205,6 +218,31 @@ public:
             }
         }
         return {{0,0,0,0}, result};
+    }
+
+    std::pair<Rect, std::string> screenUsedOnNextKeyWait(int scaleX = 1, int scaleY = 1)
+    {
+        auto core = chip8Emulator();
+        int overFrames = 2;
+        while (core->execMode() != emu::GenericCpu::ePAUSED) {
+            executeFrame();
+            if((core->opcode() & 0xF0FF) == 0xF00A && --overFrames == 0) {
+                break;
+            }
+        }
+        return chip8UsedScreen(scaleX, scaleY);
+    }
+
+    void selectKey(uint8_t key)
+    {
+        _lastKeys = _keys;
+        _keys |= (1 << (key & 0xF));
+        executeFrame();
+        executeFrame();
+        _lastKeys = _keys;
+        _keys &= ~(1 << (key & 0xF));
+        executeFrame();
+        executeFrame();
     }
 
 private:

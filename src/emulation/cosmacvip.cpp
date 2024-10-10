@@ -12,9 +12,6 @@
 #include <fstream>
 #include <memory>
 
-#define VIDEO_FIRST_VISIBLE_LINE 80
-#define VIDEO_FIRST_INVISIBLE_LINE  208
-
 namespace emu {
 
 static const std::string PROP_CLASS = "COSMAC-VIP";
@@ -751,7 +748,8 @@ uint16_t CosmacVIP::justPatchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, 
     auto iter = g_patchSets.find(interpreter);
     if(iter == g_patchSets.end())
         return 0;
-    return iter->second.apply(ram, size);}
+    return iter->second.apply(ram, size);
+}
 
 std::string CosmacVIP::name() const
 {
@@ -916,10 +914,7 @@ int64_t CosmacVIP::machineCycles() const
 
 int CosmacVIP::frameRate() const
 {
-    switch (_impl->_video.getType()) {
-        case Cdp186x::eCDP1864: return static_cast<int>(std::lround(_impl->_options.clockFrequency / 8.0 / 4368.0));
-        default:  return static_cast<int>(std::lround(_impl->_options.clockFrequency / 8.0 / 3668.0));
-    }
+    return std::lround(_impl->_options.clockFrequency / 8.0 /_impl->_video.cyclesPerFrame());
 }
 
 bool CosmacVIP::executeCdp1802()
@@ -1010,7 +1005,7 @@ int CosmacVIP::executeInstruction()
     }
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
     const auto start = _impl->_cpu.cycles();
-    while(!executeCdp1802() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < 3668*14);
+    while(!executeCdp1802() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < _impl->_video.cyclesPerFrame()*14);
     return static_cast<int>(_impl->_cpu.cycles() - start);
 }
 
@@ -1027,12 +1022,12 @@ void CosmacVIP::executeInstructions(int numInstructions)
 
 inline int CosmacVIP::frameCycle() const
 {
-    return Cdp186x::frameCycle(_impl->_cpu.cycles()); // _impl->_irqStart ? ((_impl->_cpu.getCycles() >> 3) - _impl->_irqStart) : 0;
+    return _impl->_video.frameCycle(_impl->_cpu.cycles()); // _impl->_irqStart ? ((_impl->_cpu.getCycles() >> 3) - _impl->_irqStart) : 0;
 }
 
 inline int CosmacVIP::videoLine() const
 {
-    return Cdp186x::videoLine(_impl->_cpu.cycles()); // (frameCycle() + (78*14)) % 3668) / 14;
+    return _impl->_video.videoLine(_impl->_cpu.cycles()); // (frameCycle() + (78*14)) % 3668) / 14;
 }
 
 void CosmacVIP::executeFrame()
@@ -1041,7 +1036,7 @@ void CosmacVIP::executeFrame()
         setExecMode(ePAUSED);
         return;
     }
-    auto nextFrame = Cdp186x::nextFrame(_impl->_cpu.cycles());
+    auto nextFrame = _impl->_video.nextFrame(_impl->_cpu.cycles());
     while(_execMode != ePAUSED && _impl->_cpu.cycles() < nextFrame) {
         executeCdp1802();
     }

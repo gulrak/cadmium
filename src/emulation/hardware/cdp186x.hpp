@@ -34,9 +34,6 @@
 
 namespace emu {
 
-#define VIDEO_FIRST_VISIBLE_LINE 80
-#define VIDEO_FIRST_INVISIBLE_LINE  208
-
 class Cdp1802;
 
 class Cdp186x
@@ -56,6 +53,7 @@ public:
     void setSubMode(SubMode subMode) { _subMode = subMode; }
     void incrementBackground();
     int frames() const { return _frameCounter; }
+    int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }
     const VideoType& getScreen() const;
 
     static int64_t machineCycle(cycles_t cycles)
@@ -63,19 +61,20 @@ public:
         return cycles >> 3;
     }
 
-    static int frameCycle(cycles_t cycles)
+    int frameCycle(cycles_t cycles) const
     {
-        return machineCycle(cycles) % 3668;
+        return int(machineCycle(cycles) % VIDEO_CYCLES_PER_FRAME);
     }
 
-    static int videoLine(cycles_t cycles)
+    int videoLine(cycles_t cycles) const
     {
         return frameCycle(cycles) / 14;
     }
 
-    static cycles_t nextFrame(cycles_t cycles)
+    cycles_t nextFrame(cycles_t cycles) const
     {
-        return ((cycles + 8*3668) / (8*3668)) * (8*3668);
+        //return ((cycles + 8*VIDEO_CYCLES_PER_FRAME) / (8*VIDEO_CYCLES_PER_FRAME)) * (8*VIDEO_CYCLES_PER_FRAME);
+        return cycles + (8 * VIDEO_CYCLES_PER_FRAME - cycles % (8 * VIDEO_CYCLES_PER_FRAME));
     }
 
 private:
@@ -84,6 +83,9 @@ private:
     SubMode _subMode{eNONE};
     std::array<uint32_t,256> _cdp1862Palette{};
     VideoScreen<uint8_t,256,192> _screen;
+    const int VIDEO_FIRST_VISIBLE_LINE{0};
+    const int VIDEO_FIRST_INVISIBLE_LINE{0};
+    const int VIDEO_CYCLES_PER_FRAME{0};
     int _frameCycle{0};
     int _frameCounter{0};
     int _backgroundColor{0};

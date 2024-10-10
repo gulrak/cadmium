@@ -24,6 +24,18 @@
 //
 //---------------------------------------------------------------------------------------
 
+#if QUIRKS & QUIRK_SCALE_X2
+#define SCALE_X 2
+#else
+#define SCALE_X 1
+#endif
+#if QUIRKS & QUIRK_SCALE_Y4
+#define SCALE_Y 4
+#elif QUIRKS & QUIRK_SCALE_Y2
+#define SCALE_Y 2
+#else
+#define SCALE_Y 1
+#endif
 
 TEST_SUITE_BEGIN(C8CORE "-Basic-Opcodes");
 
@@ -643,7 +655,7 @@ TEST_CASE(C8CORE ": Cxnn - vx := random nn")
     CHECK(maskOr == 0xa5);
 }
 
-TEST_CASE(C8CORE ": Dxyn - sprite vx vy n")
+TEST_CASE(C8CORE ": Dxyn - sprite vx vy n, simple draw")
 {
     std::string pacImage = "..####.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
     auto [host, core, start] = createChip8Instance(C8CORE);
@@ -658,21 +670,23 @@ TEST_CASE(C8CORE ": Dxyn - sprite vx vy n")
         step(core);
     }
     CheckState(core, {.i = 0x400, .pc = start + 8, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {3,4,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "sprite v0 v1 8");
+    auto [rect, content] = host->chip8UsedScreen(SCALE_X, SCALE_Y);
+    CHECK(3 == rect.x);
+    CHECK(4 == rect.y);
+    CHECK(pacImage == content);
+}
+
+TEST_CASE(C8CORE ": Dxyn - sprite vx vy n, xor draw")
+{
+    std::string pacImage = "..#...#.\n.#.....#\n#.##..#.\n#....#..\n#....#..\n#.....#.\n.#.....#\n..#...#.\n";
+    auto [host, core, start] = createChip8Instance(C8CORE);
+    core->reset();
+    write(core, start, {0x6003, 0x6104, 0xA400, 0xD018, 0x6004, 0xD018, uint16_t(0x1000 + start + 12)});
+    write(core, 0x400, {0x3c7e, 0xdcf8, 0xf8fc, 0x7e3c, 0x8000});
     host->executeFrame();
     host->executeFrame();
-#if QUIRKS & QUIRK_SCALE_X2
-    auto scaleX = 2;
-#else
-    auto scaleX = 1;
-#endif
-#if QUIRKS & QUIRK_SCALE_Y4
-    auto scaleY = 4;
-#elif QUIRKS & QUIRK_SCALE_Y2
-    auto scaleY = 2;
-#else
-    auto scaleY = 1;
-#endif
-    auto [rect, content] = host->chip8UsedScreen(scaleX, scaleY);
+    auto [rect, content] = host->chip8UsedScreen(SCALE_X, SCALE_Y);
+    CHECK(core->getV(15) > 0);
     CHECK(3 == rect.x);
     CHECK(4 == rect.y);
     CHECK(pacImage == content);
@@ -941,3 +955,7 @@ TEST_CASE(C8CORE ": Fx65 - load vx, checking i is unchanged")
 #endif
 
 TEST_SUITE_END();
+
+#undef SCALE_X
+#undef SCALE_Y
+

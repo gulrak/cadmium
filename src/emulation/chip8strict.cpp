@@ -87,6 +87,7 @@ static bool registeredStrictC8 = CoreRegistry::registerFactory(PROP_CLASS, std::
 
 bool Chip8StrictEmulator::updateProperties(Properties& props, Property& changed)
 {
+    (void)registeredStrictC8;
     if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
         _options = Chip8StrictOptions::fromProperties(props);
         return false;
