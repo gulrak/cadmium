@@ -26,7 +26,6 @@
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/utility.hpp>
 #include <emuhostex.hpp>
-//#include <emulation/chip8generic.hpp>
 #include <emulation/iemulationcore.hpp>
 #include <librarian.hpp>
 
@@ -45,6 +44,10 @@ inline std::chrono::system_clock::time_point convertClock(TP tp)
     return time_point_cast<system_clock::duration>(tp - TP::clock::now() + system_clock::now());
 }
 
+static KnownRomInfo2 g_knownRoms2[] = {
+    {"004fa49c91fbd387484bda62f843e8c5bd2c53d2"_sha1, "chip-8", "Lainchain (Ashton Harding, 2018)", nullptr, nullptr},
+    {"0068ff5421f5d62a1ae1c814c68716ddb65cec5b"_sha1, "xo-chip", "Master B8 (Andrew James, 2021)", nullptr, nullptr},
+};
 
 static KnownRomInfo g_knownRoms[] = {
     //{"18418563acd5c64ff410fdede56ffd80c139888a", {emu::Chip8EmulatorOptions::eCHIP8X}},

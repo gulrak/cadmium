@@ -27,6 +27,7 @@
 
 #include <emulation/chip8options.hpp>
 #include <chiplet/chip8variants.hpp>
+#include <sha1/sha1.hpp>
 #include <configuration.hpp>
 
 #include <chrono>
@@ -36,6 +37,14 @@
 struct KnownRomInfo {
     const char* sha1;
     emu::chip8::Variant variant;
+    const char* name;
+    const char* options;
+    const char* url;
+};
+
+struct KnownRomInfo2 {
+    Sha1::Value sha1;
+    const char* preset;
     const char* name;
     const char* options;
     const char* url;

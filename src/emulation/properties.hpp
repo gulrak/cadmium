@@ -78,6 +78,10 @@ public:
         {
             return (r << 24u) | (g << 16u) | (b << 8) | alpha;
         }
+        bool operator==(const Color& other) const
+        {
+            return r == other.r && g == other.g && b == other.b;
+        }
         std::string toString() const;
         static Color fromRGBA(const uint32_t val) { return Color( val >> 24, val >> 16, val >> 8); }
         uint8_t r, g, b;
@@ -96,7 +100,10 @@ public:
 
     bool empty() const { return colors.empty(); }
     size_t size() const { return colors.size(); }
-
+    bool operator==(const Palette& other) const
+    {
+        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor;
+    }
     std::vector<Color> colors;
     std::optional<Color> borderColor{};
     std::optional<Color> signalColor{};
@@ -354,7 +361,10 @@ public:
     Palette& palette() { return _palette; }
     const Palette& palette() const { return _palette; }
 
-    RegistryMaps& getRegistryMaps();
+    static RegistryMaps& getRegistryMaps();
+
+    nlohmann::json createDiff(const Properties& other) const;
+    void applyDiff(const nlohmann::json& diff);
 
 private:
     std::string _class;

@@ -87,6 +87,49 @@ Properties::RegistryMaps& Properties::getRegistryMaps()
     return regMaps;
 }
 
+nlohmann::json Properties::createDiff(const Properties& other) const
+{
+    nlohmann::json result;
+    if (other._class != _class)
+        return {};
+    for (const auto& name : _valueList) {
+        if (auto iter = other._valueMap.find(name); iter != other._valueMap.end()) {
+            if (iter->second != _valueMap.at(name)) {
+                const auto& prop = iter->second;
+                std::visit(emu::visitor{
+                   [&](std::nullptr_t) { },
+                   [&](bool val) { result[name] = val; },
+                   [&](const emu::Property::Integer& val) { result[name] = val.intValue; },
+                   [&](const std::string& val) { result[name] = val; },
+                   [&](const emu::Property::Combo& val) { result[name] = val.selectedText(); }
+               }, prop.getValue());
+            }
+        }
+    }
+    if(_palette != other._palette) {
+        result["palette"] = other._palette;
+    }
+    return result;
+}
+void Properties::applyDiff(const nlohmann::json& diff)
+{
+    for (const auto& [key, value] : diff.items()) {
+        if (auto iter = _valueMap.find(key); iter != _valueMap.end()) {
+            auto& prop = iter->second;
+            std::visit(visitor{
+        [&](std::nullptr_t&) { },
+        [&](bool& val) { val = value.get<bool>(); },
+        [&](Property::Integer& val) { val.intValue = value.get<int>(); },
+        [&](std::string& val) { val = value.get<std::string>(); },
+        [&](Property::Combo& val) { val.setSelectedToText(value.get<std::string>()); }
+            }, prop.getValue());
+        }
+    }
+    if(diff.contains("palette")) {
+        from_json(diff.at("palette"), _palette);
+    }
+}
+
 void to_json(nlohmann::json& j, const Properties& props)
 {
     j = nlohmann::json::object();
