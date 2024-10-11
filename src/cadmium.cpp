@@ -760,6 +760,35 @@ public:
 
     int getKeyPressed() override
     {
+#if 1
+        static uint32_t instruction = 0;
+        static int waitKeyUp = 0;
+        static int keyId = 0;
+        auto now = GetTime();
+        for(int i = 0; i < 16; ++i)
+            _keyScanTime[i] = now;
+        if(waitKeyUp && instruction == _chipEmu->focussedExecutionUnit()->getPC()) {
+            if(IsKeyUp(waitKeyUp)) {
+                waitKeyUp = 0;
+                instruction = 0;
+                return keyId;
+            }
+            return -1;
+        }
+        waitKeyUp = 0;
+        auto key = GetKeyPressed();
+        if (!gui::IsSysKeyDown() && key) {
+            for (int i = 0; i < 16; ++i) {
+                if (key == _keyMapping[i]) {
+                    instruction = _chipEmu->focussedExecutionUnit()->getPC();
+                    waitKeyUp = key;
+                    keyId = i + 1;
+                    return 0;
+                }
+            }
+        }
+        return waitKeyUp ? -1 : 0;
+#else
         //static uint32_t instruction = 0;
         //static int waitKeyUp = 0;
         //static int keyId = 0;
@@ -794,6 +823,7 @@ public:
         }
         return waitKeyUp ? -1 : 0;
         */
+#endif
     }
 
     bool isKeyDown(uint8_t key) override
