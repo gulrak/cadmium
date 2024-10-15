@@ -92,10 +92,11 @@ nlohmann::json Properties::createDiff(const Properties& other) const
     nlohmann::json result;
     if (other._class != _class)
         return {};
-    for (const auto& name : _valueList) {
-        if (auto iter = other._valueMap.find(name); iter != other._valueMap.end()) {
-            if (iter->second != _valueMap.at(name)) {
+    for (const auto& key : _valueList) {
+        if (auto iter = other._valueMap.find(key); iter != other._valueMap.end()) {
+            if (iter->second != _valueMap.at(key)) {
                 const auto& prop = iter->second;
+                const auto& name = prop.getJsonKey();
                 std::visit(emu::visitor{
                    [&](std::nullptr_t) { },
                    [&](bool val) { result[name] = val; },

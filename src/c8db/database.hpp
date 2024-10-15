@@ -295,6 +295,7 @@ public:
     }
 
     size_t numRoms() const { return romLookupTable.size(); }
+    const std::unordered_map<std::string,Program*>& romTable() const { return romLookupTable; }
     const auto& platforms() const { return platformList; }
     const auto& programs() const { return programList; }
     const Platform* findPlatform(const std::string& name) const

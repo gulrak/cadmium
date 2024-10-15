@@ -49,6 +49,7 @@ extern "C" {
 //#include <emulation/dream6800.hpp>
 #include <emulation/time.hpp>
 #include <emulation/timecontrol.hpp>
+#include <c8db/database.hpp>
 #include <ghc/cli.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
@@ -2797,6 +2798,110 @@ void dumpLibraryNickel()
     }
 }
 
+void convertKnownRomList()
+{
+    std::map<std::string, KnownRomInfo2> knownRoms;
+    std::set<std::string> optionsStrings;
+    std::set<std::string> keys;
+    c8db::Database db("/Users/schuemann/Development/c8/chip-8-database/database");
+
+    for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
+        auto info = Librarian::getRomInfo(i);
+        const char* preset;
+        bool unsure = false;
+        switch(info.variant) {
+            case emu::chip8::Variant::CHIP_8: preset = "!chip-8"; break;
+            case emu::chip8::Variant::CHIP_10: preset = "!chip-10"; break;
+            case emu::chip8::Variant::CHIP_8E: preset = "!chip-8e"; break;
+            case emu::chip8::Variant::CHIP_8X: preset = "!chip-8x"; break;
+            case emu::chip8::Variant::SCHIP_1_0: preset = "!schip-1.0"; break;
+            case emu::chip8::Variant::SCHIP_1_1: preset = "!schip-1.1"; break;
+            case emu::chip8::Variant::SCHIPC: preset = "!schipc"; break;
+            case emu::chip8::Variant::SCHIP_MODERN: preset = "!schip-modern"; break;
+            case emu::chip8::Variant::MEGA_CHIP: preset = "!megachip"; break;
+            case emu::chip8::Variant::XO_CHIP: preset = "!xo-chip"; break;
+            case emu::chip8::Variant::COSMAC_VIP: preset = "!vip"; break;
+            case emu::chip8::Variant::CHIP_8_COSMAC_VIP: preset = "!vip-chip-8"; break;
+            case emu::chip8::Variant::CHIP_8_TPD: preset = "!vip-chip-8-tpd"; break;
+            case emu::chip8::Variant::CHIP_8X_TPD: preset = "!vip-chip-8x-tpd"; break;
+            case emu::chip8::Variant::HI_RES_CHIP_8: preset = "!vip-chip-8-fpd"; break;
+            case emu::chip8::Variant::HI_RES_CHIP_8X: preset = "!vip-chip-8x-fpd"; break;
+            case emu::chip8::Variant::GENERIC_CHIP_8: preset = "!generic-chip-8"; break;
+            default: preset = "?chip-8"; unsure = true; break;
+        }
+        const char* optionsString = nullptr;
+        if(info.options) {
+            auto options = nlohmann::json::parse(info.options);
+            if(!options.contains("optAllowHires")) {
+                for(const auto& [key, val] : options.items()) {
+                    keys.insert(key);
+                }
+                auto presetProperties = emu::CoreRegistry::propertiesForPreset(preset);
+                auto romProperties = presetProperties;
+                if(preset) {
+                    if(options.contains("instructionsPerFrame")) {
+                        romProperties.at("instructionsPerFrame").setInt(options.at("instructionsPerFrame"));
+                    }
+                    if(options.contains("optDontResetVf")) {
+                        romProperties.at("8xy1/8xy2/8xy3 don't reset VF").setBool(options.at("optDontResetVf"));
+                    }
+                    if(options.contains("optInstantDxyn")) {
+                        romProperties.at("Dxyn doesn't wait for vsync").setBool(options.at("optInstantDxyn"));
+                    }
+                    if(options.contains("optJustShiftVx")) {
+                        romProperties.at("8xy6/8xyE just shift VX").setBool(options.at("optJustShiftVx"));
+                    }
+                    if(options.contains("optLoadStoreDontIncI")) {
+                        romProperties.at("Fx55/Fx65 increment I by X + 1").setBool(!options.at("optLoadStoreDontIncI").get<bool>());
+                        romProperties.at("Fx55/Fx65 increment I by X").setBool(false);
+                    }
+                    if(options.contains("optWrapSprites")) {
+                        romProperties.at("wrap Sprite pixels").setBool(options.at("optWrapSprites"));
+                    }
+                }
+                auto diff = presetProperties.createDiff(romProperties);
+                optionsString = optionsStrings.insert("R\"(" + diff.dump() + ")\"").first->c_str();
+            }
+        }
+        auto info2 = KnownRomInfo2{Sha1::Value(info.sha1), preset, info.name, optionsString, nullptr};
+        knownRoms.emplace(info.sha1, info2);
+    }
+    std::cout << "static KnownRomInfo g_knownRoms[] = {" << std::endl;
+    for(const auto& [key, info] : knownRoms) {
+        std::cout << "    {\"" << key << "\"_sha1";
+        std::cout << ", \"" << info.preset+1 << "\"";
+        std::cout << ", \"" << info.name << "\"";
+        std::cout << "," << (info.options ? info.options : "nullptr") << ", nullptr";
+        std::cout << "},";
+        if(*info.preset == '?') {
+            std::cout << " // ???";
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "};" << std::endl;
+    for(const auto& key : keys) {
+        std::cout << "Option: " << key << std::endl;
+    }
+    std::cout << "Found " << db.numRoms() << " rom files in programs.json" << std::endl;
+    size_t dbNew = 0;
+    for(const auto& [key, info] : db.romTable()) {
+        if(!knownRoms.contains(key)) {
+            std::cout << "Unknown rom in db: " << key << ", " << info->title << std::endl;
+            dbNew++;
+        }
+    }
+    size_t cadNew = 0;
+    for(const auto& [key, info] : knownRoms) {
+        if(!db.romTable().contains(key)) {
+            std::cout << "Rom missing in db: " << key << ", " << info.name << std::endl;
+            cadNew++;
+        }
+    }
+    std::cout << "Chip-8 Program database contains " << dbNew << " roms new to Cadmium," << std::endl;
+    std::cout << "Cadmium detects " << cadNew << " roms not in the database." << std::endl;
+    std::cout << "Done converting " << knownRoms.size() << " rom infos." << std::endl;
+}
+
 int main(int argc, char* argv[])
 {
     static emu::Properties coreProperties;
@@ -2810,6 +2915,7 @@ int main(int argc, char* argv[])
     bool opcodeTable = false;
     bool opcodeJSON = false;
     bool dumpLibNickel = false;
+    bool convertRomList = false;
     bool startRom = false;
     bool screenDump = false;
     bool drawDump = false;
@@ -2835,6 +2941,7 @@ int main(int argc, char* argv[])
 #ifndef NDEBUG
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
     cli.option({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
+    cli.option({"--convert-rom-list"}, convertRomList, "Convert list of known roms (just temporary available)");
 #endif
     emu::CoreRegistry reg{};
     std::string coresAvailable;
@@ -2936,6 +3043,10 @@ int main(int argc, char* argv[])
     }
     if(showHelp) {
         cli.usage();
+        exit(0);
+    }
+    if(convertRomList) {
+        convertKnownRomList();
         exit(0);
     }
     if(opcodeTable) {

@@ -16,6 +16,8 @@ set(CHIP8_EMU_SOURCE
     coreregistry.hpp
     cosmacvip.cpp
     cosmacvip.hpp
+    eti660.cpp
+    eti660.hpp
     #dream6800.cpp
     #dream6800.hpp
     emulatorhost.hpp
