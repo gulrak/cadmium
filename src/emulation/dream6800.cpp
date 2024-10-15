@@ -40,12 +40,84 @@
 
 namespace emu {
 
+static const std::string PROP_CLASS = "DREAM6800";
+static const std::string PROP_TRACE_LOG = "Trace Log";
 static const std::string PROP_CPU = "CPU";
 static const std::string PROP_CLOCK = "Clock Rate";
 static const std::string PROP_RAM = "Memory";
 static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_ROM_NAME = "ROM Name";
+
+struct Dream6800Options
+{
+    Properties asProperties() const
+    {
+        auto result = registeredPrototype();
+        result[PROP_TRACE_LOG].setBool(traceLog);
+        result[PROP_CPU].setString(cpuType);
+        result[PROP_CLOCK].setInt(clockFrequency);
+        result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
+        result[PROP_CLEAN_RAM].setBool(cleanRam);
+        result[PROP_VIDEO].setSelectedIndex(toType(videoType));
+        result[PROP_AUDIO].setSelectedIndex(toType(audioType));
+        result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
+        result[PROP_ROM_NAME].setString(romName);
+        //result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
+        result[PROP_START_ADDRESS].setInt(startAddress);
+        result.palette() = palette;
+        return result;
+    }
+    static Dream6800Options fromProperties(const Properties& props)
+    {
+        Dream6800Options opts{};
+        opts.traceLog = props[PROP_TRACE_LOG].getBool();
+        opts.cpuType = props[PROP_CPU].getString();
+        opts.clockFrequency = props[PROP_CLOCK].getInt();
+        opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
+        opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
+        opts.videoType = static_cast<ETIVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        opts.audioType = static_cast<ETIAudioType>(props[PROP_AUDIO].getSelectedIndex());
+        opts.keyboard = static_cast<ETIKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
+        opts.romName = props[PROP_ROM_NAME].getString();
+        //opts.interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
+        opts.startAddress = props[PROP_START_ADDRESS].getInt();
+        opts.palette = props.palette();
+        return opts;
+    }
+    static Properties& registeredPrototype()
+    {
+        using namespace std::string_literals;
+        auto& prototype = Properties::getProperties(PROP_CLASS);
+        if(!prototype) {
+            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
+            prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1773448, 100000, 500'000'000}, "Clock frequency, default is 1773448", eWritable});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"3072"s}, "Size of ram in bytes", eWritable});
+            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
+            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
+            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});
+            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"ETI660 Hex", "ETI660 2-ROW", "VIP Hex"}, "Keyboard type, default is ETI660 hex"});
+            prototype.registerProperty({"", nullptr, ""});
+            prototype.registerProperty({PROP_ROM_NAME, "C8-MONITOR"s, "Rom image name, default c8-monitor"});
+            //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
+            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
+        }
+        return prototype;
+    }
+    std::string cpuType;
+    int clockFrequency;
+    size_t ramSize;
+    bool cleanRam;
+    bool traceLog;
+    ETIVideoType videoType;
+    ETIAudioType audioType;
+    ETIKeyboard keyboard;
+    std::string romName;
+    uint16_t startAddress;
+    Palette palette;ip
+};
+
 
 class Dream6800::Private {
 public:

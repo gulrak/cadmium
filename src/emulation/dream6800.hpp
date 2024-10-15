@@ -27,31 +27,50 @@
 
 #include <emulation/emulatorhost.hpp>
 #include <emulation/chip8realcorebase.hpp>
+#include <emulation/coreregistry.hpp>
 #include <emulation/hardware/m6800.hpp>
+#include <emulation/iemulationcore.hpp>
 
 namespace emu {
 
 class Dream6800 : public Chip8RealCoreBase, public M6800Bus<>
 {
 public:
-public:
     //constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
     //constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
 
-    Dream6800(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr);
+    Dream6800(EmulatorHost& host, Properties& properties, IChip8Emulator* other = nullptr);
     ~Dream6800() override;
 
     void reset() override;
+    bool updateProperties(Properties& props, Property& changed) override;
     std::string name() const override;
-    int64_t executeFor(int64_t microseconds) override;
-    void executeInstruction() override;
-    void executeInstructions(int numInstructions) override;
+
+    // IEmulationCore
+    size_t numberOfExecutionUnits() const override;
+    GenericCpu* executionUnit(size_t index) override;
+    void setFocussedExecutionUnit(GenericCpu* unit) override;
+    GenericCpu* focussedExecutionUnit() override;
+
     void executeFrame() override;
     int frameRate() const override { return 50; }
+
+    bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
+
+    ExecMode execMode() const override;
+    void setExecMode(ExecMode mode) override;
+
+    int64_t executeFor(int64_t microseconds) override;
+    int executeInstruction() override;
+    void executeInstructions(int numInstructions) override;
     int64_t machineCycles() const override;
 
     uint8_t* memory() override;
     int memSize() const override;
+    unsigned stackSize() const override;
+    StackContent stack() const override;
+
+    int64_t frames() const override;
 
     bool isGenericEmulation() const override { return false; }
 
@@ -61,9 +80,8 @@ public:
     uint16_t getMaxScreenHeight() const override;
     const VideoType* getScreen() const override;
 
-    uint8_t soundTimer() const override;
-    //float getAudioPhase() const override;
-    //void setAudioPhase(float phase) override;
+    bool isDisplayEnabled() const override;
+
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
     // M6800-Bus
@@ -71,8 +89,6 @@ public:
     uint8_t readDebugByte(uint16_t addr) const override;
     uint8_t readMemoryByte(uint32_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
-
-    bool isDisplayEnabled() const override;
 
     GenericCpu& getBackendCpu() override;
 
@@ -90,7 +106,6 @@ private:
     void forceState();
     class Private;
     std::unique_ptr<Private> _impl;
-    Chip8EmulatorOptions _options;
 };
 
 };
