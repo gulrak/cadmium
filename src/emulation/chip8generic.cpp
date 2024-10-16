@@ -27,6 +27,7 @@
 #include <emulation/chip8generic.hpp>
 #include <emulation/coreregistry.hpp>
 #include <emulation/logger.hpp>
+#include <ghc/random.hpp>
 
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -328,6 +329,10 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
     SCREEN_WIDTH = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : (_options.optAllowHires ? 128 : 64);
     SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32));
     _memory.resize(_options.ramSize, 0);
+    if(!_options.cleanRam) {
+        ghc::RandomLCG rnd(42);
+        std::generate(_memory.begin(), _memory.end(), rnd);
+    }
     _rV = _rVData.data();
     _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA1.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
@@ -402,7 +407,6 @@ void Chip8GenericEmulator::reset()
     _rDT = 0;
     _rST = 0;
     std::memset(_rV, 0, 16);
-    std::memset(_memory.data(), 0, _memory.size());
     auto [smallFont, smallSize] = smallFontData(getSmallFontId(_options.behaviorBase));
     std::memcpy(_memory.data(), smallFont, smallSize);
     auto bigFontId = getBigFontId(_options.behaviorBase);
