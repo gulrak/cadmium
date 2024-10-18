@@ -35,6 +35,8 @@
 
 namespace emu {
 
+class IChip8Emulator;
+
 /// An abstract emulation core class
 /// An IEmulationCore is a unit that is combining one or multiple execution units (like a CPU)
 //// with peripherals like a display and/or audio to to a full system that can be run by the
@@ -78,6 +80,7 @@ public:
     virtual GenericCpu* executionUnit(size_t index) = 0;
     virtual void setFocussedExecutionUnit(GenericCpu* unit) = 0;
     virtual GenericCpu* focussedExecutionUnit() = 0;
+    virtual IChip8Emulator* chip8Core() { return nullptr; }
 
     Iterator begin() { return Iterator(*this, 0); }
     Iterator end() { return Iterator(*this, numberOfExecutionUnits()); }

@@ -188,7 +188,7 @@ public:
             _colorRamMaskLores = 0x3e7;
         }
         _properties = _options.asProperties();
-        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_eti660_c8_monitor, 1024).substr(0,8)));
+        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_eti660_c8_monitor, 1024).to_hex().substr(0,8)));
         _memorySize = _options.ramSize;
         _ram.resize(_options.ramSize, 0);
     }

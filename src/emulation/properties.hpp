@@ -134,8 +134,8 @@ public:
         void setSelectedToText(const std::string& text)
         {
             index = 0;
-            for(size_t i = 0; i < options.size(); ++i) {
-                if (options[i] == text)
+            for(int i = 0; i < options.size(); ++i) {
+                if (fuzzyCompare(options[i],text))
                     index = i;
             }
         }

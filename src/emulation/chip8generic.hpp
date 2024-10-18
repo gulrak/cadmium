@@ -50,7 +50,10 @@ struct Chip8GenericOptions
     static Properties& registeredPrototype();
     Chip8Variant variant() const;
     enum SupportedPreset { eCHIP8, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
-    SupportedPreset behaviorBase{eCHIP8};
+    SupportedPreset behaviorBase{ eCHIP8 };
+    enum class ScreenRotation { NONE=0, CW0=NONE, CW90, CW180, CW270 };
+    enum class TouchInputMode { UNKNOWN=-1, NONE=0, SWIPE, SEG16, SEG16FILL, GAMEPAD, VIP };
+    enum class FontStyle { DEFAULT, VIP, DREAM6800, ETI660, SCHIP, FISH, OCTO };
     uint32_t ramSize{4096};
     uint16_t startAddress{0x200};
     bool cleanRam{true};
@@ -79,6 +82,9 @@ struct Chip8GenericOptions
     bool traceLog{false};
     int instructionsPerFrame{15};
     int frameRate{60};
+    ScreenRotation rotation{ScreenRotation::CW0};
+    TouchInputMode touchInputMode{TouchInputMode::UNKNOWN};
+    FontStyle fontStyle{FontStyle::DEFAULT};
     Palette palette;
 };
 

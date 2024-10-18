@@ -221,7 +221,7 @@ public:
             _colorRamMaskLores = 0x3e7;
         }
         _properties = _options.asProperties();
-        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_rom_cvip, 512).substr(0,8)));
+        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_rom_cvip, 512).to_hex().substr(0,8)));
         _memorySize = _options.ramSize;
         _ram.resize(_options.ramSize, 0);
     }
@@ -681,7 +681,7 @@ void CosmacVIP::reset()
         if (_impl->_options.interpreter != VC8I_CHIP8) {
             auto size = patchRAM(_impl->_options.interpreter, _impl->_ram.data(), _impl->_ram.size());
             _impl->_properties[PROP_INTERPRETER].setSelectedIndex(_impl->_options.interpreter);
-            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0, 8)));
+            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_impl->_ram.data(), size).to_hex().substr(0, 8)));
             //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
         }
     }

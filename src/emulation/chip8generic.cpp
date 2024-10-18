@@ -67,6 +67,9 @@ static const std::string PROP_Q_HAS_16BIT_ADDR = "Has 16 bit addresses";
 static const std::string PROP_Q_XO_CHIP_SOUND = "XO-CHIP sound engine";
 static const std::string PROP_Q_EXTENDED_VBLANK = "Extended CHIP-8 wait emulation";
 static const std::string PROP_Q_PAL_VIDEO = "PAL video format";
+static const std::string PROP_SCREEN_ROTATION = "Screen rotation";
+static const std::string PROP_TOUCH_INPUT_MODE = "Touch input mode";
+static const std::string PROP_FONT_STYLE = "Font style";
 
 Properties Chip8GenericOptions::asProperties() const
 {
@@ -99,6 +102,9 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_Q_XO_CHIP_SOUND].setBool(optXOChipSound);
     result[PROP_Q_EXTENDED_VBLANK].setBool(optExtendedVBlank);
     result[PROP_Q_PAL_VIDEO].setBool(optPalVideo);
+    result[PROP_SCREEN_ROTATION].setSelectedIndex(int(rotation));
+    result[PROP_TOUCH_INPUT_MODE].setSelectedIndex(int(touchInputMode));
+    result[PROP_FONT_STYLE].setSelectedIndex(int(fontStyle));
     result.palette() = palette;
     return result;
 }
@@ -134,6 +140,9 @@ Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
     opts.optXOChipSound = props[PROP_Q_XO_CHIP_SOUND].getBool();
     opts.optExtendedVBlank = props[PROP_Q_EXTENDED_VBLANK].getBool();
     opts.optPalVideo = props[PROP_Q_PAL_VIDEO].getBool();
+    opts.rotation = static_cast<ScreenRotation>(props[PROP_SCREEN_ROTATION].getSelectedIndex());
+    opts.touchInputMode = static_cast<TouchInputMode>(props[PROP_TOUCH_INPUT_MODE].getSelectedIndex());
+    opts.fontStyle = static_cast<FontStyle>(props[PROP_FONT_STYLE].getSelectedIndex());
     opts.palette = props.palette();
     return opts;
 }
@@ -172,6 +181,10 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({{PROP_Q_XO_CHIP_SOUND, "xo-Chip-Sound"}, false, eInvisible});
         prototype.registerProperty({{PROP_Q_EXTENDED_VBLANK, "extended-Vblank"}, false, eWritable});
         prototype.registerProperty({{PROP_Q_PAL_VIDEO, "pal-Video"}, false, eInvisible});
+
+        prototype.registerProperty({{PROP_SCREEN_ROTATION, "screen-rotation"}, Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, eInvisible});
+        prototype.registerProperty({{PROP_TOUCH_INPUT_MODE, "touch-mode"}, Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, eInvisible});
+        prototype.registerProperty({{PROP_FONT_STYLE, "font-style"}, Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s}, eInvisible});
     }
     return prototype;
 }

@@ -76,14 +76,15 @@ int main(int argc, char* argv[])
     std::vector<std::string> files;
     std::map<std::string,std::string> dbRomMap;
     std::string scanDir;
-    std::string infoSHA;
+    std::string infoSha1Hex;
+    Sha1::Digest infoSHA;
     std::string infoFile;
     cli.option({"--scan"}, scanDir, "Scan directory tree for roms, calc sha1 and report unknown ones");
-    cli.option({"-s", "--sha1"}, infoSHA, "Lookup rom SHA1 checksum (all lower-case) and give info.");
+    cli.option({"-s", "--sha1"}, infoSha1Hex, "Lookup rom SHA1 checksum (all lower-case) and give info.");
     cli.option({"-i", "--info"}, infoFile, "Lookup rom file by looking at content and give info.");
     cli.positional(files, "files to convert");
     cli.parse();
-
+    if(!infoSha1Hex.empty()) infoSHA = Sha1::Digest(infoSha1Hex);
     if(files.empty() || !fs::exists(files.front())) {
         std::cerr << "ERROR: No or unexisting directory given." << std::endl;
         exit(EXIT_FAILURE);
@@ -103,11 +104,11 @@ int main(int argc, char* argv[])
             std::cerr << "ERROR: File doesn't exist." << std::endl;
         }
         auto data = loadFile(infoFile);
-        infoSHA = calculateSha1Hex(data.data(), data.size());
-        std::cout << "SHA1: " << infoSHA << std::endl;
+        infoSHA = calculateSha1(data.data(), data.size());
+        std::cout << "SHA1: " << infoSHA.to_hex() << std::endl;
     }
-    if(!infoSHA.empty()) {
-        auto info = db.findProgram(infoSHA);
+    if(!infoSHA) {
+        auto info = db.findProgram(infoSHA.to_hex());
         if(info.empty()) {
             std::cerr << "ROM could not be found." << std::endl;
             exit(EXIT_FAILURE);
@@ -183,10 +184,12 @@ int main(int argc, char* argv[])
     std::cout << "\nLooking for programs in chip-8 database but not or different in Cadmium..." << std::endl;
     for(const auto& program : programs) {
         for(const auto& [sha1, rom] : program.roms) {
-            if(!lib.isKnownFile(sha1)) {
+            if(!lib.isKnownFile(Sha1::Digest(sha1))) {
                 std::cout << fmt::format("    Unknown rom: {} - \"{}\" file: '{}'", sha1, program.title, rom.file) << std::endl;
             }
             else {
+#if 0
+                // TODO: Fix this
                 auto options = lib.getOptionsForFile(sha1);
                 if(!rom.quirkyPlatforms.empty()) {
                     const auto& quirks = rom.quirkyPlatforms.begin()->second;
@@ -220,21 +223,23 @@ int main(int argc, char* argv[])
                     if(options.optDontResetVf != romOptions.optDontResetVf)
                         std::cerr << fmt::format("        {}: Quirk-Issue: logic quirk differs!", sha1) << std::endl;
                 }
+#endif
             }
         }
     }
     std::cout << "\nLooking for programs in Cadmium but not or different in chip-8 database..." << std::endl;
     for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
         const auto& ri = Librarian::getKnownRoms()[i];
-        auto info = db.findProgram(ri.sha1);
+        auto info = db.findProgram(ri.sha1.to_hex());
         if(info.empty()) {
-            std::cout << fmt::format("    Database doesn't know {} - {}", ri.sha1, ri.name) << std::endl;
+            std::cout << fmt::format("    Database doesn't know {} - {}", ri.sha1.to_hex(), ri.name) << std::endl;
         }
         else {
             const auto& pi = info.front();
             if(ri.options) {
                 auto options = nlohmann::json::parse(ri.options);
-                auto opt = lib.getOptionsForFile(ri.sha1);
+                // TODO: Fix this
+                /*auto opt = lib.getOptionsForFile(ri.sha1);
                 if((!pi.rom.tickrate && options.contains("instructionsPerFrame"))) {
                     std::cout << "    " << ri.sha1 << ": database misses tickrate: " << options.at("instructionsPerFrame").get<int>() << " (" << pi.program.title << ")" << std::endl;
                 }
@@ -243,7 +248,7 @@ int main(int argc, char* argv[])
                 }
                 if(pi.rom.colors.pixels.empty() && options.contains("advanced")) {
                     std::cout << "    " << ri.sha1 << ": database has no colors, Cadmium has advanced: " << ri.options << std::endl;
-                }
+                }*/
             }
         }
     }
@@ -254,18 +259,18 @@ int main(int argc, char* argv[])
         for(auto& entry : fs::recursive_directory_iterator(scanDir, fs::directory_options::skip_permission_denied)) {
             if(entry.is_regular_file() && validExtensions.count(entry.path().extension().string())) {
                 auto file = loadFile(entry.path().string());
-                auto sha1sum = calculateSha1Hex(file.data(), file.size());
+                auto sha1sum = calculateSha1(file.data(), file.size());
                 if(!lib.isKnownFile(sha1sum)) {
-                    std::cout << fmt::format("    found program unknown to Cadmium: {} - '{}'", sha1sum, entry.path().string()) << std::endl;
-                    if(dbRomMap.count(sha1sum))
-                        std::cout << fmt::format("        contained in programs.json as '{}'", dbRomMap[sha1sum]) << std::endl;
+                    std::cout << fmt::format("    found program unknown to Cadmium: {} - '{}'", sha1sum.to_hex(), entry.path().string()) << std::endl;
+                    if(dbRomMap.count(sha1sum.to_hex()))
+                        std::cout << fmt::format("        contained in programs.json as '{}'", dbRomMap[sha1sum.to_hex()]) << std::endl;
                     else
-                        unknowns.insert(sha1sum);
+                        unknowns.insert(sha1sum.to_hex());
                 }
                 else {
                     const auto* romInfo = Librarian::findKnownRom(sha1sum);
                     if(!romInfo->name || std::string(romInfo->name).empty()) {
-                        std::cout << "    found program that is known to Cadmium but has no name: " << sha1sum << " - '" << entry.path().string() << "'" << std::endl;
+                        std::cout << "    found program that is known to Cadmium but has no name: " << sha1sum.to_hex() << " - '" << entry.path().string() << "'" << std::endl;
                     }
                 }
             }

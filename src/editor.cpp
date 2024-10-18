@@ -418,9 +418,9 @@ void Editor::update()
         _inactiveEditTimer += GetFrameTime();
         if(_inactiveEditTimer > INACTIVITY_DELAY) {
             _inactiveEditTimer = 0;
-            _editedTextSha1Hex = calculateSha1Hex(_text);
-            if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
-                _compiledSourceSha1Hex = _editedTextSha1Hex;
+            _editedTextSha1 = calculateSha1(_text);
+            if(_editedTextSha1 != _compiledSourceSha1) {
+                _compiledSourceSha1 = _editedTextSha1;
                 recompile();
                 if(true) {
                     //if(_compiler.sha1Hex() != romSha1Hex) {

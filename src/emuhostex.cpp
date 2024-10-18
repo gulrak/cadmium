@@ -259,14 +259,14 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     bool valid = false;
     bool wasFromSource = false;
     std::unique_ptr<emu::OctoCompiler> c8c;
-    std::string romSha1Hex;
+    Sha1::Digest romSha1;
     std::vector<uint8_t> romImage;
     std::string source;
-    Properties knownProperties;
+    //Properties knownProperties;
     auto fileData = std::vector(binary.data(), binary.data() + binary.size());
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
-    TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1Hex(fileData.data(), fileData.size()).c_str());
-    auto knownOptions = _librarian.getOptionsForFile(fileData.data(), fileData.size());
+    TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1(fileData.data(), fileData.size()).to_hex().c_str());
+    auto knownProperties = _librarian.getPropertiesForFile(fileData.data(), fileData.size());
     if(endsWith(filename, ".8o")) {
         c8c = std::make_unique<emu::OctoCompiler>();
         source.assign((const char*)fileData.data(), fileData.size());
@@ -276,7 +276,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             auto loadAddress = startAddress ? startAddress->intValue : 0;
             if(c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
                 romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
-                romSha1Hex = c8c->sha1Hex();
+                romSha1 = c8c->sha1();
                 valid = true;
                 wasFromSource = true;
                 if((loadOpt & DontChangeOptions) == 0) {
@@ -318,11 +318,11 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     if (valid) {
         //TraceLog(LOG_INFO, "Found a valid rom.");
         _romImage = std::move(romImage);
-        _romSha1Hex = romSha1Hex.empty() ? calculateSha1Hex(_romImage.data(), _romImage.size()) : romSha1Hex;
+        _romSha1 = romSha1 == Sha1::Digest{} ? calculateSha1(_romImage.data(), _romImage.size()) : romSha1;
         _romName = filename;
         _romIsWellKnown = isKnown;
-        if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
-            _romWellKnownProperties = knownProperties;
+        //if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
+        //    _romWellKnownProperties = knownProperties;
         //_chipEmu->reset();
         if(!wasFromSource && _romImage.size() < 8192*1024) {
             //TraceLog(LOG_INFO, "Setting up decompiler.");

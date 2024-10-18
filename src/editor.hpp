@@ -26,6 +26,7 @@
 #pragma once
 
 #include <chiplet/octocompiler.hpp>
+#include <chiplet/sha1.hpp>
 
 #include <algorithm>
 #include <array>
@@ -217,8 +218,8 @@ protected:
     bool _isInvertedTheme{};
     emu::OctoCompiler _compiler;
     uint32_t _lastEditId{~0u};
-    std::string _editedTextSha1Hex;
-    std::string _compiledSourceSha1Hex;
+    Sha1::Digest _editedTextSha1;
+    Sha1::Digest _compiledSourceSha1;
     float _inactiveEditTimer{0};
     static std::unordered_set<std::string> _opcodes;
     static std::unordered_set<std::string> _directives;

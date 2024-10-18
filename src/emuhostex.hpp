@@ -91,7 +91,7 @@ protected:
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
     std::vector<uint8_t> _romImage;
-    std::string _romSha1Hex;
+    Sha1::Digest _romSha1;
     bool _romIsWellKnown{false};
     bool _customPalette{false};
     std::array<uint32_t, 256> _colorPalette{};

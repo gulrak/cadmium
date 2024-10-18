@@ -202,7 +202,7 @@ public:
         return {};
     }
 
-    static Properties propertiesForPreset(const std::string& name)
+    static Properties propertiesForPreset(std::string_view name)
     {
         for(const auto& [coreName, info] : factoryMap()) {
             if(fuzzyCompare(info->prefix(), name)) {
@@ -234,13 +234,29 @@ public:
         return {};
     }
 
-    static Properties propertiesForExtension(const std::string& extension)
+    static Properties propertiesForExtension(std::string_view extension)
     {
         for(const auto& [name, factory] : factoryMap()) {
             for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
                 auto extensions = split(factory->variantExtensions(i), ';');
                 if(auto iter = std::ranges::find(extensions, extension); iter != extensions.end()) {
                     return factory->variantProperties(i);
+                }
+            }
+        }
+        return {};
+    }
+
+    static std::string presetForExtension(std::string_view extension)
+    {
+        for(const auto& [name, factory] : factoryMap()) {
+            for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
+                auto extensions = split(factory->variantExtensions(i), ';');
+                if(auto iter = std::ranges::find(extensions, extension); iter != extensions.end()) {
+                    if(factory->prefix().empty())
+                        return factory->variantName(i);
+                    else
+                        return factory->variantName(i) == "NONE" ? factory->prefix() : factory->prefix() + "-" + factory->variantName(i);
                 }
             }
         }
@@ -263,11 +279,11 @@ public:
 
     CoreRegistry();
     const std::string& getCoresCombo() const { return coresCombo; }
-    const std::set<std::string>& getSupportedExtensions() const { return supportedExtensions; }
+    const std::set<std::string_view>& getSupportedExtensions() const { return supportedExtensions; }
 
 private:
     std::string coresCombo{};
-    std::set<std::string> supportedExtensions{};
+    std::set<std::string_view> supportedExtensions{};
     mutable std::vector<Iterator::value_type> orderedFactories;
     static FactoryMap& factoryMap();
 };

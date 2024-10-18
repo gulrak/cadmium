@@ -28,6 +28,37 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 
+void to_json(nlohmann::json& j, const Sha1::Digest& d)
+{
+    j = d.to_hex();
+}
+
+void from_json(const nlohmann::json& j, Sha1::Digest& d)
+{
+    d = Sha1::Digest(j.get<std::string>());
+}
+
+template <typename T> inline
+void to_json(nlohmann::json& j, const std::map<Sha1::Digest, T>& m)
+{
+    using std::to_string;
+    for (const auto& e : m)
+    {
+        j[e.first.to_hex()] = e.second;
+    }
+}
+
+template <typename T> inline
+void from_json(const nlohmann::json& j, std::map<Sha1::Digest, T>& m)
+{
+    for (const auto& [k, v] : j.items())
+    {
+        Sha1::Digest d;
+        from_json(k, d);
+        v.get_to(m[d]);
+    }
+}
+
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
     j = nlohmann::json{
         {"volume", cc.volume},

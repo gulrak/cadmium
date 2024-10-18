@@ -1079,9 +1079,9 @@ public:
 
         if(_mainView == eEDITOR) {
             _editor.update();
-            if(!_editor.compiler().isError() && _editor.compiler().sha1Hex() != _romSha1Hex) {
+            if(!_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
                 _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
-                _romSha1Hex = _editor.compiler().sha1Hex();
+                _romSha1 = _editor.compiler().sha1();
                 _debugger.updateOctoBreakpoints(_editor.compiler());
                 reloadRom();
             }
@@ -2058,12 +2058,12 @@ public:
         BeginColumns();
         Space(100);
         SetNextWidth(0.21f);
-        bool romRemembered = _cfg.romConfigs.count(_romSha1Hex) > 0;
-        if((romRemembered && _properties == _cfg.romConfigs[_romSha1Hex]) || (_romIsWellKnown && _properties == _romWellKnownProperties)) {
+        bool romRemembered = _cfg.romConfigs.contains(_romSha1);
+        if((romRemembered && _properties == _cfg.romConfigs[_romSha1]) || (_romIsWellKnown && _properties == _romWellKnownProperties)) {
             GuiDisable();
         }
         if (Button(!romRemembered ? "Remember for ROM" : "Update for ROM")) {
-            _cfg.romConfigs[_romSha1Hex] = _properties;
+            _cfg.romConfigs[_romSha1] = _properties;
             saveConfig();
         }
         GuiEnable();
@@ -2071,7 +2071,7 @@ public:
             GuiDisable();
         SetNextWidth(0.21f);
         if(Button("Forget ROM")) {
-            _cfg.romConfigs.erase(_romSha1Hex);
+            _cfg.romConfigs.erase(_romSha1);
             saveConfig();
         }
         GuiEnable();
@@ -2177,17 +2177,17 @@ public:
         switch(mode) {
             case eLOAD: {
                 auto infoPos = GetCurrentPos();
-                Label(fmt::format("SHA1:  {}", selectedInfo.analyzed ? selectedInfo.sha1sum : "").c_str());
+                Label(fmt::format("SHA1:  {}", selectedInfo.analyzed ? selectedInfo.sha1sum.to_hex() : "").c_str());
                 if(!selectedInfo.analyzed || selectedInfo.isKnown) {
-                    Label(fmt::format("Type:  {}", selectedInfo.analyzed ? emu::Chip8EmulatorOptions::nameOfPreset(selectedInfo.variant) : "").c_str());
+                    Label(fmt::format("Type:  {}", selectedInfo.analyzed ?selectedInfo.variant : "").c_str());
                 }
                 else {
                     Label(fmt::format("Type:  {} (estimated)", selectedInfo.minimumOpcodeProfile()).c_str());
                 }
                 if(selectedInfo.analyzed) {
-                    if(_screenShotSha1sum != selectedInfo.sha1sum) {
+                    if(_screenShotSha1 != selectedInfo.sha1sum) {
                         _screenshotData = _librarian.genScreenshot(selectedInfo, _defaultPalette);
-                        _screenShotSha1sum = selectedInfo.sha1sum;
+                        _screenShotSha1 = selectedInfo.sha1sum;
                         if(_screenshotData.width && _screenshotData.pixel.size() == _screenshotData.width * _screenshotData.height) {
                             auto* image = (uint32_t*)_screenShot.data;
                             for(int y = 0; y < _screenshotData.height; ++y) {
@@ -2198,7 +2198,7 @@ public:
                             UpdateTexture(_screenShotTexture, _screenShot.data);
                         }
                     }
-                    if(_screenShotSha1sum == selectedInfo.sha1sum && _screenshotData.width) {
+                    if(_screenShotSha1 == selectedInfo.sha1sum && _screenshotData.width) {
                         DrawTexturePro(_screenShotTexture, {0, 0, (float)_screenshotData.width, (float)_screenshotData.height}, {300, infoPos.y + 2, 192, 96}, {0,0}, 0, WHITE);
                         DrawRectangleLinesEx({299, infoPos.y + 1, 194, 98}, 1, GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)));
                     }
@@ -2444,7 +2444,7 @@ private:
     Texture2D _crtTexture{};
     Texture2D _screenShotTexture{};
     Librarian::Screenshot _screenshotData;
-    std::string _screenShotSha1sum;
+    Sha1::Digest _screenShotSha1;
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
     int64_t _audioGaps{};
@@ -2748,6 +2748,7 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
 
 void dumpLibraryNickel()
 {
+#if 0
     std::set<std::pair<std::string,std::string>> variantSet;
     size_t romCount = 0;
     for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
@@ -2796,18 +2797,21 @@ void dumpLibraryNickel()
     for(const auto& vari : variantSet) {
         std::cout << "VARIANT(" << vari.first << ", " << (vari.first == "XOCHIP" ? 65536 : 4096) << ", " << vari.second << ")" << std::endl;
     }
+#endif
 }
 
 void convertKnownRomList()
 {
+#ifndef NEW_ROMLIST_FORMAT
     std::map<std::string, KnownRomInfo2> knownRoms;
     std::set<std::string> optionsStrings;
     std::set<std::string> keys;
+    std::set<std::string> advancedKeys;
     c8db::Database db("/Users/schuemann/Development/c8/chip-8-database/database");
 
     for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
         auto info = Librarian::getRomInfo(i);
-        const char* preset;
+        const char* preset = nullptr;
         bool unsure = false;
         switch(info.variant) {
             case emu::chip8::Variant::CHIP_8: preset = "!chip-8"; break;
@@ -2858,12 +2862,56 @@ void convertKnownRomList()
                     if(options.contains("optWrapSprites")) {
                         romProperties.at("wrap Sprite pixels").setBool(options.at("optWrapSprites"));
                     }
+                    if(options.contains("advanced")) {
+                        for(const auto& [akey, avalue] : options.at("advanced").items()) {
+                            advancedKeys.insert(akey);
+                            auto& palette = romProperties.palette();
+                            if(akey == "col0") {
+                                if(palette.colors.size() < 2)
+                                    romProperties.palette().colors.resize(2, emu::Palette::Color{0});
+                                palette.colors[0] = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "col1") {
+                                if(palette.colors.size() < 2)
+                                    romProperties.palette().colors.resize(2, emu::Palette::Color{0});
+                                palette.colors[1] = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "col2") {
+                                if(palette.colors.size() < 4)
+                                    romProperties.palette().colors.resize(4, emu::Palette::Color{0});
+                                palette.colors[2] = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "col3") {
+                                if(palette.colors.size() < 4)
+                                    romProperties.palette().colors.resize(4, emu::Palette::Color{0});
+                                palette.colors[3] = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "buzzColor") {
+                                palette.signalColor = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "quietColor") {
+                                palette.borderColor = emu::Palette::Color(avalue.get<std::string>());
+                            }
+                            else if(akey == "palette") {
+                                palette.colors.clear();
+                                for(const std::string col : avalue) {
+                                    palette.colors.emplace_back(col);
+                                }
+                            }
+                            else if (akey == "screenRotation") {
+                                romProperties.at("screenRotation").setSelectedText(std::to_string(int(avalue)));
+                            }
+                            else if (akey == "fontStyle") {
+                                romProperties.at("fontStyle").setSelectedText(avalue);
+                            }
+                        }
+                    }
                 }
                 auto diff = presetProperties.createDiff(romProperties);
                 optionsString = optionsStrings.insert("R\"(" + diff.dump() + ")\"").first->c_str();
             }
         }
-        auto info2 = KnownRomInfo2{Sha1::Value(info.sha1), preset, info.name, optionsString, nullptr};
+        auto info2 = KnownRomInfo2{Sha1::Digest(info.sha1), preset, info.name, optionsString, nullptr};
         knownRoms.emplace(info.sha1, info2);
     }
     std::cout << "static KnownRomInfo g_knownRoms[] = {" << std::endl;
@@ -2871,7 +2919,7 @@ void convertKnownRomList()
         std::cout << "    {\"" << key << "\"_sha1";
         std::cout << ", \"" << info.preset+1 << "\"";
         std::cout << ", \"" << info.name << "\"";
-        std::cout << "," << (info.options ? info.options : "nullptr") << ", nullptr";
+        std::cout << "," << (info.options ? info.options : "nullptr") << ", " << (info.url ? info.url : "nullptr");
         std::cout << "},";
         if(*info.preset == '?') {
             std::cout << " // ???";
@@ -2881,6 +2929,9 @@ void convertKnownRomList()
     std::cout << "};" << std::endl;
     for(const auto& key : keys) {
         std::cout << "Option: " << key << std::endl;
+    }
+    for(const auto& akey : advancedKeys) {
+        std::cout << "Advanced Option: " << akey << std::endl;
     }
     std::cout << "Found " << db.numRoms() << " rom files in programs.json" << std::endl;
     size_t dbNew = 0;
@@ -2893,13 +2944,14 @@ void convertKnownRomList()
     size_t cadNew = 0;
     for(const auto& [key, info] : knownRoms) {
         if(!db.romTable().contains(key)) {
-            std::cout << "Rom missing in db: " << key << ", " << info.name << std::endl;
+            //std::cout << "Rom missing in db: " << key << ", " << info.name << std::endl;
             cadNew++;
         }
     }
     std::cout << "Chip-8 Program database contains " << dbNew << " roms new to Cadmium," << std::endl;
     std::cout << "Cadmium detects " << cadNew << " roms not in the database." << std::endl;
     std::cout << "Done converting " << knownRoms.size() << " rom infos." << std::endl;
+#endif
 }
 
 int main(int argc, char* argv[])
@@ -2920,7 +2972,6 @@ int main(int argc, char* argv[])
     bool screenDump = false;
     bool drawDump = false;
     std::string dumpInterpreter;
-    //emu::Chip8EmulatorOptions options;
     int64_t execSpeed = -1;
     std::string randomGen;
     std::string emulationCore;

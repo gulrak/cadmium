@@ -1,4 +1,34 @@
-#pragma once
+//---------------------------------------------------------------------------
+// SHA-1 in C++
+//---------------------------------------------------------------------------
+//
+// 100% Public Domain.
+//
+// Original C Code
+//     -- Steve Reid <steve@edmweb.com>
+// Small changes to fit into bglibs
+//     -- Bruce Guenter <bruce@untroubled.org>
+// Translation to simpler C++ Code
+//     -- Volker Diels-Grabsch <v@njh.eu>
+// Header-only library
+//     -- Zlatko Michailov <zlatko@michailov.org>
+//
+//---------------------------------------------------------------------------
+//
+// NOTE: This file is modified for the needs of Cadmium/Chiplet,
+// look at e.g. https://github.com/vog/sha1 for an unmodified
+// version.
+//
+// Changes for use in Cadmium (the CHIP-8 environment):
+//  * switched to #pragma once
+//  * renamed the type to Sha1 (to avoid naming conflicts)
+//  * added Value class to represent a SHA1 digest as two uint64_t and one uint32_t
+//  * added api to cast to these value types
+//
+//---------------------------------------------------------------------------
+
+#ifndef SHA1_H_6B6E3A4B_8492_456E_99DB_F307B2A02BF7
+#define SHA1_H_6B6E3A4B_8492_456E_99DB_F307B2A02BF7
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
@@ -13,7 +43,7 @@
 class Sha1
 {
 public:
-    class Value
+    class Digest
     {
     private:
         uint64_t high1;
@@ -21,19 +51,19 @@ public:
         uint32_t low;
 
     public:
-        constexpr Value()
+        constexpr Digest()
             : high1(0)
             , high2(0)
             , low(0)
         {
         }
-        constexpr Value(uint64_t h1, uint64_t h2, uint32_t l)
+        constexpr Digest(uint64_t h1, uint64_t h2, uint32_t l)
             : high1(h1)
             , high2(h2)
             , low(l)
         {
         }
-        explicit Value(const std::string& hex_digest)
+        explicit Digest(const std::string& hex_digest)
         {
             if (hex_digest.length() != 40)
                 throw std::invalid_argument("Invalid SHA-1 hex digest length");
@@ -41,7 +71,7 @@ public:
             high2 = std::stoull(hex_digest.substr(16, 16), nullptr, 16);
             low = static_cast<uint32_t>(std::stoul(hex_digest.substr(32, 8), nullptr, 16));
         }
-        constexpr Value(const char* str, std::size_t len)
+        constexpr Digest(const char* str, std::size_t len)
             : high1(0)
             , high2(0)
             , low(0)
@@ -61,7 +91,7 @@ public:
             oss << std::setw(8) << low;
             return oss.str();
         }
-        friend std::ostream& operator<<(std::ostream& os, const Value& sha1)
+        friend std::ostream& operator<<(std::ostream& os, const Digest& sha1)
         {
             os << sha1.to_hex();
             return os;
@@ -69,19 +99,20 @@ public:
         constexpr uint64_t getHigh1() const { return high1; }
         constexpr uint64_t getHigh2() const { return high2; }
         constexpr uint32_t getLow() const { return low; }
-        bool operator<(const Value& other) const {
+        bool operator<(const Digest& other) const {
             if (high1 != other.high1)
                 return high1 < other.high1;
             if (high2 != other.high2)
                 return high2 < other.high2;
             return low < other.low;
         }
-        bool operator==(const Value& other) const {
+        bool operator==(const Digest& other) const {
             return high1 == other.high1 && high2 == other.high2 && low == other.low;
         }
-        bool operator!=(const Value& other) const {
+        bool operator!=(const Digest& other) const {
             return !(*this == other);
         }
+        explicit operator bool() const { return high1 != 0 && high2 != 0 && low != 0; }
 
     private:
         static constexpr uint8_t hex_char_to_value(char c)
@@ -297,6 +328,10 @@ public:
             add_byte_dont_count_bits(n_bits >> j * 8);
         return *this;
     }
+    explicit operator Digest() const
+    {
+        return {static_cast<uint64_t>(state[0]) << 32u | state[1], static_cast<uint64_t>(state[2]) << 32u | state[3], state[4] };
+    }
     const Sha1& print_hex(char* hex, bool zero_terminate = true, const char* alphabet = "0123456789abcdef") const
     {
         int k = 0;
@@ -309,7 +344,6 @@ public:
             hex[k] = '\0';
         return *this;
     }
-
     const Sha1& print_base64(char* base64, bool zero_terminate = true) const
     {
         static const auto *table = reinterpret_cast<const uint8_t*>(
@@ -341,12 +375,12 @@ public:
 };
 
 
-constexpr Sha1::Value operator"" _sha1(const char* str, std::size_t len) { return {str, len}; }
+constexpr Sha1::Digest operator"" _sha1(const char* str, std::size_t len) { return {str, len}; }
 
 template <>
-struct std::hash<Sha1::Value>
+struct std::hash<Sha1::Digest>
 {
-    std::size_t operator()(const Sha1::Value& sha1) const noexcept
+    std::size_t operator()(const Sha1::Digest& sha1) const noexcept
     {
         const std::size_t h1 = std::hash<uint64_t>{}(sha1.getHigh1());
         const std::size_t h2 = std::hash<uint64_t>{}(sha1.getHigh2());
@@ -357,3 +391,5 @@ struct std::hash<Sha1::Value>
         return seed;
     }
 };
+
+#endif

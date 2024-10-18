@@ -27,7 +27,7 @@
 
 #include <emulation/properties.hpp>
 #include <nlohmann/json_fwd.hpp>
-
+#include <sha1/sha1.hpp>
 #include <map>
 #include <string>
 
@@ -39,10 +39,12 @@ struct CadmiumConfiguration
     std::string workingDirectory;
     std::string databaseDirectory;
     emu::Properties emuProperties;
-    std::map<std::string,emu::Properties> romConfigs;
+    std::map<Sha1::Digest,emu::Properties> romConfigs;
     bool load(const std::string& filepath);
     bool save(const std::string& filepath);
 };
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc);
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc);
+void to_json(nlohmann::json& j, const Sha1::Digest& d);
+void from_json(const nlohmann::json& j, Sha1::Digest& d);
