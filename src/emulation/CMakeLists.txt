@@ -18,8 +18,10 @@ set(CHIP8_EMU_SOURCE
     cosmacvip.hpp
     eti660.cpp
     eti660.hpp
-    #dream6800.cpp
-    #dream6800.hpp
+    datavariants.cpp
+    datavariants.hpp
+    dream6800.cpp
+    dream6800.hpp
     emulatorhost.hpp
     hardware/cdp186x.cpp
     hardware/cdp186x.hpp

@@ -763,12 +763,12 @@ void Chip8GenericEmulator::executeFrame()
         handleTimer();
         auto start = std::chrono::steady_clock::now();
         do {
-            executeInstructions(487);
+            executeInstructions(4870);
         }
 #ifdef PLATFORM_WEB
         while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 12);
 #else
-        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 15);
+        while(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 16);
 #endif
     }
     else {

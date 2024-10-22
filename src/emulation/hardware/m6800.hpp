@@ -137,6 +137,7 @@ public:
     virtual void dummyRead(word_t addr) const {}
     virtual byte_t readDebugByte(word_t addr) const { return readByte(addr); }
     virtual void writeByte(word_t addr, byte_t val) = 0;
+    virtual const byte_t* getRamPage(word_t addr, uint16_t pageSize) const { return nullptr; }
 };
 
 struct M6800State
@@ -221,7 +222,6 @@ public:
         : _bus(bus)
 #endif
     {
-        M6800::reset();
     }
 
     void reset() override
@@ -506,9 +506,13 @@ public:
     {
         return _bus.readDebugByte(addr);
     }
-    unsigned stackSize() const override { return 0; }
+    unsigned stackSize() const override { return 16; }
     StackContent stack() const override
     {
+        auto page = _bus.getRamPage(_rSP, 32);
+        if(page) {
+            return {2, eBIG, eDOWNWARDS, std::span(page, 32)};
+        }
         return {};
     }
     bool inErrorState() const override { return _cpuState == eERROR; }

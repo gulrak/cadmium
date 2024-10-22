@@ -48,6 +48,9 @@ static const std::string PROP_RAM = "Memory";
 static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_ROM_NAME = "ROM Name";
+static const std::string PROP_START_ADDRESS = "Start Address";
+
+enum class DreamVideoType { TTL };
 
 struct Dream6800Options
 {
@@ -60,9 +63,7 @@ struct Dream6800Options
         result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
         result[PROP_CLEAN_RAM].setBool(cleanRam);
         result[PROP_VIDEO].setSelectedIndex(toType(videoType));
-        result[PROP_AUDIO].setSelectedIndex(toType(audioType));
-        result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
-        result[PROP_ROM_NAME].setString(romName);
+        result[PROP_ROM_NAME].setSelectedText(romName);
         //result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
         result[PROP_START_ADDRESS].setInt(startAddress);
         result.palette() = palette;
@@ -76,10 +77,8 @@ struct Dream6800Options
         opts.clockFrequency = props[PROP_CLOCK].getInt();
         opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
         opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
-        opts.videoType = static_cast<ETIVideoType>(props[PROP_VIDEO].getSelectedIndex());
-        opts.audioType = static_cast<ETIAudioType>(props[PROP_AUDIO].getSelectedIndex());
-        opts.keyboard = static_cast<ETIKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
-        opts.romName = props[PROP_ROM_NAME].getString();
+        opts.videoType = static_cast<DreamVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        opts.romName = props[PROP_ROM_NAME].getSelectedText();
         //opts.interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
         opts.startAddress = props[PROP_START_ADDRESS].getInt();
         opts.palette = props.palette();
@@ -91,15 +90,12 @@ struct Dream6800Options
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
             prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
-            prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1773448, 100000, 500'000'000}, "Clock frequency, default is 1773448", eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"3072"s}, "Size of ram in bytes", eWritable});
+            prototype.registerProperty({PROP_CPU, "M6800"s, "CPU type (currently only M6800)"});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1000000, 100000, 500'000'000}, "Clock frequency, default is 1000000", eWritable});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", eWritable});
             prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
-            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
-            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});
-            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"ETI660 Hex", "ETI660 2-ROW", "VIP Hex"}, "Keyboard type, default is ETI660 hex"});
-            prototype.registerProperty({"", nullptr, ""});
-            prototype.registerProperty({PROP_ROM_NAME, "C8-MONITOR"s, "Rom image name, default c8-monitor"});
+            prototype.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}, "Video hardware, only TTL"});
+            prototype.registerProperty({PROP_ROM_NAME, Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", eWritable});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
             prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
         }
@@ -110,41 +106,87 @@ struct Dream6800Options
     size_t ramSize;
     bool cleanRam;
     bool traceLog;
-    ETIVideoType videoType;
-    ETIAudioType audioType;
-    ETIKeyboard keyboard;
+    DreamVideoType videoType;
     std::string romName;
     uint16_t startAddress;
-    Palette palette;ip
+    Palette palette;
 };
 
+
+struct Dream6800SetupInfo {
+    const char* presetName;
+    const char* description;
+    const char* defaultExtensions;
+    chip8::VariantSet supportedChip8Variants{chip8::Variant::NONE};
+    Dream6800Options options;
+};
+
+// clang-format off
+static Dream6800SetupInfo dreamPresets[] = {
+    {
+        "NONE",
+        "Raw DREAM6800",
+        ".bin;.hex;.ram;.raw",
+        chip8::Variant::CHIP_8_D6800,
+        { .cpuType = "M6800", .clockFrequency = 1000000, .ramSize = 2048, .cleanRam = false, .traceLog = false, .videoType = DreamVideoType::TTL, .romName = "CHIPOS", .startAddress = 0 }
+    },
+    {
+        "CHIP-8",
+        "CHIP-8 DREAM6800",
+        ".bin;.hex;.ram;.raw",
+        chip8::Variant::CHIP_8_D6800,
+        { .cpuType = "M6800", .clockFrequency = 1000000, .ramSize = 4096, .cleanRam = false, .traceLog = false, .videoType = DreamVideoType::TTL, .romName = "CHIPOS", .startAddress = 0x200 }
+    },
+    {
+        "CHIP-8-LOP",
+        "CHIP-8 with logical operators on DREAM6800",
+        ".bin;.hex;.ram;.raw",
+        chip8::Variant::CHIP_8_D6800_LOP,
+        { .cpuType = "M6800", .clockFrequency = 1000000, .ramSize = 4096, .cleanRam = false, .traceLog = false, .videoType = DreamVideoType::TTL, .romName = "CHIPOSLO", .startAddress = 0x200 }
+    }
+};
+// clang-format on
+
+struct Dream6800FactoryInfo final : public CoreRegistry::FactoryInfo<Dream6800, Dream6800SetupInfo, Dream6800Options>
+{
+    explicit Dream6800FactoryInfo(const char* description)
+        : FactoryInfo(200, dreamPresets, description)
+    {}
+    std::string prefix() const override
+    {
+        return "DREAM";
+    }
+    VariantIndex variantIndex(const Properties& props) const override
+    {
+        auto idx = 0u;
+        auto startAddress = props[PROP_START_ADDRESS].getInt();
+        auto rom = props[PROP_ROM_NAME].getSelectedText();
+        if(startAddress != 0x200)
+            idx = 0;
+        else
+            idx = rom == "CHIPOS" ? 1 : 2;
+        return {idx, dreamPresets[idx].options.asProperties() == props};
+    }
+};
+
+static bool registeredDream6800 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<Dream6800FactoryInfo>("Hardware emulation of a DREAM6800"));
 
 class Dream6800::Private {
 public:
     static constexpr uint16_t FETCH_LOOP_ENTRY = 0xC00C;
-    explicit Private(EmulatorHost& host, M6800Bus<>& bus, Chip8EmulatorOptions& options)
+    explicit Private(EmulatorHost& host, M6800Bus<>& bus, Properties& props)
         : _host(host)
-        , _cpu(bus)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/
-        , _properties(options.properties)
+        , _options(Dream6800Options::fromProperties(props))
+        , _cpu(bus, _options.clockFrequency)/*, _video(Cdp186x::eCDP1861, _cpu, options)*/
+        , _properties(props)
     {
         using namespace std::string_literals;
-        if(!_properties || options.properties.propertyClass() != _properties.propertyClass()) {
-            auto& prop = Properties::getProperties("Dream6800");
-            if(!prop) {
-                prop.registerProperty({PROP_CPU, "M6800"s, ""});
-                prop.registerProperty({PROP_CLOCK, Property::Integer{(int)1000000, 100000, 20000000}, "", false});
-                prop.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "", false});
-                prop[PROP_RAM].setSelectedText(std::to_string(_memorySize));
-                prop.registerProperty({PROP_CLEAN_RAM, true, "", false});
-                prop.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}, ""});
-                prop.registerProperty({PROP_ROM_NAME, "", ""});
-            }
-            _properties = prop;
-        }
+        (void)registeredDream6800;
         _memorySize = std::stoul(_properties[PROP_RAM].getSelectedText());
         _ram.resize(_memorySize, 0);
     }
     EmulatorHost& _host;
+    Dream6800Options _options;
     uint32_t _memorySize{4096};
     CadmiumM6800 _cpu;
     MC682x _pia;
@@ -157,10 +199,9 @@ public:
     std::atomic<float> _wavePhase{0};
     std::vector<uint8_t> _ram{};
     std::array<uint8_t,1024> _rom{};
-    IChip8Emulator::VideoType _screen;
+    VideoType _screen;
     Properties& _properties;
 };
-
 
 static const uint8_t dream6800Rom[] = {
     // Copyright (c) 1978, Michael J. Bauer
@@ -244,20 +285,17 @@ static const uint8_t dream6800ChipOslo[] = {
     0x39, 0x7a, 0x00, 0x20, 0x7a, 0x00, 0x21, 0x7d, 0x80, 0x12, 0x3b, 0xde, 0x00, 0x6e, 0x00, 0x00, 0xc3, 0xf3, 0x00, 0x80, 0x00, 0x83, 0xc3, 0x60
 };
 
-Dream6800::Dream6800(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other)
+Dream6800::Dream6800(EmulatorHost& host, Properties& props, IChip8Emulator* other)
     : Chip8RealCoreBase(host)
-    , _impl(new Private(host, *this, options))
-    , _options(options)
+    , _impl(new Private(host, *this, props))
 {
-    if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo") {
+    if(_impl->_options.romName == "CHIPOSLO") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-        _impl->_properties[PROP_ROM_NAME].setString("CHIPOSLO");
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800ChipOslo, sizeof(dream6800ChipOslo)).substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800ChipOslo, 512).to_hex().substr(0,8)));
     }
     else {
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
-        _impl->_properties[PROP_ROM_NAME].setString("CHIPOS");
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800Rom, sizeof(dream6800Rom)).substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800Rom, 512).to_hex().substr(0,8)));
     }
     _impl->_pia.irqAOutputHandler = [this](bool level) {
         if(!level)
@@ -296,6 +334,7 @@ Dream6800::Dream6800(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Em
     };
     Dream6800::reset();
     if(other) {
+        /*
         std::memcpy(_impl->_ram.data() + 0x200, other->memory() + 0x200, std::min(_impl->_ram.size() - 0x200, (size_t)other->memSize()));
         for(size_t i = 0; i < 16; ++i) {
             _state.v[i] = other->getV(i);
@@ -307,6 +346,7 @@ Dream6800::Dream6800(EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Em
         _state.st = other->soundTimer();
         std::memcpy(_state.s.data(), other->stackElements(), stackSize() * sizeof(uint16_t));
         forceState();
+        */
     }
 }
 
@@ -317,7 +357,7 @@ Dream6800::~Dream6800()
 
 void Dream6800::reset()
 {
-    if(_options.optTraceLog)
+    if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
     if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
         std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
@@ -347,13 +387,22 @@ void Dream6800::reset()
     _cpuState = eNORMAL;
     while(!executeM6800() || getPC() != 0x200); // fast-forward to fetch/decode loop
     setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
-    if(_options.optTraceLog)
+    if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.cycles(), frameCycle()).c_str());
 }
 
 std::string Dream6800::name() const
 {
     return "DREAM6800";
+}
+
+bool Dream6800::updateProperties(Properties& props, Property& changed)
+{
+    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+        _impl->_options = Dream6800Options::fromProperties(props);
+        return false;
+    }
+    return true;
 }
 
 Properties& Dream6800::getProperties()
@@ -364,6 +413,93 @@ Properties& Dream6800::getProperties()
 void Dream6800::updateProperties(Property& changedProp)
 {
 
+}
+
+int64_t Dream6800::frames() const
+{
+    return _frames;
+}
+
+unsigned Dream6800::stackSize() const
+{
+    return 16;
+}
+
+GenericCpu::StackContent Dream6800::stack() const
+{
+    return {2, eNATIVE, eUPWARDS, std::span(reinterpret_cast<const uint8_t*>(_state.s.data()), reinterpret_cast<const uint8_t*>(_state.s.data() + _state.s.size()))};
+}
+
+size_t Dream6800::numberOfExecutionUnits() const
+{
+    return _impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096 ? 1 : 2;
+}
+
+GenericCpu* Dream6800::executionUnit(size_t index)
+{
+    if(index >= numberOfExecutionUnits())
+        return nullptr;
+    if(_impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096) {
+        return &_impl->_cpu;
+    }
+    return index == 0 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
+}
+
+void Dream6800::setFocussedExecutionUnit(GenericCpu* unit)
+{
+    _execChip8 = !(_impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096) && dynamic_cast<IChip8Emulator*>(unit);
+}
+
+GenericCpu* Dream6800::focussedExecutionUnit()
+{
+    return _execChip8 ? static_cast<GenericCpu*>(this) :  static_cast<GenericCpu*>(&_impl->_cpu);
+}
+
+bool Dream6800::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
+{
+    auto offset = loadAddress ? *loadAddress : 0x200; //_impl->_options.startAddress;
+    if(offset < _impl->_options.ramSize) {
+        auto size = std::min(_impl->_options.ramSize - offset, data.size());
+        std::memcpy(_impl->_ram.data() + offset, data.data(), size);
+        return true;
+    }
+    return false;
+}
+
+emu::GenericCpu::ExecMode Dream6800::execMode() const
+{
+    auto backendMode = _impl->_cpu.execMode();
+    if(backendMode == ePAUSED || _execMode == ePAUSED)
+        return ePAUSED;
+    if(backendMode == eRUNNING)
+        return _execMode;
+    return backendMode;
+}
+
+void Dream6800::setExecMode(ExecMode mode)
+{
+    if(_execChip8) {
+        if(mode == ePAUSED) {
+            if(_execMode != ePAUSED)
+                _backendStopped = false;
+            GenericCpu::setExecMode(ePAUSED);
+            getBackendCpu().setExecMode(ePAUSED);
+        }
+        else {
+            GenericCpu::setExecMode(mode);
+            getBackendCpu().setExecMode(eRUNNING);
+        }
+    }
+    else {
+        if(mode == ePAUSED) {
+            GenericCpu::setExecMode(ePAUSED);
+            getBackendCpu().setExecMode(ePAUSED);
+        }
+        else {
+            GenericCpu::setExecMode(eRUNNING);
+            getBackendCpu().setExecMode(mode);
+        }
+    }
 }
 
 void Dream6800::fetchState()
@@ -432,16 +568,17 @@ void Dream6800::flushScreen()
             }
         }
     }
+    ++_frames;
 }
 
 bool Dream6800::executeM6800()
 {
     static int lastFC = 0;
     auto fc = executeVDG();
-    if(_options.optTraceLog  && _impl->_cpu.getCpuState() == CadmiumM6800::eNORMAL)
+    if(_impl->_options.traceLog  && _impl->_cpu.getCpuState() == CadmiumM6800::eNORMAL)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, fc}, fmt::format("{:28} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpRegisterState()).c_str());
     if(_impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
-        if(_options.optTraceLog)
+        if(_impl->_options.traceLog)
             Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
     }
     _impl->_cpu.executeInstruction();
@@ -479,15 +616,16 @@ bool Dream6800::executeM6800()
     return false;
 }
 
-void Dream6800::executeInstruction()
+int Dream6800::executeInstruction()
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {
         setExecMode(ePAUSED);
-        return;
+        return 0;
     }
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
     auto start = _impl->_cpu.cycles();
     while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < 19968*0x30);
+    return static_cast<int>(_impl->_cpu.cycles() - start);
 }
 
 void Dream6800::executeInstructions(int numInstructions)
@@ -578,7 +716,7 @@ void Dream6800::renderAudio(int16_t* samples, size_t frames, int sampleFrequency
     }
     else {
         // Default is silence
-        IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+        IEmulationCore::renderAudio(samples, frames, sampleFrequency);
     }
 }
 
@@ -602,7 +740,7 @@ uint16_t Dream6800::getMaxScreenHeight() const
     return 128;
 }
 
-const IChip8Emulator::VideoType* Dream6800::getScreen() const
+const VideoType* Dream6800::getScreen() const
 {
     return &_impl->_screen;
 }
@@ -642,14 +780,17 @@ uint8_t Dream6800::readMemoryByte(uint32_t addr) const
 
 void Dream6800::writeByte(uint16_t addr, uint8_t val)
 {
-    if(addr < _impl->_ram.size())
+    if (addr < _impl->_ram.size())
         _impl->_ram[addr] = val;
-    else if(addr >= 0x8010 && addr < 0x8020)
+    else if (addr >= 0x8010 && addr < 0x8020)
         _impl->_pia.writeByte(addr & 3, val);
     else {
         _cpuState = eERROR;
     }
 }
-
+const uint8_t* Dream6800::getRamPage(uint16_t addr, uint16_t pageSize) const
+{
+    return addr < _impl->_ram.size() ? &_impl->_ram[addr & ~(pageSize-1)] : nullptr;
+}
 
 }

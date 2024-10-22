@@ -61,6 +61,7 @@ public:
     {
         return const_cast<Chip8RealCoreBase*>(this)->getBackendCpu();
     }
+    IChip8Emulator* chip8Core() override { return this; }
 
     virtual Properties& getProperties() = 0;
     virtual void updateProperties(Property& changedProp) = 0;
@@ -103,17 +104,17 @@ public:
         return 21;
     }
 
-    GenericCpu::RegisterValue registerbyIndex(size_t index) const override
+    RegisterValue registerbyIndex(size_t index) const override
     {
         if(index < 16)
             return {_state.v[index], 8};
         if(index == 16)
             return {(uint32_t)_state.i, 16};
-        else if(index == 17)
+        if(index == 17)
             return {(uint32_t)_state.dt, 8};
-        else if(index == 18)
+        if(index == 18)
             return {(uint32_t)_state.st, 8};
-        else if(index == 19)
+        if(index == 19)
             return {(uint32_t)_state.pc, 16};
         return {(uint32_t)_state.sp, 8};
     }

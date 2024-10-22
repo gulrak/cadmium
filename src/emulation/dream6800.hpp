@@ -69,6 +69,7 @@ public:
     int memSize() const override;
     unsigned stackSize() const override;
     StackContent stack() const override;
+    uint8_t soundTimer() const override;
 
     int64_t frames() const override;
 
@@ -89,6 +90,7 @@ public:
     uint8_t readDebugByte(uint16_t addr) const override;
     uint8_t readMemoryByte(uint32_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
+    const uint8_t* getRamPage(uint16_t addr, uint16_t pageSize) const override;
 
     GenericCpu& getBackendCpu() override;
 

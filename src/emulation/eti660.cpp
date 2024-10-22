@@ -142,7 +142,7 @@ struct Eti660SetupInfo {
 };
 
 // clang-format off
-static Eti660SetupInfo vipPresets[] = {
+static Eti660SetupInfo etiPresets[] = {
     {
         "NONE",
         "Raw ETI660",
@@ -156,7 +156,7 @@ static Eti660SetupInfo vipPresets[] = {
 struct Eti660FactoryInfo final : public CoreRegistry::FactoryInfo<Eti660, Eti660SetupInfo, Eti660Options>
 {
     explicit Eti660FactoryInfo(const char* description)
-        : FactoryInfo(200, vipPresets, description)
+        : FactoryInfo(300, etiPresets, description)
     {}
     std::string prefix() const override
     {
@@ -165,7 +165,7 @@ struct Eti660FactoryInfo final : public CoreRegistry::FactoryInfo<Eti660, Eti660
     VariantIndex variantIndex(const Properties& props) const override
     {
         auto idx = 0u;
-        return {idx, vipPresets[idx].options.asProperties() == props};
+        return {idx, etiPresets[idx].options.asProperties() == props};
     }
 };
 
@@ -405,7 +405,7 @@ bool Eti660::updateProperties(Properties& props, Property& changed)
         _impl->_options = Eti660Options::fromProperties(props);
         return false;
     }
-    return false;
+    return true;
 }
 
 std::string Eti660::name() const
@@ -415,7 +415,7 @@ std::string Eti660::name() const
 
 unsigned Eti660::stackSize() const
 {
-    return 24;
+    return 16;
 }
 
 GenericCpu::StackContent Eti660::stack() const

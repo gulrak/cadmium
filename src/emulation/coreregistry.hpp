@@ -279,11 +279,11 @@ public:
 
     CoreRegistry();
     const std::string& getCoresCombo() const { return coresCombo; }
-    const std::set<std::string_view>& getSupportedExtensions() const { return supportedExtensions; }
+    const std::set<std::string>& getSupportedExtensions() const { return supportedExtensions; }
 
 private:
     std::string coresCombo{};
-    std::set<std::string_view> supportedExtensions{};
+    std::set<std::string> supportedExtensions{};
     mutable std::vector<Iterator::value_type> orderedFactories;
     static FactoryMap& factoryMap();
 };

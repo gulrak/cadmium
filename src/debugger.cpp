@@ -209,7 +209,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
             Space(area.height);
             auto stack = _core->focussedExecutionUnit()->stack();
             for (int i = 0; i < _core->focussedExecutionUnit()->stackSize(); ++i) {
-                auto element = formatStackElement(stack, i, _stackBackup[0].data());
+                auto element = formatStackElement(stack, i, _stackBackup[_activeInstructionsTab].data());
                 DrawTextEx(font, TextFormat("%X:%s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
             }
         }

@@ -43,6 +43,7 @@ public:
     GenericCpu* executionUnit(size_t index) override { return this; }
     void setFocussedExecutionUnit(GenericCpu* unit) override {}
     GenericCpu* focussedExecutionUnit() override { return this; }
+    IChip8Emulator* chip8Core() override { return this; }
     void setExecMode(ExecMode mode) override { GenericCpu::setExecMode(mode); }
     ExecMode execMode() const override { return GenericCpu::execMode(); }
     int64_t cycles() const override { return _cycleCounter; }

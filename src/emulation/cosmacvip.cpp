@@ -730,7 +730,7 @@ bool CosmacVIP::updateProperties(Properties& props, Property& changed)
         _impl->_options = CosmacVIPOptions::fromProperties(props);
         return false;
     }
-    return false;
+    return true;
 }
 
 uint16_t CosmacVIP::patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size)
