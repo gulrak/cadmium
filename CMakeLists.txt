@@ -22,6 +22,10 @@ add_subdirectory(resources)
 add_subdirectory(src)
 add_subdirectory(test)
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
+#    add_subdirectory(experimental)
+endif()
+
 set(CPACK_PACKAGE_VENDOR "gulrak.net")
 set(CPACK_PACKAGE_CONTACT "s.schuemann@pobox.com")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/gulrak/cadmium")

@@ -96,65 +96,77 @@ const Cdp186x::VideoType& Cdp186x::getScreen() const
     return _screen;
 }
 
-std::pair<int,bool> Cdp186x::executeStep()
+std::pair<int, bool> Cdp186x::executeStep()
 {
     auto fc = static_cast<int>((_cpu.cycles() >> 3) % VIDEO_CYCLES_PER_FRAME);
     bool vsync = false;
-    if(fc < _frameCycle) {
+    if (fc < _frameCycle) {
         vsync = true;
         ++_frameCounter;
     }
     _frameCycle = fc;
     auto lineCycle = _frameCycle % 14;
-    if(_traceLog) {
+    if (_traceLog) {
         if (vsync)
             Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- VSYNC ---", _cpu.dumpStateLine()).c_str());
         else if (lineCycle == 0)
             Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- HSYNC ---", _cpu.dumpStateLine()).c_str());
     }
-    if(_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
-        return {_frameCycle,vsync};
-    if(_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
+    if (_frameCycle > VIDEO_FIRST_INVISIBLE_LINE * 14 || _frameCycle < (VIDEO_FIRST_VISIBLE_LINE - 2) * 14)
+        return {_frameCycle, vsync};
+    if (_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
         _displayEnabledLatch = _displayEnabled;
-        if(_displayEnabled) {
+        if (_displayEnabled) {
             if (_traceLog)
                 Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
             _cpu.triggerInterrupt();
         }
     }
-    else if(_frameCycle >= VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle < VIDEO_FIRST_INVISIBLE_LINE * 14) {
+    else if (_frameCycle >= VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle < VIDEO_FIRST_INVISIBLE_LINE * 14) {
         auto line = _frameCycle / 14;
-        if(lineCycle == 4 || lineCycle == 5) {
+        if (lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
             auto highBits = 0;
             auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0xFF : 0xE7) : 0;
-            if(_subMode == eVP590_DEFAULT)
+            if (_subMode == eVP590_DEFAULT)
                 highBits = 7;
             for (int i = 0; i < 8; ++i) {
                 auto [data, addr] = _displayEnabledLatch ? _cpu.executeDMAOut() : std::make_pair((uint8_t)0, (uint16_t)0);
-                if(mask)
+                if (mask)
                     highBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
-                //std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
+                /*if (_traceLog) {
+                    if (mask)
+                        Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits).c_str());
+                    else
+                        Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:04x} = {:02x}", addr, data).c_str());
+                }*/
+                // std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
                 auto y = (line - VIDEO_FIRST_VISIBLE_LINE);
                 auto x = 0;
-                if(_type == eCDP1861_C10) {
-                    if(y & 1) x = 64;
+                if (_type == eCDP1861_C10) {
+                    if (y & 1)
+                        x = 64;
                     y >>= 1;
                 }
                 for (int j = 0; j < 8; ++j) {
                     _screen.setPixel(x + i * 8 + j, y, highBits | ((data >> (7 - j)) & 1));
-                    if(_type == eCDP1861_C10 && y == 63) {
+                    if (_type == eCDP1861_C10 && y == 63) {
                         _screen.setPixel(x + i * 8 + j, 0, highBits | ((data >> (7 - j)) & 1));
                     }
                 }
             }
             if (_displayEnabledLatch) {
-                if(_traceLog)
+                if (_traceLog)
                     Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("DMA: line {:03d} 0x{:04x}-0x{:04x}", line, dmaStart, _cpu.getR(0) - 1).c_str());
             }
         }
     }
     return {(_cpu.cycles() >> 3) % VIDEO_CYCLES_PER_FRAME, vsync};
+}
+
+void Cdp186x::setTrace(bool traceLog)
+{
+    _traceLog = traceLog;
 }
 
 void Cdp186x::incrementBackground()

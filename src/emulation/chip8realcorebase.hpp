@@ -64,7 +64,6 @@ public:
     IChip8Emulator* chip8Core() override { return this; }
 
     virtual Properties& getProperties() = 0;
-    virtual void updateProperties(Property& changedProp) = 0;
 
     std::string dumpStateLine() const override {
         uint16_t op = (readMemoryByte(getPC())<<8)|readMemoryByte(getPC() + 1);

@@ -517,11 +517,6 @@ Properties& Eti660::getProperties()
     return _impl->_properties;
 }
 
-void Eti660::updateProperties(Property& changedProp)
-{
-
-}
-
 void Eti660::fetchState()
 {
     _state.cycles = _cycles;

@@ -177,11 +177,18 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
     // TODO: Fix this
     if(_previousProperties != properties || !_chipEmu) {
 
-        if(&properties != &_properties) {
-            _properties = properties;
+        if(&properties != _properties) {
+            if(!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
+                auto pIter = _propertiesByClass.find(properties.propertyClass());
+                if(pIter == _propertiesByClass.end()) {
+                    pIter = _propertiesByClass.emplace(properties.propertyClass(), properties).first;
+                }
+                _properties = &pIter->second;
+            }
+            *_properties = properties;
         }
         _previousProperties = properties;
-        _chipEmu = create(_properties, _chipEmu.get());
+        _chipEmu = create(*_properties, _chipEmu.get());
         if(_chipEmu->getScreen())
             (void)_chipEmu->getScreen();
         whenEmuChanged(*_chipEmu);
@@ -272,7 +279,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         source.assign((const char*)fileData.data(), fileData.size());
         if(c8c->compile(filename).resultType == emu::CompileResult::eOK)
         {
-            auto startAddress = _properties.get<Property::Integer>("startAddress");
+            auto startAddress = _properties->get<Property::Integer>("startAddress");
             auto loadAddress = startAddress ? startAddress->intValue : 0;
             if(c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
                 romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
@@ -333,7 +340,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             //TraceLog(LOG_INFO, "Setting variant.");
             //decomp.setVariant(Chip8Variant::CHIP_8, true);
             //TraceLog(LOG_INFO, "About to decompile...");
-            auto startAddress = _properties.get<Property::Integer>("startAddress");
+            auto startAddress = _properties->get<Property::Integer>("startAddress");
             auto loadAddress = startAddress ? startAddress->intValue : 0;
             decomp.decompile(filename, _romImage.data(), loadAddress, _romImage.size(), loadAddress, &os, false, true);
             source = os.str();

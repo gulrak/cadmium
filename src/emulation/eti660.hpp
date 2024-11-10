@@ -93,7 +93,6 @@ public:
     GenericCpu& getBackendCpu() override;
 
     Properties& getProperties() override;
-    void updateProperties(Property& changedProp) override;
 
 private:
     int frameCycle() const;

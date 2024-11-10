@@ -475,7 +475,7 @@ void Chip8GenericEmulator::reset()
     else if(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP) {
         _mcPalette.fill(0x00);
         _mcPalette[1] = 0xffffffff;
-        _mcPalette[254] = 0xffffffff;
+        _mcPalette[255] = 0xffffffff;
     }
 }
 
@@ -1250,7 +1250,7 @@ void Chip8GenericEmulator::op02nn(uint16_t opcode)
 {
     auto numCols = opcode & 0xFF;
     std::vector<uint32_t> cols;
-    cols.reserve(255);
+    cols.reserve(256);
     size_t address = _rI;
     for(size_t i = 0; i < numCols; ++i) {
         auto a = _memory[address++ & ADDRESS_MASK];
@@ -1758,7 +1758,7 @@ void Chip8GenericEmulator::opDxyn_megaChip(uint16_t opcode)
                             *pixelBuffer32 = 0;
                         }
                         else {
-                            *pixelBuffer = 254;
+                            *pixelBuffer = 255;
                             *pixelBuffer32 = 0xffffffff;
                         }
                     }

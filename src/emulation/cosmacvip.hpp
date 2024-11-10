@@ -107,7 +107,6 @@ public:
     GenericCpu& getBackendCpu() override;
 
     Properties& getProperties() override;
-    void updateProperties(Property& changedProp) override;
 
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 

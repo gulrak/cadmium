@@ -21,6 +21,7 @@ static const std::string PROP_CLOCK = "Clock Rate";
 static const std::string PROP_RAM = "Memory";
 static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_VIDEO = "Video";
+static const std::string PROP_TRACE_VIDEO = "Trace Video";
 static const std::string PROP_AUDIO = "Audio";
 static const std::string PROP_KEYBOARD = "Keyboard";
 static const std::string PROP_ROM_NAME = "ROM Name";
@@ -43,6 +44,7 @@ struct CosmacVIPOptions
         result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
         result[PROP_CLEAN_RAM].setBool(cleanRam);
         result[PROP_VIDEO].setSelectedIndex(toType(videoType));
+        result[PROP_TRACE_VIDEO].setBool(traceVideo);
         result[PROP_AUDIO].setSelectedIndex(toType(audioType));
         result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
         result[PROP_ROM_NAME].setString(romName);
@@ -60,6 +62,7 @@ struct CosmacVIPOptions
         opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
         opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
         opts.videoType = static_cast<VIPVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        opts.traceVideo = props[PROP_TRACE_VIDEO].getBool();
         opts.audioType = static_cast<VIPAudioType>(props[PROP_AUDIO].getSelectedIndex());
         opts.keyboard = static_cast<VIPKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
         opts.romName = props[PROP_ROM_NAME].getString();
@@ -79,6 +82,7 @@ struct CosmacVIPOptions
             prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", eWritable});
             prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
             prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "CDP1864"}, "Video hardware, default cdp1861"});
+            prototype.registerProperty({PROP_TRACE_VIDEO, false, "Insert video events into trace log", eWritable});
             prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
             prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
             prototype.registerProperty({"", nullptr, ""});
@@ -93,6 +97,7 @@ struct CosmacVIPOptions
     size_t ramSize;
     bool cleanRam;
     bool traceLog;
+    bool traceVideo;
     VIPVideoType videoType;
     VIPAudioType audioType;
     VIPKeyboard keyboard;
@@ -212,7 +217,7 @@ public:
         , _properties(properties)
         , _options(CosmacVIPOptions::fromProperties(properties))
         , _cpu(bus, CPU_CLOCK_FREQUENCY)
-        , _video(_options.videoType == VVT_CDP1861 ? Cdp186x::eCDP1861 : _options.videoType == VVT_CDP1861_C10_HIRES ? Cdp186x::eCDP1861_C10 : Cdp186x::eVP590, _cpu, false)
+        , _video(_options.videoType == VVT_CDP1861 ? Cdp186x::eCDP1861 : _options.videoType == VVT_CDP1861_C10_HIRES ? Cdp186x::eCDP1861_C10 : Cdp186x::eVP590, _cpu, _options.traceVideo)
     {
         using namespace std::string_literals;
         (void)registeredVIP;
@@ -220,7 +225,7 @@ public:
             _colorRamMask = 0x3ff;
             _colorRamMaskLores = 0x3e7;
         }
-        _properties = _options.asProperties();
+        //_properties = _options.asProperties();
         _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_rom_cvip, 512).to_hex().substr(0,8)));
         _memorySize = _options.ramSize;
         _ram.resize(_options.ramSize, 0);
@@ -726,8 +731,9 @@ void CosmacVIP::reset()
 
 bool CosmacVIP::updateProperties(Properties& props, Property& changed)
 {
-    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "Trace Video", "Clock Rate", "FrameRate"})) {
         _impl->_options = CosmacVIPOptions::fromProperties(props);
+        _impl->_video.setTrace(_impl->_options.traceLog);
         return false;
     }
     return true;
@@ -859,11 +865,6 @@ Properties& CosmacVIP::getProperties()
     return _impl->_properties;
 }
 
-void CosmacVIP::updateProperties(Property& changedProp)
-{
-
-}
-
 void CosmacVIP::fetchState()
 {
     _state.cycles = _cycles;
@@ -925,13 +926,13 @@ bool CosmacVIP::executeCdp1802()
     if(vsync)
         _host.vblank();
     if(_impl->_options.traceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
-        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
+        Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_impl->_video.frames(), fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
     if(_isHybridChipMode && _impl->_cpu.PC() == _impl->_fetchEntry) {
         _cycles++;
         //std::cout << fmt::format("{:06d}:{:04x}", _impl->_cpu.getCycles()>>3, opcode()) << std::endl;
         _impl->_currentOpcode = opcode();
         if(_impl->_options.traceLog)
-            Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
+            Logger::log(Logger::eCHIP8, _cycles, {_impl->_video.frames(), fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
     }
     _impl->_cpu.executeInstruction();
     if(_isHybridChipMode && _impl->_cpu.PC() == _impl->_fetchEntry) {

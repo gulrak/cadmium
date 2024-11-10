@@ -51,6 +51,7 @@ public:
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }
     void setSubMode(SubMode subMode) { _subMode = subMode; }
+    void setTrace(bool traceLog);
     void incrementBackground();
     int frames() const { return _frameCounter; }
     int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }

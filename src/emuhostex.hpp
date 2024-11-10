@@ -96,7 +96,8 @@ protected:
     bool _customPalette{false};
     std::array<uint32_t, 256> _colorPalette{};
     std::array<uint32_t, 256> _defaultPalette{};
-    emu::Properties _properties;
+    emu::Properties* _properties{nullptr};
+    std::map<std::string, Properties> _propertiesByClass;
     std::string _variantName;
     emu::Properties _romWellKnownProperties;
     emu::Properties _previousProperties;
@@ -110,7 +111,7 @@ public:
     HeadlessHost() : EmuHostEx(_cfg) {}
     explicit HeadlessHost(const Properties& options) : EmuHostEx(_cfg) { updateEmulatorOptions(options); }
     ~HeadlessHost() override = default;
-    Properties& getProperties() { return _properties; }
+    Properties& getProperties() { return *_properties; }
     IEmulationCore& emuCore() { return *_chipEmu; }
     bool isHeadless() const override { return true; }
     int getKeyPressed() override { return 0; }

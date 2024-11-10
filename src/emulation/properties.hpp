@@ -236,9 +236,20 @@ public:
     Properties& operator=(const Properties& other)
     {
         if(&other != this) {
-            _class = other._class;
-            _valueList = other._valueList;
-            _valueMap = other._valueMap;
+
+            if(_class == other._class) {
+                for (auto& [key, val] : _valueMap) {
+                    auto it = other._valueMap.find(key);
+                    if (it != other._valueMap.end()) {
+                        val = it->second;
+                    }
+                }
+            }
+            else {
+                _class = other._class;
+                _valueList = other._valueList;
+                _valueMap = other._valueMap;
+            }
         }
         return *this;
     }

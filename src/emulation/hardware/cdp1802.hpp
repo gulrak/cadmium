@@ -253,8 +253,8 @@ public:
 
     std::string dumpStateLine() const
     {
-        return fmt::format("R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} D:{:02x} DF:{} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} PC:{:04x} O:{:02x} EF:{}{}{}{}", getR(0), getR(1), getR(2),
-                           getR(3), getR(4), getR(5), getR(6), getR(7), getR(8), getR(9), getR(10), getR(11), getR(12), getR(13), getR(14), getR(15), _rD, _rDF?1:0, _rP, _rX, _rN, _rI, _rT, _rR[_rP], _bus.readByte(_rR[_rP]), _inputNEF(0)?0:1, _inputNEF(1)?0:1, _inputNEF(2)?0:1, _inputNEF(3)?0:1);
+        return fmt::format("R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} D:{:02x} DF:{} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} PC:{:04x} O:{:02x} EF:{}{}{}{} Q:{}", getR(0), getR(1), getR(2),
+                           getR(3), getR(4), getR(5), getR(6), getR(7), getR(8), getR(9), getR(10), getR(11), getR(12), getR(13), getR(14), getR(15), _rD, _rDF?1:0, _rP, _rX, _rN, _rI, _rT, _rR[_rP], _bus.readByte(_rR[_rP]), _inputNEF(0)?0:1, _inputNEF(1)?0:1, _inputNEF(2)?0:1, _inputNEF(3)?0:1, _rQ?1:0);
     }
 
     static Disassembled disassembleInstruction(const uint8_t* code, const uint8_t* end)
@@ -586,7 +586,7 @@ public:
                 branchLong(_rQ);
                 break;
             case 0xC2: // LBZ ; IF D = 0, M(R(P)) → R(P).1, M(R(P) +1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(!_rD);
+                branchLong(_rD == 0);
                 break;
             case 0xC3: // LBDF ; IF DF = 1, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
                 branchLong(_rDF);
@@ -598,7 +598,7 @@ public:
                 skipLong(!_rQ);
                 break;
             case 0xC6: // LSNZ ; IF D Not 0, R(P) + 2 → R(P), ELSE CONTINUE
-                skipLong(_rD == 0);
+                skipLong(_rD != 0);
                 break;
             case 0xC7: // LSNF ; IF DF = 0, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rDF == 0);
@@ -607,13 +607,13 @@ public:
                 skipLong(true);
                 break;
             case 0xC9: // LBNQ ; IF Q = 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0 EISE R(P) + 2 → R(P)
-                branchLong(_rQ);
+                branchLong(!_rQ);
                 break;
             case 0xCA: // LBNZ ; IF D Not 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(_rD);
+                branchLong(_rD != 0);
                 break;
             case 0xCB: // LBNF ; IF DF = 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(_rDF);
+                branchLong(_rDF == 0);
                 break;
             case 0xCC: // LSIE ; IF IE = 1, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rIE);
@@ -622,7 +622,7 @@ public:
                 skipLong(_rQ);
                 break;
             case 0xCE: // LSZ ; IF D = 0, R(P) + 2 → R(P), ELSE CONTINUE
-                skipLong(_rD);
+                skipLong(_rD == 0);
                 break;
             case 0xCF: // LSDF ; IF DF = 1, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rDF);

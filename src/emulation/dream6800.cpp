@@ -410,11 +410,6 @@ Properties& Dream6800::getProperties()
     return _impl->_properties;
 }
 
-void Dream6800::updateProperties(Property& changedProp)
-{
-
-}
-
 int64_t Dream6800::frames() const
 {
     return _frames;

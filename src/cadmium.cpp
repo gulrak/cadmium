@@ -1297,7 +1297,7 @@ void main()
 
         updateResolution();
 
-        _librarian.update(_properties); // allows librarian to complete background tasks
+        _librarian.update(*_properties); // allows librarian to complete background tasks
 
         if (IsFileDropped()) {
             auto files = LoadDroppedFiles();
@@ -1984,8 +1984,8 @@ void main()
 
     void editPropertyCheckBox(std::string_view key, bool forceUpdate)
     {
-        if(_properties.containsFuzzy(key)) {
-            editProperty(_properties.at(key), forceUpdate);
+        if(_properties->containsFuzzy(key)) {
+            editProperty(_properties->at(key), forceUpdate);
         }
         else {
             static bool dummyBool = false;
@@ -1997,8 +1997,8 @@ void main()
 
     int editPropertySpinner(std::string_view key, bool forceUpdate, int defaultValue = 0)
     {
-        if(_properties.containsFuzzy(key)) {
-            return editProperty(_properties.at(key), forceUpdate, PA_LEFT);
+        if(_properties->containsFuzzy(key)) {
+            return editProperty(_properties->at(key), forceUpdate, PA_LEFT);
         }
         static int dummyInt = defaultValue;
         GuiDisable();
@@ -2010,12 +2010,9 @@ void main()
     void renderEmulationSettings()
     {
         using namespace gui;
-        auto oldProps = _properties;
+        auto oldProps = *_properties;
         bool forceUpdate = false;
-        static emu::Properties propsMemento;
-        auto& props = _properties;
-        if(props != propsMemento)
-            propsMemento = props;
+        auto& props = *_properties;
         BeginColumns();
         SetNextWidth(0.42f);
         BeginGroupBox("CHIP-8 variant / Core");
@@ -2026,14 +2023,16 @@ void main()
             auto preset = _cores[_behaviorSel].variantProperties(0);
             _frameBoost = 1;
             updateEmulatorOptions(preset);
+            props = *_properties;
         }
         if(DropdownBox(_cores[_behaviorSel].variantsCombo.c_str(), &_subBehaviorSel)) {
             auto preset = _cores[_behaviorSel].variantProperties(_subBehaviorSel);
             _frameBoost = 1;
             updateEmulatorOptions(preset);
+            props = *_properties;
         }
-        if(_properties.containsFuzzy("Trace-log")) {
-            editProperty(_properties.at("Trace-log"), forceUpdate, PA_LEFT);
+        if(_properties->containsFuzzy("Trace-log")) {
+            editProperty(_properties->at("Trace-log"), forceUpdate, PA_LEFT);
         }
         else {
             static bool dummyTrace = false;
@@ -2165,7 +2164,7 @@ void main()
                 ++rowCount;
             }
         }
-        auto* changedProp = props.changedProperty(propsMemento);
+        auto* changedProp = props.changedProperty(_propsMemento);
         if(changedProp) {
             // on change...
             if(_chipEmu->updateProperties(props, *changedProp)) {
@@ -2290,11 +2289,11 @@ void main()
         Space(100);
         SetNextWidth(0.21f);
         bool romRemembered = _cfg.romConfigs.contains(_romSha1);
-        if((romRemembered && _properties == _cfg.romConfigs[_romSha1]) || (_romIsWellKnown && _properties == _romWellKnownProperties)) {
+        if((romRemembered && *_properties == _cfg.romConfigs[_romSha1]) || (_romIsWellKnown && *_properties == _romWellKnownProperties)) {
             GuiDisable();
         }
         if (Button(!romRemembered ? "Remember for ROM" : "Update for ROM")) {
-            _cfg.romConfigs[_romSha1] = _properties;
+            _cfg.romConfigs[_romSha1] = *_properties;
             saveConfig();
         }
         GuiEnable();
@@ -2583,7 +2582,7 @@ void main()
                 pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
             }
             // opt.advanced["palette"] = pal;
-            _cfg.emuProperties = _properties;
+            _cfg.emuProperties = *_properties;
             _cfg.workingDirectory = _currentDirectory;
             _cfg.databaseDirectory = _databaseDirectory;
             if(!_cfg.save(_cfgPath)) {
@@ -2595,15 +2594,16 @@ void main()
 
     void updateBehaviorSelects()
     {
-        if (auto idx = _cores.classIndex(_properties); idx >= 0) {
+        if (auto idx = _cores.classIndex(*_properties); idx >= 0) {
             _behaviorSel = idx;
-            _subBehaviorSel = static_cast<int>(emu::CoreRegistry::variantIndex(_properties).index);
+            _subBehaviorSel = static_cast<int>(emu::CoreRegistry::variantIndex(*_properties).index);
         }
     }
 
     void whenEmuChanged(emu::IEmulationCore& emu) override
     {
         _debugger.updateCore(&emu);
+        _propsMemento = *_properties;
         // TODO: Fix this
         // _editor.updateCompilerOptions(_options.startAddress);
         reloadRom();
@@ -2709,6 +2709,7 @@ private:
     uint32_t _previousColor{};
     Rectangle _screenOverlay{};
     int _screenScale{1};
+    emu::Properties _propsMemento{};
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;
@@ -3189,8 +3190,6 @@ void convertKnownRomList()
 int main(int argc, char* argv[])
 {
     static emu::Properties coreProperties;
-    auto preset = emu::Chip8EmulatorOptions::eXOCHIP;
-#ifndef PLATFORM_WEB
     ghc::CLI cli(argc, argv);
     int64_t traceLines = -1;
     bool compareRun = false;
@@ -3212,10 +3211,10 @@ int main(int argc, char* argv[])
     std::string presetName;
     int64_t testSuiteMenuVal = 0;
     cli.category("General Options");
+#ifndef PLATFORM_WEB
     cli.option({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
-    cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
     cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.option({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
@@ -3226,6 +3225,13 @@ int main(int argc, char* argv[])
     cli.option({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
     cli.option({"--convert-rom-list"}, convertRomList, "Convert list of known roms (just temporary available)");
 #endif
+#else
+#ifdef WEB_WITH_FETCHING
+    std::string urlLoad;
+    cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
+#endif
+#endif
+    cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     emu::CoreRegistry reg{};
     std::string coresAvailable;
     std::string presetsDescription;
@@ -3312,11 +3318,12 @@ int main(int argc, char* argv[])
     cli.positional(romFile, fmt::format("ROM file or source to load ({})", extensions));
 
     CadmiumConfiguration config;
+#ifndef PLATFORM_WEB
     auto cfgPath = (fs::path(dataPath())/"config.json").string();
     if(config.load(cfgPath)) {
         coreProperties = config.emuProperties;
     }
-
+#endif
     try {
         cli.parse();
     }
@@ -3328,6 +3335,7 @@ int main(int argc, char* argv[])
         cli.usage();
         exit(0);
     }
+#ifndef PLATFORM_WEB
     if(convertRomList) {
         convertKnownRomList();
         exit(0);
@@ -3362,6 +3370,7 @@ int main(int argc, char* argv[])
         }
         */
     }
+#endif
     if(romFile.size() > 1) {
         std::cerr << "ERROR: only one ROM/source file supported" << std::endl;
         exit(1);
@@ -3374,6 +3383,7 @@ int main(int argc, char* argv[])
         std::cerr << "ERROR: random generator must be 'rand-lgc' or 'counting' and trace must be used." << std::endl;
         exit(1);
     }
+#ifndef PLATFORM_WEB
     //if(execSpeed >= 0) {
     //    options.instructionsPerFrame = execSpeed;
     //}
@@ -3381,15 +3391,9 @@ int main(int argc, char* argv[])
 #else
     ghc::CLI cli(argc, argv);
     std::string presetName = "schipc";
-#ifdef WEB_WITH_FETCHING
-    std::string urlLoad;
-#endif
     int64_t execSpeed = -1;
     cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
-#ifdef WEB_WITH_FETCHING
-    cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
-#endif
     try {
         cli.parse();
     }
