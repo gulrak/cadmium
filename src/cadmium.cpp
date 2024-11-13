@@ -30,9 +30,7 @@
 #include <stylemanager.hpp>
 #include "configuration.hpp"
 
-extern "C" {
 #include <raymath.h>
-};
 
 #include <date/date.h>
 #include <fmt/format.h>
@@ -504,7 +502,7 @@ public:
     using ExecMode = emu::IChip8Emulator::ExecMode;
     using CpuState = emu::IChip8Emulator::CpuState;
     enum MemFlags { eNONE = 0, eBREAKPOINT = 1, eWATCHPOINT = 2 };
-    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
+    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT, eLIBRARY };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     static constexpr int MIN_SCREEN_WIDTH = 512;
@@ -1648,6 +1646,11 @@ void main()
                     _librarian.fetchDir(_currentDirectory);
 #endif
                 }
+#ifndef PLATFORM_WEB
+                if (iconButton(ICON_NOTEBOOK, _mainView == eLIBRARY)) {
+                    _mainView = eLIBRARY;
+                }
+#endif
                 SetNextWidth(130);
                 SetStyle(TEXTBOX, BORDER_WIDTH, 1);
                 TextBox(_romName, 4095);
@@ -1704,7 +1707,7 @@ void main()
                     }
                 }
                 SetTooltip("RESTART");
-                int buttonsRight = 7;
+                int buttonsRight = 8;
                 ++buttonsRight;
                 int avail = 202;
 #ifdef RESIZABLE_GUI
@@ -1742,12 +1745,10 @@ void main()
 
                 static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
                 DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
-#ifndef RESIZABLE_GUI
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleBy2))
                     _scaleBy2 = !_scaleBy2;
                 SetTooltip("TOGGLE ZOOM    ");
-#endif
             }
             EndColumns();
 
@@ -1873,6 +1874,16 @@ void main()
                     End();
                     if (IsKeyPressed(KEY_ESCAPE))
                         _mainView = _lastView;
+                    break;
+                }
+                case eLIBRARY: {
+                    _lastView = _mainView;
+                    SetSpacing(0);
+                    Begin();
+                    BeginPanel("Library / Research");
+                    Space(_screenHeight - GetCurrentPos().y - 20 - 1);
+                    EndPanel();
+                    End();
                     break;
                 }
             }
