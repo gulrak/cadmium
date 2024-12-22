@@ -283,7 +283,7 @@ public:
 
 private:
     std::string coresCombo{};
-    std::set<std::string> supportedExtensions{};
+    static inline std::set<std::string> supportedExtensions{};
     mutable std::vector<Iterator::value_type> orderedFactories;
     static FactoryMap& factoryMap();
 };

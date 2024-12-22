@@ -32,6 +32,10 @@
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
 #include <librarian.hpp>
+#ifndef PLATFORM_WEB
+#include <threadpool.hpp>
+#include <database.hpp>
+#endif
 
 #include <array>
 #include <string>
@@ -83,11 +87,17 @@ protected:
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
     CadmiumConfiguration& _cfg;
+    CoreRegistry _cores;
     std::string _cfgPath;
     std::string _databaseDirectory;
     std::string _currentDirectory;
     std::string _currentFileName;
     Librarian _librarian;
+    std::unordered_map<std::string, std::string> _badges;
+#ifndef PLATFORM_WEB
+    ThreadPool _threadPool;
+    Database _database;
+#endif
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
     std::vector<uint8_t> _romImage;

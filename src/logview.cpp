@@ -26,7 +26,7 @@
 
 #include "logview.hpp"
 
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <ghc/utf8.hpp>
 #include <fmt/format.h>
 //#include <iostream>
@@ -51,6 +51,7 @@ LogView::~LogView()
 
 void LogView::clear()
 {
+    std::unique_lock guard(_logMutex);
     for(auto& entry : _logBuffer) {
         entry = {};
     }
@@ -62,6 +63,7 @@ void LogView::clear()
 
 void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
 {
+    std::unique_lock guard(_logMutex);
     auto& logEntry = _logBuffer[_writeIndex++];
     logEntry = {cycle, frameTime, 0, source, msg};
     if (_usedSlots < _logBuffer.size())
@@ -80,6 +82,7 @@ void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frame
 
 void LogView::draw(Font& font, Rectangle rect)
 {
+    std::unique_lock guard(_logMutex);
     using namespace gui;
     int lineNumber = int(_tosLine) - 1;
     _totalArea = rect;
@@ -112,7 +115,7 @@ Rectangle LogView::drawToolArea()
     return Rectangle();
 }
 
-void LogView::drawTextLine(Font& font, int logLine, Vector2 position, float width, int columnOffset)
+void LogView::drawTextLine(const Font& font, int logLine, Vector2 position, float width, int columnOffset)
 {
     if(logLine < _usedSlots) {
         logLine = _writeIndex - _usedSlots + logLine;

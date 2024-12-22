@@ -24,8 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include "icons.h"
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <ghc/bit.hpp>
 #include <stylemanager.hpp>
 #include "debugger.hpp"

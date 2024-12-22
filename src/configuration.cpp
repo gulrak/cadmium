@@ -65,7 +65,7 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
         {"guiHue", cc.guiHue},
         {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
-        {"databaseDirectory", cc.databaseDirectory},
+        {"libraryPath", cc.libraryPath},
         {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
     };
@@ -73,7 +73,12 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
 
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     j.at("workingDirectory").get_to(cc.workingDirectory);
-    cc.databaseDirectory = j.value("databaseDirectory", "");
+    if (!j.contains("libraryPath") && j.contains("databaseDirectory")) {
+        cc.libraryPath = j.value("databaseDirectory", "");
+    }
+    else {
+        cc.libraryPath = j.value("libraryPath", "");
+    }
     cc.volume = j.value("volume", 0.5f);
     cc.guiHue = j.value("guiHue", 192);
     cc.guiSat = j.value("guiSaturation", 90);

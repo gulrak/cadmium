@@ -21,12 +21,25 @@ set(CADMIUM_SOURCE
     logview.hpp
     resourcemanager.cpp
     resourcemanager.hpp
-    rlguippimpl.cpp
     stylemanager.cpp
     stylemanager.hpp
     systemtools.cpp
     systemtools.hpp
 )
+
+if (CADMIUM_WITH_DATABASE)
+    set(SQLite3_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/sqlite3")
+    set(SQLite3_LIBRARY SQLite::SQLite3)
+    FetchContent_Declare(
+            ZxOrm
+            GIT_REPOSITORY "https://github.com/crabmandable/zxorm.git"
+            GIT_TAG "92cd52ec0530fb3e66061058548916fb879879e7"
+            GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(ZxOrm)
+    add_compile_definitions(CADMIUM_WITH_DATABASE)
+    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
+endif()
 
 if(WIN32)
     set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium.ico")
@@ -37,7 +50,9 @@ if(WIN32)
         add_executable(cadmium WIN32 ${CADMIUM_SOURCE} cadmium.rc)
     endif()
 elseif(APPLE)
-    set(CADMIUM_ICON "${PROJECT_BINARY_DIR}/resources/cadmium.icns")
+    set(CADMIUM_ICON "${PROJECT_BINARY_DIR}/resources/cadmium.icns"
+            database.cpp
+            database.hpp)
     set_source_files_properties(${CADMIUM_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources" GENERATED 1)
     add_executable(cadmium MACOSX_BUNDLE ${CADMIUM_SOURCE} ${CADMIUM_ICON})
     if(WITH_FLAG_COCOA_GRAPHICS_SWITCHING)
@@ -69,7 +84,7 @@ if(WEB_WITH_FETCHING)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_FETCHING)
 endif()
 set_source_files_properties(src/editor.cpp PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
-target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata jsct ghc_filesystem)
+target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata jsct ghc_filesystem zxorm::zxorm crypto ssl httplib::httplib)
 target_code_coverage(cadmium)
 if (${PLATFORM} MATCHES "Web")
     if(WEB_WITH_CLIPBOARD)

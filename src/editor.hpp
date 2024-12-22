@@ -39,6 +39,8 @@
 
 #include <raylib.h>
 
+#include <threadpool.hpp>
+
 std::string GetClipboardTextX();
 void SetClipboardTextX(const std::string& text);
 bool isClipboardPaste();
@@ -53,8 +55,20 @@ public:
     inline static Color _defaultSelected{100, 100, 120, 255};
     inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
     inline static Color _selected{100, 100, 120, 255};
-    Editor() : _alphabetKeys(26,0) { updateLineInfo(); }
-
+#ifndef PLATFORM_WEB
+    Editor(ThreadPool& threadPool)
+        : _threadPool(threadPool)
+        , _alphabetKeys(26, 0)
+    {
+        updateLineInfo();
+    }
+#else
+    Editor()
+        : _alphabetKeys(26, 0)
+    {
+        updateLineInfo();
+    }
+#endif
     void setFilename(std::string filename) { _filename = filename; }
     bool isEmpty() const { return _text.empty(); }
     const std::string& getText() const { return _text; }
@@ -167,6 +181,10 @@ protected:
         uint32_t endOffset;
         std::string text;
     };
+#ifndef PLATFORM_WEB
+    ThreadPool& _threadPool;
+    std::future<emu::CompileResult> _compileResult;
+#endif
     static constexpr int LINE_SIZE = 12;
     static constexpr int COLUMN_WIDTH = 6;
     const float BLINK_RATE = 0.8f;

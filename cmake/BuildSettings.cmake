@@ -55,12 +55,16 @@ if(EMSCRIPTEN)
     add_compile_options(-fexceptions)
     add_compile_definitions(WEB_WITH_FETCHING)
     add_link_options(-fexceptions)
+    set(DATABASE_DEFAULT OFF)
 else()
     set(PLATFORM "Desktop")
     if(MINGW)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static"  CACHE STRING "Linker Flags for MinGW Builds" FORCE)
     endif()
+    set(DATABASE_DEFAULT ON)
 endif()
+
+option(CADMIUM_WITH_DATABASE "Compile Cadmium with a database functionality, this links sqlite into Cadmium" ${DATABASE_DEFAULT})
 
 include(CheckIncludeFile)
 check_include_file(bcm_host.h HAS_BCMHOST)
@@ -72,6 +76,7 @@ option(WEB_WITH_CLIPBOARD "Build emscripten version supporting real clipboard (e
 
 include(FetchContent)
 
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
@@ -82,27 +87,43 @@ FetchContent_Declare(
     #GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
 )
-FetchContent_GetProperties(raylib)
-if (NOT raylib_POPULATED)
-    set(FETCHCONTENT_QUIET NO)
-    FetchContent_Populate(raylib)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR} EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(raylib)
+
+if(PLATFORM STREQUAL "Desktop")
+    set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
+    set(LIBRESSL_APPS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        libressl
+        URL "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz"
+        URL_MD5 4775b6b187a93c527eeb95a13e6ebd64
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(libressl)
+    #target_compile_definitions(crypto PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+    #target_compile_definitions(ssl PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+    #target_compile_definitions(tls PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+
+    FetchContent_Declare(
+        CppHttplib
+        GIT_REPOSITORY "https://github.com/yhirose/cpp-httplib.git"
+        GIT_TAG "v0.18.3"
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(CppHttplib)
+    include_directories(${cpphttplib_INCLUDE_DIR})
 endif()
 
 FetchContent_Declare(
-    DocTest
-    GIT_REPOSITORY "https://github.com/doctest/doctest.git"
-    GIT_TAG "v2.4.9"
-    GIT_SHALLOW TRUE
+        DocTest
+        GIT_REPOSITORY "https://github.com/doctest/doctest.git"
+        GIT_TAG "v2.4.9"
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
 )
-FetchContent_GetProperties(DocTest)
-if(NOT doctest_POPULATED)
-    FetchContent_Populate(doctest)
-    add_subdirectory(${doctest_SOURCE_DIR} ${doctest_BINARY_DIR} EXCLUDE_FROM_ALL)
-endif()
-
+FetchContent_MakeAvailable(DocTest)
 include_directories(${DOCTEST_INCLUDE_DIR})
 
 FetchContent_Declare(
@@ -111,13 +132,9 @@ FetchContent_Declare(
         GIT_TAG "main"
         GIT_SHALLOW TRUE
 )
-FetchContent_GetProperties(Chiplet)
-if(NOT chiplet_POPULATED)
-    FetchContent_Populate(Chiplet)
-    include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
-    add_subdirectory(${chiplet_SOURCE_DIR} ${chiplet_BINARY_DIR})
-    include_directories(${chiplet_SOURCE_DIR}/external)
-endif()
+FetchContent_MakeAvailable(Chiplet)
+include_directories(${chiplet_SOURCE_DIR}/external)
+include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
 
 FetchContent_Declare(
     Chip8TestSuite

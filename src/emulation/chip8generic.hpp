@@ -267,7 +267,7 @@ public:
                 int x = _rV[(opcode >> 8) & 0xF] % SCREEN_WIDTH;
                 int y = _rV[(opcode >> 4) & 0xF] % SCREEN_HEIGHT;
                 int lines = opcode & 0xF;
-                _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, true) ? 1 : 0;
+                _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, true);
             }
             else
             {
@@ -280,14 +280,14 @@ public:
                 int x = _rV[(opcode >> 8) & 0xF] % (SCREEN_WIDTH / 2);
                 int y = _rV[(opcode >> 4) & 0xF] % (SCREEN_HEIGHT / 2);
                 int lines = opcode & 0xF;
-                _rV[15] = drawSprite<quirks>(x*2, y*2, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+                _rV[15] = drawSprite<quirks>(x*2, y*2, &_memory[_rI & ADDRESS_MASK], lines, false);
             }
         }
         else {
             int x = _rV[(opcode >> 8) & 0xF] % SCREEN_WIDTH;
             int y = _rV[(opcode >> 4) & 0xF] % SCREEN_HEIGHT;
             int lines = opcode & 0xF;
-            _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
+            _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false);
         }
         _screenNeedsUpdate = true;
     }

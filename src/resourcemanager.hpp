@@ -52,7 +52,7 @@ public:
 
     ResourceManager();
     void registerResources(const void* data, long size);
-    bool recourceAvailable(const std::string& name) const;
+    bool resourceAvailable(const std::string& name) const;
     Resource resourceForName(const std::string& name) const;
 
     static ResourceManager& instance();

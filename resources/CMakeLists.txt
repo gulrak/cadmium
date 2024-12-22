@@ -1,4 +1,4 @@
-file(GLOB RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png ${CMAKE_SOURCE_DIR}/files/*.ttf)
+file(GLOB RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png ${CMAKE_SOURCE_DIR}/files/*.ttf ${CMAKE_SOURCE_DIR}/files/*.vs ${CMAKE_SOURCE_DIR}/files/*.fs)
 if (${PLATFORM} MATCHES "Web")
     add_custom_command(
             OUTPUT resourcer resourcedata.c

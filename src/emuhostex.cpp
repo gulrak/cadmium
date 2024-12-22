@@ -45,12 +45,16 @@
 namespace emu {
 
 EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
-: _cfg(cfg)
-, _librarian(_cfg)
+    : _cfg(cfg)
+    , _librarian(_cfg)
+#ifndef PLATFORM_WEB
+    , _threadPool(6)
+    , _database(_cores, _cfg, _threadPool, dataPath(), _badges)
+#endif
 {
 #ifndef PLATFORM_WEB
     _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
-    _databaseDirectory = _cfg.databaseDirectory;
+    _databaseDirectory = _cfg.libraryPath;
     _librarian.fetchDir(_currentDirectory);
 #endif
     // TODO: Fix this

@@ -26,7 +26,7 @@
 
 #include <stylemanager.hpp>
 
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <fmt/format.h>
 
 #include <cmath>

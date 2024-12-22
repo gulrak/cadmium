@@ -20,13 +20,25 @@ static size_t readInteger(const unsigned char* data)
 
 unsigned char *LoadFileDataFromResource(const char *fileName, int *bytesRead)
 {
-    auto resource = ResourceManager::instance().resourceForName(fileName);
+    const auto resource = ResourceManager::instance().resourceForName(fileName);
     if(bytesRead) {
-        *bytesRead = resource.size();
+        *bytesRead = static_cast<int>(resource.size());
     }
-    if(resource.size()) {
-        auto data = (unsigned char *)RL_MALLOC(resource.size()*sizeof(unsigned char));
+    if(!resource.empty()) {
+        auto* data = static_cast<unsigned char*>(RL_MALLOC(resource.size() * sizeof(unsigned char)));
         std::memcpy(data, resource.data(), resource.size());
+        return data;
+    }
+    return nullptr;
+}
+
+char *LoadFileTextFromResource(const char *fileName)
+{
+    const auto resource = ResourceManager::instance().resourceForName(fileName);
+    if(!resource.empty()) {
+        auto* data = static_cast<char*>(RL_MALLOC((resource.size() + 1) * sizeof(char)));
+        std::memcpy(data, resource.data(), resource.size());
+        data[resource.size()] = 0;
         return data;
     }
     return nullptr;
@@ -38,6 +50,7 @@ ResourceManager::ResourceManager()
 {
     registerResources(g_resourceData, g_resourceDataSize);
     SetLoadFileDataCallback(&LoadFileDataFromResource);
+    SetLoadFileTextCallback(&LoadFileTextFromResource);
 }
 
 ResourceManager& ResourceManager::instance()
@@ -62,7 +75,7 @@ void ResourceManager::registerResources(const void* data, long size)
     }
 }
 
-bool ResourceManager::recourceAvailable(const std::string& name) const
+bool ResourceManager::resourceAvailable(const std::string& name) const
 {
     return _resources.find(name) != _resources.end();
 }

@@ -24,7 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
 #include <algorithm>
 #include <cassert>

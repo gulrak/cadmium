@@ -3,10 +3,8 @@
 //
 
 #include <raylib.h>
-extern "C"
-{
+
 #include <raymath.h>
-}
 
 #include <bitset>
 #include <cmath>

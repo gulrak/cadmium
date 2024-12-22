@@ -281,19 +281,30 @@ public:
         bool quirkEnabled(const std::string& name) const { auto iter = effectiveQuirks.find(name); return iter != effectiveQuirks.end() ? iter->second : false; }
     };
 
-    explicit Database(std::string directory, std::string platformsFile = "platforms.json", std::string programsFile = "programs.json")
+    explicit Database(std::string directory, const std::string& platformsFile_ = "platforms.json", const std::string& programsFile_ = "programs.json")
     : dbDir(std::move(directory))
-    , platformsFile(platformsFile)
-    , programsFile(programsFile)
+    , platformsFile(platformsFile.front() != '[' ? platformsFile_ : "")
+    , programsFile(programsFile.front() != '[' ? programsFile_ : "")
     {
-        platformList = readPlatforms(dbDir + "/" + platformsFile);
-        programList= readPrograms(dbDir + "/" + programsFile);
-        std::for_each(programList.begin(), programList.end(), [this](c8db::Program& p) {
-            for(auto&[sha,r] : p.roms)
+        if (platformsFile.empty()) {
+            std::istringstream platformsStream(platformsFile_);
+            platformList = readPlatforms(platformsStream);
+        }
+        else {
+            platformList = readPlatforms(dbDir + "/" + platformsFile);
+        }
+        if (programsFile.empty()) {
+            std::istringstream programsStream(programsFile_);
+            programList = readPrograms(programsStream);
+        }
+        else {
+            programList= readPrograms(dbDir + "/" + programsFile);
+        }
+        std::ranges::for_each(programList, [this](c8db::Program& p) {
+            for (const auto& sha : p.roms | std::views::keys)
                 romLookupTable[sha] = &p;
         });
     }
-
     size_t numRoms() const { return romLookupTable.size(); }
     const std::unordered_map<std::string,Program*>& romTable() const { return romLookupTable; }
     const auto& platforms() const { return platformList; }
@@ -338,9 +349,9 @@ public:
     }
 
 private:
-    std::vector<Platform> readPlatforms(const std::string& filepath)
+    static std::vector<Platform> readPlatforms(std::istream& is)
     {
-        static const char* platformsFallback = R"(
+        static auto platformsFallback = R"(
             [
               {"id": "originalChip8", "name": "Cosmac VIP CHIP-8", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
               {"id": "hybridVIP", "name": "CHIP-8 with Cosmac VIP instructions", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
@@ -353,21 +364,27 @@ private:
               {"id": "xochip", "name": "XO-CHIP", "defaultTickrate": 100, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": true, "jump": false, "vblank": false, "logic": false}}
             ])";
         std::vector<Platform> result;
-        std::ifstream ifs(filepath);
         try {
-            auto j = ifs.fail() ? json::parse(std::istringstream(platformsFallback)) : json::parse(ifs);
-            if(j.is_array()) {
-                for(const auto& pObj : j) {
+            auto j = is.fail() ? json::parse(std::istringstream(platformsFallback)) : json::parse(is);
+            if (j.is_array()) {
+                for (const auto& pObj : j) {
                     Platform p;
                     from_json(pObj, p);
                     result.push_back(p);
                 }
             }
         }
-        catch(...) {
-            return result;
+        catch (...) {
+            auto fis = std::istringstream(platformsFallback);
+            return readPlatforms(fis);
         }
         return result;
+    }
+
+    static std::vector<Platform> readPlatforms(const std::string& filepath)
+    {
+        std::ifstream ifs(filepath);
+        return readPlatforms(ifs);
     }
 
     bool readRom(const json& obj, Program::Rom& rom)
@@ -406,32 +423,39 @@ private:
     void to_json_ordered(nlohmann::ordered_json& j, const Program& prg)
     {
         j["title"] = prg.title;
-        if(prg.origin.type != OriginType::UNKNOWN) j["origin"] = json(prg.origin);
-        if(!prg.description.empty()) j["description"] = prg.description;
-        if(!prg.release.empty()) j["release"] = prg.release;
-        if(!prg.copyright.empty()) j["copyright"] = prg.copyright;
-        if(!prg.license.empty()) j["license"] = prg.license;
-        if(!prg.authors.empty()) j["authors"] = prg.authors;
-        if(!prg.images.empty()) j["images"] = prg.images;
-        if(!prg.urls.empty()) j["urls"] = prg.urls;
+        if (prg.origin.type != OriginType::UNKNOWN)
+            j["origin"] = json(prg.origin);
+        if (!prg.description.empty())
+            j["description"] = prg.description;
+        if (!prg.release.empty())
+            j["release"] = prg.release;
+        if (!prg.copyright.empty())
+            j["copyright"] = prg.copyright;
+        if (!prg.license.empty())
+            j["license"] = prg.license;
+        if (!prg.authors.empty())
+            j["authors"] = prg.authors;
+        if (!prg.images.empty())
+            j["images"] = prg.images;
+        if (!prg.urls.empty())
+            j["urls"] = prg.urls;
         j["roms"] = {};
-        for(const auto& [sha,r] : prg.roms) {
+        for (const auto& [sha, r] : prg.roms) {
             nlohmann::ordered_json robj;
             to_json_ordered(robj, r);
             j["roms"][sha] = robj;
         }
     }
 
-    std::vector<Program> readPrograms(const std::string& filepath)
+    static std::vector<Program> readPrograms(std::istream& is)
     {
         std::vector<Program> result;
-        std::ifstream ifs(filepath);
-        if(ifs.fail())
+        if (is.fail())
             return result;
         try {
-            auto j = json::parse(ifs);
-            if(j.is_array()) {
-                for(const auto& pObj : j) {
+            auto j = json::parse(is);
+            if (j.is_array()) {
+                for (const auto& pObj : j) {
                     Program p;
                     from_json(pObj, p);
                     result.push_back(p);
@@ -446,6 +470,12 @@ private:
             return result;
         }
         return result;
+    }
+
+    static std::vector<Program> readPrograms(const std::string& filepath)
+    {
+        std::ifstream ifs(filepath);
+        return readPrograms(ifs);
     }
 
     bool writePrograms(const std::string& filepath, const std::vector<Program>& programs)

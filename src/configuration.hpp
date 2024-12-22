@@ -37,7 +37,7 @@ struct CadmiumConfiguration
     uint16_t guiHue{200};
     uint8_t guiSat{80};
     std::string workingDirectory;
-    std::string databaseDirectory;
+    std::string libraryPath;
     emu::Properties emuProperties;
     std::map<Sha1::Digest,emu::Properties> romConfigs;
     bool load(const std::string& filepath);

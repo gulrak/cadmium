@@ -294,7 +294,7 @@ Chip8GenericSetupInfo genericPresets[] = {
     {
         "XO-CHIP",
         "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014",
-        "xo8",
+        ".xo8",
         chip8::Variant::XO_CHIP,
         {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
     }
@@ -546,10 +546,18 @@ void Chip8GenericEmulator::setHandler()
             if (_options.optWrapSprites)
                 on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|WrapSprite>);
             else {
-                if (_options.optSCLoresDrawing)
-                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|SChip1xLoresDraw>);
-                else
-                    on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport>);
+                if (_options.optSCLoresDrawing) {
+                    if (_options.optSC11Collision)
+                        on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|SChip1xLoresDraw|SChip11Collisions>);
+                    else
+                        on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|SChip1xLoresDraw>);
+                }
+                else {
+                    if (_options.optSC11Collision)
+                        on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport|SChip11Collisions>);
+                    else
+                        on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<HiresSupport>);
+                }
             }
         }
     }

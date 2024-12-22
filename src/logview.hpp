@@ -30,6 +30,8 @@
 
 #include <raylib.h>
 
+#include <mutex>
+
 class LogView : public emu::Logger
 {
 public:
@@ -48,7 +50,7 @@ public:
 
 private:
     Rectangle drawToolArea();
-    void drawTextLine(Font& font, int logLine, Vector2 position, float width, int columnOffset);
+    void drawTextLine(const Font& font, int logLine, Vector2 position, float width, int columnOffset);
     struct LogEntry {
         emu::cycles_t _cycle{0};
         FrameTime _frameTime{0,0};
@@ -56,6 +58,7 @@ private:
         Source _source{eHOST};
         std::string _line;
     };
+    std::mutex _logMutex;
     std::vector<LogEntry> _logBuffer;
     std::string _filter;
     bool _invertedFilter{false};

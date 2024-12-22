@@ -24,9 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 #include <raylib.h>
-#include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
-
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
 #include "configuration.hpp"
 
@@ -95,7 +93,6 @@ void downloadFailedCallbackC(emscripten_fetch_t *fetch)
     emscripten_fetch_close(fetch);
 }
 #endif
-#define RESIZABLE_GUI
 #else
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -505,28 +502,24 @@ public:
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT, eLIBRARY };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
-    static constexpr int MIN_SCREEN_WIDTH = 512;
-    static constexpr int MIN_SCREEN_HEIGHT = 192*2+36;
+    static constexpr int MIN_SCREEN_WIDTH = 640; // 512;
+    static constexpr int MIN_SCREEN_HEIGHT = 480; // 192*2+36;
     explicit Cadmium(CadmiumConfiguration& cfg, emu::Properties& props)
         : emu::EmuHostEx(cfg)
         , _audioBuffer(44100)
         , _screenWidth(MIN_SCREEN_WIDTH)
         , _screenHeight(MIN_SCREEN_HEIGHT)
+#ifndef PLATFORM_WEB
+        , _editor(_threadPool)
+#endif
     {
         SetTraceLogCallback(LogHandler);
-#ifdef WITH_FLAG_COCOA_GRAPHICS_SWITCHING
-    #ifdef RESIZABLE_GUI
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
-    #else
-        //SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
-    #endif
-#else
+
     #ifdef RESIZABLE_GUI
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     #else
         // SetConfigFlags(FLAG_VSYNC_HINT);
     #endif
-#endif
 
         InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 variant environment");
 #ifdef RESIZABLE_GUI
@@ -535,7 +528,7 @@ public:
             CenterWindow(_screenWidth * 2, _screenHeight * 2);
         }
 #else
-        _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
+        _scaleMode = (GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f) ? 2 : 1;
 #endif
 
         SetExitKey(0);
@@ -785,6 +778,7 @@ void main()
 //        _styleManager.setDefaultTheme();
         _styleManager.addTheme("dark", 235.0f, 0.1, false);
 
+        _microFont = LoadImage("micro-font.png");
         generateFont();
         if(props) {
             // TODO: Fix this
@@ -805,7 +799,6 @@ void main()
         SetTextureFilter(_crtTexture, TEXTURE_FILTER_BILINEAR);
         SetTextureFilter(_screenShotTexture, TEXTURE_FILTER_POINT);
         _titleImage = LoadImage("cadmium-title.png");
-        _microFont = LoadImage("micro-font.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
         _chipEmu->reset();
         std::string versionStr(CADMIUM_VERSION);
@@ -908,11 +901,18 @@ void main()
     void updateResolution()
     {
 #ifdef RESIZABLE_GUI
-        auto width = std::max(GetScreenWidth(), _screenWidth);
-        auto height = std::max(GetScreenHeight(), _screenHeight);
+        auto width = std::max(GetScreenWidth(), _screenWidth) / (_scaleBy2 ? 2 : 1);
+        auto height = std::max(GetScreenHeight(), _screenHeight) / (_scaleBy2 ? 2 : 1);
 
-//        if(GetScreenWidth() < width || GetScreenHeight() < height)
-//            SetWindowSize(width, height);
+        if(GetScreenWidth() < width || GetScreenHeight() < height)
+            SetWindowSize(width, height);
+        if(width != _screenWidth || height != _screenHeight) {
+            UnloadRenderTexture(_renderTexture);
+            _screenWidth = width;
+            _screenHeight = height;
+            _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+            SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+        }
 #else
         if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH) {
             UnloadRenderTexture(_renderTexture);
@@ -920,7 +920,7 @@ void main()
             _screenHeight = MIN_SCREEN_HEIGHT;
             _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
             SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
-            SetWindowSize(_screenWidth * (_scaleBy2 ? 2 : 1), _screenHeight * (_scaleBy2 ? 2 : 1));
+            SetWindowSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
         }
 #endif
     }
@@ -932,6 +932,23 @@ void main()
         for(auto c : text) {
             if (static_cast<uint8_t>(c) < 128)
                 ImageDraw(&dest, _microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
+            x += 4;
+        }
+    }
+
+    void drawMicroText2(Image& dest, const std::string& text, int x, int y, Color tint) const
+    {
+        for(auto c : text) {
+            if (static_cast<uint8_t>(c) < 128) {
+                for (int yy = 0; yy < 6; ++yy) {
+                    for (int xx = 0; xx < 4; ++xx) {
+                        if (GetImageColor(_microFont, (c%32)*4.0f + xx, (c/32)*6.0f + yy).r > 128) {
+                            ImageDrawPixel(&dest, (float)x + xx, (float)y + yy, tint);
+                        }
+                    }
+                }
+                //ImageDraw(&dest, _microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
+            }
             x += 4;
         }
     }
@@ -1169,12 +1186,65 @@ void main()
 
     void generateFont()
     {
-        _fontImage = GenImageColor(256, 256, {0, 0, 0, 0});
+        int imageWidth = 256;
+        int imageHeight = 256;
+        _fontImage = GenImageColor(imageWidth, imageHeight, {0, 0, 0, 0});
         int glyphCount = 0;
+        std::vector<Rectangle> rectangles;
+        std::vector<GlyphInfo> glyphs;
+        float glyphX = 0, glyphY = 0;
         for(const auto& fci : fontRom) {
             auto c = fci.codepoint;
-            drawChar(_fontImage, c, (glyphCount % 32) * 6, (glyphCount / 32) * 8, WHITE);
+            if (glyphX + 6 > imageWidth) {
+                glyphX = 0;
+                glyphY += 8;
+            }
+            drawChar(_fontImage, c, glyphX, glyphY, WHITE);
+            rectangles.push_back(Rectangle{glyphX, glyphY, 6.0f, 8.0f});
+            glyphs.push_back(GlyphInfo{c, 0, 0, 6});
+            glyphX += 6;
             ++glyphCount;
+        }
+        float badgeX = 0;
+        float badgeY = glyphX < 1 ? glyphY : glyphY + 8;
+        int badgeCount = 0;
+        struct BadgeInfo {
+            std::string text;
+            Color badgeColor, textColor;
+        };
+        std::vector<BadgeInfo> badges;
+        for(const auto& [name, info] : _cores) {
+            //std::cout << toOptionName(name) << std::endl;
+            //coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
+            //presetsDescription += fmt::format("        {}:\n", info->description);
+            for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+                std::string presetName;
+                if(info->prefix().empty())
+                    presetName = toOptionName(info->variantName(i));
+                else
+                    presetName = toOptionName(info->prefix() + '-' + info->variantName(i));
+                badges.push_back(BadgeInfo{presetName, GREEN, BLACK});
+            }
+        }
+        badges.push_back(BadgeInfo{"GENERIC-CHIP-8", ORANGE, BLACK});
+        badges.push_back(BadgeInfo{"???", RED, BLACK});
+        badges.push_back(BadgeInfo{"NEW", SKYBLUE, BLACK});
+        for(uint16_t i = 0; i < badges.size(); ++i) {
+            auto& [label, badgeCol, textCol] = badges[i];
+            float width = label.length() * 4 + 3;
+            if (badgeX + width > imageWidth) {
+                badgeX = 0;
+                badgeY += 8;
+            }
+            ImageDrawRectangle(&_fontImage, badgeX, badgeY+1, width, 5,badgeCol);
+            ImageDrawRectangle(&_fontImage, badgeX+1, badgeY, width-2, 7, badgeCol);
+            drawMicroText2(_fontImage, toUpper(label), badgeX + 2, badgeY + 1, textCol);
+            rectangles.push_back(Rectangle{badgeX, badgeY, width, 7});
+            glyphs.push_back(GlyphInfo{0xE100 + i, 0, 0, (int)width + 1});
+            std::string badgeUtf8;
+            fs::detail::appendUTF8(badgeUtf8, 0xE100 + i);
+            _badges[toLower(label)] = badgeUtf8;
+            badgeX += width + 1;
         }
 #if !defined(NDEBUG) // && defined(EXPORT_FONT)
         ExportImage(_fontImage, "Test.png");
@@ -1193,23 +1263,12 @@ void main()
         }
 #endif
         _font.baseSize = 8;
-        _font.glyphCount = glyphCount;
+        _font.glyphCount = glyphs.size();
         _font.texture = LoadTextureFromImage(_fontImage);
-        _font.recs = (Rectangle*)std::calloc(_font.glyphCount, sizeof(Rectangle));
-        _font.glyphs = (GlyphInfo*)std::calloc(_font.glyphCount, sizeof(GlyphInfo));
-        int idx = 0;
-        for(const auto& fci : fontRom) {
-            int i = fci.codepoint;
-            _font.recs[idx].x = (idx % 32) * 6;
-            _font.recs[idx].y = (idx / 32) * 8;
-            _font.recs[idx].width = 6;
-            _font.recs[idx].height = 8;
-            _font.glyphs[idx].value = i;
-            _font.glyphs[idx].offsetX = 0;
-            _font.glyphs[idx].offsetY = 0;
-            _font.glyphs[idx].advanceX = 6;
-            ++idx;
-        }
+        _font.recs = static_cast<Rectangle*>(std::calloc(_font.glyphCount, sizeof(Rectangle)));
+        _font.glyphs = static_cast<GlyphInfo*>(std::calloc(_font.glyphCount, sizeof(GlyphInfo)));
+        std::ranges::copy(rectangles, _font.recs);
+        std::ranges::copy(glyphs, _font.glyphs);
         GuiSetFont(_font);
     }
 
@@ -1257,7 +1316,7 @@ void main()
         lastFrameTime = now;
         float deltaT = GetFrameTime();
 #ifdef RESIZABLE_GUI
-#if 0
+#if 1
         static int resizeCount = 0;
         if (IsWindowResized()) {
             int width{0}, height{0};
@@ -1267,7 +1326,7 @@ void main()
             width = GetScreenWidth() * devicePixelRatio;
             height = GetScreenHeight() * devicePixelRatio;
 #else
-            glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+            // TODO: glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
 #endif
             TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
         }
@@ -1275,21 +1334,13 @@ void main()
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
         SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
 #else
-        if (_scaleBy2) {
-            // Screen size x2
-            if (GetScreenWidth() < _screenWidth * 2) {
-                SetWindowSize(_screenWidth * 2, _screenHeight * 2);
-                //CenterWindow(_screenWidth * 2, _screenHeight * 2);
-                SetMouseScale(0.5f, 0.5f);
-            }
+        if (!_scaleMode || GetMonitorWidth(GetCurrentMonitor()) <= _screenWidth * _scaleMode) {
+            _scaleMode = 1;
         }
-        else {
-            // Screen size x1
-            if (_screenWidth < GetScreenWidth()) {
-                SetWindowSize(_screenWidth, _screenHeight);
-                //CenterWindow(_screenWidth, _screenHeight);
-                SetMouseScale(1.0f, 1.0f);
-            }
+        if (GetScreenWidth() != _screenWidth * _scaleMode) {
+            SetWindowSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
+            //CenterWindow(_screenWidth * 2, _screenHeight * 2);
+            SetMouseScale(1.0f/_scaleMode, 1.0f/_scaleMode);
         }
 #endif
 
@@ -1357,9 +1408,6 @@ void main()
             Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
             if(guiOffset.x < 0) guiOffset.x = 0;
             if(guiOffset.y < 0) guiOffset.y = 0;
-            DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
-                           (Vector2){0, 0}, 0.0f, WHITE);
-#else
             if (_scaleBy2) {
                 drawScreen({_screenOverlay.x * 2, _screenOverlay.y * 2, _screenOverlay.width * 2, _screenOverlay.height * 2}, _screenScale);
                 DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * 2, (float)_renderTexture.texture.height * 2},
@@ -1369,6 +1417,12 @@ void main()
                 drawScreen(_screenOverlay, _screenScale);
                 DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
+            //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
+            //               (Vector2){0, 0}, 0.0f, WHITE);
+#else
+            drawScreen({_screenOverlay.x * _scaleMode, _screenOverlay.y * _scaleMode, _screenOverlay.width * _scaleMode, _screenOverlay.height * _scaleMode}, _screenScale);
+            DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * _scaleMode, (float)_renderTexture.texture.height * _scaleMode},
+                           (Vector2){0, 0}, 0.0f, WHITE);
 #endif
 #if 0
             int width{0}, height{0};
@@ -1481,6 +1535,7 @@ void main()
         static std::chrono::steady_clock::time_point volumeClick{};
 
 #ifdef RESIZABLE_GUI
+        //auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
         Vector2 mouseOffset = {-(GetScreenWidth() - _screenWidth * screenScale) / 2.0f, -(GetScreenHeight() - _screenHeight * screenScale) / 2.0f};
         if (mouseOffset.x > 0)
@@ -1488,8 +1543,9 @@ void main()
         if (mouseOffset.y > 0)
             mouseOffset.y = 0;
         BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
+//        BeginGui({}, &_renderTexture, {0, 0}, {_scaleBy2 ? 2.0f : 1.0f, _scaleBy2 ? 2.0f : 1.0f});
 #else
-        BeginGui({}, &_renderTexture, {0, 0}, {_scaleBy2 ? 2.0f : 1.0f, _scaleBy2 ? 2.0f : 1.0f});
+        BeginGui({}, &_renderTexture, {0, 0}, {static_cast<float>(_scaleMode), static_cast<float>(_scaleMode)});
 #endif
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
@@ -1709,11 +1765,11 @@ void main()
                 SetTooltip("RESTART");
                 int buttonsRight = 8;
                 ++buttonsRight;
-                int avail = 202;
-#ifdef RESIZABLE_GUI
-                --buttonsRight;
-                avail += 10;
-#endif
+                int avail = _screenWidth - GetCurrentPos().x;
+//#ifdef RESIZABLE_GUI
+//                --buttonsRight;
+//                avail += 10;
+//#endif
                 auto spacePos = GetCurrentPos();
                 auto spaceWidth = avail - buttonsRight * 20;
                 Space(spaceWidth);
@@ -1746,8 +1802,8 @@ void main()
                 static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
                 DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
                 Space(10);
-                if (iconButton(ICON_HIDPI, _scaleBy2))
-                    _scaleBy2 = !_scaleBy2;
+                if (iconButton(ICON_HIDPI, _scaleMode != 1))
+                    _scaleMode = _scaleMode >= 3 ? 1 : _scaleMode + 1;
                 SetTooltip("TOGGLE ZOOM    ");
             }
             EndColumns();
@@ -1823,11 +1879,11 @@ void main()
                         }
                         if (BeginTab("Misc", {5, 0})) {
                             Space(3);
-                            Label("Config directory:");
+                            Label("Config Directory:");
                             GuiDisable();
                             TextBox(_cfgPath, 4096);
                             GuiEnable();
-                            Label("CHIP-8 database directory:");
+                            Label("CHIP-8 Library Directories:");
                             if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
                             }
@@ -1876,16 +1932,19 @@ void main()
                         _mainView = _lastView;
                     break;
                 }
+#ifndef PLATFORM_WEB
                 case eLIBRARY: {
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Library / Research");
+                    _database.render(_font);
                     Space(_screenHeight - GetCurrentPos().y - 20 - 1);
                     EndPanel();
                     End();
                     break;
                 }
+#endif
             }
 
             if (_colorSelectOpen) {
@@ -2595,7 +2654,7 @@ void main()
             // opt.advanced["palette"] = pal;
             _cfg.emuProperties = *_properties;
             _cfg.workingDirectory = _currentDirectory;
-            _cfg.databaseDirectory = _databaseDirectory;
+            _cfg.libraryPath = _databaseDirectory;
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -2669,7 +2728,6 @@ void main()
     }
 
 private:
-    emu::CoreRegistry _cores;
     std::mutex _audioMutex;
     ResourceManager _resources;
     StyleManager _styleManager;
@@ -2703,9 +2761,7 @@ private:
     SMA<120,int> _frameDelta;
     emu::FpsMeasure _fps;
     int _partialFrameTime{0};
-#ifndef RESIZABLE_GUI
-    bool _scaleBy2{false};
-#endif
+    int _scaleMode{1};
     int _behaviorSel{0};
     int _subBehaviorSel{0};
     //float _messageTime{};
