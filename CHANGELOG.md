@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bit operands limit usability quite a bit)
 - New non-CHIP-8 mode: COSMAC VIP now supports running native VIP programs
 - Memory panel now has a checkbox to detach it from auto-following the `I` register
+- VIP settings allow now to individually select if video events should be added to the trace log
 - Support for more fonts in generic CHIP-8 variants
 - [Desktop only] Library/Research screen and database integration allows for easier research on existing roms
   and interpreters, all information about programs, and even the binaries themselves are now kept
@@ -53,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Due to an change in the gui library the toggle buttons in the find bar of the editor didn't work
 - Loading of Octo source that didn't compile without error was not possible
 - MegaChip audio suppressed the last sample of a non looping sound
+- VIP finally shows Q in the trace log
 - SUPER-CHIP v1.1 collision handling was broken
 - Syzygy was wrongly classified as CHIP-8, it's author declares it as CHIP-48 and it is working
   with CHIP-48 or SCHIP, switched to CHIP-48 (thanks to `@juan_tigre` for the find).

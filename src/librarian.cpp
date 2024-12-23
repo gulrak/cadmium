@@ -200,9 +200,9 @@ bool Librarian::update(const emu::Properties& properties)
                             entry.variant = getPresetForFile(entry.sha1sum);
                         }
                         else {
-                            emu::Chip8Decompiler dec;
                             uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-                            dec.decompile(entry.filePath, file.data(), startAddress, file.size(), startAddress, nullptr, true, true);
+                            emu::Chip8Decompiler dec{file, startAddress};
+                            dec.decompile(entry.filePath, startAddress, nullptr, true, true);
                             entry.possibleVariants = dec.possibleVariants();
                             if ((uint64_t)dec.possibleVariants()) {
                                 /* TODO:
@@ -282,9 +282,9 @@ std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std:
     if(fs::path(filename).extension().string() != ".ch8" && emu::CoreRegistry().getSupportedExtensions().contains(fs::path(filename).extension().string()))
         result = emu::CoreRegistry::presetForExtension(fs::path(filename).extension().string());
     if(result.empty()) {
-        emu::Chip8Decompiler dec;
         uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-        dec.decompile("", data, startAddress, size, startAddress, nullptr, true, true);
+        emu::Chip8Decompiler dec{{data, size}, startAddress};
+        dec.decompile("", startAddress, nullptr, true, true);
         //auto possibleVariants = dec.possibleVariants();
         if ((uint64_t)dec.possibleVariants()) {
             /*if (dec.supportsVariant(emu::Chip8EmulatorOptions::variantForPreset(currentPreset))) {

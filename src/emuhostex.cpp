@@ -339,14 +339,14 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             //TraceLog(LOG_INFO, "Setting up decompiler.");
             std::stringstream os;
             //TraceLog(LOG_INFO, "Setting instance.");
-            emu::Chip8Decompiler decomp;
+            auto startAddress = _properties->get<Property::Integer>("startAddress");
+            auto loadAddress = startAddress ? startAddress->intValue : 0;
+            emu::Chip8Decompiler decomp{_romImage, static_cast<uint32_t>(loadAddress)};
             decomp.setVariant(Chip8Variant::CHIP_8/*_options.presetAsVariant()*/, true);
             //TraceLog(LOG_INFO, "Setting variant.");
             //decomp.setVariant(Chip8Variant::CHIP_8, true);
             //TraceLog(LOG_INFO, "About to decompile...");
-            auto startAddress = _properties->get<Property::Integer>("startAddress");
-            auto loadAddress = startAddress ? startAddress->intValue : 0;
-            decomp.decompile(filename, _romImage.data(), loadAddress, _romImage.size(), loadAddress, &os, false, true);
+            decomp.decompile(filename, loadAddress, &os, false, true);
             source = os.str();
         }
         whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
