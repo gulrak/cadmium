@@ -68,16 +68,25 @@ struct DBProgram
     std::vector<int> binaries;
 };
 
+struct DBBinaryConfig
+{
+    int id{0};
+    int binary_id{0};
+    std::string preset;
+    std::string properties;
+};
+
 struct DBBinary
 {
     int id{0};
     int program_id{0};
-    std::string preset;
-    std::string properties;
     std::string sha1;
+    std::string release;
+    std::string description;
     std::vector<uint8_t> data;
     std::vector<std::string> filenames;
     std::vector<DBTags> tags;
+    std::vector<DBBinaryConfig> configs;
 };
 
 struct DBFilename
@@ -116,10 +125,16 @@ using BinariesTable = Table<"binaries",
                                  DBBinary,
                                  Column<"id", &DBBinary::id, PrimaryKey<>>,
                                  Column<"program_id", &DBBinary::program_id, ForeignKey<"programs", "id", action_t::cascade, action_t::cascade>>,
-                                 Column<"preset", &DBBinary::preset>,
-                                 Column<"properties", &DBBinary::properties>,
                                  Column<"sha1", &DBBinary::sha1, Unique<conflict_t::ignore>>,
+                                 Column<"release", &DBBinary::release>,
+                                 Column<"description", &DBBinary::description>,
                                  Column<"data", &DBBinary::data>>;
+using BinaryConfigsTable = Table<"binary_configs",
+                                    DBBinaryConfig,
+                                    Column<"id", &DBBinaryConfig::id, PrimaryKey<>>,
+                                    Column<"binary_id", &DBBinaryConfig::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
+                                    Column<"preset", &DBBinaryConfig::preset>,
+                                    Column<"properties", &DBBinaryConfig::properties>>;
 using FilenamesTable = Table<"filenames",
                                     DBFilename,
                                     Column<"id", &DBFilename::id, PrimaryKey<>>,
@@ -141,7 +156,7 @@ using BinariesTagsTable = Table<"binaries_tags",
                                        Column<"binary_id", &DBBinaryTag::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
                                        Column<"tag_id", &DBBinaryTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
 
-using DBConnection = Connection<VersionTable, ProgramsTable, BinariesTable, FilenamesTable, TagsTable, ProgramsTagsTable, BinariesTagsTable>;
+using DBConnection = Connection<VersionTable, ProgramsTable, BinariesTable, BinaryConfigsTable, FilenamesTable, TagsTable, ProgramsTagsTable, BinariesTagsTable>;
 
 
 struct Database::Private
@@ -168,9 +183,12 @@ struct Database::Private
             if (!presetFilter.empty()) {
                 bool matchesPreset = false;
                 for (const auto& binid : program.binaries) {
-                    if (const auto& binary = binaries[binid]; presetFilter.find(binary.preset) != std::string::npos) {
-                        matchesPreset = true;
-                        break;
+                    const auto& binary = binaries[binid];
+                    for (const auto& bincfg : binary.configs) {
+                        if (presetFilter.find(bincfg.preset) != std::string::npos) {
+                            matchesPreset = true;
+                            break;
+                        }
                     }
                 }
                 if (!matchesPreset) {
@@ -254,6 +272,10 @@ void Database::fetchProgramInfo()
             for (const auto& binary : binaries) {
                 auto [iter, added] = _pimpl->binaries.emplace(binary.id, binary);
                 _digests.insert(Sha1::Digest(binary.sha1));
+                auto configs = _pimpl->connection->select_query<DBBinaryConfig>().where_many(BinaryConfigsTable::field_t<"binary_id">() == binary.id).exec();
+                for (const auto& config : configs) {
+                    iter->second.configs.push_back(config);
+                }
                 auto filenames = _pimpl->connection->select_query<Select<FilenamesTable::field_t<"name">>>().where_many(FilenamesTable::field_t<"binary_id">() == binary.id).exec();
                 for (const auto& filename : filenames) {
                     iter->second.filenames.push_back(filename);
@@ -270,6 +292,7 @@ int Database::scanLibrary()
     std::vector<DBBinary> binarys;
     auto start = std::chrono::steady_clock::now();
     auto extensions = _registry.getSupportedExtensions();
+    std::vector<const KnownRomInfo*> foundRoms;
     int numFiles = 0;
     for (auto folders = split(_configuration.libraryPath, ';'); const auto& folder : folders) {
         try {
@@ -286,25 +309,29 @@ int Database::scanLibrary()
                         }
                     }
                     if (!digested) {
-                        const char* preset = "unknown";
-                        std::string name = "";
-                        const auto* romInfo = Librarian::findKnownRom(info.digest);
                         DBProgram program;
                         DBBinary binary;
-                        if (romInfo) {
-                            preset = romInfo->preset;
-                            name = romInfo->name ? fmt::format(" {} -", romInfo->name) : "";
+                        std::string name = "";
+                        std::string preset = "???";
+                        if (Librarian::findKnownRoms(info.digest, foundRoms)) {
+                            name = foundRoms.front()->name ? fmt::format(" {} -", foundRoms.front()->name) : "";
+                            preset = foundRoms.front()->preset;
                             try {
-                                _pimpl->connection->transaction([this,romInfo, &info, &data, &de, &program, &binary]() {
-                                    program = DBProgram{.name = std::string(romInfo->name) };
+                                _pimpl->connection->transaction([this,&foundRoms, &info, &data, &de, &program, &binary]() {
+                                    program = DBProgram{.name = std::string(foundRoms.front()->name) };
                                     _pimpl->connection->insert_record(program);
-                                    binary = DBBinary{.program_id = program.id, .preset = std::string(romInfo->preset), .sha1 = info.digest.to_hex(), .data = data};
+                                    binary = DBBinary{.program_id = program.id, .sha1 = info.digest.to_hex(), .data = data};
                                     _pimpl->connection->insert_record(binary);
-                                    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                                    auto filename = DBFilename{.binary_id = binary.id, .name = de.path().string()};
-                                    //std::cout << "insert DBFilename: " << filename.binary_id << ", " << filename.name << std::endl;
-                                    _pimpl->connection->insert_record(filename);
-                                    _pimpl->connection->insert_record(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
+                                    for (const auto* romInfo : foundRoms) {
+                                        auto config = DBBinaryConfig{.binary_id = binary.id, .preset = std::string(romInfo->preset), .properties = std::string(romInfo->options ? romInfo->options : "")};
+                                        binary.configs.push_back(config);
+                                        _pimpl->connection->insert_record(config);
+                                        //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                                        auto filename = DBFilename{.binary_id = binary.id, .name = de.path().string()};
+                                        //std::cout << "insert DBFilename: " << filename.binary_id << ", " << filename.name << std::endl;
+                                        _pimpl->connection->insert_record(filename);
+                                        _pimpl->connection->insert_record(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
+                                    }
                                 });
                             }
                             catch (const SQLExecutionError& ex) {
@@ -321,8 +348,13 @@ int Database::scanLibrary()
                                     }
                                     program = DBProgram{.name = de.path().filename().stem().string() };
                                     _pimpl->connection->insert_record(program);
-                                    binary = DBBinary{.program_id = program.id, .preset = preset, .sha1 = info.digest.to_hex(), .data = data};
+                                    binary = DBBinary{.program_id = program.id, .sha1 = info.digest.to_hex(), .data = data};
                                     _pimpl->connection->insert_record(binary);
+                                    if (!preset.empty()) {
+                                        auto config = DBBinaryConfig{.binary_id = binary.id, .preset = preset};
+                                        _pimpl->connection->insert_record(config);
+                                        binary.configs.push_back(config);
+                                    }
                                     _pimpl->connection->insert_record(DBFilename{.binary_id = binary.id, .name = de.path().string()});
                                     _pimpl->connection->insert_record(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
                                     _pimpl->connection->insert_record(DBBinaryTag{.binary_id =binary.id, .tag_id = _pimpl->unclassifiedTagId});
@@ -371,11 +403,16 @@ int Database::scanLibrary()
 Database::FileInfo Database::scanFile(const std::string& filePath, std::vector<uint8_t>* outData)
 {
     auto data = loadFile(filePath);
-    auto result = FileInfo{filePath,calculateSha1(data.data(), data.size())};
+    auto result = FileInfo{filePath, calculateSha1(data.data(), data.size())};
     if (outData) {
         std::swap(*outData, data);
     }
     return result;
+}
+
+std::optional<Database::Program> Database::getSelectedProgram() const
+{
+    return _selectedProgram;
 }
 
 const std::string& Database::getBadge(std::string badgeText) const
@@ -385,11 +422,12 @@ const std::string& Database::getBadge(std::string badgeText) const
     return iter != _badges.end() ? iter->second : none;
 }
 
-void Database::render(Font& font)
+bool Database::render(Font& font)
 {
     using namespace gui;
     static bool first = true;
     static bool second = false;
+    bool binarySelected = false;
     if (first) {
         first = false;
         fetchProgramInfo();
@@ -403,23 +441,29 @@ void Database::render(Font& font)
     }
     {
         std:std::unique_lock lock(_pimpl->mutex);
+        SetSpacing(4);
         auto area = GetContentAvailable();
         _pimpl->relayoutList(area.width);
         TextBox(_pimpl->queryLine, 4096);
         BeginColumns();
         {
-            auto tagsWidth = area.width / 3 - 5;
-            auto listWidth = area.width - tagsWidth - 5;
+            SetSpacing(4);
+            auto tagsWidth = area.width / 4 - 5;
             SetNextWidth(tagsWidth);
-            BeginTableView(area.height - 135, 2, &_pimpl->tagsScrollPos);
-            TableNextRow(22);
-            TableNextColumn(64);
-            Label("Huhu");
+            auto offset = GetCurrentPos();
+            BeginTableView(GetContentAvailable().height - 135, 2, &_pimpl->tagsScrollPos);
+            for (const auto& [key, badge] : _badges) {
+                TableNextRow(10);
+                TableNextColumn(tagsWidth - 8);
+                auto pos = GetContentAvailable();
+                DrawTextEx(font, badge.c_str(), {pos.x + offset.x, pos.y + offset.y + _pimpl->tagsScrollPos.y}, 8.0f, 2.0f, WHITE);
+            }
             EndTableView();
-            auto listRect = Rectangle{area.x + tagsWidth + 5, area.y, area.width * 3 / 2, area.height - 135};
+            auto tableArea = GetContentAvailable();
+            auto listWidth = tableArea.width;
+            auto listRect = Rectangle{tableArea.x, tableArea.y, listWidth, tableArea.height - 135};
             static Vector2 scrollPos{0,0};
             auto [px, py] = GetCurrentPos();
-            SetNextWidth(listWidth);
             BeginScrollPanel(listRect.height, Rectangle{0.0f,0.0f, listRect.width - 8, _pimpl->listContentHeight < listRect.height ? listRect.height : _pimpl->listContentHeight}, &scrollPos);
             auto [cx, cy] = GetCurrentPos();
             auto [mx, my] = GetMousePosition();
@@ -433,33 +477,60 @@ void Database::render(Font& font)
             auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
             for (const int pid : _pimpl->shownIndices) {
                 const auto& program = _pimpl->programs.at(pid);
-                Rectangle itemRect = {program.rect.x + px + cx + scrollPos.x, program.rect.y + py + cy + scrollPos.y, program.rect.width, program.rect.height};
+                Rectangle itemRect = {program.rect.x + px + cx + scrollPos.x, program.rect.y + py + cy + scrollPos.y, program.rect.width, program.rect.height - 2};
                 if (CheckCollisionRecs(listRect, itemRect)) {
                     ++disp;
                     if (disp > maxDisp) {
                         maxDisp = disp;
                     }
+                    if (CheckCollisionPointRec(GetMousePosition(), itemRect)) {
+                        DrawRectangleRec({itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height}, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
+                        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                            if (program.binaries.size() == 1) {
+                                auto preset = _pimpl->binaries[program.binaries.front()].configs.front().preset;
+                                emu::Properties props;
+                                if (!fuzzyCompare(preset, "generic-chip-8")) {
+                                    props = emu::CoreRegistry::propertiesForPreset(_pimpl->binaries[program.binaries.front()].configs.front().preset);
+                                    const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
+                                    if (!propString.empty()) {
+                                        props.applyDiff(nlohmann::json::parse(propString));
+                                    }
+                                }
+                                _selectedProgram = {.name = program.name, .properties = props, .data = _pimpl->binaries[program.binaries.front()].data};
+                                binarySelected = true;
+                            }
+                            else {
+                                _selectedProgram = {};//{.name = program.name, .properties = {}, .data = {}};
+                            }
+                        }
+                    }
                     DrawTextEx(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, 8, 0, lightgrayCol);
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto binary = _pimpl->binaries.at(program.binaries[i]);
-                        std::string badges = getBadge( binary.preset);
+                        std::string badges;
+                        for (const auto& bincfg : binary.configs) {
+                            badges += getBadge(bincfg.preset);
+                        }
                         if (badges.empty()) {
                             badges = getBadge("???");
                         }
-                        DrawTextEx(font, fmt::format("{} {}", _pimpl->binaries[program.binaries[i]].sha1, badges).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, 8, 0, grayCol);
+                        DrawTextEx(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, 8, 0, grayCol);
+                        DrawTextEx(font, fmt::format("{}", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                     }
                 }
                 ypos += program.rect.height;
             }
             //DrawRectangleLines(-scrollPos.x, py-scrollPos.y, listRect.width-2, listRect.height-2, BLACK);
             EndScrollPanel();
+            //DrawRectangleLinesEx(listRect, 1, MAGENTA);
         }
         EndColumns();
         //auto innerHeight = _pimpl->programs
         //BeginScrollPanel(listRect.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto pos = GetCurrentPos();
-        DrawRectangleLines(pos.x + area.width - 130, pos.y, 130, 66, StyleManager::instance().getStyleColor(Style::BORDER_COLOR_NORMAL));
+        DrawRectangleLines(pos.x + area.width - 131, pos.y, 130, 66, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL));
         //DrawText(fmt::format("{}x{}", mx, my).c_str(), area.x + 2, area.y + 2, 8, RED);
+        return binarySelected;
     }
 }
 

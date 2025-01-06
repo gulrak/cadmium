@@ -5,3 +5,4 @@ add_library(rlguipp STATIC rlguipp.cpp rlguipp.hpp raygui4.h rlunicode.h dm_prop
 target_include_directories(rlguipp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(rlguipp PUBLIC raylib_static)
 
+add_subdirectory(test)

@@ -169,10 +169,30 @@ public:
         switch (opcode >> 12) {
             case 0:
                 if (opcode == 0x00E0) {  // 00E0 - clear
-                    _screen.setAll(0);
-                    std::memset(_memory.data() + 0xF00, 0, 256);
-                    ++_clearCounter;
-                    addCycles(3078);
+                    constexpr int eraseCycles = 3078;
+                    auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
+                    if(_cpuState != eWAIT) {
+                        _cpuState = eWAIT;
+                        _rPC = uint16_t(_rPC - 2);
+                        _instructionCycles = (eraseCycles > cyclesLeftInFrame) ? eraseCycles - cyclesLeftInFrame : 0;
+                        addCycles(cyclesLeftInFrame);
+                    }
+                    else
+                    {
+                        if(_instructionCycles) {
+                            _instructionCycles -= (_instructionCycles > cyclesLeftInFrame) ? cyclesLeftInFrame : _instructionCycles;
+                            addCycles(cyclesLeftInFrame);
+                        }
+                        if (!_instructionCycles) {
+                            _cpuState = eNORMAL;
+                            _screen.setAll(0);
+                            std::memset(_memory.data() + 0xF00, 0, 256);
+                            ++_clearCounter;
+                        }
+                        else {
+                            _rPC = uint16_t(_rPC - 2);
+                        }
+                    }
                 }
                 else if (opcode == 0x00EE) {  // 00EE - return
                     if(!_rSP)
@@ -402,7 +422,7 @@ public:
                             else {
                                 _instructionCycles = 0;
                                 _cpuState = eNORMAL;
-                                addCycles(8);
+                                addCycles(10);
                             }
                         }
                         else {
@@ -555,6 +575,8 @@ public:
     }
 
     const VideoType* getScreen() const override { return &_screen; }
+
+    void setPalette(const Palette& palette) override;
 
 protected:
     void wait(int instructionCycles = 0)

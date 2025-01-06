@@ -118,6 +118,7 @@ public:
     static const KnownRomInfo& getRomInfo(size_t index);
     static const KnownRomInfo* getKnownRoms();
     static const KnownRomInfo* findKnownRom(const Sha1::Digest& sha1);
+    static size_t findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms);
 private:
     int _activeEntry{-1};
     std::string _currentPath;

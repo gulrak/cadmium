@@ -331,6 +331,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
 
 void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const
 {
+    using namespace gui;
     auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     int i, line = 0, lastSize = 0;

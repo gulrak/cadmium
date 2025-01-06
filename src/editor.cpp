@@ -254,6 +254,7 @@ void Editor::ensureCursorVisibility()
 
 void Editor::update()
 {
+    using namespace gui;
     auto oldRepeat = _repeatTimer;
     ++_editId;
     _repeatTimer -= GetFrameTime();

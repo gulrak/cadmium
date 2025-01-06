@@ -27,6 +27,7 @@
 
 #include <emulation/config.hpp>
 #include <emulation/hardware/genericcpu.hpp>
+#include <emulation/palette.hpp>
 #include <emulation/videoscreen.hpp>
 
 #include <cassert>
@@ -111,7 +112,7 @@ public:
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
     virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }
     virtual uint8_t getScreenAlpha() const { return 255; }
-    virtual void setPalette(std::span<uint32_t> palette) {}
+    virtual void setPalette(const Palette& palette) = 0;
     virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
 };
 

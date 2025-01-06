@@ -28,6 +28,7 @@
 #include <emulation/chip8options.hpp>
 #include <emulation/emulatorhost.hpp>
 #include <emulation/iemulationcore.hpp>
+#include <emulation/palette.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
@@ -79,8 +80,10 @@ public:
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual bool loadRom(std::string_view filename, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
+    virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown);
     void updateEmulatorOptions(const Properties& properties);
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
+    void setPalette(const Palette& palette);
 
 protected:
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
@@ -104,8 +107,10 @@ protected:
     Sha1::Digest _romSha1;
     bool _romIsWellKnown{false};
     bool _customPalette{false};
-    std::array<uint32_t, 256> _colorPalette{};
-    std::array<uint32_t, 256> _defaultPalette{};
+    Palette _colorPalette;
+    Palette _defaultPalette;
+    //std::array<uint32_t, 256> _colorPalette{};
+    //std::array<uint32_t, 256> _defaultPalette{};
     emu::Properties* _properties{nullptr};
     std::map<std::string, Properties> _propertiesByClass;
     std::string _variantName;
@@ -133,6 +138,47 @@ public:
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
 private:
     CadmiumConfiguration _cfg;
+};
+
+class ThreadedBackgroundHost : public EmuHostEx
+{
+public:
+    ThreadedBackgroundHost() : EmuHostEx(_cfg)
+    {
+        _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
+        _screenTexture = LoadTextureFromImage(_screen);
+    }
+    explicit ThreadedBackgroundHost(const Properties& options) : EmuHostEx(_cfg) { updateEmulatorOptions(options); }
+    ~ThreadedBackgroundHost() override = default;
+    Properties& getProperties() { return *_properties; }
+    IEmulationCore& emuCore() { return *_chipEmu; }
+    bool isHeadless() const override { return true; }
+    int getKeyPressed() override { return 0; }
+    bool isKeyDown(uint8_t key) override { return false; }
+    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
+    void updateScreen() override
+    {
+        auto* pixel = static_cast<uint32_t*>(_screen.data);
+        if(pixel) {
+            if (const auto* screen = _chipEmu->getScreen()) {
+                screen->convert(pixel, _screen.width, 255, nullptr);
+                UpdateTexture(_screenTexture, _screen.data);
+            }
+            else {
+                if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
+                    screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                    UpdateTexture(_screenTexture, _screen.data);
+                }
+            }
+        }
+    }
+    void vblank() override {}
+    void updatePalette(const std::array<uint8_t,16>& palette) override {}
+    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
+private:
+    CadmiumConfiguration _cfg;
+    Image _screen;
+    Texture2D _screenTexture;
 };
 
 }

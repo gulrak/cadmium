@@ -178,7 +178,7 @@ struct GuiContext
     bool horizontal{false};
     bool bordered{false};
     int level{0};
-    float maxSize{0};
+    Vector2 maxSize{};
     float rowHeight{DEFAULT_ROW_HEIGHT};
     float nextWidth{-1};
     float nextHeight{-1};
@@ -201,13 +201,13 @@ struct GuiContext
     {
         auto x = currentPos.x;
         auto y = currentPos.y;
+        maxSize.x = std::max(maxSize.x, size.x);
+        maxSize.y = std::max(maxSize.y, size.y);
         if (horizontal) {
             currentPos.x += size.x + spacingH;
-            maxSize = std::max(size.y, maxSize);
         }
         else {
             currentPos.y += size.y + spacingV;
-            maxSize = std::max(size.x, maxSize);
         }
         nextWidth = -1;
         nextHeight = -1;
@@ -217,10 +217,10 @@ struct GuiContext
     {
         if (horizontal) {
             currentPos.x = area.x;
-            currentPos.y += maxSize;
+            currentPos.y += maxSize.y;
         }
         else {
-            currentPos.x += maxSize;
+            currentPos.x += maxSize.x;
             currentPos.y = area.y;
         }
     }
@@ -357,6 +357,7 @@ inline GuiContext& GuiContext::newContext(const std::string& key) const
     auto& ctx = g_contextStack.top();
     ctx.childContextCount = 0;
     ctx.hash = detail::fnv_64a_str(key.c_str(), ctx.hash, ++g_contextStack.top().childContextCount);
+    ctx.maxSize = {};
     return ctx;
 }
 
@@ -593,21 +594,23 @@ void Begin()
     ctx.bordered = false;
     ctx.level++;
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
 }
 
-static void EndImpl()
+static void EndImpl(Vector2 size = {})
 {
     auto ctxOld = g_contextStack.top();
     g_contextStack.pop();
     auto& ctx = detail::context();
-    if (ctxOld.horizontal) {
+    if (size.x > 0 && size.y > 0) {
+        ctx.increment(size);
+    }
+    else if (ctxOld.horizontal) {
         // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
-        ctx.increment({ctxOld.currentPos.x - ctxOld.area.x, ctxOld.maxSize});
+        ctx.increment({ctxOld.currentPos.x - ctxOld.area.x + ctxOld.padding.x - ctxOld.spacingH, ctxOld.maxSize.y + ctxOld.padding.y*2});
     }
     else {
         // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.initialPos.x + ctxOld.maxSize, ctxOld.currentPos.y, GREEN);
-        ctx.increment({ctxOld.maxSize, ctxOld.currentPos.y - ctxOld.area.y});
+        ctx.increment({ctxOld.maxSize.x + ctxOld.padding.x*2, ctxOld.currentPos.y - ctxOld.area.y + ctxOld.padding.y - ctxOld.spacingV});
     }
 }
 
@@ -631,11 +634,12 @@ void BeginColumns()
 
 void EndColumns()
 {
-    if (!detail::context().horizontal) {
+    auto ctx = detail::context();
+    if (!ctx.horizontal) {
         throw std::runtime_error("Unbalanced gui::BeginColumns/gui::EndColumns!");
     }
     // detail::context().horizontal = false;
-    EndImpl();
+    EndImpl({ctx.currentPos.x - ctx.area.x, ctx.maxSize.y});
 }
 
 void BeginPanel(const char* text, Vector2 padding)
@@ -660,7 +664,6 @@ void BeginPanel(const char* text, Vector2 padding)
     ctx.level++;
     ctx.groupName = text ? text : "";
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = padding;
 }
 
@@ -668,15 +671,14 @@ void EndPanel()
 {
     auto& ctx = detail::context();
     if (ctx.level > 1) {
-        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
+        GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y - ctx.spacingV}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
     else {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
     // ctx.increment({0, ctx.currentPos.y - ctx.area.y + (ctx.groupName.empty() ? 10 : RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 10)});
     //ctx.increment({1,2});
-    ctx.maxSize = ctx.area.width;
-    End();
+    EndImpl();
 }
 
 void BeginTabView(int *activeTab)
@@ -752,7 +754,6 @@ bool BeginTab(const char* text, Vector2 padding)
     ctx.level++;
     ctx.groupName = text ? text : "";
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = padding;
     return true;
 }
@@ -769,16 +770,16 @@ void EndTab()
     }
     g_contextStack.pop();
     auto& ctxParent = detail::context();
-    ctxOld.maxSize = ctxOld.area.width;
+    ctxOld.maxSize = {ctxOld.area.width, ctx.area.height};
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
     if (ctxOld.horizontal) {
         // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
         tvc.incX = ctxOld.currentPos.x - ctxOld.area.x;
-        tvc.incY = ctxOld.maxSize;
+        tvc.incY = ctxOld.maxSize.y;
     }
     else {
         // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.initialPos.x + ctxOld.maxSize, ctxOld.currentPos.y, GREEN);
-        tvc.incX = ctxOld.maxSize;
+        tvc.incX = ctxOld.maxSize.x;
         tvc.incY = ctxOld.currentPos.y - ctxOld.area.y;
     }
 }
@@ -797,7 +798,6 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
     ctx.bordered = false;
     ctx.level = 0;
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = {0, 0};
 
     Rectangle view;
@@ -813,7 +813,8 @@ void EndScrollPanel()
         throw std::runtime_error("Unbalanced gui::BeginScrollPanel/gui::EndScrollPanel!");
     }
     EndScissorMode();
-    EndPanel();
+    auto& ctx = detail::context();
+    EndImpl({ctx.area.width, ctx.area.height});
     //End();
     //auto ctxOld = g_contextStack.top();
     //g_contextStack.pop();
@@ -915,7 +916,6 @@ void BeginGroupBox(const char* text)
     ctx.level++;
     ctx.groupName = text ? text : "";
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = {0, 0};
 }
 
@@ -948,7 +948,6 @@ void BeginPopup(Rectangle area, bool* isOpen)
     ctx.bordered = false;
     ctx.level = 0;
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = {0, 0};
 
     if (std::holds_alternative<RenderTexture*>(ctxParent.contextData)) {
@@ -1060,6 +1059,14 @@ void SetNextWidth(float width)
     if(width <= 1.0f)
         width = std::floor(ctx.content.width * width);
     ctx.nextWidth = width;
+}
+
+void SetNextHeight(float height)
+{
+    auto& ctx = detail::context();
+    if(height <= 1.0f)
+        height = std::floor(ctx.content.height * height);
+    ctx.nextHeight = height;
 }
 
 void SetRowHeight(float height)
@@ -1637,7 +1644,6 @@ bool BeginMenuBar()
     ctx.level++;
     ctx.groupName = "";
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = {5, 0};
     if (GetState() == STATE_DISABLED) {
         return false;
@@ -1690,7 +1696,6 @@ bool BeginMenu(const char* text)
     ctx.level++;
     ctx.groupName = "";
     ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.maxSize = 0;
     ctx.padding = {5, 0};
     ctx.contextData = &mctx;
     return true;

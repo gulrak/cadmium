@@ -88,6 +88,20 @@ const KnownRomInfo* Librarian::findKnownRom(const Sha1::Digest& sha1)
     return nullptr;
 }
 
+size_t Librarian::findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms)
+{
+    outKnownRoms.clear();
+    for(auto & g_knownRom : g_knownRoms) {
+        if(sha1 == g_knownRom.sha1) {
+            outKnownRoms.push_back(&g_knownRom);
+        }
+        else if(!outKnownRoms.empty()) {
+            break;
+        }
+    }
+    return outKnownRoms.size();
+}
+
 std::string Librarian::Info::minimumOpcodeProfile() const
 {
     auto mask = static_cast<uint64_t>(possibleVariants);
@@ -328,7 +342,7 @@ emu::Properties Librarian::getPropertiesForSha1(const Sha1::Digest& sha1)
     if (const auto* romInfo = findKnownRom(sha1)) {
         auto properties = emu::CoreRegistry::propertiesForPreset(romInfo->preset);
         if(romInfo->options) {
-            //emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
+            properties.applyDiff(nlohmann::json::parse(std::string(romInfo->options)));
         }
         return properties;
     }

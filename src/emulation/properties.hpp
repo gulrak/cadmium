@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <emulation/palette.hpp>
 #include <chiplet/utility.hpp>
 
 #include <algorithm>
@@ -51,63 +52,6 @@ visitor(Ts...) -> visitor<Ts...>;
 
 enum PropertyAccess { eReadOnly, eWritable, eInvisible };
 
-
-class Palette
-{
-public:
-    struct Color {
-        Color(const uint8_t rval, const uint8_t gval, const uint8_t bval) : r(rval), g(gval), b(bval) {}
-        explicit Color(uint32_t val) : r(val >> 16), g(val >> 8), b(val) {}
-        explicit Color(std::string_view hex)
-        {
-            if(hex.length()>1 && hex[0] == '#') {
-                uint32_t colInt = std::strtoul(hex.data() + 1, nullptr, 16);
-                r = colInt>>16;
-                g = colInt>>8;
-                b = colInt;
-            }
-            else {
-                r = 0, g = 0, b = 0;
-            }
-        }
-        uint32_t toRGBInt() const
-        {
-            return (r << 16u) | (g << 8u) | b;
-        }
-        uint32_t toRGBAInt(const uint8_t alpha = 255) const
-        {
-            return (r << 24u) | (g << 16u) | (b << 8) | alpha;
-        }
-        bool operator==(const Color& other) const
-        {
-            return r == other.r && g == other.g && b == other.b;
-        }
-        std::string toString() const;
-        static Color fromRGBA(const uint32_t val) { return Color( val >> 24, val >> 16, val >> 8); }
-        uint8_t r, g, b;
-    };
-    Palette() = default;
-    Palette(const std::initializer_list<Color> cols)
-        : colors(cols)
-    {}
-    Palette(const std::initializer_list<std::string> cols)
-    {
-        colors.reserve(cols.size());
-        for(const auto& col : cols) {
-            colors.emplace_back(col);
-        }
-    }
-
-    bool empty() const { return colors.empty(); }
-    size_t size() const { return colors.size(); }
-    bool operator==(const Palette& other) const
-    {
-        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor;
-    }
-    std::vector<Color> colors;
-    std::optional<Color> borderColor{};
-    std::optional<Color> signalColor{};
-};
 
 class Property
 {
@@ -304,12 +248,20 @@ public:
         }
         return iter->second;
     }
-    Property& at(std::string_view key)
+    Property* find(std::string_view key)
     {
         for(auto& [mapKey, val] : _valueMap) {
             if(fuzzyCompare(mapKey, key)) {
-                return val;
+                return &val;
             }
+        }
+        return nullptr;
+    }
+    Property& at(std::string_view key)
+    {
+        auto* prop = find(key);
+        if (prop) {
+            return *prop;
         }
         throw std::runtime_error(fmt::format("No property named {}", key));
     }

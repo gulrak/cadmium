@@ -42,11 +42,18 @@ public:
         std::string filePath;
         Sha1::Digest digest;
     };
+    struct Program
+    {
+        std::string name;
+        emu::Properties properties;
+        std::span<const uint8_t> data;
+    };
     explicit Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path, const std::unordered_map<std::string, std::string>& badges);
     ~Database();
     int scanLibrary();
     FileInfo scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
-    void render(Font& font);
+    std::optional<Program> getSelectedProgram() const;
+    bool render(Font& font); // returns true if a program was selected
     bool fetchC8PDB();
 private:
     void fetchProgramInfo();
@@ -60,5 +67,6 @@ private:
     std::chrono::steady_clock::duration durationOfLastJob{};
     struct Private;
     std::unique_ptr<Private> _pimpl;
+    std::optional<Program> _selectedProgram;
 };
 

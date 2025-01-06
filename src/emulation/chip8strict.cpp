@@ -100,4 +100,9 @@ GenericCpu::StackContent Chip8StrictEmulator::stack() const
     return {2, eBIG, eDOWNWARDS, std::span(_memory.data() + _options.ramSize - 0x160, 48)};
 }
 
+void Chip8StrictEmulator::setPalette(const Palette& palette)
+{
+    _screen.setPalette(palette);
+}
+
 }

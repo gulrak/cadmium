@@ -125,6 +125,7 @@ public:
     const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
     uint8_t getScreenAlpha() const override { return _screenAlpha; }
+    void setPalette(const Palette& palette) override;
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
     unsigned stackSize() const override { return 16; }

@@ -56,7 +56,7 @@ public:
     int frames() const { return _frameCounter; }
     int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }
     const VideoType& getScreen() const;
-
+    void setPalette(const Palette& palette);
     static int64_t machineCycle(cycles_t cycles)
     {
         return cycles >> 3;

@@ -36,7 +36,7 @@ class Chip8GenericBase : public IEmulationCore, public IChip8Emulator
 public:
     enum MegaChipBlendMode { eBLEND_NORMAL = 0, eBLEND_ALPHA_25 = 1, eBLEND_ALPHA_50 = 2, eBLEND_ALPHA_75 = 3, eBLEND_ADD = 4, eBLEND_MUL = 5 };
     enum Chip8Font { C8F5_COSMAC, C8F5_ETI, C8F5_DREAM, C8F5_CHIP48, C8F5_FISHNCHIPS, C8F5_AKOUZ1 };
-    enum Chip8BigFont { C8F10_NONE, C8F10_SCHIP10, C8F10_SCHIP11, C8F10_FISHNCHIPS, C8F10_MEGACHIP, C8F10_XOCHIP, C8F10_MADSTER, C8F10_AKOUZ1 };
+    enum Chip8BigFont { C8F10_NONE, C8F10_SCHIP10, C8F10_SCHIP11, C8F10_FISHNCHIPS, C8F10_MEGACHIP, C8F10_XOCHIP, C8F10_AUCHIP, C8F10_AKOUZ1 };
     explicit Chip8GenericBase(Chip8Variant variant, std::optional<uint64_t> clockRate);
     bool inErrorState() const override { return _cpuState == eERROR; }
     bool isGenericEmulation() const override { return true; }

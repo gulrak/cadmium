@@ -770,6 +770,11 @@ const VideoType* Eti660::getScreen() const
     return &_impl->_video.getScreen();
 }
 
+void Eti660::setPalette(const Palette& palette)
+{
+    _impl->_video.setPalette(palette);
+}
+
 GenericCpu& Eti660::getBackendCpu()
 {
     return _impl->_cpu;

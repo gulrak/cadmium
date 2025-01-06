@@ -115,8 +115,8 @@ nlohmann::json Properties::createDiff(const Properties& other) const
 void Properties::applyDiff(const nlohmann::json& diff)
 {
     for (const auto& [key, value] : diff.items()) {
-        if (auto iter = _valueMap.find(key); iter != _valueMap.end()) {
-            auto& prop = iter->second;
+        if (auto* propPtr = find(key); propPtr != nullptr) {
+            auto& prop = *propPtr;
             std::visit(visitor{
         [&](std::nullptr_t&) { },
         [&](bool& val) { val = value.get<bool>(); },

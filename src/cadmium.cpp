@@ -781,9 +781,10 @@ void main()
         _microFont = LoadImage("micro-font.png");
         generateFont();
         if(props) {
-            // TODO: Fix this
-            //_options = *chip8options;
-            setPalette({_defaultPalette.begin(), _defaultPalette.end()});
+            if (props.palette().empty())
+                setPalette(_defaultPalette);
+            else
+                setPalette(props.palette());
         }
         else
             _mainView = eSETTINGS;
@@ -1171,12 +1172,14 @@ void main()
 
     void updatePalette(const std::array<uint8_t,16>& palette) override
     {
+        /*
+         * TODO: Fix this
         if(!_customPalette) {
             for (int i = 0; i < palette.size(); ++i) {
                 _colorPalette[i] = ((rgb332To888(palette[i]) << 8) | 0xff);
             }
             _updateScreen = true;
-        }
+        }*/
     }
 
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override
@@ -1213,6 +1216,7 @@ void main()
             Color badgeColor, textColor;
         };
         std::vector<BadgeInfo> badges;
+        auto textColor = DARKGRAY;
         for(const auto& [name, info] : _cores) {
             //std::cout << toOptionName(name) << std::endl;
             //coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
@@ -1223,12 +1227,12 @@ void main()
                     presetName = toOptionName(info->variantName(i));
                 else
                     presetName = toOptionName(info->prefix() + '-' + info->variantName(i));
-                badges.push_back(BadgeInfo{presetName, GREEN, BLACK});
+                badges.push_back(BadgeInfo{presetName, {0x00, 0xE0, 0x00, 0xFF}, textColor});
             }
         }
-        badges.push_back(BadgeInfo{"GENERIC-CHIP-8", ORANGE, BLACK});
-        badges.push_back(BadgeInfo{"???", RED, BLACK});
-        badges.push_back(BadgeInfo{"NEW", SKYBLUE, BLACK});
+        badges.push_back(BadgeInfo{"GENERIC-CHIP-8", {0xE0, 0xC0, 0x00, 0xFF}, textColor});
+        badges.push_back(BadgeInfo{"???", {0xE0, 0x40, 0x40, 0xFF}, LIGHTGRAY});
+        badges.push_back(BadgeInfo{"NEW", {0x00, 0xC0, 0xE0, 0xFF}, textColor});
         for(uint16_t i = 0; i < badges.size(); ++i) {
             auto& [label, badgeCol, textCol] = badges[i];
             float width = label.length() * 4 + 3;
@@ -1491,6 +1495,7 @@ void main()
 
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
     {
+        using namespace gui;
         StyleManager::Scope guard;
         auto fg = guard.getStyle(Style::TEXT_COLOR_NORMAL);
         auto bg = guard.getStyle(Style::BASE_COLOR_NORMAL);
@@ -1938,7 +1943,14 @@ void main()
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Library / Research");
-                    _database.render(_font);
+                    if (_database.render(_font)) {
+                        auto program = _database.getSelectedProgram();
+                        if (program) {
+                            loadBinary(program->name, program->data, program->properties, true);
+                            reloadRom(true);
+                            _lastRunView = _mainView = eDEBUGGER;
+                        }
+                    }
                     Space(_screenHeight - GetCurrentPos().y - 20 - 1);
                     EndPanel();
                     End();
@@ -2257,6 +2269,7 @@ void main()
             pos.y = std::ceil(pos.y);
             SetNextWidth(52.0f + 16*18);
             Label("Colors:");
+#if 0 // TODO: fix this
             for (int i = 0; i < 16; ++i) {
                 bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + 52 + i * 18, pos.y, 16, 16});
                 DrawRectangle(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
@@ -2274,6 +2287,7 @@ void main()
                 setPalette({_colorPalette.begin(), _colorPalette.end()});
                 prevPalette.assign(_colorPalette.begin(), _colorPalette.end());
             }
+#endif
             static int sel = 5;
             if(DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;Custom", &sel, true)) {
                 switch(sel) {
@@ -2730,7 +2744,7 @@ void main()
 private:
     std::mutex _audioMutex;
     ResourceManager _resources;
-    StyleManager _styleManager;
+    gui::StyleManager _styleManager;
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};

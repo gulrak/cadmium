@@ -740,6 +740,11 @@ const VideoType* Dream6800::getScreen() const
     return &_impl->_screen;
 }
 
+void Dream6800::setPalette(const Palette& palette)
+{
+    _impl->_screen.setPalette(palette);
+}
+
 GenericCpu& Dream6800::getBackendCpu()
 {
     return _impl->_cpu;

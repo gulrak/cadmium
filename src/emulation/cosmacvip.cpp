@@ -1118,6 +1118,11 @@ const VideoType* CosmacVIP::getScreen() const
     return &_impl->_video.getScreen();
 }
 
+void CosmacVIP::setPalette(const Palette& palette)
+{
+    _impl->_video.setPalette(palette);
+}
+
 GenericCpu& CosmacVIP::getBackendCpu()
 {
     return _impl->_cpu;

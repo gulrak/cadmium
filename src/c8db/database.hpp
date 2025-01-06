@@ -283,8 +283,8 @@ public:
 
     explicit Database(std::string directory, const std::string& platformsFile_ = "platforms.json", const std::string& programsFile_ = "programs.json")
     : dbDir(std::move(directory))
-    , platformsFile(platformsFile.front() != '[' ? platformsFile_ : "")
-    , programsFile(programsFile.front() != '[' ? programsFile_ : "")
+    , platformsFile(platformsFile_.front() != '[' ? platformsFile_ : "")
+    , programsFile(programsFile_.front() != '[' ? programsFile_ : "")
     {
         if (platformsFile.empty()) {
             std::istringstream platformsStream(platformsFile_);

@@ -226,7 +226,8 @@ static uint8_t g_octoBigFont[] = {
     0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC0, 0xC0, 0xC0, 0xC0  // F
 };
 
-static uint8_t g_madsterBigFont[] = {
+// Whith the kind permission of @Madster (EmuDev Discord)
+static uint8_t g_auchipBigFont[] = {
     0x3C, 0x7E, 0xE7, 0xC3, 0xC3, 0xC3, 0xC3, 0xE7, 0x7E, 0x3C, // 0
     0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF, // 1
     0x7E, 0xFF, 0xC3, 0x03, 0x07, 0x1E, 0x78, 0xE0, 0xFF, 0xFF, // 2
@@ -283,7 +284,7 @@ std::pair<const uint8_t*, size_t> Chip8GenericBase::bigFontData(Chip8BigFont fon
         case C8F10_MEGACHIP: return {g_megachip8BigFont, sizeof(g_megachip8BigFont)};
         case C8F10_FISHNCHIPS: return {g_fishNChipBigFont, sizeof(g_fishNChipBigFont)};
         case C8F10_XOCHIP: return {g_octoBigFont, sizeof(g_octoBigFont)};
-        case C8F10_MADSTER: return {g_madsterBigFont, sizeof(g_madsterBigFont)};
+        case C8F10_AUCHIP: return {g_auchipBigFont, sizeof(g_auchipBigFont)};
         case C8F10_AKOUZ1: return {g_akouz1BigFont, sizeof(g_akouz1BigFont)};
         default: return {g_ship11BigFont, sizeof(g_ship11BigFont)};
     }

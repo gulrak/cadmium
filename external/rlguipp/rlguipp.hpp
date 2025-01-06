@@ -127,6 +127,7 @@ RLGUIPP_API int GetStyle(int control, int property);                            
 RLGUIPP_API void SetIndent(float width);                                                                                  // Indents all following elements in this level
 RLGUIPP_API void SetReserve(float width);                                                                                 // Sets the space reserved for right side labels of bar widgets
 RLGUIPP_API void SetNextWidth(float width);                                                                               // Set the width of the next element, default is the width of the parent
+RLGUIPP_API void SetNextHeight(float height);                                                                             // Set the height of the next element, default is the row height
 RLGUIPP_API void SetRowHeight(float height);                                                                              // Set the height for elements that can be typically in a row, like buttons, edit fields, spinner...
 RLGUIPP_API void SetSpacing(float spacing);                                                                               // Set the spacing, depending on the parent layout it will set the horizontal or vertical spacing
 RLGUIPP_API Vector2 GetCurrentPos();                                                                                      // Get the position that will be used by the next widget

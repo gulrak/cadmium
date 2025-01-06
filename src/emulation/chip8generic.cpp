@@ -481,11 +481,16 @@ void Chip8GenericEmulator::reset()
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)
 {
-    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+    if (fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
         _options = Chip8GenericOptions::fromProperties(props);
         return false;
     }
     return true;
+}
+
+void Chip8GenericEmulator::setPalette(const Palette& palette)
+{
+    _screen.setPalette(palette);
 }
 
 bool Chip8GenericEmulator::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)

@@ -96,6 +96,11 @@ const Cdp186x::VideoType& Cdp186x::getScreen() const
     return _screen;
 }
 
+void Cdp186x::setPalette(const Palette& palette)
+{
+    _screen.setPalette(palette);
+}
+
 std::pair<int, bool> Cdp186x::executeStep()
 {
     auto fc = static_cast<int>((_cpu.cycles() >> 3) % VIDEO_CYCLES_PER_FRAME);
