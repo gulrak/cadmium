@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include "database.hpp"
+#include "emuhostex.hpp"
 #include "librarian.hpp"
 #include "stylemanager.hpp"
 #include <c8db/database.hpp>
@@ -64,7 +65,7 @@ struct DBProgram
     std::optional<int> year{0};
 
     Rectangle rect{};
-    std::vector<DBTags> tags;
+    std::vector<int> tags;
     std::vector<int> binaries;
 };
 
@@ -85,7 +86,7 @@ struct DBBinary
     std::string description;
     std::vector<uint8_t> data;
     std::vector<std::string> filenames;
-    std::vector<DBTags> tags;
+    std::vector<int> tags;
     std::vector<DBBinaryConfig> configs;
 };
 
@@ -107,6 +108,13 @@ struct DBBinaryTag
 {
     int id{0};
     int binary_id{0};
+    int tag_id{0};
+};
+
+struct DBBinaryConfigTag
+{
+    int id{0};
+    int binary_config_id{0};
     int tag_id{0};
 };
 
@@ -155,8 +163,13 @@ using BinariesTagsTable = Table<"binaries_tags",
                                        Column<"id", &DBBinaryTag::id, PrimaryKey<>>,
                                        Column<"binary_id", &DBBinaryTag::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
                                        Column<"tag_id", &DBBinaryTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
+using BinaryConfigTagsTable = Table<"binary_config_tags",
+                                       DBBinaryConfigTag,
+                                       Column<"id", &DBBinaryConfigTag::id, PrimaryKey<>>,
+                                       Column<"binary_config_id", &DBBinaryConfigTag::binary_config_id, ForeignKey<"binary_configs", "id", action_t::cascade, action_t::cascade>>,
+                                       Column<"tag_id", &DBBinaryConfigTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
 
-using DBConnection = Connection<VersionTable, ProgramsTable, BinariesTable, BinaryConfigsTable, FilenamesTable, TagsTable, ProgramsTagsTable, BinariesTagsTable>;
+using DBConnection = Connection<VersionTable, ProgramsTable, BinariesTable, BinaryConfigsTable, FilenamesTable, TagsTable, ProgramsTagsTable, BinariesTagsTable, BinaryConfigTagsTable>;
 
 
 struct Database::Private
@@ -167,12 +180,15 @@ struct Database::Private
     int unclassifiedTagId{2};
     std::unordered_map<int, DBProgram> programs;
     std::unordered_map<int, DBBinary> binaries;
+    std::unordered_map<int, DBTags> tags;
     std::vector<size_t> shownIndices;
+    std::vector<std::string> sortedTags;
     std::string queryLine;
     std::string presetFilter;
     std::string textFilter;
     Vector2 tagsScrollPos{};
     float listContentHeight{0};
+    emu::ThreadedBackgroundHost backgroundHost;
 
     void updateFilter()
     {
@@ -224,11 +240,10 @@ struct Database::Private
     }
 };
 
-Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path, const std::unordered_map<std::string, std::string>& badges)
+Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path)
     : _registry(registry)
     , _threadPool(threadPool)
     , _configuration(configuration)
-    , _badges(badges)
     , _pimpl(std::make_unique<Private>())
 {
     _pimpl->connection = std::make_unique<DBConnection>((path + "/cadmium_library.sqlite").c_str(), 0, nullptr, [](auto level, const auto& msg) {
@@ -239,8 +254,8 @@ Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& conf
 });
     _pimpl->connection->create_tables();
     _pimpl->connection->insert_record(DBVersion{});
-    _pimpl->connection->insert_record(DBTags{0,"new", "#8080FF"});
-    _pimpl->connection->insert_record(DBTags{0,"???", "#FFFF00"});
+    _pimpl->connection->insert_record(DBTags{0,"new", "#00C0E0"});
+    _pimpl->connection->insert_record(DBTags{0,"???", "#E04040"});
     //_pimpl->newTagId = _pimpl->connection->select_query<Select<TagsTable::field_t<"id">>>().where_one(TagsTable::field_t<"name">().like("new")).exec().value_or(0);
     //_pimpl->newTagId = _pimpl->connection->select_query<Select<TagsTable::field_t<"id">>>().where_one(TagsTable::field_t<"name">().like("???")).exec().value_or(0);
     fetchProgramInfo();
@@ -248,10 +263,60 @@ Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& conf
 
 Database::~Database() = default;
 
+void Database::refreshBadges()
+{
+    _badges.clear();
+    _pimpl->sortedTags.clear();
+    _badges.emplace("generic-chip-8", BadgeInfo{BadgeInfo::GENERIC, "generic-chip-8", DARKGRAY, {0xE0, 0xC0, 0x00, 0xFF}});
+    _pimpl->sortedTags.emplace_back("generic-chip-8");
+    for(const auto& [name, info] : _registry) {
+        //std::cout << toOptionName(name) << std::endl;
+        //coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
+        //presetsDescription += fmt::format("        {}:\n", info->description);
+        for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+            std::string presetName;
+            if(info->prefix().empty())
+                presetName = toOptionName(info->variantName(i));
+            else
+                presetName = toOptionName(info->prefix() + '-' + info->variantName(i));
+
+            _badges.emplace(presetName, BadgeInfo{BadgeInfo::PRESET , presetName, DARKGRAY, {0x00, 0xE0, 0x00, 0xFF}});
+            _pimpl->sortedTags.emplace_back(presetName);
+        }
+    }
+    for (const auto& [id, tag] : _pimpl->tags) {
+        if (!_badges.contains(tag.name)) {
+            emu::Palette::Color col(tag.color);
+            if (tag.name == "???") {
+                _badges.emplace(tag.name, BadgeInfo{BadgeInfo::UNDEFINED, tag.name, LIGHTGRAY, {col.r, col.g, col.b, 0xFF}});
+            }
+            else if (fuzzyCompare(tag.name, "new")) {
+                _badges.emplace(tag.name, BadgeInfo{BadgeInfo::NEW_TAG, tag.name, DARKGRAY, {col.r, col.g, col.b, 0xFF}});
+            }
+            else {
+                _badges.emplace(tag.name, BadgeInfo{BadgeInfo::USER_TAG, tag.name, DARKGRAY, {col.r, col.g, col.b, 0xFF}});
+            }
+            _pimpl->sortedTags.emplace_back(tag.name);
+        }
+    }
+    std::ranges::sort(_pimpl->sortedTags, [this](const std::string& s1, const std::string& s2) {
+        const auto& b1 = _badges.at(s1);
+        const auto& b2 = _badges.at(s2);
+        return std::tie(b1.type, b1.text) < std::tie(b2.type, b2.text);
+    });
+}
+
 void Database::fetchProgramInfo()
 {
     {
         std::lock_guard lock(_pimpl->mutex);
+        {
+            _pimpl->tags.clear();
+            auto tags = _pimpl->connection->select_query<DBTags>().many().exec();
+            for (const auto& tag : tags) {
+                _pimpl->tags.emplace(tag.id, tag);
+            }
+        }
         {
             _pimpl->programs.clear();
             auto programs = _pimpl->connection->select_query<DBProgram>().many().exec();
@@ -282,6 +347,7 @@ void Database::fetchProgramInfo()
                 }
             }
         }
+        refreshBadges();
         _pimpl->updateFilter();
     }
 }
@@ -415,11 +481,19 @@ std::optional<Database::Program> Database::getSelectedProgram() const
     return _selectedProgram;
 }
 
-const std::string& Database::getBadge(std::string badgeText) const
+Vector2 Database::drawBadge(Font& font, std::string_view text, Vector2 pos, Color textCol, Color badgeCol)
 {
-    static const std::string none;
-    const auto iter = _badges.find(badgeText);
-    return iter != _badges.end() ? iter->second : none;
+    Vector2 size{text.length() * 6.0f + 5, 7.0f};
+    DrawRectangleRec({pos.x, pos.y + 1, text.length() * 6.0f + 5, 5}, badgeCol);
+    DrawRectangleRec({pos.x + 1, pos.y, text.length() * 6.0f + 3, 7}, badgeCol);
+    pos.x += 3;
+    pos.y -= 1;
+    for (int cp : text) {
+        cp |= 0xE000;
+        DrawTextCodepoint(font, cp, pos, 8.0f, textCol);
+        pos.x += 6;
+    }
+    return size;
 }
 
 bool Database::render(Font& font)
@@ -452,11 +526,12 @@ bool Database::render(Font& font)
             SetNextWidth(tagsWidth);
             auto offset = GetCurrentPos();
             BeginTableView(GetContentAvailable().height - 135, 2, &_pimpl->tagsScrollPos);
-            for (const auto& [key, badge] : _badges) {
+            for (const auto& tagText : _pimpl->sortedTags) {
+                const auto& badge = _badges[tagText];
                 TableNextRow(10);
                 TableNextColumn(tagsWidth - 8);
                 auto pos = GetContentAvailable();
-                DrawTextEx(font, badge.c_str(), {pos.x + offset.x, pos.y + offset.y + _pimpl->tagsScrollPos.y}, 8.0f, 2.0f, WHITE);
+                drawBadge(font, badge.text.c_str(), {pos.x + offset.x, pos.y + offset.y + _pimpl->tagsScrollPos.y}, badge.textCol, badge.badgeCol);
             }
             EndTableView();
             auto tableArea = GetContentAvailable();
@@ -488,15 +563,19 @@ bool Database::render(Font& font)
                         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                             if (program.binaries.size() == 1) {
                                 auto preset = _pimpl->binaries[program.binaries.front()].configs.front().preset;
+                                if (preset == "generic-chip-8")
+                                    preset = "chip-8";
                                 emu::Properties props;
                                 if (!fuzzyCompare(preset, "generic-chip-8")) {
-                                    props = emu::CoreRegistry::propertiesForPreset(_pimpl->binaries[program.binaries.front()].configs.front().preset);
+                                    props = emu::CoreRegistry::propertiesForPreset(preset);
                                     const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
                                     if (!propString.empty()) {
                                         props.applyDiff(nlohmann::json::parse(propString));
                                     }
                                 }
                                 _selectedProgram = {.name = program.name, .properties = props, .data = _pimpl->binaries[program.binaries.front()].data};
+                                _pimpl->backgroundHost.killEmulation();
+                                _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
                                 binarySelected = true;
                             }
                             else {
@@ -507,15 +586,13 @@ bool Database::render(Font& font)
                     DrawTextEx(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, 8, 0, lightgrayCol);
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto binary = _pimpl->binaries.at(program.binaries[i]);
-                        std::string badges;
-                        for (const auto& bincfg : binary.configs) {
-                            badges += getBadge(bincfg.preset);
-                        }
-                        if (badges.empty()) {
-                            badges = getBadge("???");
-                        }
                         DrawTextEx(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, 8, 0, grayCol);
-                        DrawTextEx(font, fmt::format("{}", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
+                        //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
+                        Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
+                        for (const auto& bincfg : binary.configs) {
+                            auto size = drawBadge(font, bincfg.preset, pos, DARKGRAY, {0x00, 0xE0, 0x00, 0xFF});
+                            pos.x += size.x + 1;
+                        }
                     }
                 }
                 ypos += program.rect.height;
@@ -528,10 +605,14 @@ bool Database::render(Font& font)
         //auto innerHeight = _pimpl->programs
         //BeginScrollPanel(listRect.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto pos = GetCurrentPos();
-        DrawRectangleLines(pos.x + area.width - 131, pos.y, 130, 66, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL));
+        DrawRectangleLines(pos.x + area.width - 131, pos.y, 130, 98, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL));
+        auto [texture, rect] = _pimpl->backgroundHost.updateTexture();
+        _pimpl->backgroundHost.drawScreen({pos.x + area.width - 130, pos.y + 1, 128, 96});
+        DrawTextEx(font, fmt::format("FPS: {:02.1f} ({} frames)", 1000000.0/_pimpl->backgroundHost.getFrameTimeAvg()+0.005, _pimpl->backgroundHost.getFrames()).c_str(), {pos.x + area.width - 130 + 4, pos.y + 100}, 8, 1, WHITE);
+        //DrawTexturePro(*texture, {0,0,128,64}, {pos.x + area.width - 130, pos.y + 1, 128, 64}, {0,0}, 0, WHITE);
         //DrawText(fmt::format("{}x{}", mx, my).c_str(), area.x + 2, area.y + 2, 8, RED);
-        return binarySelected;
     }
+    return false;
 }
 
 bool Database::fetchC8PDB()

@@ -44,17 +44,21 @@
 
 namespace emu {
 
+std::unique_ptr<Database> EmuHostEx::_database;
+
 EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
     : _cfg(cfg)
     , _librarian(_cfg)
 #ifndef PLATFORM_WEB
     , _threadPool(6)
-    , _database(_cores, _cfg, _threadPool, dataPath(), _badges)
 #endif
 {
 #ifndef PLATFORM_WEB
     _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
     _databaseDirectory = _cfg.libraryPath;
+    if (!_instanceNum) {
+        _database = std::make_unique<Database>(_cores, _cfg, _threadPool, dataPath());
+    }
     _librarian.fetchDir(_currentDirectory);
 #endif
     // TODO: Fix this
@@ -87,7 +91,8 @@ void EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
 void EmuHostEx::setPalette(const Palette& palette)
 {
     _colorPalette = palette;
-    _properties->palette() = palette;
+    if (_properties)
+        _properties->palette() = palette;
 }
 
 std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmulationCore* iother)
@@ -187,9 +192,9 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
 {
     // TODO: Fix this
     if(_previousProperties != properties || !_chipEmu) {
-
         if(&properties != _properties) {
             if(!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
+
                 auto pIter = _propertiesByClass.find(properties.propertyClass());
                 if(pIter == _propertiesByClass.end()) {
                     pIter = _propertiesByClass.emplace(properties.propertyClass(), properties).first;
@@ -617,7 +622,6 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     if (props) {
         updateEmulatorOptions(props);
     }
-    _chipEmu->reset();
     _romImage = std::vector(binary.data(), binary.data() + binary.size());
     _romSha1 = calculateSha1(_romImage.data(), _romImage.size());
     _romName = filename;
@@ -625,7 +629,158 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     if (isKnown) {
         _romWellKnownProperties = props;
     }
+    _chipEmu->reset();
+    auto startAddress = props.get<Property::Integer>("startAddress");
+    auto loadAddress = startAddress ? startAddress->intValue : 0;
+    _chipEmu->loadData(binary, loadAddress);
     return true;
+}
+
+
+ThreadedBackgroundHost::ThreadedBackgroundHost(double initialFrameRate)
+: EmuHostEx(_cfg)
+, _workerThread(&ThreadedBackgroundHost::worker, this)
+{
+    setFrameRate(initialFrameRate);
+    _screen1 = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
+    _screen2 = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
+    _screen = &_screen1;
+}
+
+ThreadedBackgroundHost::ThreadedBackgroundHost(const Properties& options, double initialFrameRate)
+    : EmuHostEx(_cfg)
+    , _workerThread(&ThreadedBackgroundHost::worker, this)
+{
+    setFrameRate(initialFrameRate);
+    ThreadedBackgroundHost::updateEmulatorOptions(options);
+}
+
+ThreadedBackgroundHost::~ThreadedBackgroundHost()
+{
+    killEmulation();
+    _shutdown.store(true, std::memory_order_relaxed);
+    if (_workerThread.joinable()) {
+        _workerThread.join();
+    }
+    UnloadImage(_screen2);
+    UnloadImage(_screen1);
+}
+
+void ThreadedBackgroundHost::setFrameRate(double frequency)
+{
+    if (frequency <= 0.0) {
+        return;
+    }
+    using namespace std::chrono;
+    duration<double> dur(1.0 / frequency);
+    _frameDuration.store(
+        duration_cast<steady_clock::duration>(dur),
+        std::memory_order_relaxed
+    );
+}
+
+void ThreadedBackgroundHost::worker()
+{
+    using clock = std::chrono::steady_clock;
+    auto nextTick = clock::now();
+    static decltype(nextTick) lastNow = clock::now() - std::chrono::microseconds(16667);
+
+    while (!_shutdown.load(std::memory_order_relaxed))
+    {
+        tick();
+
+        auto frameDuration = _frameDuration.load(std::memory_order_relaxed);
+        nextTick += frameDuration;
+        auto now = clock::now();
+        _smaFrameTime_us.add(std::chrono::duration_cast<std::chrono::microseconds>(now - lastNow).count());
+        lastNow = now;
+        if (now >= nextTick + frameDuration) {
+            // if we are two or more frames late, skip time
+            nextTick = now + frameDuration;
+        }
+        std::this_thread::sleep_until(nextTick);
+    }
+}
+
+void ThreadedBackgroundHost::killEmulation()
+{
+    std::unique_lock guard(_mutex);
+    _chipEmu.reset();
+    ImageClearBackground(&_screen1, BLACK);
+    ImageClearBackground(&_screen2, BLACK);
+}
+
+
+void ThreadedBackgroundHost::updateEmulatorOptions(const Properties& properties)
+{
+    std::unique_lock guard(_mutex);
+    EmuHostEx::updateEmulatorOptions(properties);
+}
+
+void ThreadedBackgroundHost::tick()
+{
+    std::unique_lock guard(_mutex);
+    if (_chipEmu)
+        _chipEmu->executeFrame();
+}
+void ThreadedBackgroundHost::drawScreen(Rectangle dest) const
+{
+    if (_chipEmu && _screenTexture.id) {
+        const Color gridLineCol{40,40,40,255};
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
+        //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        auto videoScaleX = dest.width / scrWidth;
+        auto videoScaleY = _chipEmu->getScreen() && _chipEmu->getScreen()->ratio() ? videoScaleX / _chipEmu->getScreen()->ratio() : videoScaleX;
+        auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
+        if(_chipEmu->getMaxScreenWidth() > 128)
+            DrawRectangleRec(dest, {0,0,0,255});
+        else
+            DrawRectangleRec(dest, {0,12,24,255});
+
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+    }
+    else {
+        DrawRectangleRec(dest, {0,0,0,255});
+    }
+}
+
+void ThreadedBackgroundHost::updateScreen()
+{
+}
+
+std::pair<Texture2D*, Rectangle> ThreadedBackgroundHost::updateTexture()
+{
+    std::unique_lock guard(_mutex);
+    if (!_screenTexture.id)
+        _screenTexture = LoadTextureFromImage(*_screen);
+    UpdateTexture(_screenTexture, _screen->data);
+    return {&_screenTexture, {0, 0, 0, 0}};
+}
+
+void ThreadedBackgroundHost::vblank()
+{
+    std::unique_lock guard(_mutex);
+    if (auto* pixel = static_cast<uint32_t*>(_screen->data)) {
+        if (const auto* screen = _chipEmu->getScreen()) {
+            screen->convert(pixel, _screen->width, 255, nullptr);
+        }
+        else {
+            if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
+                screenRgb->convert(pixel, _screen->width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+            }
+        }
+    }
+    _screen = _screen == &_screen1 ? &_screen2 : &_screen1;
+}
+
+bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, const bool isKnown)
+{
+    auto rc = EmuHostEx::loadBinary(filename, binary, props, isKnown);
+    auto frameRate = props.get<Property::Integer>("frameRate");
+    setFrameRate(frameRate ? frameRate->intValue : 60);
+    return rc;
 }
 
 }

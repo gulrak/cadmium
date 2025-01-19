@@ -48,7 +48,15 @@ public:
         emu::Properties properties;
         std::span<const uint8_t> data;
     };
-    explicit Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path, const std::unordered_map<std::string, std::string>& badges);
+    struct BadgeInfo
+    {
+        enum Type { PRESET, GENERIC, UNDEFINED, NEW_TAG, USER_TAG};
+        Type type;
+        std::string text;
+        Color textCol{};
+        Color badgeCol{};
+    };
+    explicit Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path);
     ~Database();
     int scanLibrary();
     FileInfo scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
@@ -56,12 +64,14 @@ public:
     bool render(Font& font); // returns true if a program was selected
     bool fetchC8PDB();
 private:
+    void refreshBadges();
     void fetchProgramInfo();
+    static Vector2 drawBadge(Font& font, std::string_view text, Vector2 pos, Color textCol, Color badgeCol);
     const std::string& getBadge(std::string badgeText) const;
     const emu::CoreRegistry& _registry;
     ThreadPool& _threadPool;
     CadmiumConfiguration& _configuration;
-    const std::unordered_map<std::string, std::string>& _badges;
+    std::unordered_map<std::string, BadgeInfo> _badges;
     std::future<int> _scanResult;
     std::set<Sha1::Digest> _digests;
     std::chrono::steady_clock::duration durationOfLastJob{};

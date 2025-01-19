@@ -33,6 +33,9 @@
 
 struct CadmiumConfiguration
 {
+    int windowPosX{0xFFFF};
+    int windowPosY{0xFFFF};
+    int scaleMode{0};
     float volume{};
     uint16_t guiHue{200};
     uint8_t guiSat{80};

@@ -43,14 +43,15 @@
 //#include <emulation/chip8generic.hpp>
 #include <emulation/coreregistry.hpp>
 //#include <emulation/dream6800.hpp>
+#include <c8db/database.hpp>
 #include <emulation/time.hpp>
 #include <emulation/timecontrol.hpp>
-#include <c8db/database.hpp>
 #include <ghc/cli.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
 #include <resourcemanager.hpp>
 #include <systemtools.hpp>
+#include <texturescaler.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -60,10 +61,12 @@
 #include <cstring>
 #include <iomanip>
 #include <memory>
-#include <regex>
-#include <thread>
 #include <mutex>
 #include <new>
+#include <regex>
+#include <thread>
+
+#include "emulation/chip8strict.hpp"
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
@@ -338,9 +341,106 @@ static FontCharInfo fontRom[] = {
     {253,0,28,34,161,252},
     {254,254,40,68,68,56},
     {255,0,29,32,160,253},
+    {7680,30,69,165,69,30},
     {10240,0,0,0,0,0},
     {10495,85,85,0,85,85},
-    {65103,64,128,128,128,64},
+    {57376,0,0,0,0,0},
+    {57377,0,0,92,0,0},
+    {57378,0,12,0,12,0},
+    {57379,40,124,40,124,40},
+    {57380,72,84,124,84,36},
+    {57381,76,44,16,104,100},
+    {57382,40,84,88,32,80},
+    {57383,0,0,44,28,0},
+    {57384,0,56,68,0,0},
+    {57385,0,0,68,56,0},
+    {57386,40,16,124,16,40},
+    {57387,16,16,124,16,16},
+    {57388,0,0,176,112,0},
+    {57389,16,16,16,16,16},
+    {57390,0,96,96,0,0},
+    {57391,64,32,16,8,4},
+    {57392,56,68,68,56,0},
+    {57393,0,8,124,0,0},
+    {57394,100,84,84,84,72},
+    {57395,68,68,84,92,36},
+    {57396,28,16,16,124,16},
+    {57397,92,84,84,84,36},
+    {57398,56,84,84,84,32},
+    {57399,4,4,100,20,12},
+    {57400,40,84,84,84,40},
+    {57401,8,84,84,84,56},
+    {57402,0,108,108,0,0},
+    {57403,0,168,104,0,0},
+    {57404,8,20,34,0,0},
+    {57405,40,40,40,40,40},
+    {57406,0,0,68,40,16},
+    {57407,0,4,84,20,12},
+    {57408,56,68,92,84,88},
+    {57409,120,20,20,20,120},
+    {57410,124,84,84,84,40},
+    {57411,56,68,68,68,40},
+    {57412,124,68,68,68,56},
+    {57413,124,84,84,84,68},
+    {57414,124,20,20,20,4},
+    {57415,56,68,84,84,116},
+    {57416,124,16,16,16,124},
+    {57417,0,68,124,68,0},
+    {57418,32,64,64,64,60},
+    {57419,124,16,16,40,68},
+    {57420,124,64,64,64,64},
+    {57421,124,8,48,8,124},
+    {57422,124,8,16,32,124},
+    {57423,56,68,68,68,56},
+    {57424,124,20,20,20,8},
+    {57425,56,68,84,36,88},
+    {57426,124,20,20,52,72},
+    {57427,72,84,84,84,36},
+    {57428,4,4,124,4,4},
+    {57429,60,64,64,64,60},
+    {57430,28,32,64,32,28},
+    {57431,124,32,24,32,124},
+    {57432,68,40,16,40,68},
+    {57433,12,16,96,16,12},
+    {57434,68,100,84,76,68},
+    {57435,0,124,68,68,0},
+    {57436,4,8,16,32,64},
+    {57437,0,68,68,124,0},
+    {57438,16,8,4,8,16},
+    {57439,128,128,128,128,128},
+    {57440,0,7,11,0,0},
+    {57441,120,20,20,20,120},
+    {57442,124,84,84,84,40},
+    {57443,56,68,68,68,40},
+    {57444,124,68,68,68,56},
+    {57445,124,84,84,84,68},
+    {57446,124,20,20,20,4},
+    {57447,56,68,84,84,116},
+    {57448,124,16,16,16,124},
+    {57449,0,68,124,68,0},
+    {57450,32,64,64,64,60},
+    {57451,124,16,16,40,68},
+    {57452,124,64,64,64,64},
+    {57453,124,8,48,8,124},
+    {57454,124,8,16,32,124},
+    {57455,56,68,68,68,56},
+    {57456,124,20,20,20,8},
+    {57457,56,68,84,36,88},
+    {57458,124,20,20,52,72},
+    {57459,72,84,84,84,36},
+    {57460,4,4,124,4,4},
+    {57461,60,64,64,64,60},
+    {57462,28,32,64,32,28},
+    {57463,124,32,24,32,124},
+    {57464,68,40,16,40,68},
+    {57465,12,16,96,16,12},
+    {57466,68,100,84,76,68},
+    {57467,0,16,108,68,68},
+    {57468,0,0,108,0,0},
+    {57469,0,68,68,108,16},
+    {57470,8,4,8,8,4},
+    {57471,84,40,84,40,84},
+    {65103,64,128,64,192,64},
     {65533,126,251,173,243,126}
 };
 
@@ -462,34 +562,6 @@ void LogHandler(int msgType, const char *text, va_list args)
     emu::Logger::log(emu::Logger::eHOST, 0, {0,0}, buffer);
 }
 
-template <size_t N, typename ValueType = uint64_t, typename SumType = uint64_t>
-class SMA
-{
-public:
-    void reset()
-    {
-        _fill = _index = 0;
-        _sum = 0;
-    }
-    void add(ValueType nextVal)
-    {
-        if(_fill < N)
-            ++_fill;
-        else
-            _sum -= _history[_index];
-        _sum += nextVal;
-        _history[_index] = nextVal;
-        if (++_index == N)
-            _index = 0;
-    }
-    double get() const { return _fill ? double(_sum) / _fill : 0.0; }
-private:
-    size_t _fill{0};
-    size_t _index{0};
-    ValueType _history[N]{};
-    SumType _sum{0};
-};
-
 std::atomic_uint8_t g_soundTimer{0};
 std::atomic_int g_frameBoost{1};
 
@@ -501,6 +573,7 @@ public:
     enum MemFlags { eNONE = 0, eBREAKPOINT = 1, eWATCHPOINT = 2 };
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT, eLIBRARY };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
+    enum VideoRenderMode { eFAST, eHIRES };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     static constexpr int MIN_SCREEN_WIDTH = 640; // 512;
     static constexpr int MIN_SCREEN_HEIGHT = 480; // 192*2+36;
@@ -519,17 +592,40 @@ public:
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     #else
         // SetConfigFlags(FLAG_VSYNC_HINT);
+        SetConfigFlags(FLAG_WINDOW_HIDDEN);
+        _windowInvisible = true;
+        if (cfg.scaleMode) {
+            _scaleMode = cfg.scaleMode;
+        }
+        if (!_scaleMode) {
+            _scaleMode = (GetMonitorWidth(_currentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) ? 2 : 1;
+        }
     #endif
 
-        InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 variant environment");
+        InitWindow(_screenWidth * _scaleMode, _screenHeight * _scaleMode, "Cadmium - A CHIP-8 variant environment");
+        SetMouseScale(1.0f/_scaleMode, 1.0f/_scaleMode);
+        auto winPos = GetWindowPosition();
+        if (cfg.windowPosX != 0xFFFF) {
+            winPos.x = cfg.windowPosX;
+        }
+        if (cfg.windowPosY != 0xFFFF) {
+            winPos.y = cfg.windowPosY;
+        }
+        SetWindowPosition(winPos.x, winPos.y);
+        _currentMonitor = GetCurrentMonitor();
 #ifdef RESIZABLE_GUI
-        if(GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f) {
+        if(GetMonitorWidth(_curentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) {
             SetWindowSize(_screenWidth * 2, _screenHeight * 2);
             CenterWindow(_screenWidth * 2, _screenHeight * 2);
         }
 #else
-        _scaleMode = (GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f) ? 2 : 1;
+        auto scale2d = GetWindowScaleDPI();
+        auto monitorResolutionX = GetMonitorWidth(_currentMonitor);
+        auto monitorResolutionY = GetMonitorHeight(_currentMonitor);
+        TRACELOG(LOG_INFO, fmt::format("WindowScaleDPI: {}x{}", scale2d.x, scale2d.y).c_str());
 #endif
+        _textureScaler = std::make_unique<TextureScaler>(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT, TextureScaler::POINT_LINEAR);
+        _textureScaler->setOutputSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
 
         SetExitKey(0);
 
@@ -541,8 +637,11 @@ public:
         PlayAudioStream(_audioStream);
         SetTargetFPS(60);
 
-        _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
-        SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+        //_renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+        //if (GetWindowScaleDPI().x != std::trunc(GetWindowScaleDPI().x))
+        //    SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_BILINEAR);
+        //else
+        //    SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
 #ifdef PLATFORM_WEB
         const char* scanLineShader = R"(
@@ -872,11 +971,22 @@ void main()
 
     ~Cadmium() override
     {
+        if(!_cfgPath.empty()) {
+            _cfg.workingDirectory = _currentDirectory;
+            _cfg.guiHue = _styleManager.getGuiHue();
+            _cfg.guiSat = _styleManager.getGuiSaturation();
+            saveConfig();
+        }
         gui::UnloadGui();
+#ifndef PLATFORM_WEB
+        if (_database)
+            _database.reset();
+#endif
+        _textureScaler.release();
         UnloadFont(_font);
         UnloadImage(_fontImage);
         UnloadImage(_microFont);
-        UnloadRenderTexture(_renderTexture);
+        //UnloadRenderTexture(_renderTexture);
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
@@ -891,17 +1001,41 @@ void main()
         UnloadImage(_icon);
         _instance = nullptr;
         CloseWindow();
-        if(!_cfgPath.empty()) {
-            _cfg.workingDirectory = _currentDirectory;
-            _cfg.guiHue = _styleManager.getGuiHue();
-            _cfg.guiSat = _styleManager.getGuiSaturation();
-            saveConfig();
-        }
     }
 
     void updateResolution()
     {
+        static unsigned counter = 0;
+        if (++counter > 120) {
+            counter = 0;
+            _currentMonitor = GetCurrentMonitor(); // surprisingly expensive call
+        }
+        if (_windowInvisible) {
+            ClearWindowState(FLAG_WINDOW_HIDDEN);
+            _windowInvisible = false;
+        }
+        if (!_scaleMode || GetMonitorWidth(_currentMonitor) <= _screenWidth * _scaleMode) {
+            _scaleMode = 1;
+        }
+
 #ifdef RESIZABLE_GUI
+        static int resizeCount = 0;
+        if (IsWindowResized()) {
+            int width{0}, height{0};
+            resizeCount++;
+#if defined(PLATFORM_WEB)
+            double devicePixelRatio = emscripten_get_device_pixel_ratio();
+            width = GetScreenWidth() * devicePixelRatio;
+            height = GetScreenHeight() * devicePixelRatio;
+#else
+            // TODO: glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+#endif
+            TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
+        }
+
+        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
+        SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
+
         auto width = std::max(GetScreenWidth(), _screenWidth) / (_scaleBy2 ? 2 : 1);
         auto height = std::max(GetScreenHeight(), _screenHeight) / (_scaleBy2 ? 2 : 1);
 
@@ -915,13 +1049,16 @@ void main()
             SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
         }
 #else
-        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH) {
-            UnloadRenderTexture(_renderTexture);
+        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH || GetScreenWidth() != _screenWidth * _scaleMode) {
+            //UnloadRenderTexture(_renderTexture);
             _screenWidth = MIN_SCREEN_WIDTH;
             _screenHeight = MIN_SCREEN_HEIGHT;
-            _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
-            SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
-            SetWindowSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
+            //_renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+            //SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+            Vector2 scale2d{1.0f, 1.0f};// GetWindowScaleDPI();
+            SetWindowSize(_screenWidth * _scaleMode / scale2d.x, _screenHeight * _scaleMode / scale2d.y);
+            SetMouseScale(1.0f/_scaleMode*scale2d.x, 1.0f/_scaleMode*scale2d.y);
+            _textureScaler->setOutputSize(_screenWidth * _scaleMode / scale2d.x, _screenHeight * _scaleMode / scale2d.y);
         }
 #endif
     }
@@ -1319,34 +1456,6 @@ void main()
         double deltaTC = std::chrono::duration<double>(now - lastFrameTime).count();
         lastFrameTime = now;
         float deltaT = GetFrameTime();
-#ifdef RESIZABLE_GUI
-#if 1
-        static int resizeCount = 0;
-        if (IsWindowResized()) {
-            int width{0}, height{0};
-            resizeCount++;
-#if defined(PLATFORM_WEB)
-            double devicePixelRatio = emscripten_get_device_pixel_ratio();
-            width = GetScreenWidth() * devicePixelRatio;
-            height = GetScreenHeight() * devicePixelRatio;
-#else
-            // TODO: glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
-#endif
-            TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
-        }
-#endif
-        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
-        SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
-#else
-        if (!_scaleMode || GetMonitorWidth(GetCurrentMonitor()) <= _screenWidth * _scaleMode) {
-            _scaleMode = 1;
-        }
-        if (GetScreenWidth() != _screenWidth * _scaleMode) {
-            SetWindowSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
-            //CenterWindow(_screenWidth * 2, _screenHeight * 2);
-            SetMouseScale(1.0f/_scaleMode, 1.0f/_scaleMode);
-        }
-#endif
 
         updateResolution();
 
@@ -1400,9 +1509,15 @@ void main()
                 updateKeyboardOverlay();
         }
 
-        BeginTextureMode(_renderTexture);
+        static Stopwatch guiRenderTime;
+        guiRenderTime.start();
+        _screenOverlay = {0,0,0,0};
+        BeginTextureMode(_textureScaler->getRenderTexture());
         drawGui();
         EndTextureMode();
+        _textureScaler->updateIntermediateTexture();
+        guiRenderTime.stop();
+        _avgGuiRenderTime = guiRenderTime.getElapsedAvgString();
 
         BeginDrawing();
         {
@@ -1424,9 +1539,12 @@ void main()
             //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
             //               (Vector2){0, 0}, 0.0f, WHITE);
 #else
-            drawScreen({_screenOverlay.x * _scaleMode, _screenOverlay.y * _scaleMode, _screenOverlay.width * _scaleMode, _screenOverlay.height * _scaleMode}, _screenScale);
-            DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * _scaleMode, (float)_renderTexture.texture.height * _scaleMode},
-                           (Vector2){0, 0}, 0.0f, WHITE);
+            if (_videoRenderMode == eHIRES && _screenOverlay.width > 0 && _screenOverlay.height > 0) {
+                drawScreen({_screenOverlay.x * _scaleMode, _screenOverlay.y * _scaleMode, _screenOverlay.width * _scaleMode, _screenOverlay.height * _scaleMode}, _screenScale);
+            }
+            _textureScaler->draw(0, 0);
+            //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * _scaleMode / scale2d.x, (float)_renderTexture.texture.height * _scaleMode / scale2d.y},
+            //               (Vector2){0, 0}, 0.0f, WHITE);
 #endif
 #if 0
             int width{0}, height{0};
@@ -1440,7 +1558,7 @@ void main()
             //TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
             DrawText(TextFormat("Window resized: %dx%d, fb: %dx%d, rzc: %d", GetScreenWidth(), GetScreenHeight(), width, height, resizeCount), 10,30,10,GREEN);
 #endif
-            // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
+            // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(_currentMonitor), GetMonitorHeight(_currentMonitor)), 10, 30, 10, GREEN);
             // DrawFPS(10,45);
         }
         EndDrawing();
@@ -1550,7 +1668,7 @@ void main()
         BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
 //        BeginGui({}, &_renderTexture, {0, 0}, {_scaleBy2 ? 2.0f : 1.0f, _scaleBy2 ? 2.0f : 1.0f});
 #else
-        BeginGui({}, &_renderTexture, {0, 0}, {static_cast<float>(_scaleMode), static_cast<float>(_scaleMode)});
+        BeginGui({}, &_textureScaler->getRenderTexture(), {0, 0}, {static_cast<float>(_scaleMode), static_cast<float>(_scaleMode)});
 #endif
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
@@ -1574,23 +1692,23 @@ void main()
 
             auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
             if (_mainView == eEDITOR) {
-                StatusBar({{0.55f, ""}, {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.55f, ""}, {0.15f, fmt::format("{} byte, UI:{}", _editor.compiler().codeSize(), _avgGuiRenderTime).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
             }
             else if (_chipEmu->coreState() == emu::IEmulationCore::ECS_ERROR) {
-                StatusBar({{0.55f, _chipEmu->errorMessage().c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.55f, fmt::format("{}, UI:{}", _chipEmu->errorMessage(), _avgGuiRenderTime).c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
             }
             else if (getFrameBoost() > 1) {
-                StatusBar({{0.5f, fmt::format("Cycles: {}", _chipEmu->cycles()).c_str()}, {0.2f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps() * getFrameBoost(), "eFPS").c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.5f, fmt::format("Cycles: {}, UI:{}", _chipEmu->cycles(), _avgGuiRenderTime).c_str()}, {0.2f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps() * getFrameBoost(), "eFPS").c_str()}, {0.15f, _variantName.c_str()}});
             }
             else {
                 if (_chipEmu->cycles() != _chipEmu->machineCycles()) {
-                    StatusBar({{0.55f, fmt::format("Cycles: {}/{} [{}]", _chipEmu->cycles(), _chipEmu->machineCycles(), _chipEmu->frames()).c_str()},
+                    StatusBar({{0.55f, fmt::format("Cycles: {}/{} [{}], UI:{}", _chipEmu->cycles(), _chipEmu->machineCycles(), _chipEmu->frames(), _avgGuiRenderTime).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()},
                                {0.15f, _variantName.c_str()}});
                 }
                 else {
-                    StatusBar({{0.55f, fmt::format("Cycles: {} [{}]", _chipEmu->cycles(), _chipEmu->frames()).c_str()},
+                    StatusBar({{0.55f, fmt::format("Cycles: {} [{}], UI:{}", _chipEmu->cycles(), _chipEmu->frames(), _avgGuiRenderTime).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                //{0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
                                {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()},
@@ -1819,11 +1937,16 @@ void main()
                     _debugger.render(_font, [this](Rectangle video, int scale) {
                         _screenOverlay = video;
                         _screenScale = scale;
-                        rlSetBlendFactors(1, 0, 0x8006);
-                        rlSetBlendMode(RL_BLEND_CUSTOM);
-                        DrawRectangleRec(_screenOverlay, {0,0,0,0});
-                        rlSetBlendMode(RL_BLEND_ALPHA);
+                        if (_videoRenderMode == eHIRES) {
+                            rlSetBlendFactors(1, 0, 0x8006);
+                            rlSetBlendMode(RL_BLEND_CUSTOM);
+                            DrawRectangleRec(_screenOverlay, {0,0,0,255});
+                            rlSetBlendMode(RL_BLEND_ALPHA);
+                        }
                     });
+                    if (_videoRenderMode == eFAST) {
+                        drawScreen(_screenOverlay, _screenScale);
+                    }
                     break;
                 }
                 case eVIDEO: {
@@ -1831,10 +1954,15 @@ void main()
                     gridScale = _screenWidth / _chipEmu->getCurrentScreenWidth();
                     _screenOverlay = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
                     _screenScale = gridScale;
-                    rlSetBlendFactors(1, 0, 0x8006);
-                    rlSetBlendMode(RL_BLEND_CUSTOM);
-                    DrawRectangleRec(_screenOverlay, {0,0,0,0});
-                    rlSetBlendMode(RL_BLEND_ALPHA);
+                    if (_videoRenderMode == eHIRES) {
+                        rlSetBlendFactors(1, 0, 0x8006);
+                        rlSetBlendMode(RL_BLEND_CUSTOM);
+                        DrawRectangleRec(_screenOverlay, {0,0,0,255});
+                        rlSetBlendMode(RL_BLEND_ALPHA);
+                    }
+                    else {
+                        drawScreen(_screenOverlay, _screenScale);
+                    }
                     break;
                 }
                 case eEDITOR:
@@ -1943,8 +2071,8 @@ void main()
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Library / Research");
-                    if (_database.render(_font)) {
-                        auto program = _database.getSelectedProgram();
+                    if (_database && _database->render(_font)) {
+                        auto program = _database->getSelectedProgram();
                         if (program) {
                             loadBinary(program->name, program->data, program->properties, true);
                             reloadRom(true);
@@ -2500,7 +2628,8 @@ void main()
                 }
                 if(selectedInfo.analyzed) {
                     if(_screenShotSha1 != selectedInfo.sha1sum) {
-                        _screenshotData = _librarian.genScreenshot(selectedInfo, _defaultPalette);
+                        // TODO: Fix this
+                        _screenshotData = {}; //_librarian.genScreenshot(selectedInfo, _defaultPalette);
                         _screenShotSha1 = selectedInfo.sha1sum;
                         if(_screenshotData.width && _screenshotData.pixel.size() == _screenshotData.width * _screenshotData.height) {
                             auto* image = (uint32_t*)_screenShot.data;
@@ -2662,13 +2791,17 @@ void main()
         if(!_cfgPath.empty()) {
             auto opt = _properties;
             std::vector<std::string> pal(16, "");
-            for(size_t i = 0; i < 16; ++i) {
-                pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
-            }
+            // TODO. Fix this
+            //for(size_t i = 0; i < 16; ++i) {
+            //    pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
+            //}
             // opt.advanced["palette"] = pal;
             _cfg.emuProperties = *_properties;
             _cfg.workingDirectory = _currentDirectory;
             _cfg.libraryPath = _databaseDirectory;
+            _cfg.windowPosX = GetWindowPosition().x;
+            _cfg.windowPosY = GetWindowPosition().y;
+            _cfg.scaleMode = _scaleMode;
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -2766,7 +2899,10 @@ private:
     bool _showKeyMap{false};
     int _screenWidth{};
     int _screenHeight{};
-    RenderTexture _renderTexture{};
+    bool _windowInvisible{false};
+    VideoRenderMode _videoRenderMode{eFAST};
+    std::unique_ptr<TextureScaler> _textureScaler;
+    //RenderTexture _renderTexture{};
     AudioStream _audioStream{};
     float _volumeSlider{0.5f};
     float _volume{0.5f};
@@ -2789,8 +2925,10 @@ private:
     std::string _colorText;
     uint32_t _previousColor{};
     Rectangle _screenOverlay{};
+    int _currentMonitor{0};
     int _screenScale{1};
     emu::Properties _propsMemento{};
+    std::string _avgGuiRenderTime;
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;

@@ -203,7 +203,7 @@ it freely, subject to the following restrictions:
 
                            - - -
 
-# Octo-Compiler based on a heavily reworked variant of from C-Octo
+# Octo-Compiler based on a completely reworked variant from C-Octo
 
 A C rewrite of the Octo CHIP-8 IDE
 https://github.com/JohnEarnest/c-octo

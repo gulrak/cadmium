@@ -224,10 +224,10 @@ void from_json(const nlohmann::json& j, Palette& pal)
             pal.colors.emplace_back(col);
         }
         if(j.count("border")) {
-            pal.borderColor = Palette::Color(j.get<std::string>());
+            pal.borderColor = Palette::Color(j["border"].get<std::string>());
         }
         if(j.count("signal")) {
-            pal.signalColor = Palette::Color(j.get<std::string>());
+            pal.signalColor = Palette::Color(j["signal"].get<std::string>());
         }
     }
 }

@@ -75,7 +75,7 @@ extern "C" {
 #endif
 #endif  // __GNUC__
 
-#include "raygui4.h"
+#include "raygui4.5.h"
 #include "rlgl.h"
 
 #pragma GCC diagnostic pop
@@ -120,6 +120,8 @@ RLGUIPP_API void BeginPopup(Rectangle area, bool* isOpen);                      
 RLGUIPP_API void EndPopup();                                                                                              // end of the popup description
 RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar and a close button, optionally draggable
 RLGUIPP_API void EndWindowBox();                                                                                          // end of the WindowBox
+RLGUIPP_API void BeginClipping(const Rectangle& clipArea);                                                                // set a new clipping area (it will be clipped to the previous one, potentially setting an area of size 0)
+RLGUIPP_API void EndClipping();                                                                                           // pop the current clipping area
 RLGUIPP_API void SetState(int state);                                                                                     // same as raygui GuiSetState
 RLGUIPP_API int GetState();                                                                                               // same as raygui GuiGetState
 RLGUIPP_API void SetStyle(int control, int property, int value);                                                          // Set one style property

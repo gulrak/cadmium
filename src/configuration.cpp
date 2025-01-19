@@ -61,6 +61,9 @@ void from_json(const nlohmann::json& j, std::map<Sha1::Digest, T>& m)
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
     j = nlohmann::json{
+        {"windowPosX", cc.windowPosX},
+        {"windowPosY", cc.windowPosY},
+        {"scaleMode", cc.scaleMode},
         {"volume", cc.volume},
         {"guiHue", cc.guiHue},
         {"guiSaturation", cc.guiSat},
@@ -72,6 +75,9 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
 }
 
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
+    cc.windowPosX = j.value("windowPosX", 0xFFFF);
+    cc.windowPosY = j.value("windowPosY", 0xFFFF);
+    cc.scaleMode = j.value("scaleMode", 0);
     j.at("workingDirectory").get_to(cc.workingDirectory);
     if (!j.contains("libraryPath") && j.contains("databaseDirectory")) {
         cc.libraryPath = j.value("databaseDirectory", "");

@@ -248,13 +248,13 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
         memPage = addr < 0 ? 0 : addr >> 16;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * 8 >= 0 && addr + i * 8 < _core->memSize()) {
-                DrawTextEx(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, lightgrayCol);
+                DrawTextClipped(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, lightgrayCol);
                 for (int j = 0; j < 8; ++j) {
                     if (!showChipCPU || addr + i * 8 + j > _core->memSize() || _core->memory()[addr + i * 8 + j] == _memBackup[addr + i * 8 + j]) {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? lightgrayCol : grayCol);
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, j & 1 ? lightgrayCol : grayCol);
                     }
                     else {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? yellowCol : brownCol);
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, j & 1 ? yellowCol : brownCol);
                     }
                 }
             }
@@ -295,7 +295,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     auto insOff = instructionOffset >= 0 ? instructionOffset : pc;
     auto yposPC = area.y + int(area.height / 2) - 4;
     const auto& prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
-    BeginScissorMode(area.x, area.y, area.width, area.height);
+    BeginClipping({area.x, area.y, area.width, area.height});
     auto pcColor = cpu.inErrorState() ? RED : yellowCol;
     bool inIf = false;
     for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
@@ -306,7 +306,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         const auto* bpi = cpu.findBreakpoint(addr);
         if(inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
+        DrawTextClipped(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, pc == addr ? pcColor : lightgrayCol);
         if(bpi)
             GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
     }
@@ -320,13 +320,13 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         const auto* bpi = cpu.findBreakpoint(addr);
         if(inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
+        DrawTextClipped(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, pc == addr ? pcColor : lightgrayCol);
         if(bpi)
             GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC + i * lineSpacing - 5, 1, RED);
         inIf = line.find(" if ") != std::string::npos;
         addr += bytes;
     }
-    EndScissorMode();
+    EndClipping();
 }
 
 void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const

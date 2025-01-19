@@ -25,6 +25,7 @@ set(CADMIUM_SOURCE
     stylemanager.hpp
     systemtools.cpp
     systemtools.hpp
+    texturescaler.hpp
 )
 
 if (CADMIUM_WITH_DATABASE)

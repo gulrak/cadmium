@@ -81,7 +81,7 @@ public:
     virtual bool loadRom(std::string_view filename, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown);
-    void updateEmulatorOptions(const Properties& properties);
+    virtual void updateEmulatorOptions(const Properties& properties);
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
     void setPalette(const Palette& palette);
 
@@ -89,6 +89,8 @@ protected:
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
+    static inline std::atomic_int _instanceCounter{0};
+    int _instanceNum{_instanceCounter++};
     CadmiumConfiguration& _cfg;
     CoreRegistry _cores;
     std::string _cfgPath;
@@ -99,7 +101,7 @@ protected:
     std::unordered_map<std::string, std::string> _badges;
 #ifndef PLATFORM_WEB
     ThreadPool _threadPool;
-    Database _database;
+    static std::unique_ptr<Database> _database;
 #endif
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
@@ -143,42 +145,41 @@ private:
 class ThreadedBackgroundHost : public EmuHostEx
 {
 public:
-    ThreadedBackgroundHost() : EmuHostEx(_cfg)
-    {
-        _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
-        _screenTexture = LoadTextureFromImage(_screen);
-    }
-    explicit ThreadedBackgroundHost(const Properties& options) : EmuHostEx(_cfg) { updateEmulatorOptions(options); }
-    ~ThreadedBackgroundHost() override = default;
+    explicit ThreadedBackgroundHost(double initialFrameRate = 60.0);
+    explicit ThreadedBackgroundHost(const Properties& options, double initialFrameRate = 60.0);
+    ~ThreadedBackgroundHost() override;
+    void setFrameRate(double frequency);
     Properties& getProperties() { return *_properties; }
     IEmulationCore& emuCore() { return *_chipEmu; }
     bool isHeadless() const override { return true; }
     int getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
     const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
-    void updateScreen() override
-    {
-        auto* pixel = static_cast<uint32_t*>(_screen.data);
-        if(pixel) {
-            if (const auto* screen = _chipEmu->getScreen()) {
-                screen->convert(pixel, _screen.width, 255, nullptr);
-                UpdateTexture(_screenTexture, _screen.data);
-            }
-            else {
-                if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
-                    screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                    UpdateTexture(_screenTexture, _screen.data);
-                }
-            }
-        }
-    }
-    void vblank() override {}
+    void killEmulation();
+    void updateEmulatorOptions(const Properties& properties) override;
+    void updateScreen() override;
+    std::pair<Texture2D*, Rectangle> updateTexture();
+    void vblank() override;
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
+    void drawScreen(Rectangle dest) const;
+    int getFrameTimeAvg() const { return _smaFrameTime_us.get(); }
+    int getFrames() const { return _chipEmu ? _chipEmu->frames() : 0; }
+    bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown) override;
+
 private:
+    void worker();
+    void tick();
     CadmiumConfiguration _cfg;
-    Image _screen;
+    Image* _screen;
+    Image _screen1;
+    Image _screen2;
     Texture2D _screenTexture;
+    std::atomic_bool _shutdown;
+    std::atomic<std::chrono::steady_clock::duration> _frameDuration{std::chrono::steady_clock::duration::zero()};
+    std::recursive_mutex _mutex;
+    std::thread _workerThread;
+    SMA<120> _smaFrameTime_us;
 };
 
 }

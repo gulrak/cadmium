@@ -20,7 +20,13 @@
 
 namespace gui {
 
+
 int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode);
+
+extern "C" {
+Rectangle clipRectangle(const Rectangle& clipRect, const Rectangle& rect);
+void clipRectangles(const Rectangle& destClipRect, Rectangle& srcRect, Rectangle& dstRect);
+}
 
 namespace detail {
 //---------------------------------------------------------------------------
@@ -350,6 +356,7 @@ inline static std::unordered_map<void*, MenuBar> g_menuBars;
 inline static std::unordered_map<uint64_t, MenuContext> g_menuContextMap;
 inline static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
 inline static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
+static std::stack<Rectangle> g_clippingStack;
 
 inline GuiContext& GuiContext::newContext(const std::string& key) const
 {
@@ -803,7 +810,8 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
     Rectangle view;
     GuiScrollPanel(ctx.area, NULL, ctx.content, scroll, &view);
     ctx.scrollOffset = {ctx.area.x + scroll->x, ctx.area.y + scroll->y};
-    BeginScissorMode(view.x, view.y, view.width, view.height);
+    //BeginScissorMode(view.x, view.y, view.width, view.height);
+    BeginClipping(view);
     ctx.mouseOffset = ctxParent.mouseOffset;
 }
 
@@ -812,7 +820,8 @@ void EndScrollPanel()
     if (detail::context().type != GuiContext::ctSCROLLPANEL) {
         throw std::runtime_error("Unbalanced gui::BeginScrollPanel/gui::EndScrollPanel!");
     }
-    EndScissorMode();
+    //EndScissorMode()
+    EndClipping();
     auto& ctx = detail::context();
     EndImpl({ctx.area.width, ctx.area.height});
     //End();
@@ -1019,6 +1028,16 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
 void EndWindowBox()
 {
     EndPopup();
+}
+
+void BeginClipping(const Rectangle& clipArea)
+{
+    g_clippingStack.push(g_clippingStack.empty() ? clipArea : clipRectangle(g_clippingStack.top(), clipArea));
+}
+
+void EndClipping()
+{
+    g_clippingStack.pop();
 }
 
 void SetState(int state)
@@ -1230,7 +1249,7 @@ int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
 
     // Update control
     //--------------------------------------------------------------------
-    if ((state != STATE_DISABLED) && (editMode || !guiLocked) && (itemCount > 1) && !guiSliderDragging)
+    if ((state != STATE_DISABLED) && (editMode || !guiLocked) && (itemCount > 1) && !guiControlExclusiveMode)
     {
         Vector2 mousePoint = GetMousePosition();
 
@@ -1795,3 +1814,221 @@ Vector3 HsvFromColor(Color col)
 }
 
 }  // namespace gui
+
+extern "C" {
+
+// Returns the intersection of 'rect' with 'clipRect'.
+// If there is no overlap, the resulting rectangle will have width or height = 0.
+Rectangle clipRectangle(const Rectangle& clipRect, const Rectangle& rect)
+{
+    // Compute the left and top edges as the max of both rects' left/top.
+    float newX = std::max(clipRect.x, rect.x);
+    float newY = std::max(clipRect.y, rect.y);
+
+    // Compute the right and bottom edges as the min of both rects' right/bottom.
+    float right  = std::min(clipRect.x + clipRect.width,  rect.x + rect.width);
+    float bottom = std::min(clipRect.y + clipRect.height, rect.y + rect.height);
+
+    // Determine the width and height.
+    float newWidth  = right  - newX;
+    float newHeight = bottom - newY;
+
+    // If there's no intersection, ensure width/height aren't negative.
+    if (newWidth < 0.0f)  newWidth  = 0.0f;
+    if (newHeight < 0.0f) newHeight = 0.0f;
+
+    // Return the clipped rectangle.
+    return Rectangle {
+        newX,
+        newY,
+        newWidth,
+        newHeight
+    };
+}
+
+/**
+ * Clips dstRect against destClipRect, and updates srcRect accordingly
+ * so that the same portion of the source image is drawn into the newly
+ * clipped destination.
+ *
+ * @param destClipRect  The clip region in destination space (the visible region).
+ * @param srcRect       [in,out] The source rectangle (in source-image coordinates).
+ * @param dstRect       [in,out] The destination rectangle (in screen or world coordinates).
+ */
+void clipRectangles(const Rectangle& destClipRect, Rectangle& srcRect, Rectangle& dstRect)
+{
+    // --- [Early-out #1]: If dstRect is fully outside the clip area (no intersection),
+    //                     the intersection logic below will handle it anyway.
+    //                     But we can also do it explicitly at the end after computing the intersection.
+
+    // --- [Early-out #2]: If dstRect is already fully within the clipping area,
+    //                     there's no need to modify either rectangle.
+    //                     We check:
+    //                        1. dstRect fully inside horizontally
+    //                        2. dstRect fully inside vertically
+    if ((dstRect.x >= destClipRect.x) &&
+        (dstRect.y >= destClipRect.y) &&
+        (dstRect.x + dstRect.width  <= destClipRect.x + destClipRect.width) &&
+        (dstRect.y + dstRect.height <= destClipRect.y + destClipRect.height))
+    {
+        // No clipping is needed, so simply return.
+        return;
+    }
+
+    // 1. Compute intersection of dstRect with the clipping rect.
+    float newDstX      = std::max(destClipRect.x,                      dstRect.x);
+    float newDstY      = std::max(destClipRect.y,                      dstRect.y);
+    float destRight    = std::min(destClipRect.x + destClipRect.width, dstRect.x + dstRect.width);
+    float destBottom   = std::min(destClipRect.y + destClipRect.height, dstRect.y + dstRect.height);
+
+    float newDstWidth  = destRight  - newDstX;
+    float newDstHeight = destBottom - newDstY;
+
+    // 2. If there's no intersection, set everything to zero and return.
+    if (newDstWidth <= 0.0f || newDstHeight <= 0.0f)
+    {
+        dstRect.width  = 0.0f;
+        dstRect.height = 0.0f;
+        srcRect.width  = 0.0f;
+        srcRect.height = 0.0f;
+        return;
+    }
+
+    // 3. Figure out how much was clipped from the left and top in the destination space.
+    //    We'll need this to shift the source rectangle accordingly.
+    float clippedLeftDst = newDstX - dstRect.x;
+    float clippedTopDst  = newDstY - dstRect.y;
+
+    // 4. Compute scaling factors (destination size / source size).
+    //    We assume srcRect.width/height != 0 in normal usage.
+    float scaleX = dstRect.width  / srcRect.width;
+    float scaleY = dstRect.height / srcRect.height;
+
+    // 5. Convert the clipped offsets in destination space to source space.
+    float clippedLeftSrc = clippedLeftDst / scaleX;
+    float clippedTopSrc  = clippedTopDst  / scaleY;
+
+    // 6. Adjust the source rectangle's top-left corner by the same fraction that got clipped.
+    srcRect.x += clippedLeftSrc;
+    srcRect.y += clippedTopSrc;
+
+    // 7. Compute how big the source rectangle should be after clipping in destination space.
+    //    The new destination width/height is (newDstWidth, newDstHeight).
+    //    In source coordinates, that corresponds to (newDstWidth / scaleX, newDstHeight / scaleY).
+    float newSrcWidth  = newDstWidth  / scaleX;
+    float newSrcHeight = newDstHeight / scaleY;
+
+    // 8. Clamp newSrcWidth/newSrcHeight if we're near the edge of the source.
+    float remainingSrcWidth  = srcRect.width  - clippedLeftSrc;
+    float remainingSrcHeight = srcRect.height - clippedTopSrc;
+    if (newSrcWidth > remainingSrcWidth)
+    {
+        newSrcWidth  = remainingSrcWidth;
+        // Adjust the destination width accordingly to keep scale consistent.
+        newDstWidth  = newSrcWidth * scaleX;
+    }
+    if (newSrcHeight > remainingSrcHeight)
+    {
+        newSrcHeight = remainingSrcHeight;
+        // Adjust the destination height accordingly to keep scale consistent.
+        newDstHeight = newSrcHeight * scaleY;
+    }
+
+    // 9. Write back final clipped values
+    dstRect.x      = newDstX;
+    dstRect.y      = newDstY;
+    dstRect.width  = newDstWidth;
+    dstRect.height = newDstHeight;
+
+    srcRect.width  = newSrcWidth;
+    srcRect.height = newSrcHeight;
+}
+
+void DrawTextCodepointClipped(Font font, int codepoint, Vector2 position, float fontSize, Color tint)
+{
+    // Character index position in sprite font
+    // NOTE: In case a codepoint is not available in the font, index returned points to '?'
+    int index = GetGlyphIndex(font, codepoint);
+    float scaleFactor = fontSize/font.baseSize;     // Character quad scaling factor
+
+    // Character destination rectangle on screen
+    // NOTE: We consider glyphPadding on drawing
+    Rectangle dstRec = { position.x + font.glyphs[index].offsetX*scaleFactor - (float)font.glyphPadding*scaleFactor,
+                      position.y + font.glyphs[index].offsetY*scaleFactor - (float)font.glyphPadding*scaleFactor,
+                      (font.recs[index].width + 2.0f*font.glyphPadding)*scaleFactor,
+                      (font.recs[index].height + 2.0f*font.glyphPadding)*scaleFactor };
+
+    // Character source rectangle from font texture atlas
+    // NOTE: We consider chars padding when drawing, it could be required for outline/glow shader effects
+    Rectangle srcRec = { font.recs[index].x - (float)font.glyphPadding, font.recs[index].y - (float)font.glyphPadding,
+                         font.recs[index].width + 2.0f*font.glyphPadding, font.recs[index].height + 2.0f*font.glyphPadding };
+
+    if (!gui::g_clippingStack.empty()) {
+        clipRectangles(gui::g_clippingStack.top(), srcRec, dstRec);
+        if (dstRec.width > 0.0f) {
+            // Draw the character texture on the screen
+            DrawTexturePro(font.texture, srcRec, dstRec, (Vector2){ 0, 0 }, 0.0f, tint);
+        }
+    }
+    else {
+        // Draw the character texture on the screen
+        DrawTexturePro(font.texture, srcRec, dstRec, (Vector2){ 0, 0 }, 0.0f, tint);
+    }
+}
+
+void DrawTextClipped(Font font, const char *text, Vector2 position, Color tint)
+{
+    if (font.texture.id == 0) font = GetFontDefault();  // Security check in case of not valid font
+
+    int size = TextLength(text);    // Total size in bytes of the text, scanned by codepoints in loop
+
+    float fontSize = font.baseSize;
+    float spacing = 0;
+    float textLineSpacing = fontSize + 3;
+    float textOffsetY = 0;          // Offset between lines (on linebreak '\n')
+    float textOffsetX = 0.0f;       // Offset X to next character to draw
+
+    float scaleFactor = fontSize/font.baseSize;         // Character quad scaling factor
+
+    for (int i = 0; i < size;)
+    {
+        // Get next codepoint from byte string and glyph index in font
+        int codepointByteCount = 0;
+        int codepoint = GetCodepointNext(&text[i], &codepointByteCount);
+        int index = GetGlyphIndex(font, codepoint);
+
+        if (codepoint == '\n')
+        {
+            // NOTE: Line spacing is a global variable, use SetTextLineSpacing() to setup
+            textOffsetY += (fontSize + textLineSpacing);
+            textOffsetX = 0.0f;
+        }
+        else
+        {
+            if ((codepoint != ' ') && (codepoint != '\t'))
+            {
+                DrawTextCodepointClipped(font, codepoint, (Vector2){ position.x + textOffsetX, position.y + textOffsetY }, fontSize, tint);
+            }
+
+            if (font.glyphs[index].advanceX == 0) textOffsetX += ((float)font.recs[index].width*scaleFactor + spacing);
+            else textOffsetX += ((float)font.glyphs[index].advanceX*scaleFactor + spacing);
+        }
+
+        i += codepointByteCount;   // Move text bytes counter to next codepoint
+    }
+}
+
+inline void drawRectClipped(Rectangle rect, Color col)
+{
+    if (!gui::g_clippingStack.empty()) {
+        rect = clipRectangle(gui::g_clippingStack.top(), rect);
+    }
+    DrawRectangle((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height, col);
+}
+
+void DrawRectangleClipped(int posX, int posY, int width, int height, Color color)
+{
+    drawRectClipped(Rectangle(posX, posY, width, height), color);
+}
+
+}

@@ -56,7 +56,7 @@ struct CosmacVIPOptions
     static CosmacVIPOptions fromProperties(const Properties& props)
     {
         CosmacVIPOptions opts{};
-        opts.traceLog = props[PROP_TRACE_LOG].getBool();
+        opts.traceLog = true; //props[PROP_TRACE_LOG].getBool();
         opts.cpuType = props[PROP_CPU].getString();
         opts.clockFrequency = props[PROP_CLOCK].getInt();
         opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
@@ -714,7 +714,8 @@ void CosmacVIP::reset()
     if (_isHybridChipMode) {
         setExecMode(eRUNNING);
         while (_impl->_cpu.execMode() == eRUNNING && (!executeCdp1802() || getPC() != _impl->_startAddress))
-            ;  // fast-forward to fetch/decode loop
+            if (_cycles > 64000)
+                _impl->_cpu.setExecMode(ePAUSED), _cpuState = eERROR, _errorMessage = "INTERPRETER DIDN'T SETUP";
     }
     else {
         setExecMode(ePAUSED);

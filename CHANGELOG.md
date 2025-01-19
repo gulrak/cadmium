@@ -27,13 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Desktop only] Library/Research screen and database integration allows for easier research on existing roms
   and interpreters, all information about programs, and even the binaries themselves are now kept
   in a local SQLite3 file in the configuration directory (<10MB for all known programs combined)
+- [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed.
 
 ### Changed
 
 - Changed hardly visible memory change highlight color on darker columns
 - When running the program and the view is on settings or editor, the view will now switch to the
   last used run-view (those are full video or debugger)
-- When loading source that has a compile error, the editor is shown
+- When loading source that has a compile error, the editor is shown.
+- Due to the overhead of scissor mode for scroll panels, GuiDrawText and GuiDrawRectangle where
+  changed to use new clipping helpers that clip rectangles and glyph drawing and make scissor
+  mode unnecessary.
 
 ### Fixed
 
@@ -51,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DREAM6800 was wrongly buzzing all the time, correctly controlled by PB6 now
 - DREAM6800 had not finished the last frame when auto-pausing on self-loop, potentially leaving
   change undisplayed
-- Due to an change in the gui library the toggle buttons in the find bar of the editor didn't work
+- Due to a change in the gui library the toggle buttons in the find bar of the editor didn't work
 - Loading of Octo source that didn't compile without error was not possible
 - MegaChip audio suppressed the last sample of a non looping sound
 - VIP finally shows Q in the trace log
