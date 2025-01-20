@@ -2028,7 +2028,7 @@ inline void drawRectClipped(Rectangle rect, Color col)
 
 void DrawRectangleClipped(int posX, int posY, int width, int height, Color color)
 {
-    drawRectClipped(Rectangle(posX, posY, width, height), color);
+    drawRectClipped({(float)posX, (float)posY, (float)width, (float)height}, color);
 }
 
 }
