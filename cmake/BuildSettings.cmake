@@ -77,6 +77,7 @@ option(WEB_WITH_CLIPBOARD "Build emscripten version supporting real clipboard (e
 include(FetchContent)
 
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(RAYLIB_BRANCH_NAME "b2dca724c7c5a9720dc789cc39529a9341bcbbfb")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
@@ -84,7 +85,7 @@ FetchContent_Declare(
     raylib
     #URL https://github.com/gulrak/raylib/archive/refs/heads/master.zip
     GIT_REPOSITORY https://github.com/gulrak/raylib.git
-    #GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
     EXCLUDE_FROM_ALL
@@ -129,7 +130,7 @@ include_directories(${DOCTEST_INCLUDE_DIR})
 FetchContent_Declare(
         Chiplet
         GIT_REPOSITORY "https://github.com/gulrak/chiplet.git"
-        GIT_TAG "main"
+        GIT_TAG "dev-road-to-2.0"
         GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(Chiplet)
