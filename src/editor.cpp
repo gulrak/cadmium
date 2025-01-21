@@ -476,12 +476,12 @@ void Editor::draw(Font& font, Rectangle rect)
     gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
-    DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
+    DrawRectangleClipped(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
     std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
     auto textColor = StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL);
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
-            DrawTextEx(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, 8, 0, textColor);
+            DrawTextClipped(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, textColor);
             drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol);
         }
         ++lineNumber;
@@ -493,8 +493,9 @@ void Editor::draw(Font& font, Rectangle rect)
     if(hasFocus() && _blinkTimer >= BLINK_RATE/2) {
         auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
         auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
-        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height)
-            DrawRectangle(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
+        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height) {
+            DrawRectangleClipped(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
+        }
     }
 
     auto handle = verticalScrollHandle();
@@ -587,7 +588,7 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
             if(offset >= selStart && offset < selEnd)
                 DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, _selected);
             if ((codepoint != ' ') && (codepoint != '\t')) {
-                DrawTextCodepoint(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
+                DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
             }
         }
         --columnOffset;
@@ -846,20 +847,20 @@ void Editor::drawMessageArea()
     static float w = 0, h = 0;
     auto area = GetContentAvailable();
     DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
-    BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
+    BeginClipping({area.x, area.y + 1, area.width, area.height - 1});
     const auto& compileResult = _compiler.compileResult();
     if(compileResult.resultType == emu::CompileResult::eOK) {
-        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextClipped(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
     }
     else {
         std::error_code ec;
         auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
         auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
         if(ec) relFile = compileResult.locations.back().file;
-        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
-        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, StyleManager::mappedColor(ORANGE));
+        DrawTextClipped(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextClipped(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, StyleManager::mappedColor(ORANGE));
     }
-    EndScissorMode();
+    EndClipping();
 }
 
 std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)

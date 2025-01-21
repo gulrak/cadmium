@@ -5,11 +5,12 @@
 class TextureScaler
 {
 public:
-    enum Mode { POINT, POINT_LINEAR, LINEAR};
-    TextureScaler(int width, int height, Mode mode = POINT_LINEAR)
+    enum Mode { POINT, POINT_LINEAR, LINEAR, AUTOMATIC };
+    TextureScaler(int width, int height, Mode mode = AUTOMATIC)
     : _mode(mode)
     , _width(width)
     , _height(height)
+    , _automatic(mode == AUTOMATIC)
     {
         _renderTexture = LoadRenderTexture(_width, _height);
         setOutputSize(_width, _height);
@@ -30,6 +31,9 @@ public:
         _outputHeight = height;
         _intermediateWidth = ((_outputWidth + _width/2) / _width ) * _width;
         _intermediateHeight = ((_outputHeight + _height/2) / _height) * _height;
+        if (_automatic) {
+            _mode = (_outputWidth != _intermediateWidth || _outputHeight != _intermediateHeight) ? POINT_LINEAR : POINT;
+        }
         if (_intermediateTexture.id) {
             UnloadRenderTexture(_intermediateTexture);
         }
@@ -73,4 +77,5 @@ private:
     int _intermediateHeight{};
     RenderTexture _renderTexture{};
     RenderTexture _intermediateTexture{};
+    bool _automatic{true};
 };

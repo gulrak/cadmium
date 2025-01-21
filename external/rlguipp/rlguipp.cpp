@@ -1441,9 +1441,9 @@ bool TextBoxImpl(Rectangle bounds, char* text, int bufferSize, bool editMode)
     else
         GuiDrawRectangle(bounds, 1, Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER + (state * 3))), guiAlpha), BLANK);
 
-    BeginScissorMode(textBounds.x, textBounds.y, textBounds.width, textBounds.height);
+    BeginClipping({textBounds.x, textBounds.y, textBounds.width, textBounds.height});
     GuiDrawText(text, textBounds, textAlignment, Fade(GetColor(GuiGetStyle(TEXTBOX, TEXT + (state * 3))), guiAlpha));
-    EndScissorMode();
+    EndClipping();
 
     // Draw cursor
     if (editMode) {

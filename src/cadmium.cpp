@@ -624,7 +624,7 @@ public:
         auto monitorResolutionY = GetMonitorHeight(_currentMonitor);
         TRACELOG(LOG_INFO, fmt::format("WindowScaleDPI: {}x{}", scale2d.x, scale2d.y).c_str());
 #endif
-        _textureScaler = std::make_unique<TextureScaler>(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT, TextureScaler::POINT_LINEAR);
+        _textureScaler = std::make_unique<TextureScaler>(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT);
         _textureScaler->setOutputSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
 
         SetExitKey(0);
@@ -1692,7 +1692,7 @@ void main()
 
             auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
             if (_mainView == eEDITOR) {
-                StatusBar({{0.55f, ""}, {0.15f, fmt::format("{} byte, UI:{}", _editor.compiler().codeSize(), _avgGuiRenderTime).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
             }
             else if (_chipEmu->coreState() == emu::IEmulationCore::ECS_ERROR) {
                 StatusBar({{0.55f, fmt::format("{}, UI:{}", _chipEmu->errorMessage(), _avgGuiRenderTime).c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
