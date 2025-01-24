@@ -44,7 +44,9 @@
 
 namespace emu {
 
+#ifdef CADMIUM_WITH_DATABASE
 std::unique_ptr<Database> EmuHostEx::_database;
+#endif
 
 EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
     : _cfg(cfg)
@@ -56,9 +58,11 @@ EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
 #ifndef PLATFORM_WEB
     _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
     _databaseDirectory = _cfg.libraryPath;
+#ifdef CADMIUM_WITH_DATABASE
     if (!_instanceNum) {
         _database = std::make_unique<Database>(_cores, _cfg, _threadPool, dataPath());
     }
+#endif
     _librarian.fetchDir(_currentDirectory);
 #endif
     // TODO: Fix this
@@ -636,7 +640,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     return true;
 }
 
-
+#ifdef CADMIUM_WITH_BACKGROUND_EMULATION
 ThreadedBackgroundHost::ThreadedBackgroundHost(double initialFrameRate)
 : EmuHostEx(_cfg)
 , _workerThread(&ThreadedBackgroundHost::worker, this)
@@ -782,5 +786,6 @@ bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<con
     setFrameRate(frameRate ? frameRate->intValue : 60);
     return rc;
 }
+#endif
 
 }

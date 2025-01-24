@@ -29,13 +29,21 @@
 #include <emulation/emulatorhost.hpp>
 #include <emulation/iemulationcore.hpp>
 #include <emulation/palette.hpp>
+#include <emulation/coreregistry.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
 #include <librarian.hpp>
 #ifndef PLATFORM_WEB
 #include <threadpool.hpp>
+#ifdef CADMIUM_WITH_DATABASE
 #include <database.hpp>
+#endif
+#endif
+
+#ifdef CADMIUM_WITH_BACKGROUND_EMULATION
+#include <thread>
+#include <raylib.h>
 #endif
 
 #include <array>
@@ -101,7 +109,9 @@ protected:
     std::unordered_map<std::string, std::string> _badges;
 #ifndef PLATFORM_WEB
     ThreadPool _threadPool;
+#ifdef CADMIUM_WITH_DATABASE
     static std::unique_ptr<Database> _database;
+#endif
 #endif
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
@@ -142,6 +152,7 @@ private:
     CadmiumConfiguration _cfg;
 };
 
+#ifdef CADMIUM_WITH_BACKGROUND_EMULATION
 class ThreadedBackgroundHost : public EmuHostEx
 {
 public:
@@ -181,5 +192,6 @@ private:
     std::thread _workerThread;
     SMA<120> _smaFrameTime_us;
 };
+#endif
 
 }
