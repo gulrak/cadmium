@@ -23,10 +23,11 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#include <iostream>
-#include <fstream>
-#include <string>
+#include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iostream>
+#include <string>
 
 int main(int argc, char* argv[])
 {

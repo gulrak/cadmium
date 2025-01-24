@@ -6,6 +6,7 @@
 
 #include <raymath.h>
 
+#include <cstdint>
 #include <bitset>
 #include <cmath>
 #include <iostream>
