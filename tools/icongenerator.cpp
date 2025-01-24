@@ -1,4 +1,5 @@
 #include <raylib.h>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <string>
