@@ -1,11 +1,20 @@
 file(GLOB RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png ${CMAKE_SOURCE_DIR}/files/*.ttf ${CMAKE_SOURCE_DIR}/files/*.vs ${CMAKE_SOURCE_DIR}/files/*.fs)
 if (${PLATFORM} MATCHES "Web")
-    add_custom_command(
-            OUTPUT resourcer resourcedata.c
-            COMMAND clang++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp -I${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
-            COMMAND ${CMAKE_CURRENT_BINARY_DIR}/resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
-            DEPENDS ${RESOURCE_FILES}
-    )
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+        add_custom_command(
+                OUTPUT resourcer resourcedata.c
+                COMMAND g++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp -I${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
+                COMMAND ${CMAKE_CURRENT_BINARY_DIR}/resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
+                DEPENDS ${RESOURCE_FILES}
+        )
+    else()
+        add_custom_command(
+                OUTPUT resourcer resourcedata.c
+                COMMAND clang++ -o resourcer -std=c++17 ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp -I${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
+                COMMAND ${CMAKE_CURRENT_BINARY_DIR}/resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
+                DEPENDS ${RESOURCE_FILES}
+        )
+    endif()
 else()
     if(APPLE)
         add_custom_command(

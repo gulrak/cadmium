@@ -3469,7 +3469,9 @@ int main(int argc, char* argv[])
         for(size_t i = 0; i < proto.numProperties(); ++i) {
             auto& prop = proto[i];
             if(prop.access() == emu::eWritable) {
-                auto dependencyCheck = [&presetName, info](){ return info->hasVariant(presetName); };
+                auto dependencyCheck = [&presetName, info]() {
+                    return info->hasVariant(presetName);
+                };
                 std::visit(emu::visitor{
                    [](std::nullptr_t) -> void {  },
                    [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const bool& value) {
@@ -3685,9 +3687,9 @@ int main(int argc, char* argv[])
         }
 #endif
     }
-#if !defined(PLATFORM_WEB) && 0
+#if !defined(PLATFORM_WEB)
     else {
-        emu::Chip8HeadlessHost host;
+        emu::HeadlessHost host;
         //chip8options.optHas16BitAddr = true;
         //chip8options.optWrapSprites = true;
         //chip8options.optAllowColors = true;
@@ -3695,84 +3697,93 @@ int main(int argc, char* argv[])
         //chip8options.optLoadStoreDontIncI = false;
         //chip8options.optDontResetVf = true;
         //chip8options.optInstantDxyn = true;
-        options.optExtendedVBlank = false;
-        if(!randomGen.empty()) {
-            options.advanced = nlohmann::ordered_json::object({
-                {"random", randomGen},
-                {"seed", randomSeed}
-            });
-            options.updatedAdvanced();
+        //options.optExtendedVBlank = false;
+        //if(!randomGen.empty()) {
+        //    options.advanced = nlohmann::ordered_json::object({
+        //        {"random", randomGen},
+        //        {"seed", randomSeed}
+        //    });
+        //    options.updatedAdvanced();
+        //}
+        host.updateEmulatorOptions(coreProperties);
+        auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(host.emuCore().executionUnit(0));
+        if (!chip8) {
+            std::cerr << "Selected core is not capable of CHIP-8 control." << std::endl;
+            exit(1);
         }
-        host.updateEmulatorOptions(options);
-        auto& chip8 = host.chipEmu();
-        std::clog << "Engine1: " << chip8.name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(options.behaviorBase) << std::endl;
+        std::clog << "Engine:  " << chip8->name() << ", active variant: " << presetName << std::endl;
         octo_emulator octo;
         octo_options oopt{};
         oopt.q_clip = 1;
         //oopt.q_loadstore = 1;
 
-        chip8.reset();
+        chip8->reset();
         if(!romFile.empty()) {
             int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
-            if (size < chip8.memSize() - 512) {
-                std::memcpy(chip8.memory() + 512, data, size);
+            if (size < chip8->memSize() - 512) {
+                std::memcpy(chip8->memory() + 512, data, size);
             }
             UnloadFileData(data);
             //chip8.loadRom(romFile.c_str());
         }
-        octo_emulator_init(&octo, (char*)chip8.memory() + 512, 4096 - 512, &oopt, nullptr);
         int64_t i = 0;
         if(compareRun) {
+            octo_emulator_init(&octo, (char*)chip8->memory() + 512, 4096 - 512, &oopt, nullptr);
             std::clog << "Engine2: C-Octo" << std::endl;
             do {
                 if ((i & 7) == 0) {
-                    chip8.handleTimer();
+                    chip8->handleTimer();
                     if (octo.dt)
                         --octo.dt;
                     if (octo.st)
                         --octo.st;
                 }
-                chip8.executeInstruction();
+                chip8->executeInstruction();
                 octo_emulator_instruction(&octo);
                 if (!(i % 500000)) {
-                    std::clog << i << ": " << chip8.dumpStateLine() << std::endl;
+                    std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
                     std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
                 }
                 if(!(i % 500000)) {
-                    std::cout << chip8EmuScreen(chip8);
+                    std::cout << chip8EmuScreen(host.emuCore());
                 }
                 ++i;
-            } while ((i & 0xfff) || (chip8.dumpStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(chip8) == octoScreen(octo)));
-            std::clog << i << ": " << chip8.dumpStateLine() << std::endl;
+            } while ((i & 0xfff) || (chip8->dumpStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(host.emuCore()) == octoScreen(octo)));
+            std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
             std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
-            std::cerr << chip8EmuScreen(chip8);
+            std::cerr << chip8EmuScreen(host.emuCore());
             std::cerr << "---" << std::endl;
             std::cerr << octoScreen(octo) << std::endl;
         }
         else if(benchmark > 0) {
             uint64_t instructions = benchmark;
-            std::cout << "Executing benchmark (" << options.instructionsPerFrame << "ipf)..." << std::endl;
-            auto startChip8 = std::chrono::steady_clock::now();
-            auto ticks = uint64_t(instructions / options.instructionsPerFrame);
-            for(i = 0; i < ticks; ++i) {
-                chip8.tick(options.instructionsPerFrame);
+            int ipf = 42;
+            if(coreProperties.contains("instructionsPerFrame")) {
+                ipf = coreProperties.at("instructionsPerFrame").getInt();
             }
-            chip8.handleTimer();
+            std::cout << "Executing benchmark (" << /*chip8->options.instructionsPerFrame*/ ipf << "ipf)..." << std::endl;
+            auto startChip8 = std::chrono::steady_clock::now();
+            auto ticks = uint64_t(instructions / ipf);
+            for(i = 0; i < ticks; ++i) {
+                host.emuCore().executeFrame();
+            }
             int64_t lastCycles = -1;
             int64_t cycles = 0;
-            while((cycles = chip8.getCycles()) < instructions && cycles != lastCycles) {
-                chip8.executeInstruction();
+            while((cycles = chip8->cycles()) < instructions && cycles != lastCycles) {
+                chip8->executeInstruction();
                 lastCycles = cycles;
             }
             auto durationChip8 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startChip8);
             if(screenDump) {
-                std::cout << chip8EmuScreenANSI(chip8);
+                std::cout << chip8EmuScreenANSI(host.emuCore());
             }
-            std::cout << "Executed instructions: " << chip8.getCycles() << std::endl;
-            std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8.getCycles())/durationChip8.count()) << "MIPS" << std::endl;
+            std::cout << "Executed instructions: " << chip8->cycles() << std::endl;
+            std::cout << "Executed frames: " << chip8->frames() << std::endl;
+            std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8->cycles())/durationChip8.count()) << "MIPS" << std::endl;
         }
         else if(traceLines >= 0) {
+#if 0
             chip8.memory()[0x1ff] = testSuiteMenuVal & 0xff;
             size_t waits = 0;
             do {
@@ -3796,6 +3807,7 @@ int main(int argc, char* argv[])
             if(screenDump) {
                 std::cout << chip8EmuScreenANSI(chip8);
             }
+#endif
         }
     }
 #endif

@@ -76,8 +76,10 @@ option(WEB_WITH_CLIPBOARD "Build emscripten version supporting real clipboard (e
 
 include(FetchContent)
 
+find_package(Threads REQUIRED)
+
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(RAYLIB_BRANCH_NAME "5.0")
+set(RAYLIB_BRANCH_NAME "5.5")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
