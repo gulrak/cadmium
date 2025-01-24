@@ -81,6 +81,7 @@ extern "C" {
 #pragma GCC diagnostic pop
 }
 
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 #include <string>
