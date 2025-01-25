@@ -158,11 +158,11 @@ jobs:
 
     - name: Pack Linux
       if: ${{ runner.os == 'Linux' }}
-      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -G TGZ
+      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -C Release -G TGZ -V --debug --trace-expand
 
     - name: Pack Others
       if: ${{ runner.os != 'Linux' }}
-      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -G ZIP
+      run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -C Release -G ZIP -V --debug --trace-expand
 
     - name: Get package name (win)
       if: ${{ runner.os == 'Windows' }}
