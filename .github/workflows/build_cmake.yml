@@ -156,15 +156,11 @@ jobs:
           message(FATAL_ERROR "Running tests failed!")
         endif()
 
-    - name: Pack Linux
-      if: ${{ runner.os == 'Linux' }}
+    - name: Pack results
+      #if: ${{ runner.os == 'Linux' }}
+      working-directory: ${{github.workspace}}/cadmium
       run: ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cmake --build build --config Release --target package
       #run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -C Release -G TGZ -V --debug --trace-expand
-
-    - name: Pack Others
-      if: ${{ runner.os != 'Linux' }}
-      run: ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cmake --build build --config Release --target package
-      #run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -C Release -G ZIP -V --debug --trace-expand
 
     - name: Get package name (win)
       if: ${{ runner.os == 'Windows' }}
