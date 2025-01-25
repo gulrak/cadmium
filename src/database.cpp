@@ -365,9 +365,9 @@ int Database::scanLibrary()
     for (auto folders = split(_configuration.libraryPath, ';'); const auto& folder : folders) {
         try {
             for (const auto& de : fs::recursive_directory_iterator(folder, fs::directory_options::skip_permission_denied)) {
-                if (de.is_regular_file() && extensions.contains(de.path().extension())) {
+                if (de.is_regular_file() && extensions.contains(de.path().extension().string())) {
                     std::vector<uint8_t> data;
-                    auto info = scanFile(de.path(), &data);
+                    auto info = scanFile(de.path().string(), &data);
                     bool digested = false;
                     {
                         std:std::lock_guard lock(_pimpl->mutex);
