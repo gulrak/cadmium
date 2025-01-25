@@ -158,7 +158,7 @@ jobs:
 
     - name: Pack results
       #if: ${{ runner.os == 'Linux' }}
-      working-directory: ${{github.workspace}}/cadmium
+      working-directory: ${{github.workspace}}
       run: ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cmake --build build --config Release --target package
       #run: cd build && ${{ steps.cmake_and_ninja.outputs.cmake_dir }}/cpack -C Release -G TGZ -V --debug --trace-expand
 
