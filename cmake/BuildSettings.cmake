@@ -137,6 +137,7 @@ if(PLATFORM STREQUAL "Desktop")
     #target_compile_definitions(ssl PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
     #target_compile_definitions(tls PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
 
+    set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOl "" FORCE)
     FetchContent_Declare(
         CppHttplib
         GIT_REPOSITORY "https://github.com/yhirose/cpp-httplib.git"
