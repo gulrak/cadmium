@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.0...3.24)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum MacOS deployment version" FORCE)
-set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
 project(cadmium VERSION 1.9.90 LANGUAGES C CXX)
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
     cmake_policy(VERSION 3.21)
