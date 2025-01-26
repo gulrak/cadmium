@@ -11,6 +11,16 @@ endif()
 math(EXPR PROJECT_VERSION_DECIMAL "${PROJECT_VERSION_MAJOR} * 10000 + (${PROJECT_VERSION_MINOR} * 100) + ${PROJECT_VERSION_PATCH}")
 math(EXPR PROJECT_IS_WIP "${PROJECT_VERSION_PATCH} & 1")
 
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+
 set(DEPENDENCY_FOLDER "external")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER ${DEPENDENCY_FOLDER})
@@ -83,6 +93,7 @@ set(RAYLIB_BRANCH_NAME "5.5")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
+set(raylib_patch git apply ${PROJECT_SOURCE_DIR}/cmake/raylib.patch)
 FetchContent_Declare(
     raylib
     #URL https://github.com/gulrak/raylib/archive/refs/heads/master.zip
@@ -90,9 +101,27 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
+    PATCH_COMMAND ${raylib_patch}
+    UPDATE_DISCONNECTED TRUE
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(raylib)
+
+if (CADMIUM_WITH_DATABASE)
+    set(SQLite3_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/sqlite3")
+    set(SQLite3_LIBRARY SQLite::SQLite3)
+    set(zxorm_patch git apply ${PROJECT_SOURCE_DIR}/cmake/zxorm.patch)
+    FetchContent_Declare(
+        ZxOrm
+        GIT_REPOSITORY "https://github.com/crabmandable/zxorm.git"
+        GIT_TAG "92cd52ec0530fb3e66061058548916fb879879e7"
+        GIT_SHALLOW TRUE
+        PATCH_COMMAND ${zxorm_patch}
+        UPDATE_DISCONNECTED TRUE
+    )
+    FetchContent_MakeAvailable(ZxOrm)
+    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
+endif()
 
 if(PLATFORM STREQUAL "Desktop")
     set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
@@ -146,16 +175,6 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(Chip8TestSuite)
-
-find_package(Git)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-endif()
 
 option(BUILD_DOC "Build documentation" ON)
 

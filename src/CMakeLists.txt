@@ -28,19 +28,6 @@ set(CADMIUM_SOURCE
     texturescaler.hpp
 )
 
-if (CADMIUM_WITH_DATABASE)
-    set(SQLite3_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/sqlite3")
-    set(SQLite3_LIBRARY SQLite::SQLite3)
-    FetchContent_Declare(
-            ZxOrm
-            GIT_REPOSITORY "https://github.com/crabmandable/zxorm.git"
-            GIT_TAG "92cd52ec0530fb3e66061058548916fb879879e7"
-            GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(ZxOrm)
-    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
-endif()
-
 if(WIN32)
     set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium.ico")
     configure_file(${PROJECT_SOURCE_DIR}/cmake/cadmium.rc.in cadmium.rc)

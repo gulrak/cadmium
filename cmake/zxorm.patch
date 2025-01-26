@@ -1,0 +1,17 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e6de70a..852a531 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,12 +34,6 @@ target_compile_features(zxorm_zxorm INTERFACE cxx_std_20)
+ find_package(SQLite3 REQUIRED)
+ target_link_libraries(zxorm_zxorm INTERFACE SQLite::SQLite3)
+ 
+-# ---- Install rules ----
+-
+-if(NOT CMAKE_SKIP_INSTALL_RULES)
+-  include(cmake/install-rules.cmake)
+-endif()
+-
+ # ---- Developer mode ----
+ 
+ if(NOT zxorm_DEVELOPER_MODE)

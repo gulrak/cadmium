@@ -8,8 +8,6 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
-set(CMAKE_SKIP_INSTALL_RULES YES)
-
 include(cmake/BuildSettings.cmake)
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 enable_testing()

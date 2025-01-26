@@ -1,0 +1,12 @@
+diff --git a/src/platforms/rcore_desktop_glfw.c b/src/platforms/rcore_desktop_glfw.c
+index baf2967f..53ba035f 100644
+--- a/src/platforms/rcore_desktop_glfw.c
++++ b/src/platforms/rcore_desktop_glfw.c
+@@ -1389,6 +1389,7 @@ int InitPlatform(void)
+                                                                        // Values: GLFW_OPENGL_CORE_PROFILE, GLFW_OPENGL_ANY_PROFILE, GLFW_OPENGL_COMPAT_PROFILE
+ #if defined(__APPLE__)
+         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);  // OSX Requires forward compatibility
++        glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GLFW_TRUE);
+ #else
+         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE); // Forward Compatibility Hint: Only 3.3 and above!
+ #endif
