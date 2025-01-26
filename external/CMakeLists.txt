@@ -2,7 +2,6 @@
 #add_subdirectory(fmt)
 
 add_subdirectory(miniz)
-add_subdirectory(sqlite3)
 add_subdirectory(rlguipp)
 
 add_library(c_octo INTERFACE)

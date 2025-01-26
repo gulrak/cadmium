@@ -28,6 +28,10 @@ set(CADMIUM_SOURCE
     texturescaler.hpp
 )
 
+if(CADMIUM_WITH_DATABASE)
+    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
+endif()
+
 if(WIN32)
     set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium.ico")
     configure_file(${PROJECT_SOURCE_DIR}/cmake/cadmium.rc.in cadmium.rc)

@@ -108,6 +108,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(raylib)
 
 if (CADMIUM_WITH_DATABASE)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/sqlite3)
     set(SQLite3_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/sqlite3")
     set(SQLite3_LIBRARY SQLite::SQLite3)
     set(zxorm_patch git apply ${PROJECT_SOURCE_DIR}/cmake/zxorm.patch)
@@ -120,7 +121,6 @@ if (CADMIUM_WITH_DATABASE)
         UPDATE_DISCONNECTED TRUE
     )
     FetchContent_MakeAvailable(ZxOrm)
-    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
 endif()
 
 if(PLATFORM STREQUAL "Desktop")
