@@ -123,6 +123,9 @@ endif()
 if(PLATFORM STREQUAL "Desktop")
     set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
     set(LIBRESSL_APPS OFF CACHE BOOL "" FORCE)
+    if(APPLE)
+      set(ENABLE_ASM OFF CACHE BOOL "" FORCE)
+    endif()
     FetchContent_Declare(
         libressl
         URL "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz"
