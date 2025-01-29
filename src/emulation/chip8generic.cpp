@@ -70,7 +70,8 @@ static const std::string PROP_Q_EXTENDED_VBLANK = "Extended CHIP-8 wait emulatio
 static const std::string PROP_Q_PAL_VIDEO = "PAL video format";
 static const std::string PROP_SCREEN_ROTATION = "Screen rotation";
 static const std::string PROP_TOUCH_INPUT_MODE = "Touch input mode";
-static const std::string PROP_FONT_STYLE = "Font style";
+static const std::string PROP_FONT_5PX = "Font 5px";
+static const std::string PROP_FONT_10PX = "Font 10px";
 
 Properties Chip8GenericOptions::asProperties() const
 {
@@ -105,7 +106,8 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_Q_PAL_VIDEO].setBool(optPalVideo);
     result[PROP_SCREEN_ROTATION].setSelectedIndex(int(rotation));
     result[PROP_TOUCH_INPUT_MODE].setSelectedIndex(int(touchInputMode));
-    result[PROP_FONT_STYLE].setSelectedIndex(int(fontStyle));
+    result[PROP_FONT_5PX].setSelectedIndex(int(fontStyle5));
+    result[PROP_FONT_10PX].setSelectedIndex(int(fontStyle10));
     result.palette() = palette;
     return result;
 }
@@ -143,7 +145,8 @@ Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
     opts.optPalVideo = props[PROP_Q_PAL_VIDEO].getBool();
     opts.rotation = static_cast<ScreenRotation>(props[PROP_SCREEN_ROTATION].getSelectedIndex());
     opts.touchInputMode = static_cast<TouchInputMode>(props[PROP_TOUCH_INPUT_MODE].getSelectedIndex());
-    opts.fontStyle = static_cast<FontStyle>(props[PROP_FONT_STYLE].getSelectedIndex());
+    opts.fontStyle5 = static_cast<FontStyle5px>(props[PROP_FONT_5PX].getSelectedIndex());
+    opts.fontStyle10 = static_cast<FontStyle10px>(props[PROP_FONT_10PX].getSelectedIndex());
     opts.palette = props.palette();
     return opts;
 }
@@ -185,7 +188,8 @@ Properties& Chip8GenericOptions::registeredPrototype()
 
         prototype.registerProperty({{PROP_SCREEN_ROTATION, "screen-rotation"}, Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, eInvisible});
         prototype.registerProperty({{PROP_TOUCH_INPUT_MODE, "touch-mode"}, Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, eInvisible});
-        prototype.registerProperty({{PROP_FONT_STYLE, "font-style"}, Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s}, eInvisible});
+        prototype.registerProperty({{PROP_FONT_5PX, "font-5px"}, Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, eInvisible});
+        prototype.registerProperty({{PROP_FONT_10PX, "font-10px"}, Property::Combo{"DEFAULT"s, "SCHIP10"s, "SCHIP11"s, "FISH"s, "MEGACHIP"s, "OCTO"s, "AUCHIP"s}, eInvisible});
     }
     return prototype;
 }
@@ -254,49 +258,49 @@ Chip8GenericSetupInfo genericPresets[] = {
         "The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson, 1990",
         ".ch48;.c48",
         chip8::Variant::CHIP_48,
-        {.behaviorBase = Chip8GenericOptions::eCHIP48, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optJump0Bxnn = true, .instructionsPerFrame = 15, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eCHIP48, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optJump0Bxnn = true, .instructionsPerFrame = 15, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP}
     },
     {
         "SCHIP-1.0",
         "SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
         ".sc10",
         chip8::Variant::SCHIP_1_0,
-        {.behaviorBase = Chip8GenericOptions::eSCHIP10, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eSCHIP10, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreIncIByX = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP10}
     },
     {
         "SCHIP-1.1",
         "SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991",
         ".sc8;.sc11",
         chip8::Variant::SCHIP_1_1,
-        {.behaviorBase = Chip8GenericOptions::eSCHIP11, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eSCHIP11, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
     },
     {
         "SCHIPC",
         "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017",
         ".scc",
         chip8::Variant::SCHIPC,
-        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
     },
     {
         "SCHIP-MODERN",
         "Modern SUPER-CHIP interpretation as done in Octo by John Earnest, 2014",
         ".scm",
         chip8::Variant::SCHIP_MODERN,
-        {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64}
+        {.behaviorBase = Chip8GenericOptions::eSCHIP_MODERN, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
     },
     {
         "MEGACHIP",
         "MegaChip as specified by Martijn Wanting, Revival-Studios, 2007",
         ".mc8",
         chip8::Variant::MEGA_CHIP,
-        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50}
+        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = true, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::MEGACHIP}
     },
     {
         "XO-CHIP",
         "A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014",
         ".xo8",
         chip8::Variant::XO_CHIP,
-        {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000}
+        {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000, .fontStyle5 = Chip8GenericOptions::FontStyle5px::OCTO, .fontStyle10 = Chip8GenericOptions::FontStyle10px::OCTO}
     }
     /*{Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
     {Opts::eCHIP8E, R"({})"},

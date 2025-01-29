@@ -53,7 +53,8 @@ struct Chip8GenericOptions
     SupportedPreset behaviorBase{ eCHIP8 };
     enum class ScreenRotation { NONE=0, CW0=NONE, CW90, CW180, CW270 };
     enum class TouchInputMode { UNKNOWN=-1, NONE=0, SWIPE, SEG16, SEG16FILL, GAMEPAD, VIP };
-    enum class FontStyle { DEFAULT, VIP, DREAM6800, ETI660, SCHIP, FISH, OCTO };
+    enum class FontStyle5px { VIP, DREAM6800, ETI660, SCHIP, FISH, OCTO, AKOUZ1 };
+    enum class FontStyle10px { NONE, SCHIP10, SCHIP11, FISH, MEGACHIP, OCTO, AUCHIP };
     uint32_t ramSize{4096};
     uint16_t startAddress{0x200};
     bool cleanRam{true};
@@ -84,7 +85,8 @@ struct Chip8GenericOptions
     int frameRate{60};
     ScreenRotation rotation{ScreenRotation::CW0};
     TouchInputMode touchInputMode{TouchInputMode::UNKNOWN};
-    FontStyle fontStyle{FontStyle::DEFAULT};
+    FontStyle5px fontStyle5{FontStyle5px::VIP};
+    FontStyle10px fontStyle10{FontStyle10px::NONE};
     Palette palette;
 };
 

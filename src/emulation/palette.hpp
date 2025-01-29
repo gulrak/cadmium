@@ -69,14 +69,19 @@ public:
         uint8_t r, g, b;
     };
     Palette() = default;
-    Palette(const std::initializer_list<Color> cols)
+    Palette(const std::initializer_list<Color> cols, const std::initializer_list<Color> backgroundCols = {})
         : colors(cols)
+        , backgroundColors(backgroundCols)
     {}
-    Palette(const std::initializer_list<std::string> cols)
+    Palette(const std::initializer_list<std::string> cols, const std::initializer_list<std::string> backgroundCols = {})
     {
         colors.reserve(cols.size());
         for(const auto& col : cols) {
             colors.emplace_back(col);
+        }
+        backgroundColors.reserve(backgroundCols.size());
+        for(const auto& col : backgroundCols) {
+            backgroundColors.emplace_back(col);
         }
     }
 
@@ -89,6 +94,7 @@ public:
     std::vector<Color> colors;
     std::optional<Color> borderColor{};
     std::optional<Color> signalColor{};
+    std::vector<Color> backgroundColors;
 };
 
 }
