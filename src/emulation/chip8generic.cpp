@@ -279,7 +279,7 @@ Chip8GenericSetupInfo genericPresets[] = {
         "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017",
         ".scc",
         chip8::Variant::SCHIPC,
-        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
+        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is8x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
     },
     {
         "SCHIP-MODERN",
