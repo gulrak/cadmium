@@ -250,7 +250,7 @@ Chip8GenericSetupInfo genericPresets[] = {
         ".c8x",
         chip8::Variant::CHIP_8X,
         {.behaviorBase = Chip8GenericOptions::eCHIP8X, .startAddress = 768, .optExtendedVBlank = true, .instructionsPerFrame = 18,
-            .palette = {"#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"}
+            .palette = { {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}}
         }
     },
     {
@@ -334,7 +334,13 @@ struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8Generi
 
 static bool registeredHleC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<C8GenericFactoryInfo>("Default HLE CHIP-8 emulation"));
 
-static constexpr uint32_t cdp1862BackgroundColors[4] = { 0x000080FF, 0x000000FF, 0x008000FF, 0x800000FF };
+static uint32_t rgb332To888(uint8_t c)
+{
+    static uint8_t b3[] = {0, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xff};
+    static uint8_t b2[] = {0, 0x60, 0xA0, 0xff};
+    return (b3[(c & 0xe0) >> 5] << 16) | (b3[(c & 0x1c) >> 2] << 8) | (b2[c & 3]);
+}
+
 
 Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other)
 : Chip8GenericBase(Chip8GenericOptions::fromProperties(props).variant(), {})
@@ -462,24 +468,16 @@ void Chip8GenericEmulator::reset()
     _blendMode = eBLEND_NORMAL;
     _simpleRandState = _simpleRandSeed;
     if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X) {
-        static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
         _screen.setMode(256, 192, 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
         _screen.setOverlayCellHeight(-1); // reset
         _chip8xBackgroundColor = 0;
-        for(int i = 0; i < 256; ++i) {
-            if(i & 0xF) {
-                _mcPalette[i] = foregroundColors[(i>>4) & 7];
-            }
-            else {
-                _mcPalette[i] = cdp1862BackgroundColors[0];
-            }
-        }
-        _screen.setPalette(_mcPalette);
+        _screen.setPalette(_options.palette);
     }
     else if(_options.behaviorBase == Chip8GenericOptions::eMEGACHIP) {
-        _mcPalette.fill(0x00);
-        _mcPalette[1] = 0xffffffff;
-        _mcPalette[255] = 0xffffffff;
+        _options.palette.colors.resize(256);
+        std::ranges::fill(_options.palette.colors, Palette::Color(0,0,0));
+        _options.palette.colors[1] = Palette::Color(255,255,255);
+        _options.palette.colors[255] = Palette::Color(255,255,255);
     }
 }
 
@@ -1259,7 +1257,7 @@ void Chip8GenericEmulator::op01nn(uint16_t opcode)
 void Chip8GenericEmulator::op02A0_c8x(uint16_t opcode)
 {
     _chip8xBackgroundColor = (_chip8xBackgroundColor + 1) & 3;
-    _screen.setOverlayBackground(_chip8xBackgroundColor);
+    _screen.setBackground(_options.palette.backgroundColors[_chip8xBackgroundColor].toRGBAInt());
     _screenNeedsUpdate = true;
 }
 
@@ -1494,8 +1492,8 @@ void Chip8GenericEmulator::op5xy4(uint16_t opcode)
     auto x = (opcode >> 8) & 0xF;
     auto y = (opcode >> 4) & 0xF;
     for(int i=0; i <= std::abs(x-y); ++i)
-        _xxoPalette[x < y ? x + i : x - i] = _memory[_rI + i];
-    _host.updatePalette(_xxoPalette);
+        _options.palette.colors[x < y ? x + i : x - i] = Palette::Color::fromRGB(rgb332To888(_memory[(_rI + i) & 0xFFFF]));
+    _screen.setPalette(_options.palette);
 }
 
 void Chip8GenericEmulator::op6xnn(uint16_t opcode)

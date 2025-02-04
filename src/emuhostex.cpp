@@ -79,7 +79,7 @@ void EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
     if (_colorPalette.size() < colors.size() + offset)
         _colorPalette.colors.resize(colors.size() + offset);
     for (size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
-        _colorPalette.colors[i + offset] = Palette::Color(colors[i]);
+        _colorPalette.colors[i + offset] = Palette::Color::fromRGB(colors[i]);
     }
     if (_chipEmu)
         _chipEmu->setPalette(_colorPalette);

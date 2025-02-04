@@ -33,7 +33,8 @@
 
 namespace emu {
 
-const uint32_t Cdp186x::_cdp1862BackgroundColors[4] = { 0x000080FF, 0x000000FF, 0x008000FF, 0x800000FF };
+static Palette g_1861Palette{ {"#000000","#FFFFFF"}};
+static Palette g_cdp1862Palette{ {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}};
 Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 : _cpu(cpu)
 , _type(type)
@@ -42,16 +43,7 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 , VIDEO_CYCLES_PER_FRAME(type == eCDP1864 ? 4368 : 3668)
 , _traceLog(traceLog)
 {
-    static uint32_t foregroundColors[8] = { 0x181818FF, 0xFF0000FF, 0x0000FFFF, 0xFF00FFFF, 0x00FF00FF, 0xFFFF00FF, 0x00FFFFFF, 0xFFFFFFFF };
     _screen.setMode(256, 192, _type == eCDP1861_C10 ? 1 : 4); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
-    for(int i = 0; i < 256; ++i) {
-        if(i & 0xF) {
-            _cdp1862Palette[i] = foregroundColors[(i>>4) & 7];
-        }
-        else {
-            _cdp1862Palette[i] = _cdp1862BackgroundColors[0];
-        }
-    }
     reset();
 }
 
@@ -59,12 +51,12 @@ void Cdp186x::reset()
 {
     if(_type == eVP590) {
         _subMode = eVP590_DEFAULT;
-        _screen.setPalette(_cdp1862Palette);
+        _screen.setPalette(g_cdp1862Palette);
         _backgroundColor = 0;
-        for(int i = 0; i < 256; i += 16) {
-            _cdp1862Palette[i] = _cdp1862BackgroundColors[_backgroundColor];
-        }
-        _screen.setPalette(_cdp1862Palette);
+        _screen.setBackground(g_cdp1862Palette.backgroundColors[_backgroundColor].toRGBAInt());
+    }
+    else {
+        _screen.setPalette(g_1861Palette);
     }
     _frameCounter = 0;
     _displayEnabledLatch = _displayEnabled = _type == eCDP1864;
@@ -131,14 +123,14 @@ std::pair<int, bool> Cdp186x::executeStep()
         auto line = _frameCycle / 14;
         if (lineCycle == 4 || lineCycle == 5) {
             auto dmaStart = _cpu.getR(0);
-            auto highBits = 0;
+            auto colorBits = 0;
             auto mask = _type == eVP590 && _subMode != eVP590_DEFAULT ? (_subMode == eVP590_HIRES ? 0xFF : 0xE7) : 0;
             if (_subMode == eVP590_DEFAULT)
-                highBits = 7;
+                colorBits = 7;
             for (int i = 0; i < 8; ++i) {
                 auto [data, addr] = _displayEnabledLatch ? _cpu.executeDMAOut() : std::make_pair((uint8_t)0, (uint16_t)0);
                 if (mask)
-                    highBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
+                    colorBits = _cpu.readByteDMA(0xD000 | (addr & mask)) << 4;
                 /*if (_traceLog) {
                     if (mask)
                         Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits).c_str());
@@ -148,15 +140,25 @@ std::pair<int, bool> Cdp186x::executeStep()
                 // std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
                 auto y = (line - VIDEO_FIRST_VISIBLE_LINE);
                 auto x = 0;
-                if (_type == eCDP1861_C10) {
-                    if (y & 1)
-                        x = 64;
-                    y >>= 1;
+                if (_type == eVP590) {
+                    for (int j = 0; j < 8; ++j) {
+                        if (((data >> (7 - j)) & 1)) {
+                            _screen.setPixel(x + i * 8 + j, y, 0x80 | colorBits);
+                        }
+                    }
                 }
-                for (int j = 0; j < 8; ++j) {
-                    _screen.setPixel(x + i * 8 + j, y, highBits | ((data >> (7 - j)) & 1));
-                    if (_type == eCDP1861_C10 && y == 63) {
-                        _screen.setPixel(x + i * 8 + j, 0, highBits | ((data >> (7 - j)) & 1));
+                else {
+                    if (_type == eCDP1861_C10) {
+                        if (y & 1)
+                            x = 64;
+                        y >>= 1;
+                    }
+                    for (int j = 0; j < 8; ++j) {
+                        uint8_t pixel = (data >> (7 - j)) & 1;
+                        _screen.setPixel(x + i * 8 + j, y, pixel);
+                        if (_type == eCDP1861_C10 && y == 63) {
+                            _screen.setPixel(x + i * 8 + j, 0, pixel);
+                        }
                     }
                 }
             }
@@ -177,10 +179,7 @@ void Cdp186x::setTrace(bool traceLog)
 void Cdp186x::incrementBackground()
 {
     _backgroundColor = (_backgroundColor + 1) & 3;
-    for(int i = 0; i < 256; i += 16) {
-        _cdp1862Palette[i] = _cdp1862BackgroundColors[_backgroundColor];
-    }
-    _screen.setPalette(_cdp1862Palette);
+    _screen.setBackground(g_cdp1862Palette.backgroundColors[_backgroundColor].toRGBAInt());
 }
 
 }

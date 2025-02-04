@@ -82,7 +82,6 @@ private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
     SubMode _subMode{eNONE};
-    std::array<uint32_t,256> _cdp1862Palette{};
     VideoScreen<uint8_t,256,192> _screen;
     const int VIDEO_FIRST_VISIBLE_LINE{0};
     const int VIDEO_FIRST_INVISIBLE_LINE{0};
@@ -93,7 +92,6 @@ private:
     bool _displayEnabled{false};
     bool _displayEnabledLatch{false};
     bool _traceLog{false};
-    static const uint32_t _cdp1862BackgroundColors[4];
 };
 
 }

@@ -36,11 +36,6 @@ namespace emu {
 
 std::map<std::string_view,Properties> Properties::propertyRegistry{};
 
-std::string Palette::Color::toString() const
-{
-    return fmt::format("#{:02x}{:02x}{:02x}", r, g, b);
-}
-
 
 Property::Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyAccess access_)
     : _name(name)
@@ -177,7 +172,7 @@ void from_json(const nlohmann::json& j, Properties& props)
 
 void to_json(nlohmann::json& j, const Palette::Color& col)
 {
-    j = col.toString();
+    j = col.toStringRGB();
 }
 
 void from_json(const nlohmann::json& j, Palette::Color& col)
@@ -192,7 +187,7 @@ void from_json(const nlohmann::json& j, Palette::Color& col)
 
 void to_json(nlohmann::json& j, const Palette& pal)
 {
-    if(pal.borderColor || pal.signalColor) {
+    if(pal.borderColor || pal.signalColor || !pal.backgroundColors.empty()) {
         j["colors"] = pal.colors;
         if(pal.borderColor) {
             j["border"] = pal.borderColor.value();
@@ -200,6 +195,7 @@ void to_json(nlohmann::json& j, const Palette& pal)
         if(pal.signalColor) {
             j["signal"] = pal.signalColor.value();
         }
+        j["background"] = pal.backgroundColors;
     }
     else {
         j = pal.colors;
@@ -228,6 +224,11 @@ void from_json(const nlohmann::json& j, Palette& pal)
         }
         if(j.count("signal")) {
             pal.signalColor = Palette::Color(j["signal"].get<std::string>());
+        }
+        if (j.count("background")) {
+            for (const std::string col : j["background"]) {
+                pal.backgroundColors.emplace_back(col);
+            }
         }
     }
 }

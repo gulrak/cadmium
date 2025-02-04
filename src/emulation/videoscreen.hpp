@@ -25,11 +25,12 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <stdendian/stdendian.h>
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <stdendian/stdendian.h>
 #include <emulation/properties.hpp>
+#include <ghc/bit.hpp>
 
 namespace emu {
 
@@ -58,11 +59,14 @@ public:
         if(_overlayCellHeight < 0) {
             std::memset(_colorOverlay.data(), 0, 256);
             _colorOverlay[0] = 2;
-            _overlayBackground = 0;
             _overlayCellHeight = 4;
         }
     }
-    void setOverlayBackground(int background) { _overlayBackground = background; }
+    void setBackground(uint32_t background)
+    {
+        _backgroundColor = background;
+        _palette[0] = background;
+    }
     int width() const { return _width; }
     int height() const { return _height; }
     int stride() const { return _stride; }
@@ -73,12 +77,15 @@ public:
         for(int i = 0; i < palette.size(); ++i) {
             _palette[i] = be32(palette[i]);
         }
+        _paletteMask = 0xFF;
     }
     void setPalette(const Palette& palette)
     {
+        _backgroundColor = be32(palette.colors[0].toRGBAInt());
         for(int i = 0; i < palette.size(); ++i) {
             _palette[i] = be32(palette.colors[i].toRGBAInt());
         }
+        _paletteMask = (1u << ghc::bit_width(palette.size())) - 1u;
     }
     uint32_t getPixel(int x, int y) const
     {
@@ -111,10 +118,11 @@ public:
         if(_overlayCellHeight > 0)
             _colorOverlay[((y * _overlayCellHeight)&31) * 8 + (x & 7)] = value & 0xF;
     }
-    void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen<PixelType,Width,Height>* background = nullptr) const
+    void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen* background = nullptr) const
     {
         if(isRGBA() || !_overlayCellHeight) {
             if(!background) {
+                // non background-blending palette or RGBA mode
                 for (unsigned row = 0; row < _height; ++row) {
                     auto srcPtr = _screenBuffer.data() + row * _stride;
                     auto dstPtr = destination + row * destinationStride;
@@ -123,12 +131,13 @@ public:
                             blendColorsAlpha(dstPtr++, srcPtr++, alpha);
                         }
                         else {
-                            *dstPtr++ = blend(_palette[*srcPtr++],alpha);
+                            *dstPtr++ = blend(_palette[*srcPtr++ & _paletteMask],alpha);
                         }
                     }
                 }
             }
             else {
+                // background-blending RGBA mode (Mega8)
                 for (unsigned row = 0; row < _height; ++row) {
                     auto srcPtr = _screenBuffer.data() + row * _stride;
                     auto backPtr = background->_screenBuffer.data() + row * _stride;
@@ -147,16 +156,17 @@ public:
             }
         }
         else {
+            // color overlay mode (e.g. CHIP-8X), this mode uses the overlay color if pixel value != 0
             for (unsigned row = 0; row < _height; ++row) {
                 auto srcPtr = _screenBuffer.data() + row * _stride;
                 auto dstPtr = destination + row * destinationStride;
                 auto overlayPtr = _colorOverlay.data() + (row/_overlayCellHeight)*_overlayCellHeight * 8;
                 for (unsigned x = 0; x < _width; ++x) {
                     if(*srcPtr++) {
-                        *dstPtr++ = _overlayCellHeight < 0 ? _palette[0x71] : _palette[(overlayPtr[x >> 3]<<4) + 1];
+                        *dstPtr++ = _overlayCellHeight < 0 ? _palette[7] : _palette[overlayPtr[x >> 3]];
                     }
                     else {
-                        *dstPtr++ = _palette[_overlayBackground & 3];
+                        *dstPtr++ = _backgroundColor;
                     }
                 }
             }
@@ -305,11 +315,12 @@ protected:
     int _height{Height};
     int _ratio{1};
     int _overlayCellHeight{0};
-    int _overlayBackground{0};
+    uint8_t _paletteMask{0xFF};
     PixelType _black{isRGBA() ? be32(0x00000000) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
     std::array<PixelType, Width*Height> _screenBuffer;
     std::array<uint32_t, 256> _palette{};
+    uint32_t _backgroundColor{};
     std::array<uint8_t, 256> _colorOverlay{};
 };
 

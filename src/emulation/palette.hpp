@@ -30,6 +30,7 @@
 #include <string_view>
 #include <vector>
 #include <optional>
+#include <fmt/format.h>
 
 namespace emu {
 class Palette
@@ -38,35 +39,63 @@ public:
     struct Color {
         Color() = default;
         Color(const Color& other) = default;
-        Color(const uint8_t rval, const uint8_t gval, const uint8_t bval) : r(rval), g(gval), b(bval) {}
-        explicit Color(uint32_t val) : r(val >> 16), g(val >> 8), b(val) {}
+        Color(const uint8_t rval, const uint8_t gval, const uint8_t bval, const uint8_t aval = 255) : r(rval), g(gval), b(bval), a(aval) {}
+        //explicit Color(uint32_t val) : r(val >> 16), g(val >> 8), b(val) {}
         explicit Color(std::string_view hex)
         {
             if(hex.length()>1 && hex[0] == '#') {
                 uint32_t colInt = std::strtoul(hex.data() + 1, nullptr, 16);
-                r = colInt>>16;
-                g = colInt>>8;
-                b = colInt;
+                if(hex.length() == 9) {
+                    r = colInt>>24;
+                    g = colInt>>16;
+                    b = colInt>>8;
+                    a = colInt;
+                }
+                else if(hex.length() == 7) {
+                    r = colInt>>16;
+                    g = colInt>>8;
+                    b = colInt;
+                }
+                else if(hex.length() == 4) {
+                    r = ((colInt>>4)&0xF0);
+                    g = (colInt&0xF0);
+                    b = colInt << 4;
+                }
+                else {
+                    r = g = b = 0;
+                }
             }
             else {
-                r = 0, g = 0, b = 0;
+                r = g = b = 0;
             }
         }
         uint32_t toRGBInt() const
         {
             return (r << 16u) | (g << 8u) | b;
         }
-        uint32_t toRGBAInt(const uint8_t alpha = 255) const
+        uint32_t toRGBAInt() const
+        {
+            return (r << 24u) | (g << 16u) | (b << 8) | a;
+        }
+        uint32_t toRGBAIntWithAlpha(const uint8_t alpha) const
         {
             return (r << 24u) | (g << 16u) | (b << 8) | alpha;
         }
         bool operator==(const Color& other) const
         {
-            return r == other.r && g == other.g && b == other.b;
+            return r == other.r && g == other.g && b == other.b && a == other.a;
         }
-        std::string toString() const;
-        static Color fromRGBA(const uint32_t val) { return Color( val >> 24, val >> 16, val >> 8); }
-        uint8_t r, g, b;
+        std::string toStringRGB() const
+        {
+            return fmt::format("#{:02x}{:02x}{:02x}", r, g, b);
+        }
+        std::string toStringRGBA() const
+        {
+            return fmt::format("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a);
+        }
+        static Color fromRGB(const uint32_t val) { return Color( val >> 16, val >> 8, val, 255 ); }
+        static Color fromRGBA(const uint32_t val) { return Color( val >> 24, val >> 16, val >> 8, val ); }
+        uint8_t r, g, b, a = 255;
     };
     Palette() = default;
     Palette(const std::initializer_list<Color> cols, const std::initializer_list<Color> backgroundCols = {})
