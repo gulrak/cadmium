@@ -40,3 +40,7 @@
 *~
 .DS_Store
 arch
+
+# patched on-the-fly files
+**/zxorm-src/CMakeLists.txt
+rcore_desktop_glfw.c
