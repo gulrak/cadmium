@@ -924,7 +924,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                     if (entry.variant == emu::Chip8EmulatorOptions::eCHIP8) {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
-                        entry.sha1sum = calculateSha1Hex(file.data(), file.size());
+                        entry.sha1sum = calculateSha1(file.data(), file.size()).to_hex();
                         if(entry.isKnown) {
                             entry.variant = getPresetForFile(entry.sha1sum);
                         }
@@ -960,7 +960,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
                     else {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
                         entry.isKnown = isKnownFile(file.data(), file.size());
-                        entry.sha1sum = calculateSha1Hex(file.data(), file.size());
+                        entry.sha1sum = calculateSha1(file.data(), file.size()).to_hex();
                         entry.variant = getPresetForFile(entry.sha1sum);
                     }
                 }
@@ -975,7 +975,7 @@ bool Librarian::update(const emu::Chip8EmulatorOptions& options)
 
 bool Librarian::isKnownFile(const uint8_t* data, size_t size) const
 {
-    auto sha1sum = calculateSha1Hex(data, size);
+    auto sha1sum = calculateSha1(data, size).to_hex();
     return _cfg.romConfigs.count(sha1sum) || findKnownRom(sha1sum) != nullptr;
 }
 
@@ -995,7 +995,7 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::stri
 
 emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uint8_t* data, size_t size) const
 {
-    auto sha1sum = calculateSha1Hex(data, size);
+    auto sha1sum = calculateSha1(data, size).to_hex();
     return getPresetForFile(sha1sum);
 }
 
@@ -1027,7 +1027,7 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::getEstimatedPresetForFile(
 
 emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size) const
 {
-    auto sha1sum = calculateSha1Hex(data, size);
+    auto sha1sum = calculateSha1(data, size).to_hex();
     return getOptionsForFile(sha1sum);
 }
 

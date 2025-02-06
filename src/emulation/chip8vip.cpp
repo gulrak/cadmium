@@ -71,9 +71,9 @@ public:
         }
         if(options.behaviorBase == Chip8EmulatorOptions::eCHIP8EVIP)
             FETCH_LOOP_ENTRY = 0x1f;
-        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_rom_cvip, 512).substr(0,8)));
+        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_rom_cvip, 512).to_hex().substr(0,8)));
         _properties[PROP_INTERPRETER].setSelectedText("CHIP8");
-        _properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_chip8_cvip, 512).substr(0,8)));
+        _properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_chip8_cvip, 512).to_hex().substr(0,8)));
         switch(_video.getType()) {
             case Cdp186x::eCDP1861_C10:
                 _properties[PROP_VIDEO].setSelectedIndex(1);
@@ -540,7 +540,7 @@ void Chip8VIP::reset()
             auto name = _options.advanced.value("interpreter", "");
             auto size = patchRAM(name, _impl->_ram.data(), _impl->_ram.size());
             _impl->_properties[PROP_INTERPRETER].setSelectedText(name);
-            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0, 8)));
+            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_impl->_ram.data(), size).to_hex().substr(0, 8)));
             //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
         }
     }

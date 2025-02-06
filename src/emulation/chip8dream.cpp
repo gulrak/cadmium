@@ -179,12 +179,12 @@ Chip8Dream::Chip8Dream(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, I
     if(_options.advanced.contains("kernel") && _options.advanced.at("kernel") == "chiposlo") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
         _impl->_properties[PROP_ROM_NAME].setString("CHIPOSLO");
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800ChipOslo, sizeof(dream6800ChipOslo)).substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800ChipOslo, sizeof(dream6800ChipOslo)).to_hex().substr(0,8)));
     }
     else {
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
         _impl->_properties[PROP_ROM_NAME].setString("CHIPOS");
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(dream6800Rom, sizeof(dream6800Rom)).substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800Rom, sizeof(dream6800Rom)).to_hex().substr(0,8)));
     }
     _impl->_pia.irqAOutputHandler = [this](bool level) {
         if(!level)

@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
             std::cerr << "ERROR: File doesn't exist." << std::endl;
         }
         auto data = loadFile(infoFile);
-        infoSHA = calculateSha1Hex(data.data(), data.size());
+        infoSHA = calculateSha1(data.data(), data.size()).to_hex();
         std::cout << "SHA1: " << infoSHA << std::endl;
     }
     if(!infoSHA.empty()) {
@@ -254,7 +254,7 @@ int main(int argc, char* argv[])
         for(auto& entry : fs::recursive_directory_iterator(scanDir, fs::directory_options::skip_permission_denied)) {
             if(entry.is_regular_file() && validExtensions.count(entry.path().extension().string())) {
                 auto file = loadFile(entry.path().string());
-                auto sha1sum = calculateSha1Hex(file.data(), file.size());
+                auto sha1sum = calculateSha1(file.data(), file.size()).to_hex();
                 if(!lib.isKnownFile(sha1sum)) {
                     std::cout << fmt::format("    found program unknown to Cadmium: {} - '{}'", sha1sum, entry.path().string()) << std::endl;
                     if(dbRomMap.count(sha1sum))

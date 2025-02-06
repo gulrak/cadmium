@@ -1058,9 +1058,9 @@ public:
 
         if(_mainView == eEDITOR) {
             _editor.update();
-            if(!_editor.compiler().isError() && _editor.compiler().sha1Hex() != _romSha1Hex) {
+            if(!_editor.compiler().isError() && _editor.compiler().sha1().to_hex() != _romSha1Hex) {
                 _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
-                _romSha1Hex = _editor.compiler().sha1Hex();
+                _romSha1Hex = _editor.compiler().sha1().to_hex();
                 _debugger.updateOctoBreakpoints(_editor.compiler());
                 reloadRom();
             }
