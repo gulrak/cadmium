@@ -3,6 +3,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #if (defined(__APPLE__) && defined(__MACH__))
 #include <sys/stat.h>

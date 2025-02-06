@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 enum class Style {
     BORDER_COLOR_NORMAL,

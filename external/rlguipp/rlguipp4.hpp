@@ -88,6 +88,7 @@ extern "C" {
 #include <cstring>
 #include <initializer_list>
 #include <string>
+#include <cstdint>
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>

@@ -27,6 +27,7 @@
 #include <fstream>
 #include <string>
 #include <cstring>
+#include <cstdint>
 
 int main(int argc, char* argv[])
 {
