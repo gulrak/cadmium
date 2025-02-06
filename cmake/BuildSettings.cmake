@@ -4,7 +4,7 @@ if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_EXTENSIONS ON)
 endif()
 
-add_compile_definitions(-DUSE_GHC_SPAN)
+add_compile_definitions(USE_GHC_SPAN)
 # add_compile_options(-fsanitize=address)
 # add_link_options(-fsanitize=address)
 
