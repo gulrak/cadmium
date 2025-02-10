@@ -123,6 +123,11 @@ public:
 
     StackContent stack() const override;
 
+    uint32_t defaultLoadAddress() const override
+    {
+        return 0x200;
+    }
+
     int64_t executeFor(int64_t microseconds) override
     {
         if(_execMode != ePAUSED) {
@@ -622,7 +627,7 @@ protected:
             _host.updateScreen();
         }
     }
-    inline void addCycles(emu::cycles_t cycles)
+    void addCycles(emu::cycles_t cycles)
     {
         _machineCycles += cycles;
         _systemTime.addCycles(cycles);

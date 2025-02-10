@@ -18,6 +18,15 @@ endif()
 target_link_libraries(chip8_emulation_tests PUBLIC doctest emulation)
 target_code_coverage(chip8_emulation_tests AUTO ALL)
 doctest_discover_tests(chip8_emulation_tests)
+if (NOT DEFINED ENV{CI})
+add_custom_command(
+    TARGET chip8_emulation_tests
+    COMMENT "Run tests"
+    POST_BUILD
+    COMMAND chip8_emulation_tests
+)
+add_dependencies(cadmium chip8_emulation_tests)
+endif()
 
 if(FALSE)
 add_executable(chip8-fpcore-tests main.cpp basic_opcode_tests.cpp variant_specific_opcode_tests.cpp chip8adapter.hpp chip8adapter.cpp)
@@ -76,7 +85,7 @@ target_code_coverage(m6800test AUTO ALL)
 #doctest_discover_tests(chip8-fpcore-tests)
 
 add_executable(variantset-tests main.cpp variantset_test.cpp)
-target_link_libraries(variantset-tests PUBLIC doctest emulation fmt::fmt)
+target_link_libraries(variantset-tests PUBLIC doctest emulation)
 target_code_coverage(variantset-tests AUTO ALL)
 doctest_discover_tests(variantset-tests)
 

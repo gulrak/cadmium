@@ -495,6 +495,11 @@ void Chip8GenericEmulator::setPalette(const Palette& palette)
     _screen.setPalette(palette);
 }
 
+uint32_t Chip8GenericEmulator::defaultLoadAddress() const
+{
+    return _options.startAddress;
+}
+
 bool Chip8GenericEmulator::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
 {
     return Chip8GenericBase::loadData(data, loadAddress ? loadAddress : _options.startAddress);
@@ -1257,7 +1262,7 @@ void Chip8GenericEmulator::op01nn(uint16_t opcode)
 void Chip8GenericEmulator::op02A0_c8x(uint16_t opcode)
 {
     _chip8xBackgroundColor = (_chip8xBackgroundColor + 1) & 3;
-    _screen.setBackground(_options.palette.backgroundColors[_chip8xBackgroundColor].toRGBAInt());
+    _screen.setBackgroundPal(_chip8xBackgroundColor);
     _screenNeedsUpdate = true;
 }
 

@@ -40,21 +40,18 @@
 #include <raylib.h>
 
 #include <threadpool.hpp>
+#include <highlighter.hpp>
 
 std::string GetClipboardTextX();
 void SetClipboardTextX(const std::string& text);
 bool isClipboardPaste();
 
-class Editor
+class Editor : public Highlighter
 {
 public:
     static constexpr float INACTIVITY_DELAY{1.0f};
     enum FindReplaceMode { eNONE, eFIND, eFIND_REPLACE };
-    enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
-    inline static Color _defaultColors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _defaultSelected{100, 100, 120, 255};
-    inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _selected{100, 100, 120, 255};
+
 #ifndef PLATFORM_WEB
     Editor(ThreadPool& threadPool)
         : _threadPool(threadPool)
@@ -142,8 +139,6 @@ protected:
     void recompile();
     static void fixLinefeed(std::string& text);
     void ensureCursorVisibility();
-    void highlightLine(const char* text, const char* end);
-    void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
     Rectangle drawToolArea();
     Rectangle layoutMessageArea();
     void drawMessageArea();
@@ -168,10 +163,6 @@ protected:
     }
     void updateFindResults();
 
-    struct ColorPair {
-        Color front;
-        Color back;
-    };
     enum Operation { eINSERT, eDELETE };
     struct EditInfo {
         Operation operation;
@@ -186,14 +177,12 @@ protected:
     std::future<emu::CompileResult> _compileResult;
 #endif
     static constexpr int LINE_SIZE = 12;
-    static constexpr int COLUMN_WIDTH = 6;
     const float BLINK_RATE = 0.8f;
     const float REPEAT_DELAY = 0.5f;
     const float REPEAT_RATE = 0.05f;
     std::string _filename;
     std::string _text;
     std::vector<uint32_t> _lines;
-    std::vector<ColorPair> _highlighting;
     std::stack<EditInfo> _undoStack;
     std::stack<EditInfo> _redoStack;
     std::vector<char> _alphabetKeys{};
@@ -206,8 +195,6 @@ protected:
     uint32_t _visibleCols{0};
     int _lineNumberWidth{6*COLUMN_WIDTH};
     uint32_t _lineNumberCols{6};
-    uint32_t _selectionStart{0};
-    uint32_t _selectionEnd{0};
     uint32_t _editId{0};
     uint32_t _longestLineSize{0};
     Rectangle _totalArea{};
@@ -239,8 +226,6 @@ protected:
     Sha1::Digest _editedTextSha1;
     Sha1::Digest _compiledSourceSha1;
     float _inactiveEditTimer{0};
-    static std::unordered_set<std::string> _opcodes;
-    static std::unordered_set<std::string> _directives;
 };
 
 

@@ -578,7 +578,7 @@ public:
     static constexpr int MIN_SCREEN_WIDTH = 640; // 512;
     static constexpr int MIN_SCREEN_HEIGHT = 480; // 192*2+36;
     explicit Cadmium(CadmiumConfiguration& cfg, emu::Properties& props)
-        : emu::EmuHostEx(cfg)
+        : EmuHostEx(cfg)
         , _audioBuffer(44100)
         , _screenWidth(MIN_SCREEN_WIDTH)
         , _screenHeight(MIN_SCREEN_HEIGHT)
@@ -879,7 +879,7 @@ void main()
 
         _microFont = LoadImage("micro-font.png");
         generateFont();
-        if(props) {
+        if (props) {
             if (props.palette().empty())
                 setPalette(_defaultPalette);
             else
@@ -887,7 +887,7 @@ void main()
         }
         else
             _mainView = eSETTINGS;
-        updateEmulatorOptions(props);
+        EmuHostEx::updateEmulatorOptions(props);
         Cadmium::whenEmuChanged(*_chipEmu);
         _debugger.updateCore(_chipEmu.get());
         _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
@@ -982,7 +982,7 @@ void main()
         if (_database)
             _database.reset();
 #endif
-        _textureScaler.release();
+        _textureScaler.reset();
         UnloadFont(_font);
         UnloadImage(_fontImage);
         UnloadImage(_microFont);
@@ -2821,8 +2821,8 @@ void main()
     {
         _debugger.updateCore(&emu);
         _propsMemento = *_properties;
-        // TODO: Fix this
-        // _editor.updateCompilerOptions(_options.startAddress);
+        auto startAddress = _chipEmu->defaultLoadAddress();
+        _editor.updateCompilerOptions(startAddress);
         reloadRom();
         updateBehaviorSelects();
         resetStats();
@@ -2860,11 +2860,11 @@ void main()
             _chipEmu->reset();
             _audioBuffer.reset();
             updateScreen();
-            // TODO: Fix this
+            auto loadAddress = _chipEmu->defaultLoadAddress();
             if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
                 std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
             else
-                std::memcpy(_chipEmu->memory() + 512/* TODO: _options.startAddress */, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512/* TODO: _options.startAddress */)));
+                std::memcpy(_chipEmu->memory() + loadAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - loadAddress)));
         }
         _debugger.captureStates();
     }

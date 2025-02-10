@@ -138,7 +138,7 @@ if(PLATFORM STREQUAL "Desktop")
     #target_compile_definitions(tls PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
 
     if(APPLE)
-        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOl "" FORCE)
+        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
     endif()
     FetchContent_Declare(
         CppHttplib

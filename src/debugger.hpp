@@ -29,11 +29,12 @@
 #include <emulation/iemulationcore.hpp>
 #include <emulation/chip8realcorebase.hpp>
 #include <chiplet/octocompiler.hpp>
+#include <highlighter.hpp>
 
 #include <raylib.h>
 
 
-class Debugger
+class Debugger : public Highlighter
 {
 public:
     using ExecMode = emu::GenericCpu::ExecMode;

@@ -298,8 +298,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         c8c = std::make_unique<emu::OctoCompiler>();
         source.assign((const char*)fileData.data(), fileData.size());
         if (c8c->compile(filename).resultType == emu::CompileResult::eOK) {
-            auto startAddress = _properties->get<Property::Integer>("startAddress");
-            auto loadAddress = startAddress ? startAddress->intValue : 0;
+            auto loadAddress = _chipEmu->defaultLoadAddress();
             if (c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
                 romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
                 romSha1 = c8c->sha1();

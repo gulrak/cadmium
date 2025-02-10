@@ -156,7 +156,7 @@ public:
         if(screen) {
             for (int y = 0; y < height; y += scaleY) {
                 for (int x = 0; x < width; x += scaleX) {
-                    if(screen->getPixel(x, y) & 15) {
+                    if(screen->getPixelDebugBW(x, y) == '#') {
                         if(result.x < 0 || result.x > x) result.x = x;
                         if(result.y < 0) result.y = y;
                         if(right < x) right = x;
@@ -184,7 +184,7 @@ public:
                 result.reserve(width * height + height);
                 for (int y = 0; y < height; y += scaleY) {
                     for (int x = 0; x < width; x += scaleX) {
-                        result.push_back(screen->getPixelIndex(x, y) & 0xf ? '#' : '.');
+                        result.push_back(screen->getPixelDebugBW(x, y));
                     }
                     result.push_back('\n');
                 }
@@ -208,7 +208,34 @@ public:
                     if(y >= rect.y && y < rect.y + rect.h) {
                         for (int x = 0; x < width; x += scaleX) {
                             if(x >= rect.x && x < rect.x + rect.w) {
-                                result.push_back((screen->getPixelIndex(x, y) & 15) ? '#' : '.');
+                                result.push_back(screen->getPixelDebugBW(x, y));
+                            }
+                        }
+                        result.push_back('\n');
+                    }
+                }
+                return {{rect.x/scaleX, rect.y/scaleY, rect.w/scaleX, rect.h/scaleY}, result};
+            }
+        }
+        return {{0,0,0,0}, result};
+    }
+    std::pair<Rect, std::string> chip8UsedScreenCol(int scaleX = 1, int scaleY = 1)
+    {
+        std::string result;
+        auto width = _core->getCurrentScreenWidth();
+        auto height = _core->getCurrentScreenHeight();
+        const auto* screen = _core->getScreen();
+        executeFrame();
+        executeFrame();
+        if(screen) {
+            auto rect = findContentRectangle(scaleX, scaleY);
+            if(rect.w) {
+                result.reserve(rect.w * rect.h + rect.h);
+                for (int y = 0; y < height; y += scaleY) {
+                    if(y >= rect.y && y < rect.y + rect.h) {
+                        for (int x = 0; x < width; x += scaleX) {
+                            if(x >= rect.x && x < rect.x + rect.w) {
+                                result.push_back(screen->getPixelDebugCol(x, y));
                             }
                         }
                         result.push_back('\n');

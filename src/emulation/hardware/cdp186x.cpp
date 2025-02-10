@@ -53,7 +53,7 @@ void Cdp186x::reset()
         _subMode = eVP590_DEFAULT;
         _screen.setPalette(g_cdp1862Palette);
         _backgroundColor = 0;
-        _screen.setBackground(g_cdp1862Palette.backgroundColors[_backgroundColor].toRGBAInt());
+        _screen.setBackgroundPal(_backgroundColor);
     }
     else {
         _screen.setPalette(g_1861Palette);
@@ -145,6 +145,9 @@ std::pair<int, bool> Cdp186x::executeStep()
                         if (((data >> (7 - j)) & 1)) {
                             _screen.setPixel(x + i * 8 + j, y, 0x80 | colorBits);
                         }
+                        else {
+                            _screen.setPixel(x + i * 8 + j, y, 0);
+                        }
                     }
                 }
                 else {
@@ -179,7 +182,7 @@ void Cdp186x::setTrace(bool traceLog)
 void Cdp186x::incrementBackground()
 {
     _backgroundColor = (_backgroundColor + 1) & 3;
-    _screen.setBackground(g_cdp1862Palette.backgroundColors[_backgroundColor].toRGBAInt());
+    _screen.setBackgroundPal(_backgroundColor);
 }
 
 }

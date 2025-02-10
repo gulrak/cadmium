@@ -300,6 +300,12 @@ std::tuple<uint16_t, uint16_t, std::string> Chip8GenericBase::disassembleInstruc
 {
     return _disassembler.disassembleInstruction(code, end);
 }
+
+size_t Chip8GenericBase::disassemblyPrefixSize() const
+{
+    return 17;
+}
+
 std::string Chip8GenericBase::disassembleInstructionWithBytes(int32_t pc, int* bytes) const
 {
     if(pc < 0) pc = _rPC;
@@ -316,8 +322,8 @@ std::string Chip8GenericBase::disassembleInstructionWithBytes(int32_t pc, int* b
 }
 std::string Chip8GenericBase::dumpStateLine() const
 {
-    return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2],
-                       _rV[3], _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize()-1)]<<8)|_memory[(_rPC + 1) & (memSize()-1)]);
+    return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", _rV[0], _rV[1], _rV[2], _rV[3],
+                       _rV[4], _rV[5], _rV[6], _rV[7], _rV[8], _rV[9], _rV[10], _rV[11], _rV[12], _rV[13], _rV[14], _rV[15], _rI, _rSP, _rPC, (_memory[_rPC & (memSize() - 1)] << 8) | _memory[(_rPC + 1) & (memSize() - 1)]);
 }
 
 bool Chip8GenericBase::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)

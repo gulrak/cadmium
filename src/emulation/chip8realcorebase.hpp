@@ -128,6 +128,11 @@ public:
         return Chip8OpcodeDisassembler::disassembleInstruction(code, end);
     }
 
+    size_t disassemblyPrefixSize() const override
+    {
+        return 12;
+    }
+
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
     {
         if(pc < 0) pc = getPC();

@@ -38,17 +38,6 @@
 
 namespace utf8 = ghc::utf8;
 
-std::unordered_set<std::string> Editor::_opcodes = {
-    "!=", "&=", "+=", "-=", "-key", ":", ":=", ";", "<", "<<=", "<=", "=-", "==", ">", ">=", ">>=", "^=", "|=",
-    "again", "audio", "bcd", "begin", "bighex", "buzzer", "clear", "delay", "else", "end", "hex", "hires", "if",
-    "jump", "jump0", "key", "load", "loadflags", "loop", "lores", "native", "pitch", "plane", "random", "return",
-    "save", "saveflags", "scroll-down", "scroll-left", "scroll-right", "scroll-up", "sprite", "then", "while"
-};
-
-std::unordered_set<std::string> Editor::_directives = {
-    ":alias", ":assert", ":breakpoint", ":byte", ":calc", ":call", ":const", ":macro", ":monitor", ":next", ":org", ":pointer", ":proto", ":stringmode", ":unpack"
-};
-
 extern void copyClip(const char*);
 extern const char* pasteClip();
 
@@ -482,7 +471,7 @@ void Editor::draw(Font& font, Rectangle rect)
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
             DrawTextClipped(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, textColor);
-            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol);
+            drawHighlightedTextLine(font, _text.data(), lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol, LINE_SIZE);
         }
         ++lineNumber;
         ypos += LINE_SIZE;
@@ -530,6 +519,7 @@ Rectangle Editor::verticalScrollHandle()
     return {_textArea.x + _textArea.width - 5, _textArea.y + step * _tosLine, 4, float(scrollLength)};
 }
 
+#if 0
 void Editor::highlightLine(const char* text, const char* end)
 {
     static emu::OctoCompiler::Lexer lexer;
@@ -573,7 +563,7 @@ void Editor::highlightLine(const char* text, const char* end)
     }
 }
 
-void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset)
+void Editor::drawHighlightedTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset)
 {
     uint32_t selStart = _selectionStart > _selectionEnd ? _selectionEnd : _selectionStart;
     uint32_t selEnd = _selectionStart > _selectionEnd ? _selectionStart : _selectionEnd;
@@ -601,6 +591,7 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
     if(textOffsetX < width && offset >= selStart && offset < selEnd)
         DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)LINE_SIZE}, _selected);
 }
+#endif
 
 void Editor::safeInsert(uint32_t offset, const std::string& text)
 {

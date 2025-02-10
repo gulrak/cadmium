@@ -46,7 +46,7 @@ public:
         _palette[1] = be32(0xFFFFFFFF);
         _palette[2] = be32(0xCCCCCCFF);
         _palette[3] = be32(0x888888FF);
-        _palette[254] = be32(0xFFFFFFFF);
+        _palette[255] = be32(0xFFFFFFFF);
     }
     void setMode(int width, int height, int ratio = -1)
     {
@@ -62,10 +62,15 @@ public:
             _overlayCellHeight = 4;
         }
     }
-    void setBackground(uint32_t background)
+    void setBackgroundRGBA(uint32_t background)
     {
-        _backgroundColor = background;
+        _backgroundVariants[0] = background;
         _palette[0] = background;
+
+    }
+    void setBackgroundPal(size_t background)
+    {
+        _backgroundColor = _backgroundVariants[background & _backgroundVariantsMask];
     }
     int width() const { return _width; }
     int height() const { return _height; }
@@ -81,9 +86,24 @@ public:
     }
     void setPalette(const Palette& palette)
     {
-        _backgroundColor = be32(palette.colors[0].toRGBAInt());
         for(int i = 0; i < palette.size(); ++i) {
             _palette[i] = be32(palette.colors[i].toRGBAInt());
+        }
+        _backgroundIndex = 0;
+        if (palette.backgroundColors.empty()) {
+            _backgroundVariantsMask = 0;
+            _backgroundColor = _palette[0];
+        }
+        else {
+            auto backgroundVariants = palette.backgroundColors.size();
+            if (backgroundVariants > _backgroundVariants.size()) {
+                backgroundVariants = _backgroundVariants.size();
+            }
+            for (size_t i = 0; i < backgroundVariants; ++i) {
+                _backgroundVariants[i] = be32(palette.backgroundColors[i].toRGBAInt());
+            }
+            _backgroundVariantsMask = (1u << ghc::bit_width(backgroundVariants)) - 1u;
+            _backgroundColor = _backgroundVariants[_backgroundIndex];
         }
         _paletteMask = (1u << ghc::bit_width(palette.size())) - 1u;
     }
@@ -101,9 +121,34 @@ public:
         }
         if(_overlayCellHeight) {
             auto overlayPtr = _colorOverlay.data() + (y/_overlayCellHeight)*_overlayCellHeight * 8;
-            return (_screenBuffer[y * _stride + x] & 0xf) | *overlayPtr << 4;
+
+            return (_screenBuffer[y * _stride + x] & 0x7f) | *overlayPtr << 4;
         }
         return _screenBuffer[y * _stride + x];
+    }
+    char getPixelDebugBW(int x, int y) const
+    {
+        if constexpr (isRGBA()) {
+            return _screenBuffer[y * _stride + x] & be32(0xFFFFFF00) ? "#" : '.';
+        }
+        return _screenBuffer[y * _stride + x] ? '#' : '.';
+    }
+    char getPixelDebugCol(int x, int y) const
+    {
+        static constexpr auto hex = "0123456789ABCDEF";
+        if constexpr (isRGBA()) {
+            return '?';
+        }
+
+        if(_overlayCellHeight) {
+            auto overlayPtr = _colorOverlay.data() + (y/_overlayCellHeight)*_overlayCellHeight * 8;
+            auto pixel = _screenBuffer[y * _stride + x];
+            if (pixel) {
+                return hex[pixel & 0xf];
+            }
+            return _backgroundVariantsMask ? 'A' + (*overlayPtr & 0xf) : '.';
+        }
+        return hex[_screenBuffer[y * _stride + x] & 0xf];
     }
     PixelType& getPixelRef(int x, int y)
     {
@@ -316,10 +361,13 @@ protected:
     int _ratio{1};
     int _overlayCellHeight{0};
     uint8_t _paletteMask{0xFF};
+    uint8_t _backgroundVariantsMask{0xF};
     PixelType _black{isRGBA() ? be32(0x00000000) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
     std::array<PixelType, Width*Height> _screenBuffer;
     std::array<uint32_t, 256> _palette{};
+    std::array<uint32_t, 16> _backgroundVariants{};
+    size_t _backgroundIndex{};
     uint32_t _backgroundColor{};
     std::array<uint8_t, 256> _colorOverlay{};
 };

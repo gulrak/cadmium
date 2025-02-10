@@ -98,9 +98,12 @@ public:
         uint8_t r, g, b, a = 255;
     };
     Palette() = default;
+    Palette(size_t supportedColors, size_t supportedBackgroundColors) : numColors(supportedColors), numBackgroundColors(supportedBackgroundColors) {}
     Palette(const std::initializer_list<Color> cols, const std::initializer_list<Color> backgroundCols = {})
         : colors(cols)
         , backgroundColors(backgroundCols)
+        , numColors(cols.size())
+        , numBackgroundColors(backgroundCols.size())
     {}
     Palette(const std::initializer_list<std::string> cols, const std::initializer_list<std::string> backgroundCols = {})
     {
@@ -108,22 +111,25 @@ public:
         for(const auto& col : cols) {
             colors.emplace_back(col);
         }
+        numColors = colors.size();
         backgroundColors.reserve(backgroundCols.size());
         for(const auto& col : backgroundCols) {
             backgroundColors.emplace_back(col);
         }
+        numBackgroundColors = backgroundColors.size();
     }
-
     bool empty() const { return colors.empty(); }
     size_t size() const { return colors.size(); }
     bool operator==(const Palette& other) const
     {
-        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor;
+        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor && numColors == other.numColors && numBackgroundColors == other.numBackgroundColors;
     }
     std::vector<Color> colors;
     std::optional<Color> borderColor{};
     std::optional<Color> signalColor{};
     std::vector<Color> backgroundColors;
+    size_t numColors{};
+    size_t numBackgroundColors{};
 };
 
 }

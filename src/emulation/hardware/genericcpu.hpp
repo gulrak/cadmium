@@ -106,6 +106,7 @@ public:
         }
     }
 
+    virtual size_t disassemblyPrefixSize() const = 0;
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 
     virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi)

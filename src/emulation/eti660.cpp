@@ -462,7 +462,12 @@ void Eti660::setFocussedExecutionUnit(GenericCpu* unit)
 
 GenericCpu* Eti660::focussedExecutionUnit()
 {
-    return _execChip8 ? static_cast<GenericCpu*>(this) :  static_cast<GenericCpu*>(&_impl->_cpu);
+    return _execChip8 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
+}
+
+uint32_t Eti660::defaultLoadAddress() const
+{
+    return _impl->_options.startAddress;
 }
 
 bool Eti660::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
@@ -567,7 +572,7 @@ int64_t Eti660::machineCycles() const
 
 int Eti660::frameRate() const
 {
-    return std::lround(_impl->_options.clockFrequency / 8.0 /_impl->_video.cyclesPerFrame());
+    return std::lround(_impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame());
 }
 
 bool Eti660::executeCdp1802()

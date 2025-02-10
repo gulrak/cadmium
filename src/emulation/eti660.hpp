@@ -55,6 +55,7 @@ public:
     void executeFrame() override;
     int frameRate() const override;
 
+    uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
 
     ExecMode execMode() const override;

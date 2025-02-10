@@ -60,6 +60,7 @@ public:
     uint8_t* memory() override { return _memory.data(); }
     int memSize() const override { return static_cast<int>(_memory.size()); }
     std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
+    size_t disassemblyPrefixSize() const override;
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override;
     std::string dumpStateLine() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;

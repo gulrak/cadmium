@@ -349,6 +349,10 @@ public:
     }
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
+    size_t disassemblyPrefixSize() const override
+    {
+        return 16;
+    }
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
 #else
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const

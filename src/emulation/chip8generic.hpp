@@ -56,7 +56,7 @@ struct Chip8GenericOptions
     enum class FontStyle5px { VIP, DREAM6800, ETI660, SCHIP, FISH, OCTO, AKOUZ1 };
     enum class FontStyle10px { NONE, SCHIP10, SCHIP11, FISH, MEGACHIP, OCTO, AUCHIP };
     uint32_t ramSize{4096};
-    uint16_t startAddress{0x200};
+    uint32_t startAddress{0x200};
     bool cleanRam{true};
     bool optJustShiftVx{false};
     bool optDontResetVf{false};
@@ -129,6 +129,7 @@ public:
     uint8_t getScreenAlpha() const override { return _screenAlpha; }
     void setPalette(const Palette& palette) override;
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
+    uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
     unsigned stackSize() const override { return 16; }
     StackContent stack() const override;
@@ -342,7 +343,7 @@ public:
     }
 
     template<uint16_t quirks>
-    inline bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    bool drawSpritePixelEx(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         if constexpr (quirks&HiresSupport) {
             if constexpr ((quirks&SChip1xLoresDraw) != 0) {

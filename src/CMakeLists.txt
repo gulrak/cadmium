@@ -15,6 +15,8 @@ set(CADMIUM_SOURCE
     editor.hpp
     emuhostex.cpp
     emuhostex.hpp
+    highlighter.cpp
+    highlighter.hpp
     librarian.cpp
     librarian.hpp
     logview.cpp

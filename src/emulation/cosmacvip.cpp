@@ -811,7 +811,12 @@ void CosmacVIP::setFocussedExecutionUnit(GenericCpu* unit)
 
 GenericCpu* CosmacVIP::focussedExecutionUnit()
 {
-    return _execChip8 ? static_cast<GenericCpu*>(this) :  static_cast<GenericCpu*>(&_impl->_cpu);
+    return _execChip8 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
+}
+
+uint32_t CosmacVIP::defaultLoadAddress() const
+{
+    return _impl->_options.startAddress;
 }
 
 bool CosmacVIP::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
@@ -916,7 +921,7 @@ int64_t CosmacVIP::machineCycles() const
 
 int CosmacVIP::frameRate() const
 {
-    return std::lround(_impl->_options.clockFrequency / 8.0 /_impl->_video.cyclesPerFrame());
+    return std::lround(_impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame());
 }
 
 bool CosmacVIP::executeCdp1802()

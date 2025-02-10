@@ -99,6 +99,7 @@ public:
     virtual uint8_t* memory() = 0;
     virtual int memSize() const = 0;
 
+    virtual uint32_t defaultLoadAddress() const = 0;
     virtual bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) = 0;
 
     virtual bool needsScreenUpdate() { return true; }

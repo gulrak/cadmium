@@ -447,7 +447,12 @@ void Dream6800::setFocussedExecutionUnit(GenericCpu* unit)
 
 GenericCpu* Dream6800::focussedExecutionUnit()
 {
-    return _execChip8 ? static_cast<GenericCpu*>(this) :  static_cast<GenericCpu*>(&_impl->_cpu);
+    return _execChip8 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
+}
+
+uint32_t Dream6800::defaultLoadAddress() const
+{
+    return _impl->_options.startAddress;
 }
 
 bool Dream6800::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)

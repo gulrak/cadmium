@@ -50,7 +50,23 @@ public:
     void enableDisplay();
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }
-    void setSubMode(SubMode subMode) { _subMode = subMode; }
+    void setSubMode(SubMode subMode)
+    {
+        _subMode = subMode;
+        switch (subMode) {
+            case eNONE:
+                _screen.setOverlayCellHeight(0);
+                break;
+            case eVP590_DEFAULT:
+                _screen.setOverlayCellHeight(-1);
+                break;
+            case eVP590_LORES:
+                _screen.setOverlayCellHeight(4);
+                break;
+            case eVP590_HIRES:
+                _screen.setOverlayCellHeight(1);
+        }
+    }
     void setTrace(bool traceLog);
     void incrementBackground();
     int frames() const { return _frameCounter; }
