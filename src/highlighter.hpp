@@ -29,6 +29,7 @@
 #include <raylib.h>
 #include <cstdint>
 #include <vector>
+#include <string>
 #include <unordered_set>
 
 class Highlighter
