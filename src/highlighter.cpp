@@ -37,29 +37,29 @@
 
 namespace utf8 = ghc::utf8;
 
-constexpr  std::unordered_set<std::string> g_octoOpcodes = {
+static std::unordered_set<std::string> g_octoOpcodes = {
     "!=", "&=", "+=", "-=", "-key", ":", ":=", ";", "<", "<<=", "<=", "=-", "==", ">", ">=", ">>=", "^=", "|=",
     "again", "audio", "bcd", "begin", "bighex", "buzzer", "clear", "delay", "else", "end", "hex", "hires", "if",
     "jump", "jump0", "key", "load", "loadflags", "loop", "lores", "native", "pitch", "plane", "random", "return",
     "save", "saveflags", "scroll-down", "scroll-left", "scroll-right", "scroll-up", "sprite", "then", "while"
 };
-constexpr std::unordered_set<std::string> g_octoDirectives = {
+static std::unordered_set<std::string> g_octoDirectives = {
     ":alias", ":assert", ":breakpoint", ":byte", ":calc", ":call", ":const", ":macro", ":monitor", ":next", ":org",
     ":pointer", ":proto", ":stringmode", ":unpack"
 };
 
-constexpr std::unordered_set<std::string> g_chipperOpcodes = {
+static std::unordered_set<std::string> g_chipperOpcodes = {
     "add", "add", "add", "alpha", "and", "bmode", "call", "ccol", "cls", "digisnd", "drw", "exit", "high",
     "jp", "jp", "jp", "ld", "ldhi", "ldpal", "low", "megaoff", "megaon", "or", "ret", "rnd", "scd", "scl", "scr",
     "scru", "scu", "se", "se", "shl", "shr", "sknp", "skp", "sne", "sprh", "sprw", "stopsnd", "sub", "subn", "xor"
 };
-constexpr std::unordered_set<std::string> g_chipperDirectives = {
+static std::unordered_set<std::string> g_chipperDirectives = {
     "align", "da", "db", "define", "ds", "dw", "else", "end", "endif", "ifdef", "ifund", "include", "option",
     "binary", "chip8", "chip48", "hpasc", "hpbin", "schip10", "schip11", "string",
     "org", "undef", "used", "on", "off", "symbol", "xref", "yes", "no"
 };
 
-constexpr std::unordered_set<std::string> g_1802Opcodes = {
+static std::unordered_set<std::string> g_1802Opcodes = {
     "ldn", "inc", "dec", "br", "bq", "bdf", "b1", "b2", "b3", "b4", "skp", "bnq", "bnz", "bnf",
     "bn1", "bn2", "bn3", "bn4", "lda", "str", "irx", "out", "inp", "ret", "dis", "ldxa", "stxd",
     "adc", "sdb", "shrc", "smb", "sav", "mark", "seq", "req", "adci", "sdbi", "shlc", "smbi",
@@ -67,7 +67,7 @@ constexpr std::unordered_set<std::string> g_1802Opcodes = {
     "lbnq", "lbnz", "lbnf", "lsie", "lsq", "lsz", "lsdf", "sep", "sex", "ldx", "or", "and", "xor",
     "add", "sd", "shr", "sm", "ldi", "ori", "ani", "xri", "adi", "sdi", "shl", "smi", "illegal"
 };
-constexpr std::unordered_set<std::string> g_1802Directives = {
+static std::unordered_set<std::string> g_1802Directives = {
 };
 
 Highlighter::Highlighter() = default;
