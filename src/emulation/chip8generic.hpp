@@ -87,7 +87,7 @@ struct Chip8GenericOptions
     TouchInputMode touchInputMode{TouchInputMode::UNKNOWN};
     FontStyle5px fontStyle5{FontStyle5px::VIP};
     FontStyle10px fontStyle10{FontStyle10px::NONE};
-    Palette palette{{"#000000", "#FFFFFF"}};
+    Palette palette{{ std::string("#000000"), std::string("#FFFFFF") }};
 };
 
 //---------------------------------------------------------------------------------------

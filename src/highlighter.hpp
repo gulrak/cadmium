@@ -38,9 +38,15 @@ public:
     static constexpr int COLUMN_WIDTH = 6;
 
 protected:
+    enum Dialect { eNONE, eCHIP8OCTO, eCHIP8CHIPPER, eCDP1802, eM6800 };
+    Highlighter();
     void highlightLine(const char* text, const char* end);
+    void highlightLineOcto(const char* text, const char* end);
+    void highlightLineChipper(const char* text, const char* end);
+    void highlightLine1802(const char* text, const char* end);
+    void highlightLine6800(const char* text, const char* end);
     void drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight);
-
+    void setDialect(Dialect dialect);
     enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
     struct ColorPair {
         Color front;
@@ -54,6 +60,5 @@ protected:
     uint32_t _selectionStart{0};
     uint32_t _selectionEnd{0};
     std::vector<ColorPair> _highlighting;
-    static std::unordered_set<std::string> _opcodes;
-    static std::unordered_set<std::string> _directives;
+    Dialect _dialect{eCHIP8OCTO};
 };

@@ -33,8 +33,8 @@
 
 namespace emu {
 
-static Palette g_1861Palette{ {"#000000","#FFFFFF"}};
-static Palette g_cdp1862Palette{ {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}};
+static Palette g_1861Palette{{ std::string("#000000"), std::string("#FFFFFF") }};
+static Palette g_cdp1862Palette{{"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}};
 Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 : _cpu(cpu)
 , _type(type)

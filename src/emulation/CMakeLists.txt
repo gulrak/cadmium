@@ -2,8 +2,6 @@
 set(CHIP8_EMU_SOURCE
     chip8generic.cpp
     chip8generic.hpp
-    #chip8emulatorbase.cpp
-    #chip8emulatorbase.hpp
     chip8genericbase.cpp
     chip8genericbase.hpp
     chip8opcodedisass.cpp
