@@ -85,7 +85,7 @@ target_code_coverage(m6800test AUTO ALL)
 #doctest_discover_tests(chip8-fpcore-tests)
 
 add_executable(variantset-tests main.cpp variantset_test.cpp)
-target_link_libraries(variantset-tests PUBLIC doctest emulation)
+target_link_libraries(variantset-tests PUBLIC doctest chiplet-lib)
 target_code_coverage(variantset-tests AUTO ALL)
 doctest_discover_tests(variantset-tests)
 
