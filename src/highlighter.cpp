@@ -201,11 +201,11 @@ static std::pair<std::size_t, double> parseOctoNumber(const char* text, const ch
         return {static_cast<std::size_t>(res.ptr - text), value};
     }
     else {
-        double d = 0.0;
-        auto res = std::from_chars(text, end, d);
+        double value = 0.0;
+        auto res = fast_float::from_chars(text, end, value);
         if (res.ec != std::errc() || res.ptr == text)
             return {0, 0.0};
-        return {static_cast<std::size_t>(res.ptr - text), d};
+        return {static_cast<std::size_t>(res.ptr - text), value};
     }
 }
 
