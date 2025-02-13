@@ -217,39 +217,43 @@ void Highlighter::highlightLineOcto(const char* text, const char* end)
     size_t index = 0;
     bool wasColon = false;
     const char* token;
-    while(text < end && *text != '\n') {
+    while (text < end && *text != '\n') {
         token = text;
         uint32_t cp = utf8::fetchCodepoint(text, end);
-        if(cp == ' ')
+        if (cp == ' ')
             ++index;
         else if (cp == '#') {
-            while(text < end)
+            while (text < end)
                 utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
         }
         else {
             auto start = index++;
             bool isColon = false;
-            while(text < end && *text > ' ')
+            while (text < end && *text > ' ')
                 utf8::fetchCodepoint(text, end), ++index;
             auto len = index - start;
             Color col = _colors[eNORMAL];
-            if(cp == ':' && len == 1 || wasColon)
+            if (cp == ':' && len == 1 || wasColon)
                 col = _colors[eLABEL], isColon = true;
-            else if(cp >= '0' && cp <= '9')
+            else if (cp >= '0' && cp <= '9')
                 col = _colors[eNUMBER];
-            else if(len == 1 && (cp == 'i' || cp == 'I'))
+            else if (len == 1 && (cp == 'i' || cp == 'I'))
                 col = _colors[eREGISTER];
-            else if(len == 2 && (cp == 'v' || cp == 'V') && isHexDigit(*(token + 1)))
+            else if (len == 2 && (cp == 'v' || cp == 'V') && isHexDigit(*(token + 1)))
                 col = _colors[eREGISTER];
-            else if(g_octoOpcodes.contains(std::string(token, text - token)))
+            else if (g_octoOpcodes.contains(std::string(token, text - token)))
                 col = _colors[eOPCODE];
-            else if(g_octoDirectives.contains(std::string(token, text - token)))
+            else if (g_octoDirectives.contains(std::string(token, text - token)))
                 col = _colors[eDIRECTIVE];
-            while(start < index)
+            while (start < index)
                 _highlighting[start++].front = col;
             wasColon = isColon;
         }
     }
+}
+void Highlighter::highlightLineChipper(const char* text, const char* end)
+{
+
 }
 
 void Highlighter::highlightLine1802(const char* text, const char* end)
@@ -257,6 +261,10 @@ void Highlighter::highlightLine1802(const char* text, const char* end)
 
 }
 
+void Highlighter::highlightLine6800(const char* text, const char* end)
+{
+
+}
 
 void Highlighter::drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight)
 {
