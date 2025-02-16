@@ -35,6 +35,7 @@
 #include <vector>
 
 #include <emulation/time.hpp>
+#include <emulation/expressionist.hpp>
 
 namespace emu
 {
@@ -50,8 +51,10 @@ public:
     struct BreakpointInfo {
         enum Type { eTRANSIENT, eCODED };
         std::string label;
+        std::string condition;
         Type type{eTRANSIENT};
         bool isEnabled{true};
+        Expressionist::CompiledExpression conditionExpr;
     };
     struct RegisterValue {
         uint32_t value{};
@@ -109,9 +112,9 @@ public:
     virtual size_t disassemblyPrefixSize() const = 0;
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 
-    virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi)
+    virtual void setBreakpoint(uint32_t address, BreakpointInfo&& bpi)
     {
-        _breakpoints[address] = bpi;
+        _breakpoints[address] = std::move(bpi);
         _breakMap[address & 0xFFF] = 1;
     }
     virtual void removeBreakpoint(uint32_t address)
@@ -196,6 +199,7 @@ protected:
     std::map<uint32_t,BreakpointInfo> _breakpoints{};
     std::string _errorMessage{};
     bool _breakpointTriggered{false};
+    Expressionist _expressionist;
 };
 
 }

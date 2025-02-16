@@ -35,6 +35,8 @@ set(CHIP8_EMU_SOURCE
     time.cpp
     time.hpp
     utility.cpp
+    expressionist.cpp
+    expressionist.hpp
     #octocartridge.cpp
     #octocartridge.hpp
 )

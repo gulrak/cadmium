@@ -73,6 +73,7 @@ public:
     static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font);
 
 protected:
+    void initExpressionist();
     Chip8OpcodeDisassembler _disassembler;
     std::vector<uint8_t> _memory{};
     uint8_t* _rV{};

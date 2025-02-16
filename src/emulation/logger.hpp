@@ -25,7 +25,10 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 #define FULL_CONSOLE_TRACE
-#include <emulation/config.hpp>
+//#include <emulation/config.hpp>
+
+#include <cstdint>
+
 
 namespace emu {
 
@@ -40,14 +43,14 @@ public:
     };
     virtual ~Logger() = default;
     static void setLogger(Logger* logger) { _logger = logger; }
-    static void log(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
+    static void log(Source source, uint64_t cycle, FrameTime frameTime, const char* msg)
     {
         if(_logger) {
             _logger->doLog(source, cycle, frameTime, msg);
         }
     }
 
-    virtual void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) = 0;
+    virtual void doLog(Source source, uint64_t cycle, FrameTime frameTime, const char* msg) = 0;
 
 private:
     static inline Logger* _logger{nullptr};
@@ -75,7 +78,7 @@ public:
         setLogger(nullptr);
     }
 
-    void doLog(Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg) override
+    void doLog(Source source, uint64_t cycle, FrameTime frameTime, const char* msg) override
     {
         auto content = source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)frameTime.frame, (int)frameTime.cycle, msg) : fmt::format("[      ] {}", msg);
         _outStream << content << std::endl;

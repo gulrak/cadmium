@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// src/logview.hpp
+// test/expressionist-tests.cpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2025, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,55 +23,23 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
-#pragma once
 
-#include <emulation/config.hpp>
-#include <emulation/logger.hpp>
+#include <doctest/doctest.h>
 
-#include <raylib.h>
+#include <emulation/expressionist.hpp>
+#include <sstream>
 
-#include <mutex>
+using namespace emu;
 
-class LogView : public emu::Logger
+TEST_CASE("Expressionits basic")
 {
-public:
-    static constexpr size_t HISTORY_SIZE = 16384;
-    static constexpr int LINE_SIZE = 12;
-    static constexpr int COLUMN_WIDTH = 6;
-    LogView();
-    ~LogView();
-
-    void clear();
-
-    void doLog(Source source, uint64_t cycle, FrameTime frameTime, const char* msg) override;
-    void draw(Font& font, Rectangle rect);
-
-    static LogView* instance();
-
-private:
-    Rectangle drawToolArea();
-    void drawTextLine(const Font& font, int logLine, Vector2 position, float width, int columnOffset);
-    struct LogEntry {
-        emu::cycles_t _cycle{0};
-        FrameTime _frameTime{0,0};
-        uint64_t _hash{0};
-        Source _source{eHOST};
-        std::string _line;
-    };
-    std::mutex _logMutex;
-    std::vector<LogEntry> _logBuffer;
-    std::string _filter;
-    bool _invertedFilter{false};
-    Rectangle _totalArea{};
-    Rectangle _textArea{};
-    Rectangle _toolArea{};
-    size_t _writeIndex;
-    size_t _usedSlots;
-    int _tosLine{0};
-    int _losCol{0};
-    uint32_t _visibleLines{0};
-    uint32_t _visibleCols{0};
-    uint32_t _longestLineSize{256};
-    Vector2 _scrollPos;
-};
-
+    Expressionist exprContext;
+    uint8_t v[16];
+    exprContext.define("v5", &v[5]);
+    v[5] = 206;
+    std::ostringstream os;
+    auto [expr, error] = exprContext.parseExpression("34*(5+4)-100==v5");
+    expr->dump(os);
+    REQUIRE(os.str() == "[B==:(206:(306:34*(9:5+4))-100),v5]");
+    REQUIRE(expr->eval() == 1);
+}

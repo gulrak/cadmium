@@ -346,6 +346,20 @@ const std::vector<std::string>& Chip8GenericBase::registerNames() const {
     return registerNames;
 }
 
+void Chip8GenericBase::initExpressionist()
+{
+    _expressionist.define("v", &_rV[0], 0xF);
+    for (size_t i = 0; i < 16; ++i) {
+        _expressionist.define(fmt::format("v{:x}", i), &_rV[i]);
+    }
+    _expressionist.define("i", &_rI);
+    _expressionist.define("sp", &_rSP);
+    _expressionist.define("pc", &_rPC);
+    _expressionist.define("dt", &_rDT);
+    _expressionist.define("st", &_rST);
+    _expressionist.define("ram", _memory.data(), _memory.size()-1);
+}
+
 GenericCpu::RegisterValue Chip8GenericBase::registerbyIndex(size_t index) const
 {
     if(index < 16)

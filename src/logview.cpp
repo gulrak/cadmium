@@ -61,7 +61,7 @@ void LogView::clear()
     _losCol = 0;
 }
 
-void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
+void LogView::doLog(LogView::Source source, uint64_t cycle, FrameTime frameTime, const char* msg)
 {
     std::unique_lock guard(_logMutex);
     auto& logEntry = _logBuffer[_writeIndex++];

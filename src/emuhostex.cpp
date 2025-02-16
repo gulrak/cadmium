@@ -198,7 +198,6 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
     if(_previousProperties != properties || !_chipEmu) {
         if(&properties != _properties) {
             if(!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
-
                 auto pIter = _propertiesByClass.find(properties.propertyClass());
                 if(pIter == _propertiesByClass.end()) {
                     pIter = _propertiesByClass.emplace(properties.propertyClass(), properties).first;

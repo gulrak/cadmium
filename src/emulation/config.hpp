@@ -25,7 +25,6 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-//#include <emulation/sigslot.hpp>
 #include <emulation/videoscreen.hpp>
 #include <nlohmann/json_fwd.hpp>
 #include <cstddef>

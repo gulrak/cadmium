@@ -89,6 +89,13 @@ target_link_libraries(variantset-tests PUBLIC doctest chiplet-lib)
 target_code_coverage(variantset-tests AUTO ALL)
 doctest_discover_tests(variantset-tests)
 
+add_executable(expressionist-tests main.cpp expressionist_tests.cpp ${PROJECT_SOURCE_DIR}/src/emulation/expressionist.cpp)
+target_compile_definitions(expressionist-tests PUBLIC WITHOUT_STB_IMAGE)
+target_link_libraries(expressionist-tests PUBLIC doctest::doctest fmt::fmt)
+target_include_directories(expressionist-tests PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_code_coverage(expressionist-tests AUTO ALL)
+doctest_discover_tests(expressionist-tests)
+
 if(FALSE)
 add_executable(time-tests main.cpp time_test.cpp)
 target_link_libraries(time-tests PUBLIC doctest emulation)

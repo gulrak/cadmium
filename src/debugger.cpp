@@ -290,7 +290,7 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
 void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing)
 {
     using namespace gui;
-    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
+    auto lightgrayCol = /*StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//*/StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     auto area = GetContentAvailable();
     Space(area.height);
@@ -407,7 +407,6 @@ const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesB
     n *= 4;
     uint32_t start = n > addr ? 0 : addr - n;
     disassembly.clear();
-    bool inIf = false;
     while (start < addr) {
         int bytes = 0;
         auto instruction = cpu.disassembleInstructionWithBytes(start, &bytes);
@@ -419,13 +418,12 @@ const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesB
 
 void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
 {
-    auto* bpi = cpu.findBreakpoint(address);
-    if(bpi) {
+    if (auto* bpi = cpu.findBreakpoint(address)) {
         if(bpi->type != emu::GenericCpu::BreakpointInfo::eCODED)
             cpu.removeBreakpoint(address);
     }
     else {
-        cpu.setBreakpoint(address, {fmt::format("BP@{:x}", address), emu::GenericCpu::BreakpointInfo::eTRANSIENT, true});
+        cpu.setBreakpoint(address, {.label = fmt::format("BP@{:x}", address), .type = emu::GenericCpu::BreakpointInfo::eTRANSIENT, .isEnabled = true});
     }
 }
 
@@ -435,10 +433,9 @@ void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
         for(uint32_t addr = 0; addr < std::min(core->memSize(), 65536); ++addr) {
             const auto* bpn = compiler.breakpointForAddr(addr);
             if(bpn)
-                core->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
+                core->setBreakpoint(addr, {.label = bpn, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
             else {
-                auto* bpi = core->findBreakpoint(addr);
-                if(bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
+                if (auto* bpi = core->findBreakpoint(addr); bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
                     core->removeBreakpoint(addr);
             }
         }
