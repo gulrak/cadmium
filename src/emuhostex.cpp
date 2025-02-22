@@ -102,6 +102,7 @@ void EmuHostEx::setPalette(const Palette& palette)
 std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmulationCore* iother)
 {
     auto [variantName, emuCore] = CoreRegistry::create(*this, properties);
+    emuCore->reset();
     _variantName = variantName;
     return std::move(emuCore);
 #if 0

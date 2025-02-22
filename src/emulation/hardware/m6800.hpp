@@ -224,24 +224,6 @@ public:
     {
     }
 
-    void reset() override
-    {
-        _rA = 0;
-        _rB = 0;
-        _rIX = 0;
-        _rSP = 0;
-        _rCC.setFromVal(0xFF, 0xC0);
-        _rCC.set(I);
-        auto t = readByte(0xFFFE);
-        _rPC = (t << 8) | readByte(0xFFFF);
-        _cycles = 0;
-        _instructions = 0;
-        _cpuState = eNORMAL;
-#ifdef M6800_WITH_TIME
-        _systemTime.reset();
-#endif
-    }
-
     void irq()
     {
         _irq = true;
@@ -479,11 +461,9 @@ public:
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC())) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
 #endif
         return static_cast<int>(_cycles - startCycles);
@@ -559,6 +539,35 @@ public:
 
 
 protected:
+    void handleReset() override
+    {
+        _rA = 0;
+        _rB = 0;
+        _rIX = 0;
+        _rSP = 0;
+        _rCC.setFromVal(0xFF, 0xC0);
+        _rCC.set(I);
+        auto t = readByte(0xFFFE);
+        _rPC = (t << 8) | readByte(0xFFFF);
+        _cycles = 0;
+        _instructions = 0;
+        _cpuState = eNORMAL;
+#ifdef M6800_WITH_TIME
+        _systemTime.reset();
+#endif
+    }
+    void initExpressionist() override
+    {
+        _expressionist.define("a", &_rA);
+        _expressionist.define("b", &_rB);
+        _expressionist.define("ix", &_rIX);
+        _expressionist.define("sp", &_rSP);
+        _expressionist.define("cc", std::function([&]() -> int64_t { return _rCC.asNumber(); }));
+        _expressionist.define("pc", &_rPC);
+        _expressionist.define("ram", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+        _expressionist.define("memory", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+    }
+
     enum AddressingMode { INVALID, INHERENT, IMMEDIATE, IMMEDIATE16, DIRECT, EXTENDED, RELATIVE, INDEXED, ACCUA = 8, ACCUB = 16, UNDOC = 32};
     enum InstructionType { NORMAL, READ, WRITE, STACK, JUMP, CCJUMP, CALL, CCCALL, RETURN, HALT};
     using OpcodeHandler = void (M6800::*)();
@@ -574,6 +583,7 @@ protected:
     {
         return _opcodes;
     }
+
 
 private:
     void pushByte(byte_t data)

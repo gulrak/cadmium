@@ -869,7 +869,7 @@ void TableNextRow(float height, Color background)
     tc.curHeight += height;
     tc.curWidth = 0;
     if(background.a) {
-        DrawRectangle(ctx.area.x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, ctx.area.width, tc.curRowHeight, background);
+        DrawRectangleClipped(ctx.area.x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, ctx.area.width, tc.curRowHeight, background);
     }
 }
 
@@ -891,9 +891,19 @@ bool TableNextColumn(float width)
     else {
         // TODO: more checks
     }
-    ctx.content = {tc.curWidth - width, tc.curHeight - tc.curRowHeight, width, tc.curRowHeight};
+    ctx.content = {ctx.area.x + tc.curWidth - width, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, width, tc.curRowHeight};
+    //if (tc.curColumn == 2)
+    //    GuiDrawRectangle(ctx.content, 2, {static_cast<uint8_t>(tc.curRow<<6),100,static_cast<uint8_t>(tc.curColumn<<6),255}, {0,0,0,0});
     ctx.initialPos = ctx.currentPos = {ctx.content.x + 2, ctx.content.y + 2};
-    return tc.scroll && ctx.initialPos.y + tc.curRowHeight >= -tc.scroll->y && ctx.initialPos.y < -tc.scroll->y + ctx.area.height;
+    return CheckCollisionRecs(ctx.area, ctx.content);
+}
+
+void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler)
+{
+    if (TableNextColumn(width)) {
+        auto& ctx = detail::context();
+        handler(ctx.content);
+    }
 }
 
 void EndTableView()

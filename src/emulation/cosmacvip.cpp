@@ -635,7 +635,6 @@ CosmacVIP::CosmacVIP(EmulatorHost& host, Properties& properties, IEmulationCore*
                return true;
        }
     });
-    CosmacVIP::reset();
     auto prev = dynamic_cast<IChip8Emulator*>(other);
     if(prev && false) {
         std::memcpy(_impl->_ram.data() + 0x200, prev->memory() + 0x200, std::min(_impl->_ram.size() - 0x200 - 0x170, static_cast<size_t>(prev->memSize())));
@@ -664,7 +663,7 @@ CosmacVIP::CosmacVIP(EmulatorHost& host, Properties& properties, IEmulationCore*
 
 CosmacVIP::~CosmacVIP() = default;
 
-void CosmacVIP::reset()
+void CosmacVIP::handleReset()
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
@@ -674,7 +673,7 @@ void CosmacVIP::reset()
     else {
         if(_impl->_powerOn) {
             ghc::RandomLCG rnd(42);
-            std::generate(_impl->_ram.begin(), _impl->_ram.end(), rnd);
+            std::ranges::generate(_impl->_ram, rnd);
         }
     }
     _impl->_powerOn = false;
@@ -987,11 +986,9 @@ bool CosmacVIP::executeCdp1802()
                 endlessLoops = 0;
             }
         }
-        if(hasBreakPoint(getPC())) {
-            if(CosmacVIP::findBreakpoint(getPC())) {
-                setExecMode(ePAUSED);
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            setExecMode(ePAUSED);
+            _breakpointTriggered = true;
         }
         return true;
     }

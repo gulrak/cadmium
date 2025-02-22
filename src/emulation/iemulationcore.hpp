@@ -68,7 +68,7 @@ public:
 
     virtual ~IEmulationCore() = default;
 
-    virtual void reset() = 0;
+    void reset() { handleReset(); }
 
     virtual bool updateProperties(Properties& props, Property& changed) = 0;
 
@@ -115,6 +115,8 @@ public:
     virtual uint8_t getScreenAlpha() const { return 255; }
     virtual void setPalette(const Palette& palette) = 0;
     virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
+protected:
+    virtual void handleReset() = 0;
 };
 
 } // emu

@@ -441,9 +441,8 @@ public:
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC()))
-                _execMode = ePAUSED;
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
         }
 #endif
     }

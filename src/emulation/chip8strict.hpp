@@ -82,34 +82,6 @@ public:
     uint16_t getMaxScreenWidth() const override { return 64; }
     uint16_t getMaxScreenHeight() const override { return 32; }
 
-    void reset() override
-    {
-        _cycleCounter = 0;
-        _frameCounter = 0;
-        _clearCounter = 2;
-        _systemTime.reset();
-        if(_options.cleanRam)
-            std::memset(_memory.data(), 0, _memory.size());
-        if(_options.traceLog)
-            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
-        _rI = 0;
-        _rPC = 0x200;
-        //std::memset(_memory.data() + MEMORY_SIZE - 0x160, 0, 48); // clear stack
-        _rSP = 0;
-        _rDT = 0;
-        _rST = 0;
-        std::memset(_rV, 0, 16);
-        std::memcpy(_memory.data(), _chip8_cvip, 512);
-        _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
-        _nextFrame = calcNextFrame();
-        _frameCounter = 0;
-        _screen.setAll(0);
-        _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
-        _cpuState = eNORMAL;
-        _errorMessage.clear();
-        _wavePhase = 0;
-    }
-
     bool updateProperties(Properties& props, Property& changed) override;
 
     uint16_t readWord(uint32_t addr) const
@@ -509,11 +481,9 @@ public:
             if(_cpuState != eWAIT)
                 _execMode = ePAUSED;
         }
-        if(hasBreakPoint(_rPC)) {
-            if(findBreakpoint(_rPC)) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(_rPC)) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
         return static_cast<int>(_machineCycles - startCycles);
     }
@@ -584,6 +554,33 @@ public:
     void setPalette(const Palette& palette) override;
 
 protected:
+    void handleReset() override
+    {
+        _cycleCounter = 0;
+        _frameCounter = 0;
+        _clearCounter = 2;
+        _systemTime.reset();
+        if(_options.cleanRam)
+            std::memset(_memory.data(), 0, _memory.size());
+        if(_options.traceLog)
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
+        _rI = 0;
+        _rPC = 0x200;
+        //std::memset(_memory.data() + MEMORY_SIZE - 0x160, 0, 48); // clear stack
+        _rSP = 0;
+        _rDT = 0;
+        _rST = 0;
+        std::memset(_rV, 0, 16);
+        std::memcpy(_memory.data(), _chip8_cvip, 512);
+        _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
+        _nextFrame = calcNextFrame();
+        _frameCounter = 0;
+        _screen.setAll(0);
+        _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
+        _cpuState = eNORMAL;
+        _errorMessage.clear();
+        _wavePhase = 0;
+    }
     void wait(int instructionCycles = 0)
     {
         _rPC -= 2;

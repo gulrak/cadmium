@@ -36,6 +36,7 @@
 
 #include <emulation/time.hpp>
 #include <emulation/expressionist.hpp>
+#include <emulation//logger.hpp>
 
 namespace emu
 {
@@ -54,7 +55,9 @@ public:
         std::string condition;
         Type type{eTRANSIENT};
         bool isEnabled{true};
+        uint8_t unit{0};
         Expressionist::CompiledExpression conditionExpr;
+        int64_t numHits{0};
     };
     struct RegisterValue {
         uint32_t value{};
@@ -69,7 +72,10 @@ public:
     };
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
-    virtual void reset() = 0;
+    void reset()
+    {
+        handleReset();
+    }
     virtual int executeInstruction() = 0;
     virtual int64_t executeFor(int64_t microseconds) = 0;
     virtual ExecMode execMode() const { return _execMode; }
@@ -150,6 +156,12 @@ public:
         }
         return {0, nullptr};
     }
+    virtual void resetAllHitCounters()
+    {
+        for(auto& [addr, bpi] : _breakpoints) {
+            bpi.numHits = 0;
+        }
+    }
     virtual void removeAllBreakpoints()
     {
         std::memset(_breakMap.data(), 0, 4096);
@@ -158,6 +170,22 @@ public:
     virtual bool hasBreakPoint(uint32_t address) const
     {
         return _breakMap[address&0xfff] != 0;
+    }
+    bool tryTriggerBreakpoint(uint32_t address)
+    {
+        if (_breakMap[address&0xFFF] != 0) {
+            auto iter = _breakpoints.find(address);
+            if(iter != _breakpoints.end() && iter->second.isEnabled) {
+                auto& bpi = iter->second;
+                ++bpi.numHits;
+                if (bpi.conditionExpr.first) {
+                    return bpi.conditionExpr.first->eval() != 0;
+                }
+                Logger::log(Logger::eBACKEND_EMU, cycles(), Logger::FrameTime(0,0), bpi.label.c_str());
+                return true;
+            }
+        }
+        return false;
     }
     RegisterValue registerByName(const std::string& name) const
     {
@@ -169,6 +197,8 @@ public:
     }
     virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
 protected:
+    virtual void handleReset() = 0;
+    virtual void initExpressionist() = 0;
     template<typename T>
     T readStackEntry(const uint8_t* address, Endianness endianness) const
     {

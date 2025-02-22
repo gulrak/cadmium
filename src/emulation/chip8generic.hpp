@@ -109,7 +109,6 @@ public:
         return "Chip-8-MPT";
     }
     uint32_t cpuID() const override { return 0xC8; }
-    void reset() override;
     bool updateProperties(Properties& props, Property& changed) override;
     int64_t machineCycles() const override { return 0; }
     int executeInstruction() override;
@@ -435,6 +434,9 @@ public:
     }
 
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
+
+protected:
+    void handleReset() override;
 
 private:
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }

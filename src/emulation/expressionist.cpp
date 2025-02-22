@@ -27,13 +27,26 @@
 #include "expressionist.hpp"
 
 #include <ostream>
+#include <sstream>
 
 namespace {
 
+constexpr int NO_PRECEDENCE = 20;
+
 bool isConstant(const emu::Expressionist::Value &value) {
     return std::visit([]([[maybe_unused]] const auto &val) -> bool {
-        using T = std::decay_t<decltype(val)>;
-        return !std::is_pointer_v<T>;
+        if constexpr (std::is_pointer_v<decltype(val)>) {
+            return false;
+        }
+        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
+            return false;
+        }
+        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+            return false;
+        }
+        else {
+            return true;
+        }
     }, value);
 }
 
@@ -48,6 +61,12 @@ struct LiteralExpr final : emu::Expressionist::Expr
         return std::visit([](auto val) -> int64_t {
             if constexpr (std::is_pointer_v<decltype(val)>) {
                 return static_cast<int64_t>(*val);
+            }
+            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
+                return 0;
+            }
+            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+                return val();
             }
             else {
                 return static_cast<int64_t>(val);
@@ -114,6 +133,10 @@ struct BinaryExpr final : emu::Expressionist::Expr
                 return lhs->eval() | rhs->eval();
             case BinaryOperation::BitXor:
                 return lhs->eval() ^ rhs->eval();
+            case BinaryOperation::LogAnd:
+                return lhs->eval() && rhs->eval();
+            case BinaryOperation::LogOr:
+                return lhs->eval() || rhs->eval();
             case BinaryOperation::Less:
                 return lhs->eval() < rhs->eval();
             case BinaryOperation::LessEqual:
@@ -152,6 +175,12 @@ struct IndexExpr final : emu::Expressionist::Expr
         return std::visit([&](const auto &val) -> int64_t {
             if constexpr (std::is_pointer_v<decltype(val)>) {
                 return val[index->eval() & mask];
+            }
+            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
+                return val(index->eval() & mask);
+            }
+            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+                return 0;
             }
             else {
                 return 0;
@@ -209,17 +238,16 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
     }
 
     // All allowed operators: '!', '~', '*', '/', '+', '-',
-    // '<<', '>>', '==', '<=', '<', '>=', '>', '&', '|' and '^'
+    // '<<', '>>', '==', '<=', '<', '>=', '>', '&', '|', '&&', '||' and '^'
     Token token;
     token.type = TokenType::Operator;
     if (c == '<' || c == '>') {
         const char first = c;
         ++_iter;
         if (_iter != _end) {
-            char next = *_iter;
             // check for "<<", "<=", ">>" or ">="
-            if (next == first || next == '=') {
-                token.text = std::string{first, next};
+            if (*_iter == first || *_iter == '=') {
+                token.text = std::string{first, *_iter};
                 ++_iter;
                 return token;
             }
@@ -238,7 +266,17 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
         token.text = "=";
         return token;
     }
-
+    if (c == '&' || c == '|') {
+        const char first = c;
+        ++_iter;
+        if (_iter != _end && *_iter == first) {
+            token.text = std::string{first, *_iter};
+            ++_iter;
+            return token;
+        }
+        token.text = std::string{first};
+        return token;
+    }
     token.text = std::string{c};
     ++_iter;
     return token;
@@ -247,46 +285,52 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
 emu::Expressionist::BinOpInfo emu::Expressionist::getBinaryOpInfo(const std::string& s)
 {
     if (s == "*")
-        return {Mul, 7, false};
+        return {Mul, 5, false};
     if (s == "/")
-        return {Div, 7, false};
+        return {Div, 5, false};
     if (s == "+")
         return {Add, 6, false};
     if (s == "-")
         return {Sub, 6, false};
     if (s == "<<")
-        return {Shl, 5, false};
+        return {Shl, 7, false};
     if (s == ">>")
-        return {Shr, 5, false};
+        return {Shr, 7, false};
     if (s == "==")
-        return {Equal, 3, false};
+        return {Equal, 10, false};
+    if (s == "!=")
+        return {NotEqual, 10, false};
     if (s == "<")
-        return {Less, 3, false};
+        return {Less, 9, false};
     if (s == "<=")
-        return {LessEqual, 3, false};
+        return {LessEqual, 9, false};
     if (s == ">")
-        return {Greater, 3, false};
+        return {Greater, 9, false};
     if (s == ">=")
-        return {GreaterEqual, 3, false};
+        return {GreaterEqual, 9, false};
     if (s == "&")
-        return {BitAnd, 2, false};
-    if (s == "|")
-        return {BitAnd, 2, false};
+        return {BitAnd, 11, false};
     if (s == "^")
-        return {BitAnd, 2, false};
+        return {BitXor, 12, false};
+    if (s == "|")
+        return {BitOr, 13, false};
+    if (s == "&&")
+        return {LogAnd, 14, false};
+    if (s == "||")
+        return {LogOr, 15, false};
     if (s == "[]")
-        return {Index, 9, false};
+        return {Index, 2, false};
     throw std::runtime_error("Unknown binary operator: " + s);
 }
 
 emu::Expressionist::UnOpInfo emu::Expressionist::getUnaryOpInfo(const std::string& s)
 {
     if (s == "-")
-        return {Neg, 8, true};
+        return {Neg, 3, true};
     if (s == "!")
-        return {Not, 8, true};
+        return {Not, 3, true};
     if (s == "~")
-        return {Inv, 8, true};
+        return {Inv, 3, true};
     throw std::runtime_error("Unknown unary operator: " + s);
 }
 
@@ -317,7 +361,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const
                     break;
                 }
                 case TokenType::LeftParen: {
-                    _opStack.push({.token = "", .isParen = true, .isUnary = false, .precedence = 0, .rightAssoc = false});
+                    _opStack.push({.token = "", .isParen = true, .isUnary = false, .precedence = NO_PRECEDENCE, .rightAssoc = false});
                     expectOperand = true;
                     break;
                 }
@@ -334,7 +378,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const
                 case TokenType::LeftBracket: {
                     if (expectOperand)
                         throw std::runtime_error("Unexpected '[' operator: missing left-hand operand");
-                    _opStack.push({.token = "[", .isParen = true, .isUnary = false, .precedence = 0, .rightAssoc = false});
+                    _opStack.push({.token = "[", .isParen = true, .isUnary = false, .precedence = NO_PRECEDENCE, .rightAssoc = false});
                     expectOperand = true;
                     break;
                 }
@@ -345,7 +389,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const
                     }
                     if (_opStack.empty())
                         throw std::runtime_error("Mismatched brackets");
-                    _opStack.pop(); // pop '['
+                    _opStack.pop();  // pop '['
                     _opStack.push({.token = "[]", .isParen = false, .isUnary = false, .precedence = getBinaryOpInfo("[]").precedence, .rightAssoc = false});
                     applyOperator();
                     expectOperand = false;
@@ -356,7 +400,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const
                         if (tok.text == "-" || tok.text == "!" || tok.text == "~") {
                             const auto info = getUnaryOpInfo(tok.text);
                             // For right-associative (unary) operators, only pop those with strictly higher precedence.
-                            while (!_opStack.empty() && !_opStack.top().isParen && _opStack.top().precedence > info.precedence) {
+                            while (!_opStack.empty() && !_opStack.top().isParen && _opStack.top().precedence < info.precedence) {
                                 applyOperator();
                             }
                             _opStack.push({.token = tok.text, .isParen = false, .isUnary = true, .precedence = info.precedence, .rightAssoc = info.rightAssoc});
@@ -369,7 +413,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const
                     else {
                         const auto info = getBinaryOpInfo(tok.text);
                         while (!_opStack.empty() && !_opStack.top().isParen) {
-                            if ((_opStack.top().precedence > info.precedence) || (_opStack.top().precedence == info.precedence && !_opStack.top().rightAssoc)) {
+                            if ((_opStack.top().precedence < info.precedence) || (_opStack.top().precedence == info.precedence && !_opStack.top().rightAssoc)) {
                                 applyOperator();
                             }
                             else {
@@ -440,3 +484,55 @@ void emu::Expressionist::applyOperator()
         }
     }
 }
+
+std::string emu::Expressionist::format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval)
+{
+    std::ostringstream oss;
+    size_t i = 0;
+    const size_t n = fmt.size();
+
+    while (i < n) {
+        char c = fmt[i];
+        if (c == '{') {
+            // Check for double curly brace for literal '{'
+            if (i + 1 < n && fmt[i+1] == '{') {
+                oss << '{';
+                i += 2;
+            } else {
+                // Start of an expression placeholder.
+                size_t expr_start = i + 1;
+                size_t expr_end = expr_start;
+                // Find the matching unescaped '}'
+                bool foundClosing = false;
+                while (expr_end < n) {
+                    if (fmt[expr_end] == '}') {
+                        foundClosing = true;
+                        break;
+                    }
+                    ++expr_end;
+                }
+                if (!foundClosing)
+                    throw std::runtime_error("Unmatched '{' in format string");
+
+                // Extract the expression inside the braces.
+                std::string_view expr = fmt.substr(expr_start, expr_end - expr_start);
+                // Replace the expression with the result from the lambda.
+                oss << eval(expr);
+                i = expr_end + 1;
+            }
+        } else if (c == '}') {
+            // Check for double curly brace for literal '}'
+            if (i + 1 < n && fmt[i+1] == '}') {
+                oss << '}';
+                i += 2;
+            } else {
+                throw std::runtime_error("Unmatched '}' in format string");
+            }
+        } else {
+            oss << c;
+            ++i;
+        }
+    }
+    return oss.str();
+}
+

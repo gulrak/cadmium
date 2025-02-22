@@ -364,7 +364,6 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
         _screen.setPalette(props.palette());
     }
     setHandler();
-    Chip8GenericEmulator::reset();
 }
 
 GenericCpu::StackContent Chip8GenericEmulator::stack() const
@@ -410,7 +409,7 @@ static Chip8GenericBase::Chip8BigFont getBigFontId(Chip8GenericOptions::Supporte
     }
 }
 
-void Chip8GenericEmulator::reset()
+void Chip8GenericEmulator::handleReset()
 {
     //static const uint8_t defaultPalette[16] = {37, 255, 114, 41, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
     static const uint8_t defaultPalette[16] = {0, 255, 182, 109, 224, 28, 3, 252, 160, 20, 2, 204, 227, 31, 162, 22};
@@ -928,11 +927,9 @@ int Chip8GenericEmulator::executeInstruction()
             _execMode = ePAUSED;
         }
     }
-    if(hasBreakPoint(_rPC)) {
-        if(findBreakpoint(_rPC)) {
-            _execMode = ePAUSED;
-            _breakpointTriggered = true;
-        }
+    if(tryTriggerBreakpoint(_rPC)) {
+        _execMode = ePAUSED;
+        _breakpointTriggered = true;
     }
     return static_cast<int>(_cycleCounter - startCycle);
 }

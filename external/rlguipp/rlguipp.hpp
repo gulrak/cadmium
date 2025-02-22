@@ -83,6 +83,7 @@ extern "C" {
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <string>
 
@@ -103,17 +104,18 @@ RLGUIPP_API void Begin();                                                       
 RLGUIPP_API void End();                                                                                                   // end of the group
 RLGUIPP_API void BeginColumns();                                                                                          // start of a list of columns of elements, must be closed with EndColumns()
 RLGUIPP_API void EndColumns();                                                                                            // end the column grouping
-RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5});                                        // start a panel (a group with a kind of title bar, if title is given), must be closed with EndPanel()
+RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5});                                  // start a panel (a group with a kind of title bar, if title is given), must be closed with EndPanel()
 RLGUIPP_API void EndPanel();                                                                                              // end the description of a panel group
 RLGUIPP_API void BeginTabView(int *activeTab);                                                                            // start a tab view (a stack of groups with labeled tabs on top), must be closed with EndTabView()
 RLGUIPP_API void EndTabView();                                                                                            // end the description of a tab view
-RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                                    // start a tab in a tab view (a page with the given text as label top), must be closed with EndTab()
+RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                              // start a tab in a tab view (a page with the given text as label top), must be closed with EndTab()
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                            //
-RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                             //
+RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                           //
+RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                  //
 RLGUIPP_API bool TableNextColumn(float width);                                                                            //
+RLGUIPP_API void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler);                              //
 RLGUIPP_API void EndTableView();                                                                                          //
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box

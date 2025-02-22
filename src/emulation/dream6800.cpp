@@ -332,7 +332,6 @@ Dream6800::Dream6800(EmulatorHost& host, Properties& props, IChip8Emulator* othe
         auto [value, conn] = _impl->_keyMatrix.getCols(0xF);
         return 0xF == (((value & conn) | ~conn) & 0xF) ? false : true;
     };
-    Dream6800::reset();
     if(other) {
         /*
         std::memcpy(_impl->_ram.data() + 0x200, other->memory() + 0x200, std::min(_impl->_ram.size() - 0x200, (size_t)other->memSize()));
@@ -355,7 +354,7 @@ Dream6800::~Dream6800()
 
 }
 
-void Dream6800::reset()
+void Dream6800::handleReset()
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
@@ -364,7 +363,7 @@ void Dream6800::reset()
     }
     else {
         ghc::RandomLCG rnd(42);
-        std::generate(_impl->_ram.begin(), _impl->_ram.end(), rnd);
+        std::ranges::generate(_impl->_ram, rnd);
     }
     _impl->_screen.setAll(0);
     _impl->_cpu.reset();
@@ -601,11 +600,9 @@ bool Dream6800::executeM6800()
             _host.updateScreen();
             setExecMode(ePAUSED);
         }
-        if(hasBreakPoint(getPC())) {
-            if(Dream6800::findBreakpoint(getPC())) {
-                setExecMode(ePAUSED);
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            setExecMode(ePAUSED);
+            _breakpointTriggered = true;
         }
         return true;
     }

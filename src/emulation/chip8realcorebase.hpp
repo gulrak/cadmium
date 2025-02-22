@@ -152,6 +152,20 @@ public:
     const std::string& errorMessage() const override { return _errorMessage; }
     bool isBreakpointTriggered() override { return GenericCpu::isBreakpointTriggered() || getBackendCpu().isBreakpointTriggered(); }
 protected:
+    void initExpressionist() override
+    {
+        _expressionist.define("v", &_state.v[0], 0xF);
+        for (size_t i = 0; i < 16; ++i) {
+            _expressionist.define(fmt::format("v{:x}", i), &_state.v[i]);
+        }
+        _expressionist.define("i", &_state.i);
+        _expressionist.define("sp", &_state.sp);
+        _expressionist.define("pc", &_state.pc);
+        _expressionist.define("dt", &_state.dt);
+        _expressionist.define("st", &_state.st);
+        _expressionist.define("ram", std::function([&](uint32_t address) -> int64_t { return readMemoryByte(address); }));
+        _expressionist.define("memory", std::function([&](uint32_t address) -> int64_t { return readMemoryByte(address); }));
+    }
     EmulatorHost& _host;
     Chip8State _state{};
     int64_t _cycles{0};

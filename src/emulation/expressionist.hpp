@@ -28,6 +28,7 @@
 
 #include <concepts>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <iosfwd>
 #include <stack>
@@ -41,13 +42,17 @@ template<typename T>
 concept AllowedSymbolType = std::same_as<T, uint8_t*> ||
                             std::same_as<T, uint16_t*> ||
                             std::same_as<T, uint32_t*> ||
+                            std::same_as<T, int*> ||
+                            std::same_as<T, bool*> ||
+                            std::same_as<T, std::function<int64_t(uint32_t)>> ||
+                            std::same_as<T, std::function<int64_t()>> ||
                             std::same_as<T, int64_t>;
 
 class Expressionist {
 public:
-    using Value = std::variant<int64_t, const uint8_t*, const uint16_t*, const uint32_t*>;
+    using Value = std::variant<int64_t, const uint8_t*, const uint16_t*, const uint32_t*, const int*, const bool*, std::function<int64_t(uint32_t)>, std::function<int64_t()>>;
     enum UnaryOperation { Neg, Not, Inv };
-    enum BinaryOperation { Add, Sub, Mul, Div, Shl, Shr, BitAnd, BitOr, BitXor, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual, Index };
+    enum BinaryOperation { Add, Sub, Mul, Div, Shl, Shr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual, Index };
     struct Expr {
         virtual ~Expr() = default;
         virtual int64_t eval() const = 0;
@@ -61,6 +66,7 @@ public:
         _symbols.emplace(ident, DefinedSymbol{value, mask});
     }
     CompiledExpression parseExpression(const std::string& expr);
+    std::string format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval);
 
 private:
     enum class TokenType { End, Number, Identifier, Operator, LeftParen, RightParen, LeftBracket, RightBracket };

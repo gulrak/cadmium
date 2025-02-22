@@ -53,7 +53,6 @@ public:
     CosmacVIP(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr);
     ~CosmacVIP() override;
 
-    void reset() override;
     bool updateProperties(Properties& props, Property& changed) override;
     std::string name() const override;
 
@@ -111,6 +110,9 @@ public:
     Properties& getProperties() override;
 
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
+
+protected:
+    void handleReset() override;
 
 private:
     static uint16_t justPatchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);

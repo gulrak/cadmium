@@ -51,9 +51,11 @@ public:
 private:
     emu::IChip8Emulator* chip8Core();
     void showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
+    void showBreakpoints(Font& font, const int lineSpacing);
     void showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const;
+    void refreshBreakpoints();
+    void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
     static const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);
-    static void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
     enum Core { CHIP8_CORE, BACKEND_CORE };
     emu::IEmulationCore* _core{nullptr};
     emu::Chip8RealCoreBase* _realCore{nullptr};
@@ -66,5 +68,7 @@ private:
     std::vector<RegPack> _cpuStatesBackup;
     std::vector<std::vector<uint8_t>> _stackBackup;
     std::vector<uint8_t> _memBackup;
+    std::vector<std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>> _breakpointCache;
+    int _selectedBreakpoint{-1};
 };
 

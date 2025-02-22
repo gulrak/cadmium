@@ -103,27 +103,6 @@ public:
         Cdp1802::reset();
     }
 
-    void reset() override
-    {
-        _rI = 0;
-        _rN = 0;
-        _rP = 0;
-        _rQ = false;
-        _rX = 0;
-        _rR[0] = 0;
-        _rR[1] = 0;
-        _rIE = true;
-        _cycles = 0;
-#ifdef DIFFERENTIATE_CYCLES
-        _idleCycles = 0;
-        _irqCycles = 0;
-#endif
-        _systemTime.reset();
-        _execMode = eRUNNING;
-        _cpuState = eNORMAL;
-        _errorMessage.clear();
-    }
-
     void setOutputHandler(OutputHandler handler)
     {
         _output = std::move(handler);
@@ -715,11 +694,9 @@ public:
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rR[_rP] >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC())) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
         return static_cast<int>(_cycles - startCycles);
     }
@@ -814,6 +791,46 @@ public:
         return _rR[2];
     }
 #endif
+protected:
+    void handleReset() override
+    {
+        _rI = 0;
+        _rN = 0;
+        _rP = 0;
+        _rQ = false;
+        _rX = 0;
+        _rR[0] = 0;
+        _rR[1] = 0;
+        _rIE = true;
+        _cycles = 0;
+#ifdef DIFFERENTIATE_CYCLES
+        _idleCycles = 0;
+        _irqCycles = 0;
+#endif
+        _systemTime.reset();
+        _execMode = eRUNNING;
+        _cpuState = eNORMAL;
+        _errorMessage.clear();
+    }
+
+    void initExpressionist() override
+    {
+        _expressionist.define("v", &_rR[0], 0xF);
+        for (size_t i = 0; i < 16; ++i) {
+            _expressionist.define(fmt::format("r{:x}", i), &_rR[i]);
+        }
+        _expressionist.define("d", &_rD);
+        _expressionist.define("i", &_rI);
+        _expressionist.define("n", &_rN);
+        _expressionist.define("p", &_rP);
+        _expressionist.define("x", &_rX);
+        _expressionist.define("df", &_rDF);
+        _expressionist.define("t", &_rT);
+        _expressionist.define("ie", &_rIE);
+        _expressionist.define("q", &_rQ);
+        _expressionist.define("ram", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+        _expressionist.define("memory", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+    }
 private:
     Cdp1802Bus& _bus;
     OutputHandler _output;
@@ -823,10 +840,10 @@ private:
     uint8_t _rD{};
     bool _rDF{};
     uint16_t _rR[16]{};
-    uint16_t _rP:4{};
-    uint16_t _rX:4{};
-    uint16_t _rN:4{};
-    uint16_t _rI:4{};
+    uint8_t _rP{};
+    uint8_t _rX{};
+    uint8_t _rN{};
+    uint8_t _rI{};
     uint8_t _rT{};
     bool _rIE{false};
     bool _rQ{false};

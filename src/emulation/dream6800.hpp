@@ -42,7 +42,6 @@ public:
     Dream6800(EmulatorHost& host, Properties& properties, IChip8Emulator* other = nullptr);
     ~Dream6800() override;
 
-    void reset() override;
     bool updateProperties(Properties& props, Property& changed) override;
     std::string name() const override;
 
@@ -97,6 +96,9 @@ public:
     GenericCpu& getBackendCpu() override;
 
     Properties& getProperties() override;
+
+protected:
+    void handleReset() override;
 
 private:
     int frameCycle() const;
