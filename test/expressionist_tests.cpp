@@ -31,6 +31,23 @@
 
 using namespace emu;
 
+bool isConstant(const emu::Expressionist::Value &value) {
+    return std::visit([]([[maybe_unused]] const auto &val) -> bool {
+        if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
+            return false;
+        }
+        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
+            return false;
+        }
+        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+            return false;
+        }
+        else {
+            return true;
+        }
+    }, value);
+}
+
 TEST_CASE("Expressionits basic")
 {
     Expressionist exprContext;
@@ -42,4 +59,16 @@ TEST_CASE("Expressionits basic")
     expr->dump(os);
     REQUIRE(os.str() == "[B==:(206:(306:34*(9:5+4))-100),v5]");
     REQUIRE(expr->eval() == 1);
+}
+
+TEST_CASE("Expressionist isConstant")
+{
+    using Value = emu::Expressionist::Value;
+    uint8_t a{};
+    uint16_t b{};
+    bool c{};
+    REQUIRE(isConstant(Value(1)));
+    REQUIRE(!isConstant(Value(&a)));
+    REQUIRE(!isConstant(Value(&b)));
+    REQUIRE(!isConstant(Value(std::function<int64_t()>())));
 }

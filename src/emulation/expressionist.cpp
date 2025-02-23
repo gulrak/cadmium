@@ -29,25 +29,25 @@
 #include <ostream>
 #include <sstream>
 
+
 namespace {
 
 constexpr int NO_PRECEDENCE = 20;
 
-bool isConstant(const emu::Expressionist::Value &value) {
-    return std::visit([]([[maybe_unused]] const auto &val) -> bool {
-        if constexpr (std::is_pointer_v<decltype(val)>) {
-            return false;
-        }
-        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
-            return false;
-        }
-        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
-            return false;
-        }
-        else {
-            return true;
-        }
-    }, value);
+bool isConstant(const emu::Expressionist::Value& value)
+{
+    return std::visit(
+        []([[maybe_unused]] const auto& val) -> bool {
+            if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>
+                || std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>
+                || std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        },
+        value);
 }
 
 struct LiteralExpr final : emu::Expressionist::Expr
@@ -55,11 +55,15 @@ struct LiteralExpr final : emu::Expressionist::Expr
     emu::Expressionist::Value value;
     uint32_t mask{0};
     std::string valName;
-    LiteralExpr(const emu::Expressionist::Value &v, std::string name, uint32_t bitMask) : value(v), valName(name), mask(bitMask) {}
+    LiteralExpr(emu::Expressionist::Value v, std::string name, uint32_t bitMask)
+    : value(std::move(v))
+    , mask(bitMask)
+    , valName(std::move(name))
+    {}
     int64_t eval() const override
     {
-        return std::visit([](auto val) -> int64_t {
-            if constexpr (std::is_pointer_v<decltype(val)>) {
+        return std::visit([]([[maybe_unused]] const auto& val) -> int64_t {
+            if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
                 return static_cast<int64_t>(*val);
             }
             else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
@@ -73,6 +77,23 @@ struct LiteralExpr final : emu::Expressionist::Expr
             }
         }, value);
     }
+    bool isIndexBase() const
+    {
+        return std::visit([&]([[maybe_unused]] const auto& val) -> int64_t {
+            if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
+                return mask != 0;
+            }
+            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
+                return true;
+            }
+            else /*if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+                return false;
+            }
+            else*/ {
+                return false;
+            }
+        }, value);
+    }
     void dump(std::ostream &out) const override { out << valName; }
 };
 
@@ -82,7 +103,15 @@ struct UnaryExpr final : emu::Expressionist::Expr
     UnaryOperation op;
     std::unique_ptr<Expr> operand;
     std::string opName;
-    UnaryExpr(const UnaryOperation uop, std::unique_ptr<Expr>&& expr, std::string name) : op(uop), operand(std::move(expr)), opName(name) {}
+    UnaryExpr(const UnaryOperation uop, std::unique_ptr<Expr>&& expr, std::string name)
+    : op(uop)
+    , operand(std::move(expr))
+    , opName(std::move(name))
+    {
+        if (auto literal = dynamic_cast<LiteralExpr*>(operand.get()); literal && literal->isIndexBase()) {
+            throw std::runtime_error("Index base cannot be used in unary operator");
+        }
+    }
     int64_t eval() const override
     {
         switch (op) {
@@ -110,7 +139,19 @@ struct BinaryExpr final : emu::Expressionist::Expr
     std::unique_ptr<Expr> lhs;
     std::unique_ptr<Expr> rhs;
     std::string opName;
-    BinaryExpr(const BinaryOperation bop, std::unique_ptr<Expr>&& lhs, std::unique_ptr<Expr>&& rhs, std::string name) : op(bop), lhs(std::move(lhs)), rhs(std::move(rhs)), opName(name) {}
+    BinaryExpr(const BinaryOperation bop, std::unique_ptr<Expr>&& lhs, std::unique_ptr<Expr>&& rhs, std::string name)
+    : op(bop)
+    , lhs(std::move(lhs))
+    , rhs(std::move(rhs))
+    , opName(std::move(name))
+    {
+        if (auto literal = dynamic_cast<LiteralExpr*>(lhs.get()); literal && literal->isIndexBase()) {
+            throw std::runtime_error("Index base cannot be used in binary operator");
+        }
+        if (auto literal = dynamic_cast<LiteralExpr*>(rhs.get()); literal && literal->isIndexBase()) {
+            throw std::runtime_error("Index base cannot be used in binary operator");
+        }
+    }
     int64_t eval() const override
     {
         // Add, Sub, Mul, Div, Shl, Shr, BitAnd, BitOr, BitXor, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual
@@ -172,17 +213,23 @@ struct IndexExpr final : emu::Expressionist::Expr
     IndexExpr(std::unique_ptr<LiteralExpr>&& literalExpr, std::unique_ptr<Expr>&& indexExpr, uint32_t mask) : base(std::move(literalExpr)), index(std::move(indexExpr)), mask(mask) {}
     int64_t eval() const override
     {
+        if (!base->isIndexBase()) {
+            throw std::runtime_error("Operand is not indexable");
+        }
+        if (auto literal = dynamic_cast<LiteralExpr*>(index.get()); literal && literal->isIndexBase()) {
+            throw std::runtime_error("Index base cannot be used as index");
+        }
         return std::visit([&](const auto &val) -> int64_t {
-            if constexpr (std::is_pointer_v<decltype(val)>) {
+            if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
                 return val[index->eval() & mask];
             }
             else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
                 return val(index->eval() & mask);
             }
-            else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
+            else /*if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
                 return 0;
             }
-            else {
+            else*/ {
                 return 0;
             }
         }, base->value);
@@ -198,42 +245,46 @@ struct IndexExpr final : emu::Expressionist::Expr
 };
 }
 
-emu::Expressionist::Token emu::Expressionist::nextToken()
+emu::Expressionist::Token emu::Expressionist::nextToken(std::string_view::const_iterator& iter, std::string_view::const_iterator end)
 {
-    while (_iter != _end && std::isspace(static_cast<unsigned char>(*_iter)))
-        ++_iter;
-    if (_iter == _end)
+    while (iter != end && std::isspace(static_cast<unsigned char>(*iter)))
+        ++iter;
+    if (iter == end)
         return {TokenType::End, ""};
-    char c = *_iter;
+    while (iter != end && std::isspace(static_cast<unsigned char>(*iter)))
+        ++iter;
+    if (iter == end)
+        return {TokenType::End, ""};
+    auto c = *iter;
     if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
-        auto start = _iter;
-        ++_iter;
-        while (_iter != _end && (std::isalnum(static_cast<unsigned char>(*_iter)) || *_iter == '_')) {
-            ++_iter;
+        auto start = iter;
+        ++iter;
+        while (iter != end && (std::isalnum(static_cast<unsigned char>(*iter)) || *iter == '_')) {
+            ++iter;
         }
-        return {TokenType::Identifier, std::string(start, _iter)};
+        return {TokenType::Identifier, std::string(start, iter)};
     }
     if (std::isdigit(static_cast<unsigned char>(c))) {
-        auto start = _iter;
-        ++_iter;
-        while (_iter != _end && std::isdigit(static_cast<unsigned char>(*_iter)))
-            ++_iter;
-        return {TokenType::Number, std::string(start, _iter)};
+        auto start = iter;
+        ++iter;
+        while (iter != end && std::isdigit(static_cast<unsigned char>(*iter)))
+            ++iter;
+        return {TokenType::Number, std::string(start, iter)};
     }
     if (c == '(') {
-        ++_iter;
+        ++iter;
         return {TokenType::LeftParen, "("};
     }
     if (c == ')') {
-        ++_iter;
+        ++iter;
         return {TokenType::RightParen, ")"};
     }
     if (c == '[') {
-        ++_iter;
+        ++iter;
         return {TokenType::LeftBracket, "["};
     }
     if (c == ']') {
-        ++_iter;
+        ++iter;
         return {TokenType::RightBracket, "]"};
     }
 
@@ -243,12 +294,12 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
     token.type = TokenType::Operator;
     if (c == '<' || c == '>') {
         const char first = c;
-        ++_iter;
-        if (_iter != _end) {
+        ++iter;
+        if (iter != end) {
             // check for "<<", "<=", ">>" or ">="
-            if (*_iter == first || *_iter == '=') {
-                token.text = std::string{first, *_iter};
-                ++_iter;
+            if (*iter == first || *iter == '=') {
+                token.text = std::string{first, *iter};
+                ++iter;
                 return token;
             }
         }
@@ -257,10 +308,10 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
         return token;
     }
     if (c == '=') {
-        ++_iter;
-        if (_iter != _end && *_iter == '=') {
+        ++iter;
+        if (iter != end && *iter == '=') {
             token.text = "==";
-            ++_iter;
+            ++iter;
             return token;
         }
         token.text = "=";
@@ -268,17 +319,17 @@ emu::Expressionist::Token emu::Expressionist::nextToken()
     }
     if (c == '&' || c == '|') {
         const char first = c;
-        ++_iter;
-        if (_iter != _end && *_iter == first) {
-            token.text = std::string{first, *_iter};
-            ++_iter;
+        ++iter;
+        if (iter != end && *iter == first) {
+            token.text = std::string{first, *iter};
+            ++iter;
             return token;
         }
         token.text = std::string{first};
         return token;
     }
     token.text = std::string{c};
-    ++_iter;
+    ++iter;
     return token;
 }
 
@@ -334,29 +385,29 @@ emu::Expressionist::UnOpInfo emu::Expressionist::getUnaryOpInfo(const std::strin
     throw std::runtime_error("Unknown unary operator: " + s);
 }
 
-emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(const std::string& expr)
+emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(std::string_view expr)
 {
     Token tok;
-    _iter = expr.begin();
-    _end = expr.end();
+    auto iter = expr.begin();
+    const auto end = expr.end();
     _operandStack = {};
     _opStack = {};
     try {
         bool expectOperand = true;
-        while ((tok = nextToken())) {
+        while ((tok = nextToken(iter, end))) {
             switch (tok.type) {
                 case TokenType::Number: {
-                    int64_t num = static_cast<int64_t>(std::stoul(tok.text));
+                    auto num = static_cast<int64_t>(std::stoul(tok.text));
                     _operandStack.push(std::make_unique<LiteralExpr>(num, tok.text, 0));
                     expectOperand = false;
                     break;
                 }
                 case TokenType::Identifier: {
-                    auto iter = _symbols.find(tok.text);
-                    if (iter == _symbols.end()) {
+                    auto symIter = _symbols.find(tok.text);
+                    if (symIter == _symbols.end()) {
                         throw std::runtime_error("Unknown identifier");
                     }
-                    _operandStack.push(std::make_unique<LiteralExpr>(iter->second.value, tok.text, iter->second.mask));
+                    _operandStack.push(std::make_unique<LiteralExpr>(symIter->second.value, tok.text, symIter->second.mask));
                     expectOperand = false;
                     break;
                 }
@@ -468,7 +519,7 @@ void emu::Expressionist::applyOperator()
         if (opEntry.token == "[]") {
             if (dynamic_cast<const LiteralExpr*>(left.get()) == nullptr)
                 throw std::runtime_error("Unexpected index operator");
-            _operandStack.push(std::make_unique<IndexExpr>(std::unique_ptr<LiteralExpr>(static_cast<LiteralExpr*>(left.release())), std::move(right), 0xFFF));
+            _operandStack.push(std::make_unique<IndexExpr>(std::unique_ptr<LiteralExpr>(dynamic_cast<LiteralExpr*>(left.release())), std::move(right), 0xFFF));
         }
         else {
             auto binExp = std::make_unique<BinaryExpr>(info.op, std::move(left), std::move(right), opEntry.token);
@@ -485,11 +536,28 @@ void emu::Expressionist::applyOperator()
     }
 }
 
+std::string emu::Expressionist::format(std::string_view fmt)
+{
+    return format(fmt, [&](std::string_view expression) -> std::string {
+        std::string result;
+        try {
+            auto [expr, error] = parseExpression(expression);
+            if (expr) {
+                result = std::to_string(expr->eval());
+            }
+        }
+        catch (std::runtime_error& ex) {
+            // TODO: report error
+        }
+        return result;
+    });
+}
+
 std::string emu::Expressionist::format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval)
 {
     std::ostringstream oss;
-    size_t i = 0;
-    const size_t n = fmt.size();
+    auto i = 0u;
+    const auto n = fmt.size();
 
     while (i < n) {
         char c = fmt[i];
@@ -500,8 +568,8 @@ std::string emu::Expressionist::format(std::string_view fmt, const std::function
                 i += 2;
             } else {
                 // Start of an expression placeholder.
-                size_t expr_start = i + 1;
-                size_t expr_end = expr_start;
+                auto expr_start = i + 1;
+                auto expr_end = expr_start;
                 // Find the matching unescaped '}'
                 bool foundClosing = false;
                 while (expr_end < n) {

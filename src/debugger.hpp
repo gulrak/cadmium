@@ -44,10 +44,12 @@ public:
     void setExecMode(ExecMode mode);
     void updateCore(emu::IEmulationCore* core);
     void captureStates();
-    void render(Font& font, std::function<void(Rectangle,int)> drawScreen);
+    void render(Font& font, const std::function<void(Rectangle,int)>& drawScreen);
     void updateOctoBreakpoints(const emu::OctoCompiler& compiler);
     bool supportsStepOver() const;
     bool isControllingChip8() const { return dynamic_cast<emu::IChip8Emulator*>(_core->focussedExecutionUnit()) != nullptr; }
+    void setBreakpointTriggered(bool triggered) { _isBreakpointTriggered = triggered; }
+    bool isBreakpointTriggered() const { return _isBreakpointTriggered; }
 private:
     emu::IChip8Emulator* chip8Core();
     void showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
@@ -70,5 +72,6 @@ private:
     std::vector<uint8_t> _memBackup;
     std::vector<std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>> _breakpointCache;
     int _selectedBreakpoint{-1};
+    bool _isBreakpointTriggered{false};
 };
 

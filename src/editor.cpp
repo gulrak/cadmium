@@ -23,6 +23,7 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
+#include <editor.hpp>
 #include <GLFW/glfw3.h>
 #include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
@@ -31,7 +32,6 @@
 #include <cctype>
 #include <cmath>
 #include <regex>
-#include <editor.hpp>
 #include <chiplet/utility.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <ghc/utf8.hpp>

@@ -65,10 +65,11 @@ public:
     {
         _symbols.emplace(ident, DefinedSymbol{value, mask});
     }
-    CompiledExpression parseExpression(const std::string& expr);
-    std::string format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval);
+    CompiledExpression parseExpression(std::string_view expr);
+    std::string format(std::string_view fmt);
 
 private:
+    static std::string format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval);
     enum class TokenType { End, Number, Identifier, Operator, LeftParen, RightParen, LeftBracket, RightBracket };
 
     struct Token {
@@ -108,13 +109,11 @@ private:
         uint32_t mask{0};
     };
 
-    Token nextToken();
+    static Token nextToken(std::string_view::const_iterator& iter, std::string_view::const_iterator end);
     void applyOperator();
     static BinOpInfo getBinaryOpInfo(const std::string& s);
     static UnOpInfo getUnaryOpInfo(const std::string& s);
 
-    std::string::const_iterator _iter;
-    std::string::const_iterator _end;
     std::stack<std::unique_ptr<Expr>> _operandStack;
     std::stack<OpStackEntry> _opStack;
     std::unordered_map<std::string, DefinedSymbol> _symbols;

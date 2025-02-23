@@ -1456,6 +1456,7 @@ void main()
         double deltaTC = std::chrono::duration<double>(now - lastFrameTime).count();
         lastFrameTime = now;
         float deltaT = GetFrameTime();
+        bool breakpointTriggered = false;
 
         updateResolution();
 
@@ -1496,8 +1497,11 @@ void main()
                     for(int i = 0; i < getFrameBoost(); ++i) {
                         _chipEmu->executeFrame();
                         for(auto& unit : *_chipEmu) {
-                            if(unit.isBreakpointTriggered())
+                            if(unit.isBreakpointTriggered()) {
                                 _mainView = eDEBUGGER;
+                                _debugger.setBreakpointTriggered(true);
+                                break;
+                            }
                         }
                     }
                     _fps.add(GetTime()*1000);

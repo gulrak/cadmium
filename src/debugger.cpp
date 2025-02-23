@@ -126,7 +126,7 @@ static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::St
     return {buffer, changed};
 }
 
-void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
+void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& drawScreen)
 {
     using namespace gui;
     SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 5);
@@ -372,21 +372,31 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
     Space(2);
     BeginTableView(area.height - (10 * 14.0f + 6), 3, &scroll);
     SetRowHeight(11);
-    int count = 0;
+    int count = -1;
     for (const auto& [address, bpinfo] : _breakpointCache) {
         auto execUnit = _core->executionUnit(bpinfo->unit);
         auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
-        TableNextRow(11.0f, count++ == _selectedBreakpoint ? StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL): Color{0,0,0,0});
+        ++count;
+        if (bpinfo->isEnabled && _isBreakpointTriggered && execUnit->getPC() == address)
+            _selectedBreakpoint = count;
+        TableNextRow(11.0f, count == _selectedBreakpoint ? StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL): Color{0,0,0,0});
         TableNextColumn(16, [&](Rectangle rect){
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
                 bpinfo->isEnabled = !bpinfo->isEnabled;
+                _selectedBreakpoint = count;
             }
             GuiDrawIcon(bpinfo->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, rect.x, rect.y - 3, 1, RED);
         });
         TableNextColumn(32, [&](Rectangle rect){
+            if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                _selectedBreakpoint = count;
+            }
             DrawTextClipped(font, fmt::format("{:04x}", address).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
         });
         TableNextColumn(area.width - 50, [&](Rectangle rect){
+            if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                _selectedBreakpoint = count;
+            }
             DrawTextClipped(font, fmt::format("{} breakpoint", isChip8 ? "CHIP-8" : execUnit->name()).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
         });
     }
