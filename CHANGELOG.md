@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Memory panel now has a checkbox to detach it from auto-following the `I` register
 - VIP settings allow now to individually select if video events should be added to the trace log
 - Support for more fonts in generic CHIP-8 variants
+- New debugger breakpoint tab under the video panel allowing configuration
+- Breakpoints now can be disabled/enabled, first click in disassembly creates one, further clicks
+  either enable or disable it, to delete a breakpoint a SHIFT click is now used.
+- Breakpoints allow a condition, it can be an expression using any of the registers or access ram
+  as if it is an array, e.g. `v0==23 && ram[0x234]>3` and only if that expression evaluates to
+  a non-zero value the breakpoint stops, no condition makes it always stop
+- Breakpoints now can have a log format entry (for `:breakpoint` directives it is the string parameter)
+  that will be appended to to log window if the breakpoint triggers, an additional log condition
+  can be set to make the log print only if that condition is met, independent of the breakpoint condition.
 - [Desktop only] Library/Research screen and database integration allows for easier research on existing roms
   and interpreters, all information about programs, and even the binaries themselves are now kept
   in a local SQLite3 file in the configuration directory (<10MB for all known programs combined)

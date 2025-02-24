@@ -181,7 +181,7 @@ public:
                 if (bpi.conditionExpr.first) {
                     return bpi.conditionExpr.first->eval() != 0;
                 }
-                Logger::log(Logger::eBACKEND_EMU, cycles(), Logger::FrameTime(0,0), bpi.label.c_str());
+                doLog(_expressionist.format(bpi.label));
                 return true;
             }
         }
@@ -199,6 +199,12 @@ public:
 protected:
     virtual void handleReset() = 0;
     virtual void initExpressionist() = 0;
+    virtual void doLog(const std::string& message) const
+    {
+        if (!message.empty()) {
+            Logger::log(Logger::eBACKEND_EMU, cycles(), Logger::FrameTime(0,0), message.c_str());
+        }
+    }
     template<typename T>
     T readStackEntry(const uint8_t* address, Endianness endianness) const
     {

@@ -136,7 +136,7 @@ void LogView::drawTextLine(const Font& font, int logLine, Vector2 position, floa
                 //if(offset >= selStart && offset < selEnd)
                 //    DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, selected);
                 if ((codepoint != ' ') && (codepoint != '\t')) {
-                    DrawTextCodepoint(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, {200, 200, 200, 255}/*_highlighting[index].front*/);
+                    DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, {200, 200, 200, 255}/*_highlighting[index].front*/);
                 }
             }
             --columnOffset;

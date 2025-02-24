@@ -409,11 +409,12 @@ public:
                                 addCycles(cyclesLeftInCurrentFrame());
                                 _instructionCycles = 3 * 3668;
                                 _rST = 4;
+                                _rPC = uint16_t(_rPC - 2);
                                 _cpuState = eWAIT;
                             }
                             else {
                                 // keep waiting...
-                                _rPC -= 2;
+                                _rPC = uint16_t(_rPC - 2);
                                 if(key < 0) {
                                     _rST = 4;
                                 }

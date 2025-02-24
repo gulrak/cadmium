@@ -28,7 +28,7 @@
 
 #include <ostream>
 #include <sstream>
-
+#include <fmt/format.h>
 
 namespace {
 
@@ -539,11 +539,22 @@ void emu::Expressionist::applyOperator()
 std::string emu::Expressionist::format(std::string_view fmt)
 {
     return format(fmt, [&](std::string_view expression) -> std::string {
+        std::string_view fmt;
         std::string result;
+        auto pos = expression.find(':');
+        if (pos != std::string_view::npos) {
+            fmt = expression.substr(pos + 1);
+            expression = expression.substr(0, pos);
+        }
         try {
             auto [expr, error] = parseExpression(expression);
             if (expr) {
-                result = std::to_string(expr->eval());
+                if (fmt.empty()) {
+                    result = std::to_string(expr->eval());
+                }
+                else {
+                    result = fmt::format(std::string("{:") + std::string(fmt) + "}", expr->eval());
+                }
             }
         }
         catch (std::runtime_error& ex) {
