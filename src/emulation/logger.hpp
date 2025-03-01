@@ -91,3 +91,27 @@ private:
 }
 
 #endif
+
+#define INFO_LOG(fmt_str, ...) \
+do {   \
+TraceLog(LOG_INFO, fmt::format(fmt_str, ##__VA_ARGS__).c_str());    \
+} while (0)
+
+#define ERROR_LOG(fmt_str, ...) \
+do {   \
+TraceLog(LOG_ERROR, fmt::format(fmt_str, ##__VA_ARGS__).c_str());    \
+} while (0)
+
+#define WARNING_LOG(fmt_str, ...) \
+do {   \
+TraceLog(LOG_WARNING, fmt::format(fmt_str, ##__VA_ARGS__).c_str());    \
+} while (0)
+
+#ifndef NDEBUG
+#define DEBUG_LOG(fmt_str, ...) \
+do { \
+TraceLog(LOG_DEBUG, fmt::format(fmt_str, ##__VA_ARGS__).c_str()); \
+} while (0)
+#else
+#define DEBUG_LOG(fmt_str, ...) do { } while (0)
+#endif

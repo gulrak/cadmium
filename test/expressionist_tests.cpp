@@ -26,29 +26,12 @@
 
 #include <doctest/doctest.h>
 
-#include <emulation/expressionist.hpp>
+#include <emulation/expressionist.cpp>
 #include <sstream>
 
 using namespace emu;
 
-bool isConstant(const emu::Expressionist::Value &value) {
-    return std::visit([]([[maybe_unused]] const auto &val) -> bool {
-        if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
-            return false;
-        }
-        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t(uint32_t)>>) {
-            return false;
-        }
-        else if constexpr (std::is_same_v<std::decay_t<decltype(val)>, std::function<int64_t()>>) {
-            return false;
-        }
-        else {
-            return true;
-        }
-    }, value);
-}
-
-TEST_CASE("Expressionits basic")
+TEST_CASE("Expressionist basic")
 {
     Expressionist exprContext;
     uint8_t v[16];

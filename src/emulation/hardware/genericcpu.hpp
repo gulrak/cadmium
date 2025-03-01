@@ -51,12 +51,14 @@ public:
     enum Endianness { eNATIVE, eLITTLE, eBIG };
     struct BreakpointInfo {
         enum Type { eTRANSIENT, eCODED };
-        std::string label;
         std::string condition;
+        std::string label;
+        std::string logCondition;
         Type type{eTRANSIENT};
         bool isEnabled{true};
         uint8_t unit{0};
         Expressionist::CompiledExpression conditionExpr;
+        Expressionist::CompiledExpression logConditionExpr;
         int64_t numHits{0};
     };
     struct RegisterValue {
@@ -74,6 +76,7 @@ public:
     virtual ~GenericCpu() = default;
     void reset()
     {
+        initExpressionist();
         handleReset();
     }
     virtual int executeInstruction() = 0;
@@ -196,6 +199,11 @@ public:
         return {0,0};
     }
     virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
+
+    Expressionist::CompiledExpression parseExpression(std::string_view expr)
+    {
+        return _expressionist.parseExpression(expr);
+    }
 protected:
     virtual void handleReset() = 0;
     virtual void initExpressionist() = 0;

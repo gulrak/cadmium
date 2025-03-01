@@ -73,5 +73,9 @@ private:
     std::vector<std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>> _breakpointCache;
     int _selectedBreakpoint{-1};
     bool _isBreakpointTriggered{false};
+    std::string _bpCondition;
+    std::string _bpLogFormat;
+    std::string _bpLogCondition;
+    std::string _bpHitCount{"0"};
 };
 

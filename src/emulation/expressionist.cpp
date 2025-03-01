@@ -243,6 +243,7 @@ struct IndexExpr final : emu::Expressionist::Expr
         out << "]";
     }
 };
+
 }
 
 emu::Expressionist::Token emu::Expressionist::nextToken(std::string_view::const_iterator& iter, std::string_view::const_iterator end)
@@ -553,7 +554,7 @@ std::string emu::Expressionist::format(std::string_view fmt)
                     result = std::to_string(expr->eval());
                 }
                 else {
-                    result = fmt::format(std::string("{:") + std::string(fmt) + "}", expr->eval());
+                    result = fmt::format(fmt::runtime("{:" + std::string(fmt) + "}"), expr->eval());
                 }
             }
         }

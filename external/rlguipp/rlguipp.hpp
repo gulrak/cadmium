@@ -59,6 +59,11 @@
 
 #include "icons.h"
 
+#include <utils.h>
+
+#include <chrono>
+#include <optional>
+
 extern "C" {
 
 #ifdef __GNUC__
@@ -187,6 +192,28 @@ RLGUIPP_API bool MenuItem(const char* text, uint32_t shortcut = 0, bool* selecte
 RLGUIPP_API int BeginPopupMenu(Vector2 position, const char* items);  // A popup menu with the items being given in raygui way seperated
 RLGUIPP_API void EndPopupMenu();
 
+struct FileDialogInfo
+{
+    enum DialogType { OpenFile, SaveFile, SelectFolder, SelectMultipleFiles };
+    enum CloseAction { None, Okay, Cancel };
+    struct DirEntry
+    {
+        enum Type { Unknown, File, Dir };
+        std::string name;
+        size_t size{};
+        std::chrono::time_point<std::chrono::system_clock> time;
+        Type type{Unknown};
+        std::string extension;
+    };
+    DialogType type;
+    std::string title;
+    std::string path;
+    std::vector<DirEntry> entries;
+    std::vector<std::string> filters;
+    std::vector<std::string> selection;
+    CloseAction action;
+};
+RLGUIPP_API bool ModalFileDialog(FileDialogInfo& info, bool* isOpen);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
 
 }  // namespace gui

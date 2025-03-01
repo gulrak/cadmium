@@ -28,6 +28,7 @@
 #include <ghc/bit.hpp>
 #include <stylemanager.hpp>
 #include "debugger.hpp"
+#include <emulation/logger.hpp>
 
 void Debugger::setExecMode(ExecMode mode)
 {
@@ -420,21 +421,37 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
         SetStyle(LABEL, TEXT_COLOR_NORMAL, colNorm);
         EndColumns();
         Label("Break Condition:");
-        static std::string condition;
-        TextBox(condition, 256);
+        auto colTBnorm = GetStyle(TEXTBOX, TEXT_COLOR_NORMAL);
+        auto colTBfocus = GetStyle(TEXTBOX, TEXT_COLOR_FOCUSED);
+        if (!bpinfo->condition.empty() && !bpinfo->conditionExpr.first) {
+            SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
+            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
+        }
+        if (TextBox(bpinfo->condition, 256)) {
+            bpinfo->conditionExpr = execUnit->parseExpression(bpinfo->condition);
+            DEBUG_LOG("Parsing breakpoint condition result: {}", bpinfo->conditionExpr.first ? "Okay" : bpinfo->conditionExpr.second.c_str());
+        }
+        SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, colTBnorm);
+        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
 
         GuiDisable();
         Label("Log Format:");
-        static std::string logFormat;
-        TextBox(logFormat, 256);
+        TextBox(bpinfo->label, 256);
 
         Label("Log Condition:");
-        static std::string logCondition;
-        TextBox(logCondition, 256);
+        if (!bpinfo->logCondition.empty() && !bpinfo->logConditionExpr.first) {
+            SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
+            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
+        }
+        if (TextBox(bpinfo->logCondition, 256)) {
+            bpinfo->logConditionExpr = execUnit->parseExpression(bpinfo->logCondition);
+            DEBUG_LOG("Parsing log condition result: {}", bpinfo->logConditionExpr.first ? "Okay" : bpinfo->logConditionExpr.second.c_str());
+        }
+        SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, colTBnorm);
+        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
 
         Label("Hit Count:");
-        static std::string hitCount{"0"};
-        TextBox(condition, 256);
+        TextBox(_bpHitCount, 64);
         GuiEnable();
     }
     Space(GetContentAvailable().height);

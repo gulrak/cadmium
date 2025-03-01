@@ -249,11 +249,11 @@ Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& conf
     , _pimpl(std::make_unique<Private>())
 {
     _pimpl->connection = std::make_unique<DBConnection>((path + "/cadmium_library.sqlite").c_str(), 0, nullptr, [](auto level, const auto& msg) {
-    if (zxorm::log_level::Error == level)
-        std::cerr << "Ooops: " << msg << std::endl;
-    else
-        std::cout << msg << std::endl;
-});
+        if (zxorm::log_level::Error == level)
+            std::cerr << "Ooops: " << msg << std::endl;
+        else
+            std::cout << msg << std::endl;
+    });
     _pimpl->connection->create_tables();
     _pimpl->connection->insert_record(DBVersion{});
     _pimpl->connection->insert_record(DBTags{0,"new", "#00C0E0"});
@@ -486,13 +486,13 @@ std::optional<Database::Program> Database::getSelectedProgram() const
 Vector2 Database::drawBadge(Font& font, std::string_view text, Vector2 pos, Color textCol, Color badgeCol)
 {
     Vector2 size{text.length() * 6.0f + 5, 7.0f};
-    DrawRectangleRec({pos.x, pos.y + 1, text.length() * 6.0f + 5, 5}, badgeCol);
-    DrawRectangleRec({pos.x + 1, pos.y, text.length() * 6.0f + 3, 7}, badgeCol);
+    DrawRectangleClipped(pos.x, pos.y + 1, text.length() * 6 + 5, 5, badgeCol);
+    DrawRectangleClipped(pos.x + 1, pos.y, text.length() * 6 + 3, 7, badgeCol);
     pos.x += 3;
     pos.y -= 1;
     for (int cp : text) {
         cp |= 0xE000;
-        DrawTextCodepoint(font, cp, pos, 8.0f, textCol);
+        DrawTextCodepointClipped(font, cp, pos, 8.0f, textCol);
         pos.x += 6;
     }
     return size;
@@ -531,9 +531,9 @@ bool Database::render(Font& font)
             for (const auto& tagText : _pimpl->sortedTags) {
                 const auto& badge = _badges[tagText];
                 TableNextRow(10);
-                TableNextColumn(tagsWidth - 8);
-                auto pos = GetContentAvailable();
-                drawBadge(font, badge.text.c_str(), {pos.x + offset.x, pos.y + offset.y + _pimpl->tagsScrollPos.y}, badge.textCol, badge.badgeCol);
+                TableNextColumn(tagsWidth - 8, [&](Rectangle rect) {
+                    drawBadge(font, badge.text.c_str(), {rect.x + 2, rect.y + 2}, badge.textCol, badge.badgeCol);
+                });
             }
             EndTableView();
             auto tableArea = GetContentAvailable();
@@ -561,7 +561,7 @@ bool Database::render(Font& font)
                         maxDisp = disp;
                     }
                     if (CheckCollisionPointRec(GetMousePosition(), itemRect)) {
-                        DrawRectangleRec({itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height}, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
+                        DrawRectangleClipped(itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
                         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                             if (program.binaries.size() == 1) {
                                 auto preset = _pimpl->binaries[program.binaries.front()].configs.front().preset;
@@ -585,10 +585,10 @@ bool Database::render(Font& font)
                             }
                         }
                     }
-                    DrawTextEx(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, 8, 0, lightgrayCol);
+                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, lightgrayCol);
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto binary = _pimpl->binaries.at(program.binaries[i]);
-                        DrawTextEx(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, 8, 0, grayCol);
+                        DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, grayCol);
                         //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                         Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
                         for (const auto& bincfg : binary.configs) {
@@ -607,7 +607,7 @@ bool Database::render(Font& font)
         //auto innerHeight = _pimpl->programs
         //BeginScrollPanel(listRect.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto pos = GetCurrentPos();
-        DrawRectangleLines(pos.x + area.width - 131, pos.y, 130, 98, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL));
+        DrawPanelClipped({pos.x + area.width - 131.0f, pos.y, 130.0f, 98.0f}, 1, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL), {0,0,0,0});
         auto [texture, rect] = _pimpl->backgroundHost.updateTexture();
         _pimpl->backgroundHost.drawScreen({pos.x + area.width - 130, pos.y + 1, 128, 96});
         DrawTextEx(font, fmt::format("FPS: {:02.1f} ({} frames)", 1000000.0/_pimpl->backgroundHost.getFrameTimeAvg()+0.005, _pimpl->backgroundHost.getFrames()).c_str(), {pos.x + area.width - 130 + 4, pos.y + 100}, 8, 1, WHITE);

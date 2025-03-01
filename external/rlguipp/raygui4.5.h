@@ -684,6 +684,7 @@ extern "C" {            // Prevents name mangling of functions
 RAYGUIAPI void DrawTextCodepointClipped(Font font, int codepoint, Vector2 position, float fontSize, Color tint);
 RAYGUIAPI void DrawTextClipped(Font font, const char *text, Vector2 position, Color tint);
 RAYGUIAPI void DrawRectangleClipped(int posX, int posY, int width, int height, Color color);
+RAYGUIAPI void DrawPanelClipped(Rectangle rec, int borderWidth, Color borderColor, Color color);
 
 // Global gui state control functions
 RAYGUIAPI void GuiEnable(void);                                 // Enable gui controls (global state)

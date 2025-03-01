@@ -68,7 +68,10 @@ public:
 
     virtual ~IEmulationCore() = default;
 
-    void reset() { handleReset(); }
+    void reset()
+    {
+        handleReset();
+    }
 
     virtual bool updateProperties(Properties& props, Property& changed) = 0;
 

@@ -478,6 +478,7 @@ void Chip8GenericEmulator::handleReset()
         _options.palette.colors[1] = Palette::Color(255,255,255);
         _options.palette.colors[255] = Palette::Color(255,255,255);
     }
+    initExpressionist();
 }
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)

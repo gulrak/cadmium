@@ -8,6 +8,8 @@
 #define RAYGUI_IMPLEMENTATION
 #define RLGUIPP_IMPLEMENTATION
 #include <rlguipp/rlguipp.hpp>
+#include <ghc/filesystem.hpp>
+#include <fmt/format.h>
 
 #include <algorithm>
 #include <cmath>
@@ -902,7 +904,9 @@ void TableNextColumn(float width, const std::function<void(Rectangle rect)>& han
 {
     if (TableNextColumn(width)) {
         auto& ctx = detail::context();
+        BeginClipping(ctx.content);
         handler(ctx.content);
+        EndClipping();
     }
 }
 
@@ -1792,6 +1796,97 @@ int BeginPopupMenu(Vector2 position, const char* items)
 
 void EndPopupMenu() {}
 
+static std::string formatFileTimeIso8601(const std::chrono::time_point<std::chrono::system_clock>& ftime) {
+    // Convert the time_point to time_t.
+    std::time_t cftime = std::chrono::system_clock::to_time_t(ftime);
+    // Convert to UTC std::tm.
+    std::tm tm = *std::localtime(&cftime);
+    // Manually format into an ISO 8601 string.
+    return fmt::format("{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}",
+                         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                         tm.tm_hour, tm.tm_min, tm.tm_sec);
+}
+
+bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
+{
+    static auto readDirectory = [](FileDialogInfo& fdi) {
+        fdi.entries.clear();
+        if (ghc::filesystem::path(fdi.path).has_parent_path()) {
+            fdi.entries.emplace_back("..", 0, ghc::filesystem::file_time_type{}, FileDialogInfo::DirEntry::Dir, "");
+        }
+        try {
+            for (const auto& entry : ghc::filesystem::directory_iterator(fdi.path, ghc::filesystem::directory_options::skip_permission_denied)) {
+                if (entry.is_directory()) {
+                    fdi.entries.emplace_back(entry.path().string(), 0, entry.last_write_time(), FileDialogInfo::DirEntry::Dir, "");
+                }
+                else if (entry.is_regular_file()) {
+                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string());
+                }
+            }
+        }
+        catch (ghc::filesystem::filesystem_error& e) {
+            // ignore for now
+        }
+        std::ranges::sort(fdi.entries, [](const FileDialogInfo::DirEntry &a, const FileDialogInfo::DirEntry &b) {
+            if (a.name == "..") return true;
+            if (b.name == "..") return false;
+            return std::ranges::lexicographical_compare(a.name, b.name,
+                [](unsigned char a, unsigned char b) {
+                    return std::tolower(a) < std::tolower(b);
+                }
+            );
+        });
+    };
+    bool closed = BeginWindowBox({-1, -1, 460, 300}, info.title.c_str(), isOpen, static_cast<WindowBoxFlags>(WBF_MOVABLE | WBF_MODAL));
+    if (closed) {
+        info.action = FileDialogInfo::Cancel;
+    }
+    static Vector2 scroll{};
+    if (info.entries.empty()) {
+        scroll = {0.0f, 0.0f};
+    }
+    info.action = FileDialogInfo::None;
+    if(TextBox(info.path, 4096)) {
+        readDirectory(info);
+    }
+    Begin();
+    BeginTableView(200, 3, &scroll);
+    auto font = GuiGetFont();
+    for (const auto& entry : info.entries) {
+        TableNextRow(15);
+        TableNextColumn(272, [&entry,&font](Rectangle rect) {
+            GuiDrawIcon(ICON_FOLDER_OPEN, rect.x, rect.y, 1, WHITE);
+            DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().c_str(), {rect.x + 20, rect.y + 5}, WHITE);
+        });
+        TableNextColumn(8*6, [&entry,&font](Rectangle rect) {
+            if (entry.type == FileDialogInfo::DirEntry::Dir) {
+                DrawTextClipped(GuiGetFont(), "  <DIR>", {rect.x + 4, rect.y + 5}, WHITE);
+            }
+            else {
+                if (entry.size < 16384)
+                    DrawTextClipped(font, TextFormat("%7d", entry.size), {rect.x + 4, rect.y + 5}, WHITE);
+                else if (entry.size < 1024*1024)
+                    DrawTextClipped(font, TextFormat("%6dk", entry.size/1024), {rect.x + 4, rect.y + 5}, WHITE);
+                else
+                    DrawTextClipped(font, TextFormat("%6dM", entry.size/1024/1024), {rect.x + 4, rect.y + 5}, WHITE);
+            }
+        });
+        TableNextColumn(20*6, [&entry,&font](Rectangle rect) {
+            if (entry.time != ghc::filesystem::file_time_type{})
+                DrawTextClipped(font, formatFileTimeIso8601(entry.time).c_str(), {rect.x + 4, rect.y + 5}, WHITE);
+        });
+    }
+    EndTableView();
+    End();
+    EndWindowBox();
+    if (closed) {
+        info.entries.clear();
+        *isOpen = false;
+    }
+    return closed;
+}
+
+
 bool IsSysKeyDown()
 {
 #ifdef __APPLE__
@@ -2039,6 +2134,21 @@ inline void drawRectClipped(Rectangle rect, Color col)
 void DrawRectangleClipped(int posX, int posY, int width, int height, Color color)
 {
     drawRectClipped({(float)posX, (float)posY, (float)width, (float)height}, color);
+}
+
+void DrawPanelClipped(Rectangle rec, int borderWidth, Color borderColor, Color color)
+{
+    if (color.a > 0)
+    {
+        DrawRectangleClipped((int)rec.x, (int)rec.y, (int)rec.width, (int)rec.height, GuiFade(color, guiAlpha));
+    }
+    if (borderWidth > 0)
+    {
+        DrawRectangleClipped((int)rec.x, (int)rec.y, (int)rec.width, borderWidth, GuiFade(borderColor, guiAlpha));
+        DrawRectangleClipped((int)rec.x, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, GuiFade(borderColor, guiAlpha));
+        DrawRectangleClipped((int)rec.x + (int)rec.width - borderWidth, (int)rec.y + borderWidth, borderWidth, (int)rec.height - 2*borderWidth, GuiFade(borderColor, guiAlpha));
+        DrawRectangleClipped((int)rec.x, (int)rec.y + (int)rec.height - borderWidth, (int)rec.width, borderWidth, GuiFade(borderColor, guiAlpha));
+    }
 }
 
 }

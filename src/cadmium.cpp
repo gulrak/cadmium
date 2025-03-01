@@ -587,6 +587,11 @@ public:
 #endif
     {
         SetTraceLogCallback(LogHandler);
+#ifdef NDEBUG
+        SetTraceLogLevel(LOG_INFO);
+#else
+        SetTraceLogLevel(LOG_DEBUG);
+#endif
 
     #ifdef RESIZABLE_GUI
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
@@ -1658,6 +1663,7 @@ void main()
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
         static int64_t lastFrameCount = 0;
+        static bool selectorOpen = false;
 
         static std::chrono::steady_clock::time_point volumeClick{};
 
@@ -2024,6 +2030,9 @@ void main()
                             if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
                             }
+                            if (Button("File Dialog")) {
+                                selectorOpen = true;
+                            }
                             auto pos = GetCurrentPos();
                             Space(_screenHeight - pos.y - 20 - 1);
                             EndTab();
@@ -2032,6 +2041,12 @@ void main()
                     }
                     EndPanel();
                     End();
+                    static FileDialogInfo fdi{FileDialogInfo::OpenFile, "Select a File", "/home/schuemann"};
+                    if (selectorOpen) {
+                        if (ModalFileDialog(fdi, &selectorOpen)) {
+                            selectorOpen = false;
+                        }
+                    }
                     break;
                 }
 #ifndef PLATFORM_WEB
