@@ -91,6 +91,7 @@ public:
     uint16_t getMaxScreenHeight() const override;
     const VideoType* getScreen() const override;
     void setPalette(const Palette& palette) override;
+    int getMaxColors() const override;
 
     bool isDisplayEnabled() const override;
 

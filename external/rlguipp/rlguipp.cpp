@@ -12,6 +12,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <stack>
 #include <stdexcept>
@@ -19,6 +20,8 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+
+#include "syshelper.hpp"
 
 namespace gui {
 
@@ -217,8 +220,8 @@ struct GuiContext
         else {
             currentPos.y += size.y + spacingV;
         }
-        nextWidth = -1;
-        nextHeight = -1;
+        if (nextWidth > 0) nextWidth = -1;
+        if (nextHeight > 0) nextHeight = -1;
         lastWidgetRect = {x, y, size.x, size.y};
     }
     void wrap()
@@ -232,8 +235,22 @@ struct GuiContext
             currentPos.y = area.y;
         }
     }
-    Vector2 standardSize(float height = -1) const { return {nextWidth > 0.0f ? nextWidth : content.width - currentPos.x + content.x, height > 0 ? height : (nextHeight > 0 ? nextHeight : rowHeight)}; }
+    Vector2 standardSize(float height = -1, float minWidth = 0) const
+    {
+        float width = 0;
+        if (static_cast<int>(nextWidth) == -1) {
+            width = content.width - currentPos.x + content.x;
+        }
+        else if (static_cast<int>(nextWidth) == 0) {
+            width = minWidth;
+        }
+        else {
+            width = std::fabs(nextWidth);
+        }
+        return {width, height > 0 ? height : (nextHeight > 0 ? nextHeight : rowHeight)};
+    }
     inline static Rectangle lastControlRect{};
+    inline static Vector2 positionLimits{};
     inline static int64_t frameId{0};  // Note: even at 1000fps this would have just overflown when started around the start of the permian (about 300Ma) ;-)
     inline static Vector2 guiScale{1.0f, 1.0f};
     struct DropdownInfo
@@ -291,6 +308,32 @@ struct GuiContext
             }
         }
     }
+    static void drawTooltip(Rectangle controlRec, const char* tooltipText)
+    {
+        if (!guiLocked && (tooltipText != nullptr) && !guiControlExclusiveMode)
+        {
+            Vector2 textSize = MeasureTextEx(GuiGetFont(), tooltipText, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+            textSize.x += 16;
+
+            controlRec.x -= (textSize.x - controlRec.width) / 2;
+            if (controlRec.x < 0) {
+                controlRec.x = 0;
+            }
+            if ((controlRec.x + textSize.x) > positionLimits.x)
+                controlRec.x = positionLimits.x - textSize.x;
+
+            DrawRectangleRec({controlRec.x + 3, controlRec.y + controlRec.height + 5, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, {0, 0, 0, 64});
+            GuiPanel(RAYGUI_CLITERAL(Rectangle){ controlRec.x, controlRec.y + controlRec.height + 2, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, NULL);
+
+            int textPadding = GuiGetStyle(LABEL, TEXT_PADDING);
+            int textAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
+            GuiSetStyle(LABEL, TEXT_PADDING, 0);
+            GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+            GuiLabel(RAYGUI_CLITERAL(Rectangle){ controlRec.x, controlRec.y + controlRec.height + 2, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, tooltipText);
+            GuiSetStyle(LABEL, TEXT_ALIGNMENT, textAlignment);
+            GuiSetStyle(LABEL, TEXT_PADDING, textPadding);
+        }
+    }
     static void handleDeferredDropBox(uint64_t key, DropdownInfo& info)
     {
         if (info.lastDraw < info.lastUpdate && info.lastUpdate == frameId) {
@@ -336,7 +379,9 @@ struct GuiContext
             else {
                 GuiContext::tooltipTimer -= GetFrameTime();
             }
-            if(GuiContext::tooltipTimer <= 0.0f) {
+            if(GuiContext::tooltipTimer >= 0.0f) {
+                drawTooltip(tooltipParentRect, tooltipText.c_str());
+                /*
                 auto size = MeasureTextEx(GuiGetFont(), GuiContext::tooltipText.c_str(), 8, 0);
                 Rectangle tipRect{
                     GuiContext::tooltipParentRect.x + GuiContext::tooltipParentRect.width/2 - size.x/2 - 3,
@@ -345,6 +390,7 @@ struct GuiContext
                 };
                 DrawRectangle(tipRect.x, tipRect.y, tipRect.width, tipRect.height, {0,0,0,128});
                 DrawTextEx(GuiGetFont(), GuiContext::tooltipText.c_str(), {tipRect.x + 3, tipRect.y + 3}, 8, 0, WHITE);
+                */
             }
         }
     }
@@ -521,12 +567,16 @@ bool HasKeyboardFocus(void* key)
 
 void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset, Vector2 guiScale)
 {
+    GuiContext::positionLimits = {area.x + area.width, area.y + area.height};
     if (area.width <= 0) {
         area.width = renderTexture ? renderTexture->texture.width : GetScreenWidth();
+        GuiContext::positionLimits.x = area.width;
     }
     if (area.height <= 0) {
         area.height = renderTexture ? renderTexture->texture.height : GetScreenHeight();
+        GuiContext::positionLimits.y = area.height;
     }
+
     if (!g_contextStack.empty()) {
         throw std::runtime_error("Nesting of gui::BeginGui/gui::EndGui not allowed!");
     }
@@ -812,6 +862,13 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
     Rectangle view;
     GuiScrollPanel(ctx.area, NULL, ctx.content, scroll, &view);
     ctx.scrollOffset = {ctx.area.x + scroll->x, ctx.area.y + scroll->y};
+    bool hasVerticalScrollBar = (content.height > ctx.area.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH))? true : false;
+    view = {
+        ctx.area.x + GuiGetStyle(DEFAULT, BORDER_WIDTH),
+        ctx.area.y + GuiGetStyle(DEFAULT, BORDER_WIDTH),
+        ctx.area.width - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH) - (hasVerticalScrollBar ? GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH) : 0.0f),
+        ctx.area.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH)
+    };
     //BeginScissorMode(view.x, view.y, view.width, view.height);
     BeginClipping(view);
     ctx.mouseOffset = ctxParent.mouseOffset;
@@ -858,9 +915,11 @@ void BeginTableView(float height, int numColumns, Vector2 *scroll)
         GuiLock();
         tc.lockedGui = true;
     }
+    // TableView has its own scroll handling for cells, so reset scroll offset
+    detail::context().scrollOffset = {0,0};
 }
 
-void TableNextRow(float height, Color background)
+bool TableNextRow(float height, Color background)
 {
     auto& ctx = detail::context();
     if(!std::holds_alternative<gui::TableContext*>(ctx.contextData))
@@ -870,9 +929,25 @@ void TableNextRow(float height, Color background)
     tc.curRowHeight = height;
     tc.curHeight += height;
     tc.curWidth = 0;
-    if(background.a) {
+    ctx.content = {ctx.area.x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, ctx.area.width, tc.curRowHeight};
+    bool result = CheckCollisionRecs(ctx.area, ctx.content);
+    if(result && background.a) {
         DrawRectangleClipped(ctx.area.x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, ctx.area.width, tc.curRowHeight, background);
     }
+    else if (!result){
+        //DrawRectangleLinesEx(ctx.content, 1, RED);
+    }
+    return result;
+}
+
+bool TableNextRow(float height, const std::function<void(Rectangle rect)>& handler)
+{
+    auto result = TableNextRow(height);
+    if (result && handler) {
+        auto& ctx = detail::context();
+        handler(ctx.content);
+    }
+    return result;
 }
 
 bool TableNextColumn(float width)
@@ -1089,8 +1164,8 @@ void SetReserve(float width)
 void SetNextWidth(float width)
 {
     auto& ctx = detail::context();
-    if(width <= 1.0f)
-        width = std::floor(ctx.content.width * width);
+    if(width > -1.0 && width <= 1.0f)
+        width = std::floor(ctx.content.width * std::fabs(width));
     ctx.nextWidth = width;
 }
 
@@ -1807,20 +1882,124 @@ static std::string formatFileTimeIso8601(const std::chrono::time_point<std::chro
                          tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
+static std::vector<std::string> g_lruList;
+static std::vector<const char*> g_lruPtrs;
+static ssize_t g_lruIndex = -1;
+
+static void updateLRUList()
+{
+    g_lruPtrs.clear();
+    for (const auto& p : g_lruList) {
+        g_lruPtrs.push_back(p.c_str());
+    }
+    g_lruPtrs.push_back(nullptr);
+}
+
+static void smartInsert(const std::string& str, ssize_t index, ssize_t maxSize) {
+    assert(index <= g_lruList.size());
+    if (index == g_lruList.size()) {
+        if (std::find(g_lruList.begin(), g_lruList.end(), str) != g_lruList.end()) {
+            return;
+        }
+        g_lruList.push_back(str);
+    } else {
+        if (std::find(g_lruList.begin(), g_lruList.begin() + index + 1, str) != g_lruList.begin() + index + 1) {
+            return;
+        }
+        auto removeStart = g_lruList.begin() + index;
+        g_lruList.erase(std::remove(removeStart, g_lruList.end(), str), g_lruList.end());
+        g_lruList.insert(g_lruList.begin() + index, str);
+    }
+    if (g_lruList.size() > maxSize) {
+        g_lruList.erase(g_lruList.begin() + maxSize, g_lruList.end());
+    }
+    updateLRUList();
+}
+
+static std::unordered_map<std::string_view, int> g_fileIconMap = {
+    // Text files (documents, office, markdown, pdf, etc.)
+    {"txt", ICON_FILETYPE_TEXT},
+    {"pdf", ICON_FILETYPE_TEXT},
+    {"doc", ICON_FILETYPE_TEXT},
+    {"docx", ICON_FILETYPE_TEXT},
+    {"xls", ICON_FILETYPE_TEXT},
+    {"xlsx", ICON_FILETYPE_TEXT},
+    {"ppt", ICON_FILETYPE_TEXT},
+    {"pptx", ICON_FILETYPE_TEXT},
+    {"odt", ICON_FILETYPE_TEXT},
+    {"ods", ICON_FILETYPE_TEXT},
+    {"odp", ICON_FILETYPE_TEXT},
+    {"rtf", ICON_FILETYPE_TEXT},
+    {"md", ICON_FILETYPE_TEXT},
+
+    // Audio files
+    {"wav", ICON_FILETYPE_AUDIO},
+    {"mp3", ICON_FILETYPE_AUDIO},
+    {"flac", ICON_FILETYPE_AUDIO},
+    {"ogg", ICON_FILETYPE_AUDIO},
+    {"aac", ICON_FILETYPE_AUDIO},
+
+    // Video files
+    {"mp4", ICON_FILETYPE_VIDEO},
+    {"avi", ICON_FILETYPE_VIDEO},
+    {"mkv", ICON_FILETYPE_VIDEO},
+    {"mov", ICON_FILETYPE_VIDEO},
+    {"wmv", ICON_FILETYPE_VIDEO},
+
+    // Image files
+    {"jpg", ICON_FILETYPE_IMAGE},
+    {"jpeg", ICON_FILETYPE_IMAGE},
+    {"png", ICON_FILETYPE_IMAGE},
+    {"gif", ICON_FILETYPE_IMAGE},
+    {"bmp", ICON_FILETYPE_IMAGE},
+    {"tiff", ICON_FILETYPE_IMAGE},
+
+    // Binary files (executables, raw binary dumps, etc.)
+    {"exe", ICON_FILETYPE_BINARY},
+    {"bin", ICON_FILETYPE_BINARY},
+    {"raw", ICON_FILETYPE_BINARY},
+    {"ram", ICON_FILETYPE_BINARY},
+    {"rom", ICON_FILETYPE_BINARY}};
+
+const std::unordered_map<std::string_view, int>& GetDefaultFileIcons()
+{
+    return g_fileIconMap;
+}
+void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons)
+{
+    g_fileIconMap = icons;
+}
+
 bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
 {
+    static Vector2 scroll{};
+    static std::string readPath;
+    static bool showLRU = false;
+    static bool pathBad = false;
     static auto readDirectory = [](FileDialogInfo& fdi) {
+        if (fdi.fileIcons.empty()) {
+            fdi.fileIcons = g_fileIconMap;
+        }
         fdi.entries.clear();
+        std::error_code ec;
+        if (!ghc::filesystem::exists(fdi.path, ec) || !ghc::filesystem::is_directory(fdi.path, ec)) {
+            scroll = {0, 0};
+            pathBad = true;
+            return;
+        }
+        pathBad = false;
         if (ghc::filesystem::path(fdi.path).has_parent_path()) {
-            fdi.entries.emplace_back("..", 0, ghc::filesystem::file_time_type{}, FileDialogInfo::DirEntry::Dir, "");
+            fdi.entries.emplace_back("..", 0, ghc::filesystem::file_time_type{}, FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
         }
         try {
             for (const auto& entry : ghc::filesystem::directory_iterator(fdi.path, ghc::filesystem::directory_options::skip_permission_denied)) {
                 if (entry.is_directory()) {
-                    fdi.entries.emplace_back(entry.path().string(), 0, entry.last_write_time(), FileDialogInfo::DirEntry::Dir, "");
+                    fdi.entries.emplace_back(entry.path().string(), 0, entry.last_write_time(), FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
                 }
                 else if (entry.is_regular_file()) {
-                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string());
+                    auto ext = entry.path().extension().string();
+                    auto it = fdi.fileIcons.find(ext.empty() ? ext : ext.substr(1));
+                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string(), it != g_fileIconMap.end() ? it->second : ICON_FILE);
                 }
             }
         }
@@ -1830,62 +2009,270 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
         std::ranges::sort(fdi.entries, [](const FileDialogInfo::DirEntry &a, const FileDialogInfo::DirEntry &b) {
             if (a.name == "..") return true;
             if (b.name == "..") return false;
+            if (a.type != b.type) {
+                return a.type == FileDialogInfo::DirEntry::Dir;
+            }
             return std::ranges::lexicographical_compare(a.name, b.name,
                 [](unsigned char a, unsigned char b) {
                     return std::tolower(a) < std::tolower(b);
                 }
             );
         });
+        scroll = {0, 0};
+        readPath = fdi.path;
     };
-    bool closed = BeginWindowBox({-1, -1, 460, 300}, info.title.c_str(), isOpen, static_cast<WindowBoxFlags>(WBF_MOVABLE | WBF_MODAL));
-    if (closed) {
-        info.action = FileDialogInfo::Cancel;
-    }
-    static Vector2 scroll{};
-    if (info.entries.empty()) {
+    if (info.firstFrame) {
+        info.firstFrame = false;
         scroll = {0.0f, 0.0f};
+        if (readPath != info.path) {
+            readDirectory(info);
+        }
+        return false;
     }
     info.action = FileDialogInfo::None;
+    const char* actionText = nullptr;
+    const char* cancelText = "Cancel";
+    bool actionEnabled = false;
+    bool editFilename = false;
+    switch (info.type) {
+        case FileDialogInfo::OpenFile:
+            actionText = "Open";
+            actionEnabled = info.selection.size() > 0;
+            break;
+        case FileDialogInfo::SaveFile:
+            actionText = "Save";
+            editFilename = true;
+            actionEnabled = !info.filename.empty() && !pathBad;
+            break;
+        case FileDialogInfo::SelectFolder:
+            actionText = "Choose";
+            actionEnabled = info.entries.size() > 0;
+            break;
+        case FileDialogInfo::SelectMultipleFiles:
+            actionText = "Select";
+            actionEnabled = info.selection.size() > 0;
+            break;
+    }
+    if (BeginWindowBox({-1, -1, 460, 300}, info.title.c_str(), isOpen, static_cast<WindowBoxFlags>(WBF_MOVABLE | WBF_MODAL))) {
+        info.action = FileDialogInfo::Cancel;
+    }
+    BeginColumns();
+    SetSpacing(0);
+    SetNextWidth(GetContentAvailable().width - 20);
     if(TextBox(info.path, 4096)) {
+        // TODO
+    }
+    auto pathBox = GetLastWidgetRect();
+    pathBox.width += 20;
+    SetNextWidth(20);
+    bool openLRU = false;
+    if (Button(GuiIconText(ICON_ARROW_DOWN, "")) && !showLRU) {
+        openLRU = true;
+    }
+    EndColumns();
+    Space(4);
+    if (info.path != readPath) {
         readDirectory(info);
     }
     Begin();
-    BeginTableView(200, 3, &scroll);
+    auto heightAvailable = GetContentAvailable().height;
+    BeginTableView(heightAvailable - 20 - (editFilename ? 20.0f : 0.0f), 3, &scroll);
     auto font = GuiGetFont();
+    static constexpr float yo = 4;
+    float entryHeight = 15;
+    auto normalCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_NORMAL));
+    auto focusCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_FOCUSED));
+    auto pressedCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_PRESSED));
     for (const auto& entry : info.entries) {
-        TableNextRow(15);
-        TableNextColumn(272, [&entry,&font](Rectangle rect) {
-            GuiDrawIcon(ICON_FOLDER_OPEN, rect.x, rect.y, 1, WHITE);
-            DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().c_str(), {rect.x + 20, rect.y + 5}, WHITE);
-        });
-        TableNextColumn(8*6, [&entry,&font](Rectangle rect) {
-            if (entry.type == FileDialogInfo::DirEntry::Dir) {
-                DrawTextClipped(GuiGetFont(), "  <DIR>", {rect.x + 4, rect.y + 5}, WHITE);
+        bool selected = editFilename ? ghc::filesystem::path(entry.name).filename().string() == info.filename : std::ranges::find(info.selection, entry.name) != info.selection.end();
+        auto textColor = normalCol;
+        if (TableNextRow(entryHeight, [&info,&entry,&textColor, selected, &pressedCol, &focusCol](Rectangle rect) {
+            if (selected) {
+                DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
+                textColor = pressedCol;
             }
-            else {
-                if (entry.size < 16384)
-                    DrawTextClipped(font, TextFormat("%7d", entry.size), {rect.x + 4, rect.y + 5}, WHITE);
-                else if (entry.size < 1024*1024)
-                    DrawTextClipped(font, TextFormat("%6dk", entry.size/1024), {rect.x + 4, rect.y + 5}, WHITE);
-                else
-                    DrawTextClipped(font, TextFormat("%6dM", entry.size/1024/1024), {rect.x + 4, rect.y + 5}, WHITE);
+            if (!showLRU && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                if (!selected) {
+                    DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_NORMAL)));
+                    textColor = focusCol;
+                }
+                if (entry.type == FileDialogInfo::DirEntry::Dir && IsMouseButtonPressed(0)) {
+                    if (entry.name == "..") {
+                        info.path = ghc::filesystem::path(info.path).parent_path().string();
+                    }
+                    else {
+                        info.path = ghc::filesystem::path(info.path) / entry.name;
+                    }
+                }
+                else if (entry.type == FileDialogInfo::DirEntry::File && IsMouseButtonPressed(0)) {
+                    if (info.type == FileDialogInfo::SelectMultipleFiles) {
+                        if (selected) {
+                            info.selection.erase(std::ranges::find(info.selection, entry.name));
+                        }
+                    }
+                    else {
+                        info.selection.clear();
+                        info.selection.push_back(entry.name);
+                        info.filename = ghc::filesystem::path(entry.name).filename().string();
+                    }
+                }
             }
-        });
-        TableNextColumn(20*6, [&entry,&font](Rectangle rect) {
-            if (entry.time != ghc::filesystem::file_time_type{})
-                DrawTextClipped(font, formatFileTimeIso8601(entry.time).c_str(), {rect.x + 4, rect.y + 5}, WHITE);
-        });
+        })) {
+            TableNextColumn(272, [&entry,&font,&textColor](Rectangle rect) {
+                GuiDrawIcon(entry.icon, rect.x + 1, rect.y, 1, textColor);
+                DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().c_str(), {rect.x + 20, rect.y + yo}, textColor);
+            });
+            TableNextColumn(8*6, [&entry,&font,&textColor](Rectangle rect) {
+                if (entry.type == FileDialogInfo::DirEntry::Dir) {
+                    DrawTextClipped(GuiGetFont(), "  <DIR>", {rect.x + 4, rect.y + yo}, textColor);
+                }
+                else {
+                    if (entry.size < 16384)
+                        DrawTextClipped(font, TextFormat("%7d", entry.size), {rect.x + 4, rect.y + yo}, textColor);
+                    else if (entry.size < 1024*1024)
+                        DrawTextClipped(font, TextFormat("%6dk", entry.size/1024), {rect.x + 4, rect.y + yo}, textColor);
+                    else
+                        DrawTextClipped(font, TextFormat("%6dM", entry.size/1024/1024), {rect.x + 4, rect.y + yo}, textColor);
+                }
+            });
+            TableNextColumn(20*6, [&entry,&font,&textColor](Rectangle rect) {
+                if (entry.time != ghc::filesystem::file_time_type{})
+                    DrawTextClipped(font, formatFileTimeIso8601(entry.time).c_str(), {rect.x + 4, rect.y + yo}, textColor);
+            });
+        }
     }
     EndTableView();
-    End();
-    EndWindowBox();
-    if (closed) {
-        info.entries.clear();
-        *isOpen = false;
+    if (editFilename) {
+        Space(4);
+        BeginColumns();
+        SetSpacing(0);
+        SetNextWidth(32);
+        Label("Name:");
+        TextBox(info.filename, 4096);
+        EndColumns();
     }
-    return closed;
+    Space(4);
+    BeginColumns();
+    SetSpacing(0);
+    auto actionWidth = MeasureTextEx(font, actionText, 8, 0).x + 10;
+    auto cancelWidth = MeasureTextEx(font, cancelText, 8, 0).x + 10;
+    auto indent = GetContentAvailable().width - actionWidth - cancelWidth - 10;
+    Space(indent);
+#ifdef WIN32
+    bool actionFirst = true;
+#else
+    bool actionFirst = false;
+#endif
+    if (actionFirst) {
+        SetNextWidth(actionWidth);
+        if (!actionEnabled) { GuiDisable(); }
+        if (Button(actionText)) {
+            info.action = FileDialogInfo::Okay;
+        }
+        GuiEnable();
+        Space(10);
+        SetNextWidth(cancelWidth);
+        if (Button(cancelText)) {
+            info.action = FileDialogInfo::Cancel;
+        }
+    }
+    else {
+        SetNextWidth(cancelWidth);
+        if (Button(cancelText)) {
+            info.action = FileDialogInfo::Cancel;
+        }
+        Space(10);
+        SetNextWidth(actionWidth);
+        if (!actionEnabled) { GuiDisable(); }
+        if (Button(actionText)) {
+            info.action = FileDialogInfo::Okay;
+        }
+        GuiEnable();
+    }
+    EndColumns();
+    End();
+    if (openLRU || showLRU) {
+        static int index = 0;
+        static int active = -1;
+        if (openLRU) {
+            showLRU = true;
+            active = -1;
+        }
+        if (g_lruIndex < 0) {
+            auto dirs = getUserDirectories();
+            g_lruList.push_back(dirs.home);
+            if (!dirs.documents.empty()) g_lruList.push_back(dirs.documents);
+            if (!dirs.downloads.empty()) g_lruList.push_back(dirs.downloads);
+            g_lruIndex = g_lruList.size();
+            updateLRUList();
+        }
+        Rectangle lruRect = {pathBox.x, pathBox.y + 16, pathBox.width, g_lruList.size() * entryHeight + 4};
+        if (!openLRU && IsMouseButtonReleased(0) && !CheckCollisionPointRec(GetMousePosition(), lruRect))
+            showLRU = false;
+        auto h = GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT);
+        auto s = GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING);
+        auto a = GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT);
+        GuiSetStyle(LISTVIEW, LIST_ITEMS_HEIGHT, static_cast<int>(entryHeight - 1));
+        GuiSetStyle(LISTVIEW, LIST_ITEMS_SPACING, 1);
+        GuiSetStyle(LISTVIEW, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+        DrawRectangleRec({pathBox.x + 3, pathBox.y + 19, pathBox.width, g_lruList.size() * entryHeight + 4}, {0,0,0,64});
+        GuiListViewEx(lruRect, g_lruPtrs.data(), g_lruList.size(), &index, &active, nullptr);
+        if (active >= 0) {
+            info.path = g_lruList[active];
+            showLRU = false;
+        }
+        DrawLineV({lruRect.x + 1, lruRect.y + 1 + g_lruIndex * entryHeight}, {lruRect.x + lruRect.width - 2, lruRect.y + 1 + g_lruIndex * entryHeight}, GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_NORMAL)));
+        GuiSetStyle(LISTVIEW, LIST_ITEMS_HEIGHT, h);
+        GuiSetStyle(LISTVIEW, LIST_ITEMS_SPACING, s);
+        GuiSetStyle(LISTVIEW, TEXT_ALIGNMENT, a);
+    }
+    EndWindowBox();
+    if(IsKeyPressed(KEY_ESCAPE))
+        info.action = FileDialogInfo::Cancel;
+    if (info.action != FileDialogInfo::None) {
+        info.entries.clear();
+        info.firstFrame = true;
+        readPath.clear();
+        *isOpen = false;
+        showLRU = false;
+        return true;
+    }
+    return false;
 }
 
+bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active)
+{
+    Begin();
+    BeginTableView(height, 1, scrollPos);
+    auto font = GuiGetFont();
+    auto oldActive = *active;
+    int count = 0;
+    bool selected = false;
+    for (const auto& item : items) {
+        TableNextRow(15, [&font, &item, &count, &active, &selected](Rectangle rect) {
+            if (count == *active) {
+                DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
+            }
+            if (CheckCollisionPointRec(GetMousePosition(), rect)) {
+                if (count != *active) {
+                    DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_NORMAL)));
+                }
+                if (IsMouseButtonPressed(0)) {
+                    *active = count;
+                    selected = true;
+                }
+            }
+            DrawTextClipped(font, item.c_str(), {rect.x + 4, rect.y + 3}, GetColor(GuiGetStyle(LISTVIEW, count == *active ? TEXT_COLOR_PRESSED : TEXT_COLOR_NORMAL)));
+        });
+        count++;
+    }
+    EndTableView();
+    if (!selected && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
+        *active = -1;
+    }
+    End();
+    return *active != oldActive;
+}
 
 bool IsSysKeyDown()
 {

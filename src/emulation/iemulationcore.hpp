@@ -112,6 +112,7 @@ public:
     virtual uint16_t getMaxScreenHeight() const { return 0; }
     virtual PixelRatio getPixelRatio() const { return {}; }
     virtual bool isDoublePixel() const { return false; }
+    virtual int getMaxColors() const { return 2; }
     virtual const VideoType* getScreen() const { return nullptr; }
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
     virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }

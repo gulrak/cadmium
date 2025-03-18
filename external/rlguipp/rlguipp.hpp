@@ -62,7 +62,6 @@
 #include <utils.h>
 
 #include <chrono>
-#include <optional>
 
 extern "C" {
 
@@ -91,6 +90,9 @@ extern "C" {
 #include <functional>
 #include <initializer_list>
 #include <string>
+#include <utility>
+#include <unordered_map>
+#include <vector>
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
@@ -117,11 +119,13 @@ RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});          
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                           //
-RLGUIPP_API void TableNextRow(float height, Color background = {0, 0, 0, 0});                                  //
-RLGUIPP_API bool TableNextColumn(float width);                                                                            //
-RLGUIPP_API void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler);                              //
-RLGUIPP_API void EndTableView();                                                                                          //
+RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                           // start a table view, the columns of all rows must have consistent widths, height can vary per row but must not change during table drawing
+RLGUIPP_API bool TableNextRow(float height, Color background = {0, 0, 0, 0});                                 // start a new row, returns false if the table row would not be visible due to scroll position
+RLGUIPP_API bool TableNextRow(float height, const std::function<void(Rectangle rect)>& handler);                          // start a new row, returns false if the table row would not be visible due to scroll position, calls the handler if visible
+RLGUIPP_API bool TableNextColumn(float width);                                                                            // start the next column, returns false if the column would not be visible
+RLGUIPP_API void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler);                        // start the next column, calls the handler if the column is visible
+RLGUIPP_API void EndTableView();                                                                                          // ends the table view
+RLGUIPP_API bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active);                        // start a simple list view, returns true the selection was changed (<0 means nothing selected)
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
 RLGUIPP_API void BeginPopup(Rectangle area, bool* isOpen);                                                                // show a popup at the given area, open as long as `*isOpen` is true
@@ -204,15 +208,24 @@ struct FileDialogInfo
         std::chrono::time_point<std::chrono::system_clock> time;
         Type type{Unknown};
         std::string extension;
+        int icon{ICON_FILE};
+        DirEntry(std::string  name, size_t size, std::chrono::time_point<std::chrono::system_clock> time, Type type, std::string  extension, int icon)
+            : name(std::move(name)), size(size), time(time), type(type), extension(std::move(extension)), icon(icon)
+        {}
     };
     DialogType type;
     std::string title;
     std::string path;
+    std::unordered_map<std::string_view, int> fileIcons;
     std::vector<DirEntry> entries;
     std::vector<std::string> filters;
     std::vector<std::string> selection;
+    std::string filename;
     CloseAction action;
+    bool firstFrame{true}; // don't touch
 };
+RLGUIPP_API const std::unordered_map<std::string_view, int>& GetDefaultFileIcons();
+RLGUIPP_API void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons);
 RLGUIPP_API bool ModalFileDialog(FileDialogInfo& info, bool* isOpen);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
 

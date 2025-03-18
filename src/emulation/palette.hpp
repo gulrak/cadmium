@@ -81,10 +81,7 @@ public:
         {
             return (r << 24u) | (g << 16u) | (b << 8) | alpha;
         }
-        bool operator==(const Color& other) const
-        {
-            return r == other.r && g == other.g && b == other.b && a == other.a;
-        }
+        auto operator<=>(const Color& other) const = default;
         std::string toStringRGB() const
         {
             return fmt::format("#{:02x}{:02x}{:02x}", r, g, b);

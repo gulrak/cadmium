@@ -362,7 +362,7 @@ int Database::scanLibrary()
     auto extensions = _registry.getSupportedExtensions();
     std::vector<const KnownRomInfo*> foundRoms;
     int numFiles = 0;
-    for (auto folders = split(_configuration.libraryPath, ';'); const auto& folder : folders) {
+    for (const auto& folder : _configuration.libraryPath) {
         try {
             for (const auto& de : fs::recursive_directory_iterator(folder, fs::directory_options::skip_permission_denied)) {
                 if (de.is_regular_file() && extensions.contains(de.path().extension().string())) {
@@ -564,21 +564,25 @@ bool Database::render(Font& font)
                         DrawRectangleClipped(itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
                         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                             if (program.binaries.size() == 1) {
-                                auto preset = _pimpl->binaries[program.binaries.front()].configs.front().preset;
-                                if (preset == "generic-chip-8")
-                                    preset = "chip-8";
-                                emu::Properties props;
-                                if (!fuzzyCompare(preset, "generic-chip-8")) {
-                                    props = emu::CoreRegistry::propertiesForPreset(preset);
-                                    const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
-                                    if (!propString.empty()) {
-                                        props.applyDiff(nlohmann::json::parse(propString));
+                                const auto& binary = _pimpl->binaries.at(program.binaries.front());
+                                if (binary.configs.size() == 1) {
+                                    const auto& config = binary.configs.front();
+                                    auto preset = config.preset;
+                                    if (preset == "generic-chip-8")
+                                        preset = "chip-8";
+                                    emu::Properties props;
+                                    if (!fuzzyCompare(preset, "generic-chip-8")) {
+                                        props = emu::CoreRegistry::propertiesForPreset(preset);
+                                        const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
+                                        if (!propString.empty()) {
+                                            props.applyDiff(nlohmann::json::parse(propString));
+                                        }
                                     }
+                                    _selectedProgram = {.name = program.name, .properties = props, .data = _pimpl->binaries[program.binaries.front()].data};
+                                    _pimpl->backgroundHost.killEmulation();
+                                    _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
+                                    binarySelected = true;
                                 }
-                                _selectedProgram = {.name = program.name, .properties = props, .data = _pimpl->binaries[program.binaries.front()].data};
-                                _pimpl->backgroundHost.killEmulation();
-                                _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
-                                binarySelected = true;
                             }
                             else {
                                 _selectedProgram = {};//{.name = program.name, .properties = {}, .data = {}};

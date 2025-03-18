@@ -164,21 +164,30 @@ static CosmacVipSetupInfo vipPresets[] = {
         "An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980",
         ".c8x",
         chip8::Variant::CHIP_8X,
-        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8X, .startAddress = 768}
+        {
+            .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8X, .startAddress = 768,
+            .palette = { {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}}
+        }
     },
     {
         "CHIP-8X TPD",
         "A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor",
         ".c8xtpd",
         chip8::Variant::CHIP_8X_TPD,
-        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XTPD, .startAddress = 768}
+        {
+            .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XTPD, .startAddress = 768,
+            .palette = { {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}}
+        }
     },
     {
         "CHIP-8X FPD",
         "A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug",
         ".c8xfpd",
         chip8::Variant::HI_RES_CHIP_8X,
-        { .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XFPD, .startAddress = 768}
+        {
+            .cpuType = "CDP1802", .clockFrequency = 1789773, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_VP_590, .audioType = VAT_VP_595_SIMPLE_SB, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8XFPD, .startAddress = 768,
+            .palette = { {"#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF"}, {"#000080","#000000","#008000","#800000"}}
+        }
     },
     {
         "CHIP-8E",
@@ -1124,6 +1133,12 @@ const VideoType* CosmacVIP::getScreen() const
 void CosmacVIP::setPalette(const Palette& palette)
 {
     _impl->_video.setPalette(palette);
+}
+int CosmacVIP::getMaxColors() const
+{
+    if (_impl->_options.videoType == VVT_VP_590)
+        return 8;
+    return 2;
 }
 
 GenericCpu& CosmacVIP::getBackendCpu()

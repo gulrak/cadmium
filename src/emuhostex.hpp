@@ -49,6 +49,8 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <limits>
+#include <cmath>
 
 namespace emu {
 
@@ -90,13 +92,20 @@ public:
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown);
     virtual void updateEmulatorOptions(const Properties& properties);
-    void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0);
+    void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0, bool setAsDefault = false);
     void setPalette(const Palette& palette);
 
 protected:
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
+    static int saturatedCast(double value) {
+        if (value > static_cast<double>(std::numeric_limits<int>::max()))
+            return std::numeric_limits<int>::max();
+        if (value < static_cast<double>(std::numeric_limits<int>::min()))
+            return std::numeric_limits<int>::min();
+        return static_cast<int>(std::round(value));
+    }
     static inline std::atomic_int _instanceCounter{0};
     int _instanceNum{_instanceCounter++};
     CadmiumConfiguration& _cfg;
@@ -174,7 +183,7 @@ public:
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
     void drawScreen(Rectangle dest) const;
-    int getFrameTimeAvg() const { return _smaFrameTime_us.get(); }
+    int getFrameTimeAvg() const { return saturatedCast(_smaFrameTime_us.get()); }
     int getFrames() const { return _chipEmu ? _chipEmu->frames() : 0; }
     bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown) override;
 
@@ -182,11 +191,11 @@ private:
     void worker();
     void tick();
     CadmiumConfiguration _cfg;
-    Image* _screen;
-    Image _screen1;
-    Image _screen2;
-    Texture2D _screenTexture;
-    std::atomic_bool _shutdown;
+    Image* _screen{nullptr};
+    Image _screen1{};
+    Image _screen2{};
+    Texture2D _screenTexture{};
+    std::atomic_bool _shutdown{false};
     std::atomic<std::chrono::steady_clock::duration> _frameDuration{std::chrono::steady_clock::duration::zero()};
     std::recursive_mutex _mutex;
     std::thread _workerThread;

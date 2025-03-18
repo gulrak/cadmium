@@ -416,6 +416,7 @@ void StyleManager::renderAppearanceEditor()
     int xoffset = 64;
     updateStyle(_guiHue, _guiSaturation, false);
     for (int i = 0; i < 7; ++i) {
+        DrawRectangleRec({pos.x + xoffset + i * 18, pos.y, 16, 16}, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BORDER_COLOR_NORMAL)));
         col = GetColor(_currentStyle.palette[i]);
         DrawRectangle(pos.x + xoffset + i * 18 + 2, pos.y + 2 , 12, 12,col);
         bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + xoffset + i * 18, pos.y, 16, 16});
@@ -429,7 +430,6 @@ void StyleManager::renderAppearanceEditor()
         _colorSelectOpen = true;
          */
         //}
-        DrawRectangleLines(pos.x + xoffset + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BORDER_COLOR_NORMAL)));
     }
     Label(fmt::format("H:{}, S:{}, V:{}", hsv.x, hsv.y, hsv.z).c_str());
     SetNextWidth(120);

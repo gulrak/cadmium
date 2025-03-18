@@ -80,10 +80,25 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     cc.scaleMode = j.value("scaleMode", 0);
     j.at("workingDirectory").get_to(cc.workingDirectory);
     if (!j.contains("libraryPath") && j.contains("databaseDirectory")) {
-        cc.libraryPath = j.value("databaseDirectory", "");
+        cc.libraryPath.clear();
+        auto dbDir = j.value("databaseDirectory", "");
+        if (!dbDir.empty())
+            cc.libraryPath.push_back(dbDir);
     }
     else {
-        cc.libraryPath = j.value("libraryPath", "");
+        cc.libraryPath.clear();
+        if (j.contains("libraryPath")) {
+            if (j.at("libraryPath").is_array()) {
+                j.at("libraryPath").get_to(cc.libraryPath);
+            }
+            else if (j.at("libraryPath").is_string()) {
+                auto path = j.at("libraryPath").get<std::string>();
+                if (!path.empty()) {
+                    auto list = split(path, ';');
+                    cc.libraryPath = list;
+                }
+            }
+        }
     }
     cc.volume = j.value("volume", 0.5f);
     cc.guiHue = j.value("guiHue", 192);

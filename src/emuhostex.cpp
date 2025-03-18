@@ -57,7 +57,7 @@ EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
 {
 #ifndef PLATFORM_WEB
     _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
-    _databaseDirectory = _cfg.libraryPath;
+    //_databaseDirectory = _cfg.libraryPath.front();
 #ifdef CADMIUM_WITH_DATABASE
     if (!_instanceNum) {
         _database = std::make_unique<Database>(_cores, _cfg, _threadPool, dataPath());
@@ -74,15 +74,22 @@ EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
     _defaultPalette = _colorPalette;
 }
 
-void EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset)
+void EmuHostEx::setPalette(const std::vector<uint32_t>& colors, size_t offset, bool setAsDefault)
 {
     if (_colorPalette.size() < colors.size() + offset)
         _colorPalette.colors.resize(colors.size() + offset);
     for (size_t i = 0; i < colors.size() && i + offset < _colorPalette.size(); ++i) {
-        _colorPalette.colors[i + offset] = Palette::Color::fromRGB(colors[i]);
+        _colorPalette.colors[i + offset] = Palette::Color::fromRGBA(colors[i]);
     }
-    if (_chipEmu)
+    if (setAsDefault) {
+        _defaultPalette = _colorPalette;
+    }
+    if (_chipEmu) {
+        if (_colorPalette.size() > _chipEmu->getMaxColors()) {
+            _colorPalette.colors.resize(_chipEmu->getMaxColors());
+        }
         _chipEmu->setPalette(_colorPalette);
+    }
     //std::vector<std::string> pal(16, "");
     //for (size_t i = 0; i < 16; ++i) {
     //    pal[i] = fmt::format("#{:06x}", _colorPalette[i] >> 8);
@@ -209,6 +216,9 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
         }
         _previousProperties = properties;
         _chipEmu = create(*_properties, _chipEmu.get());
+        if (_chipEmu->getMaxColors() != _properties->palette().colors.size()) {
+            _properties->palette().colors.clear();
+        }
         if(_chipEmu->getScreen())
             (void)_chipEmu->getScreen();
         whenEmuChanged(*_chipEmu);
@@ -306,7 +316,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
                 wasFromSource = true;
                 if ((loadOpt & DontChangeOptions) == 0) {
                     isKnown = _librarian.isKnownFile(romImage.data(), romImage.size());
-                    // knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
+                    //knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
                     // if(knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
                     //     updateEmulatorOptions(knownOptions);
                 }
@@ -330,7 +340,15 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             }
         }
         else {
-            if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
+            if (isKnown) {
+                updateEmulatorOptions(knownProperties);
+                _chipEmu->reset();
+                if (_chipEmu->loadData(binary, loadAddress)) {
+                    romImage.assign(binary.data(), binary.data() + binary.size());
+                    valid = true;
+                }
+            }
+            else if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
                 updateEmulatorOptions(extensionProps);
                 _chipEmu->reset();
                 if (_chipEmu->loadData(binary, loadAddress)) {
@@ -765,17 +783,19 @@ std::pair<Texture2D*, Rectangle> ThreadedBackgroundHost::updateTexture()
 void ThreadedBackgroundHost::vblank()
 {
     std::unique_lock guard(_mutex);
-    if (auto* pixel = static_cast<uint32_t*>(_screen->data)) {
-        if (const auto* screen = _chipEmu->getScreen()) {
-            screen->convert(pixel, _screen->width, 255, nullptr);
-        }
-        else {
-            if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
-                screenRgb->convert(pixel, _screen->width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+    if (_chipEmu && _screen) {
+        if (auto* pixel = static_cast<uint32_t*>(_screen->data)) {
+            if (const auto* screen = _chipEmu->getScreen()) {
+                screen->convert(pixel, _screen->width, 255, nullptr);
+            }
+            else {
+                if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
+                    screenRgb->convert(pixel, _screen->width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                }
             }
         }
+        _screen = _screen == &_screen1 ? &_screen2 : &_screen1;
     }
-    _screen = _screen == &_screen1 ? &_screen2 : &_screen1;
 }
 
 bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, const bool isKnown)

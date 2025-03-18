@@ -122,6 +122,15 @@ extern "C" {
 
 #include <editor.hpp>
 
+inline Color toRaylibColor(const emu::Palette::Color& col)
+{
+    return {col.r, col.g, col.b, col.a};
+}
+
+inline emu::Palette::Color toEmuColor(const Color& col)
+{
+    return {col.r, col.g, col.b, col.a};
+}
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
@@ -1624,11 +1633,11 @@ void main()
     {
         using namespace gui;
         StyleManager::Scope guard;
-        auto fg = guard.getStyle(Style::TEXT_COLOR_NORMAL);
-        auto bg = guard.getStyle(Style::BASE_COLOR_NORMAL);
+        auto fg = guard.getStyle(gui::Style::TEXT_COLOR_NORMAL);
+        auto bg = guard.getStyle(gui::Style::BASE_COLOR_NORMAL);
         if(isPressed) {
-            guard.setStyle(Style::BASE_COLOR_NORMAL, fg);
-            guard.setStyle(Style::TEXT_COLOR_NORMAL, bg);
+            guard.setStyle(gui::Style::BASE_COLOR_NORMAL, fg);
+            guard.setStyle(gui::Style::TEXT_COLOR_NORMAL, bg);
         }
         //guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
         gui::SetNextWidth(20);
@@ -1835,11 +1844,21 @@ void main()
                     _librarian.fetchDir(_currentDirectory);
 #endif
                 }
+                SetTooltip("OPEN PROGRAM");
 #ifndef PLATFORM_WEB
                 if (iconButton(ICON_NOTEBOOK, _mainView == eLIBRARY)) {
                     _mainView = eLIBRARY;
                 }
+                SetTooltip("OPEN LIBRARY");
 #endif
+                if (iconButton(ICON_FILE_SAVE_CLASSIC)) {
+                    _mainView = eROM_EXPORT;
+#ifndef PLATFORM_WEB
+                    _librarian.fetchDir(_currentDirectory);
+#endif
+                    menuOpen = false;
+                }
+                SetTooltip("SAVE PROGRAM");
                 SetNextWidth(130);
                 SetStyle(TEXTBOX, BORDER_WIDTH, 1);
                 TextBox(_romName, 4095);
@@ -1937,7 +1956,7 @@ void main()
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleMode != 1))
                     _scaleMode = _scaleMode >= 3 ? 1 : _scaleMode + 1;
-                SetTooltip("TOGGLE ZOOM    ");
+                SetTooltip("TOGGLE ZOOM");
             }
             EndColumns();
 
@@ -2003,6 +2022,9 @@ void main()
                     break;
                 }
                 case eSETTINGS: {
+                    static FileDialogInfo fdi{FileDialogInfo::SelectFolder, "Select Directory", fs::current_path().string()};
+                    static Vector2 scrollPos = {};
+                    static int activeEntry = -1;
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
@@ -2022,17 +2044,59 @@ void main()
                         }
                         if (BeginTab("Misc", {5, 0})) {
                             Space(3);
+                            SetSpacing(0);
                             Label("Config Directory:");
                             GuiDisable();
                             TextBox(_cfgPath, 4096);
                             GuiEnable();
+                            Space(4);
+                            BeginColumns();
+                            SetSpacing(0);
+                            SetNextWidth(GetContentAvailable().width - 20*5);
                             Label("CHIP-8 Library Directories:");
+                            SetNextWidth(-20);
+                            if (Button("+")) {
+                                selectorOpen = true;
+                                activeEntry = -1;
+                            }
+                            if (activeEntry < 0) GuiDisable();
+                            if (Button("-")) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size()) {
+                                    _cfg.libraryPath.erase(_cfg.libraryPath.begin() + activeEntry);
+                                    activeEntry = -1;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_PENCIL, ""))) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size()) {
+                                    fdi.path = _cfg.libraryPath[activeEntry];
+                                    selectorOpen = true;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_ARROW_UP, ""))) {
+                                if (activeEntry > 0) {
+                                    std::swap(_cfg.libraryPath[activeEntry], _cfg.libraryPath[activeEntry - 1]);
+                                    activeEntry--;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_ARROW_DOWN, ""))) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size() - 1) {
+                                    std::swap(_cfg.libraryPath[activeEntry], _cfg.libraryPath[activeEntry + 1]);
+                                    activeEntry++;
+                                }
+                            }
+                            GuiEnable();
+                            EndColumns();
+                            SimpleListView(15*5+4, _cfg.libraryPath, &scrollPos, &activeEntry);
+                            Space(4);
+                            /*
                             if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
                             }
+                            Space(4);
                             if (Button("File Dialog")) {
                                 selectorOpen = true;
                             }
+                            */
                             auto pos = GetCurrentPos();
                             Space(_screenHeight - pos.y - 20 - 1);
                             EndTab();
@@ -2041,10 +2105,17 @@ void main()
                     }
                     EndPanel();
                     End();
-                    static FileDialogInfo fdi{FileDialogInfo::OpenFile, "Select a File", "/home/schuemann"};
                     if (selectorOpen) {
                         if (ModalFileDialog(fdi, &selectorOpen)) {
                             selectorOpen = false;
+                            if (fdi.action == FileDialogInfo::CloseAction::Okay) {
+                                if (!fdi.path.empty()) {
+                                    if (activeEntry == -1 || activeEntry >= _cfg.libraryPath.size())
+                                        _cfg.libraryPath.push_back(fdi.path);
+                                    else
+                                        _cfg.libraryPath[activeEntry] = fdi.path;
+                                }
+                            }
                         }
                     }
                     break;
@@ -2108,10 +2179,10 @@ void main()
 
             if (_colorSelectOpen) {
                 _colorSelectOpen = !BeginWindowBox({-1, -1, 200, 250}, "Select Color", &_colorSelectOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
-                uint32_t prevCol = *_selectedColor;
-                *_selectedColor = ColorToInt(ColorPicker(GetColor(*_selectedColor)));
+                auto prevCol = *_selectedColor;
+                *_selectedColor = toEmuColor(ColorPicker(toRaylibColor(*_selectedColor)));
                 if (*_selectedColor != prevCol) {
-                    _colorText = fmt::format("{:06x}", *_selectedColor >> 8);
+                    _colorText = fmt::format("{:06x}", _selectedColor->toRGBInt());
                 }
                 Space(5);
                 BeginColumns();
@@ -2119,7 +2190,7 @@ void main()
                 Label("Color:");
                 SetNextWidth(60);
                 if (TextBox(_colorText, 7)) {
-                    *_selectedColor = (std::strtoul(_colorText.c_str(), nullptr, 16) << 8) + 255;
+                    *_selectedColor = emu::Palette::Color("#"+_colorText);
                 }
                 EndColumns();
                 Space(5);
@@ -2234,6 +2305,21 @@ void main()
         gui::Spinner(key.data(), &dummyInt, defaultValue, defaultValue);
         GuiEnable();
         return -1;
+    }
+
+    void renderColorField(Vector2 pos, emu::Palette::Color& color)
+    {
+        using namespace gui;
+        bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x, pos.y, 16, 16});
+        DrawRectangle(pos.x, pos.y, 16, 16, StyleManager::getStyleColor(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL));
+        DrawRectangle(pos.x + 1, pos.y + 1 , 14, 14, StyleManager::getStyleColor(Style::BACKGROUND_COLOR));
+        DrawRectangle(pos.x + 2, pos.y + 2 , 12, 12, toRaylibColor(color));
+        if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
+            _selectedColor = &color;
+            _previousColor = color;
+            _colorText = fmt::format("{:06x}", color.toRGBInt());
+            _colorSelectOpen = true;
+        }
     }
 
     void renderEmulationSettings()
@@ -2407,36 +2493,31 @@ void main()
         EndColumns();
         EndGroupBox();
 
-        Space(14);
+        float xOffset = 65.0f; //_colorPalette.numBackgroundColors > 1 ? 68.0f : 52.0f;
+        Space(5);
+        BeginGroupBox("Palette");
         {
+            Space(4);
             StyleManager::Scope guard;
             BeginColumns();
             auto pos = GetCurrentPos();
             pos.x = std::ceil(pos.x);
             pos.y = std::ceil(pos.y);
-            SetNextWidth(52.0f + 16*18);
-            Label("Colors:");
-#if 0 // TODO: fix this
-            for (int i = 0; i < 16; ++i) {
-                bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + 52 + i * 18, pos.y, 16, 16});
-                DrawRectangle(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
-                DrawRectangle(pos.x + 52 + i * 18 + 1, pos.y + 1 , 14, 14, GetColor(guard.getStyle(Style::BACKGROUND_COLOR)));
-                DrawRectangle(pos.x + 52 + i * 18 + 2, pos.y + 2 , 12, 12, GetColor(_colorPalette[i]));
-                if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
-                    _selectedColor = &_colorPalette[i];
-                    _previousColor = _colorPalette[i];
-                    _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
-                    _colorSelectOpen = true;
-                }
+            SetNextWidth(xOffset + 16*18);
+            Label("    Colors");
+//#if 0 // TODO: fix this
+            for (int i = 0; i < _colorPalette.colors.size(); ++i) {
+                renderColorField({pos.x + xOffset + i*18, pos.y}, _colorPalette.colors[i]);
             }
-            static std::vector<uint32_t> prevPalette(_colorPalette.begin(), _colorPalette.end());
-            if(std::memcmp(prevPalette.data(), _colorPalette.data(), 16*sizeof(uint32_t)) != 0) {
-                setPalette({_colorPalette.begin(), _colorPalette.end()});
-                prevPalette.assign(_colorPalette.begin(), _colorPalette.end());
+            static std::vector<emu::Palette::Color> prevPalette(_colorPalette.colors.begin(), _colorPalette.colors.end());
+            if(prevPalette != _colorPalette.colors) {
+                setPalette(_colorPalette);
+                prevPalette =_colorPalette.colors;
             }
-#endif
-            static int sel = 5;
-            if(DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;Custom", &sel, true)) {
+//#endif
+            static constexpr int customSel = 8;
+            static int sel = customSel;
+            if(_colorPalette.numBackgroundColors <= 1 && DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;C64;Intellivision;CGA;Custom", &sel, true)) {
                 switch(sel) {
                     case 0:
                         setPalette({
@@ -2444,9 +2525,8 @@ void main()
                             0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff,
                             0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff,
                             0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     case 1:
                         setPalette({
@@ -2454,9 +2534,8 @@ void main()
                             0xff0000ff, 0x00ff00ff, 0x0000ffff, 0xffff00ff,
                             0x880000ff, 0x008800ff, 0x000088ff, 0x888800ff,
                             0xff00ffff, 0x00ffffff, 0x880088ff, 0x008888ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     case 2:
                         setPalette({
@@ -2464,9 +2543,8 @@ void main()
                             0xef7d57ff, 0x00e436ff, 0x29adffff, 0xffec27ff,
                             0xab5236ff, 0x008751ff, 0x1d2b53ff, 0xffa300ff,
                             0xff77a8ff, 0xffccaaff, 0x7e2553ff, 0x83769cff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     case 3:
                         setPalette({
@@ -2474,9 +2552,8 @@ void main()
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     case 4:
                         setPalette({
@@ -2484,9 +2561,35 @@ void main()
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 5:
+                        setPalette({
+                            0x000000ff, 0xffffffff, 0xadadadff, 0x626262ff,
+                            0xa1683cff, 0x9ae29bff, 0x887ecbff, 0xc9d487ff,
+                            0x9f4e44ff, 0x5cab5eff, 0x50459bff, 0x6d5412ff,
+                            0xcb7e75ff, 0x6abfc6ff, 0xa057a3ff, 0x898989ff
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 6:
+                        setPalette({
+                            0x0c0005ff, 0xfffcffff, 0xa7a8a8ff, 0x3c5800ff,
+                            0xff3e00ff, 0x6ccd30ff, 0x002dffff, 0xfaea27ff,
+                            0xffa600ff, 0x00a720ff, 0xbd95ffff, 0xc9d464ff,
+                            0xff3276ff, 0x5acbffff, 0xc81a7dff, 0x00780fff
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 7:
+                        setPalette({
+                            0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
+                            0xff5555ff, 0x55ff55ff, 0x5555ffff, 0xffff55ff,
+                            0xaa0000ff, 0x00aa00ff, 0x0000aaff, 0xaa5500ff,
+                            0xff55ffff, 0x55ffffff, 0xaa00aaff, 0x00aaaaff
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     default:
                         break;
@@ -2515,9 +2618,41 @@ void main()
             }
             EndColumns();
         }
+        if (_colorPalette.numBackgroundColors > 1) {
+            Space(2);
+            StyleManager::Scope guard;
+            BeginColumns();
+            auto pos = GetCurrentPos();
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
+            //SetNextWidth(52.0f + 16*18);
+            Label("Background");
+            //#if 0 // TODO: fix this
+            for (int i = 0; i < _colorPalette.backgroundColors.size(); ++i) {
+                renderColorField({pos.x + xOffset + i * 18, pos.y}, _colorPalette.backgroundColors[i]);
+            }
+            EndColumns();
+        }
+        {
+            Space(2);
+            StyleManager::Scope guard;
+            BeginColumns();
+            SetSpacing(0);
+            auto pos = GetCurrentPos();
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
+            SetNextWidth(xOffset + 18*2 + 2);
+            Label("    Border");
+            renderColorField({pos.x + xOffset, pos.y}, _colorPalette.borderColor ? _colorPalette.borderColor.value() : _colorPalette.colors[0]);
+            renderColorField({pos.x + xOffset + 18, pos.y}, _colorPalette.signalColor ? _colorPalette.signalColor.value() : _colorPalette.colors[1]);
+            Label("Signal");
+            EndColumns();
+        }
+        Space(4);
+        EndGroupBox();
         Space(8);
         BeginColumns();
-        Space(100);
+        Space(150);
         SetNextWidth(0.21f);
         bool romRemembered = _cfg.romConfigs.contains(_romSha1);
         if((romRemembered && *_properties == _cfg.romConfigs[_romSha1]) || (_romIsWellKnown && *_properties == _romWellKnownProperties)) {
@@ -2582,14 +2717,11 @@ void main()
                     case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
                     default: icon = ICON_FILE_DELETE; break;
                 }
-                auto oldFG = gui::GetStyle(LABEL, TEXT_COLOR_NORMAL);
                 {
                     StyleManager::Scope guard;
                     if (info.type == Librarian::Info::eROM_FILE)
                         guard.setStyle(Style::TEXT_COLOR_NORMAL, info.isKnown ? GREEN : YELLOW);
-                    //    gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, info.isKnown ? ColorToInt(GREEN) : ColorToInt(YELLOW));
                     Label(GuiIconText(icon, ""));
-                    //gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, oldFG);
                 }
             }
             if(TableNextColumn(.66f)) {
@@ -2630,7 +2762,7 @@ void main()
 #endif
         Space(1);
         BeginColumns();
-        SetNextWidth(25);
+        SetNextWidth(36);
         Label("File:");
         TextBox(_currentFileName, 4096);
         EndColumns();
@@ -2638,12 +2770,12 @@ void main()
         switch(mode) {
             case eLOAD: {
                 auto infoPos = GetCurrentPos();
-                Label(fmt::format("SHA1:  {}", selectedInfo.analyzed ? selectedInfo.sha1sum.to_hex() : "").c_str());
+                Label(fmt::format("SHA1:    {}", selectedInfo.analyzed ? selectedInfo.sha1sum.to_hex() : "").c_str());
                 if(!selectedInfo.analyzed || selectedInfo.isKnown) {
-                    Label(fmt::format("Type:  {}", selectedInfo.analyzed ?selectedInfo.variant : "").c_str());
+                    Label(fmt::format("Type:    {}", selectedInfo.analyzed ?selectedInfo.variant : "").c_str());
                 }
                 else {
-                    Label(fmt::format("Type:  {} (estimated)", selectedInfo.minimumOpcodeProfile()).c_str());
+                    Label(fmt::format("Type:    {} (estimated)", selectedInfo.minimumOpcodeProfile()).c_str());
                 }
                 if(selectedInfo.analyzed) {
                     if(_screenShotSha1 != selectedInfo.sha1sum) {
@@ -2689,7 +2821,7 @@ void main()
             case eWEB_SAVE:
             case eSAVE: {
                 BeginColumns();
-                SetNextWidth(100);
+                SetNextWidth(110);
                 Label("Select file type:");
                 static int activeType = 0;
                 SetNextWidth(70);
@@ -2817,7 +2949,7 @@ void main()
             // opt.advanced["palette"] = pal;
             _cfg.emuProperties = *_properties;
             _cfg.workingDirectory = _currentDirectory;
-            _cfg.libraryPath = _databaseDirectory;
+            //_cfg.libraryPath = _databaseDirectory;
             _cfg.windowPosX = GetWindowPosition().x;
             _cfg.windowPosY = GetWindowPosition().y;
             _cfg.scaleMode = _scaleMode;
@@ -2845,6 +2977,15 @@ void main()
         reloadRom();
         updateBehaviorSelects();
         resetStats();
+        if (_properties->palette().empty() || _properties->palette().size() != _chipEmu->getMaxColors()) {
+            _colorPalette = _defaultPalette;
+            _colorPalette.colors.resize(_chipEmu->getMaxColors());
+            _properties->palette() = _colorPalette;
+            _chipEmu->setPalette(_colorPalette);
+        }
+        else {
+            _colorPalette = _properties->palette();
+        }
     }
 
     void resetStats()
@@ -2940,9 +3081,9 @@ private:
     int _frameBoost{1};
     std::atomic_uint _audioCallbackAvgFrames{};
     bool _colorSelectOpen{false};
-    uint32_t* _selectedColor{nullptr};
+    emu::Palette::Color* _selectedColor{nullptr};
     std::string _colorText;
-    uint32_t _previousColor{};
+    emu::Palette::Color _previousColor{};
     Rectangle _screenOverlay{};
     int _currentMonitor{0};
     int _screenScale{1};
@@ -3554,7 +3695,13 @@ int main(int argc, char* argv[])
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
     cli.option({"--extended-display-wait"}, options.optExtendedVBlank, "If true, Dxyn might even wait 2 screens depending on size and position");
 #endif
-    auto extensions = join(reg.getSupportedExtensions().begin(), reg.getSupportedExtensions().end(), ", ");
+    static auto supportedExtensions = reg.getSupportedExtensions();
+    auto extensions = join(supportedExtensions.begin(), supportedExtensions.end(), ", ");
+    auto icons = gui::GetDefaultFileIcons();
+    for (const auto& extension : supportedExtensions) {
+        icons[std::string_view(extension).substr(1)] = ICON_ROM;
+    }
+    gui::SetDefaultFileIcons(icons);
     cli.positional(romFile, fmt::format("ROM file or source to load ({})", extensions));
 
     CadmiumConfiguration config;

@@ -194,6 +194,7 @@ public:
                 _valueList = other._valueList;
                 _valueMap = other._valueMap;
             }
+            _palette = other._palette;
         }
         return *this;
     }

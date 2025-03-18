@@ -135,7 +135,7 @@ public:
     std::string asString() const;
 
     static Time fromSeconds(double seconds) { return Time(seconds); }
-    static Time fromMicroseconds(uint64_t microseconds) { return Time(microseconds/1000000, (microseconds%1000000) * (ticksPerSecond/1000000)); }
+    static Time fromMicroseconds(uint64_t microseconds) { return Time(microseconds / 1000000, (microseconds % 1000000) * (ticksPerSecond / 1000000)); }
 
     static Time fromCycles(cycles_t cycles, uint32_t frequency)
     {
@@ -206,20 +206,14 @@ public:
     using ticks_t = Time::ticks_t;
 
     ClockedTime() = delete;
-    explicit ClockedTime(uint32_t frequency) : _clockFreq(frequency) {}
+    explicit ClockedTime(uint32_t frequency)
+        : _clockFreq(frequency)
+    {
+    }
     void setFrequency(uint32_t frequency) { _clockFreq = frequency; }
-    inline void addCycles(cycles_t cycles)
-    {
-        _time.addCycles(cycles, _clockFreq);
-    }
-    inline cycles_t asClockTicks() const
-    {
-        return _time.asClockTicks(_clockFreq);
-    }
-    uint32_t getClockFreq() const
-    {
-        return _clockFreq;
-    }
+    inline void addCycles(cycles_t cycles) { _time.addCycles(cycles, _clockFreq); }
+    inline cycles_t asClockTicks() const { return _time.asClockTicks(_clockFreq); }
+    uint32_t getClockFreq() const { return _clockFreq; }
 
     inline bool isZero() const { return _time.isZero(); }
     inline bool isNever() const { return _time.isNever(); }
@@ -253,10 +247,7 @@ public:
 
     std::string asString() const { return _time.asString(); }
 
-    int64_t difference(const ClockedTime& other) const
-    {
-        return _time.differenceInClockTicks(other._time, _clockFreq);
-    }
+    int64_t difference(const ClockedTime& other) const { return _time.differenceInClockTicks(other._time, _clockFreq); }
     int64_t difference_us(const ClockedTime& other) const
     {
         auto cycleDiff = difference(other);
@@ -267,16 +258,15 @@ public:
         auto t = difference_us(endTime) - targetDuration;
         return t > 0 ? t : 0;
     }
-    void reset()
-    {
-        _time = Time::zero;
-    }
+    void reset() { _time = Time::zero; }
+
 private:
     uint32_t _clockFreq{};
     Time _time{};
 };
 
-class TimeGuard {
+class TimeGuard
+{
 public:
     TimeGuard(const ClockedTime& clockedTime, int64_t targetDuration_us)
         : _clockedTime(clockedTime)
@@ -284,19 +274,110 @@ public:
         , _targetDuration_us(targetDuration_us)
     {
     }
-    inline int64_t diffTime() const
-    {
-        return _startTime.difference_us(_clockedTime)/ (Time::ticksPerSecond/1000000) - _targetDuration_us;
-    }
+    inline int64_t diffTime() const { return _startTime.difference_us(_clockedTime) / (Time::ticksPerSecond / 1000000) - _targetDuration_us; }
     inline int64_t excessTime() const
     {
         auto t = diffTime();
         return t > 0 ? t : 0;
     }
+
 private:
     const ClockedTime& _clockedTime;
     ClockedTime _startTime;
     int64_t _targetDuration_us;
+};
+
+/// A new take on a time class für my emulation projects, less absurd in its value range, but hopefully more lightweight.
+///
+/// The time is represented as a number of clock cycles, the range is good for >100 years even with 1GHz frequency.
+/// The clock frequency in Hz is stored in the class, so that the time can be converted to different units.
+///
+/// @note { The class is not thread safe. }
+class CycleTime
+{
+    static constexpr uint64_t safeConvertCycles(uint64_t cycles, uint64_t fromFrequency, uint64_t toFrequency) noexcept { return (cycles / fromFrequency) * toFrequency + ((cycles % fromFrequency) * toFrequency) / fromFrequency; }
+
+    template <typename Rep, typename Period>
+    static constexpr uint64_t safeDurationToCycles(Rep count, uint64_t frequency) noexcept
+    {
+        constexpr auto num = Period::num;
+        constexpr auto den = Period::den;
+        return (count / den) * (frequency * num) + ((count % den) * (frequency * num)) / den;
+    }
+
+public:
+    constexpr CycleTime()
+        : _cycles(0)
+        , _frequency(1)
+    {
+    }
+    constexpr CycleTime(uint64_t cycles, uint64_t frequency)
+        : _cycles(cycles)
+        , _frequency(frequency)
+    {
+    }
+    template <typename Duration>
+    constexpr CycleTime(const Duration& d, uint64_t frequency)
+        : _frequency(frequency)
+    {
+        if constexpr (std::is_integral_v<typename Duration::rep>) {
+            _cycles = safeDurationToCycles<typename Duration::rep, typename Duration::period>(d.count(), frequency);
+        }
+        else {
+            _cycles = static_cast<uint64_t>((static_cast<double>(d.count()) * Duration::period::num / Duration::period::den) * frequency);
+        }
+    }
+
+    [[nodiscard]] constexpr double asSeconds() const noexcept { return static_cast<double>(_cycles) / static_cast<double>(_frequency); }
+    [[nodiscard]] constexpr std::pair<uint64_t, uint64_t> asIntervals(uint64_t intervalCycles) const noexcept { return {_cycles / intervalCycles, _cycles % intervalCycles}; }
+    template <typename Ratio = std::ratio<1>>
+    [[nodiscard]] constexpr std::chrono::duration<uint64_t, Ratio> asDuration() const noexcept
+    {
+        uint64_t count = safeConvertCycles(_cycles, _frequency * Ratio::num, Ratio::den);
+        return std::chrono::duration<uint64_t, Ratio>(count);
+    }
+
+    constexpr void addCycles(uint64_t cycles) noexcept { _cycles += cycles; }
+    constexpr CycleTime& operator+=(int cycles) noexcept { _cycles += cycles; return *this; }
+    CycleTime& operator+=(const CycleTime& other) noexcept
+    {
+        if (_frequency == other._frequency) {
+            _cycles += other._cycles;
+        }
+        else {
+            _cycles += safeConvertCycles(other._cycles, other._frequency, _frequency);
+        }
+        return *this;
+    }
+
+    constexpr std::strong_ordering operator<=>(const CycleTime& other) const noexcept
+    {
+        if (_frequency == other._frequency)
+            return _cycles <=> other._cycles;
+        uint64_t otherConverted = safeConvertCycles(other._cycles, other._frequency, _frequency);
+        return _cycles <=> otherConverted;
+    }
+
+    [[nodiscard]] int64_t differenceInClockCycles(const CycleTime& other, const std::optional<uint64_t>& freqOpt = std::nullopt) const noexcept
+    {
+        uint64_t targetFrequency = freqOpt.value_or(_frequency);
+        uint64_t thisCycles = (_frequency == targetFrequency) ? _cycles : safeConvertCycles(_cycles, _frequency, targetFrequency);
+        uint64_t otherCycles = (other._frequency == targetFrequency) ? other._cycles : safeConvertCycles(other._cycles, other._frequency, targetFrequency);
+        return static_cast<int64_t>(thisCycles) - static_cast<int64_t>(otherCycles);
+    }
+
+    [[nodiscard]] constexpr CycleTime convert(uint64_t newFrequency) const noexcept
+    {
+        uint64_t newCycles = (_frequency == newFrequency) ? _cycles : safeConvertCycles(_cycles, _frequency, newFrequency);
+        return {newCycles, newFrequency};
+    }
+
+    [[nodiscard]] constexpr uint64_t getCycles() const noexcept { return _cycles; }
+    [[nodiscard]] constexpr uint64_t getFrequency() const noexcept { return _frequency; }
+
+private:
+    uint64_t _cycles;
+    uint64_t _frequency;
 };
 
 }  // namespace emu

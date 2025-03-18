@@ -495,6 +495,17 @@ void Chip8GenericEmulator::setPalette(const Palette& palette)
     _screen.setPalette(palette);
 }
 
+int Chip8GenericEmulator::getMaxColors() const
+{
+    switch (_options.behaviorBase) {
+        case Chip8GenericOptions::eCHIP8X: return 8;
+        case Chip8GenericOptions::eMEGACHIP: return 256;
+        case Chip8GenericOptions::eXOCHIP: return 16;
+        default:
+            return 2;
+    }
+}
+
 uint32_t Chip8GenericEmulator::defaultLoadAddress() const
 {
     return _options.startAddress;
