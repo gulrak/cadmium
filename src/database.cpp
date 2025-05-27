@@ -625,8 +625,8 @@ bool Database::fetchC8PDB()
 {
 #ifndef _WIN32
     httplib::Client cli("https://raw.githubusercontent.com");
-    cli.enable_server_certificate_verification(false);
-    cli.enable_server_hostname_verification(false);
+    //cli.enable_server_certificate_verification(false);
+    //cli.enable_server_hostname_verification(false);
     auto res = cli.Get("/chip-8/chip-8-database/refs/heads/master/database/programs.json");
     res->status;
     res->body;

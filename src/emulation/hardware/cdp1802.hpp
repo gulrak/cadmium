@@ -57,6 +57,7 @@ public:
     virtual uint8_t readByte(uint16_t addr) const = 0;
     virtual uint8_t readByteDMA(uint16_t addr) const = 0;
     virtual void writeByte(uint16_t addr, uint8_t val) = 0;
+    virtual void passiveCycle() {}
 };
 
 struct Cdp1802State
@@ -72,6 +73,14 @@ struct Cdp1802State
     bool ie{};
     bool q{};
     int64_t cycles{};
+    bool operator==(const Cdp1802State& state) const = default;
+
+    std::string toString() const
+    {
+        return fmt::format(
+            "R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} D:{:02x} DF:{} IE:{} Q:{} cycles:{}",
+            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15], p, x, n, i, t, d, df ? 1 : 0, ie ? 1 : 0, q ? 1 : 0, cycles);
+    }
 };
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
@@ -176,6 +185,7 @@ public:
             PC() = (PC() & 0xFF00) | readByte(PC());
         }
         else {
+            readByte(PC());
             ++PC();
         }
     }
@@ -195,15 +205,21 @@ public:
     void branchLong(bool condition)
     {
         if(condition) {
-            PC() = (readByte(PC()) << 8) | readByte(PC()+1);
+            auto hi = readByte(PC());
+            auto lo = readByte(PC()+1);
+            PC() = (hi << 8) | lo;
         }
         else {
+            readByte(PC());
+            readByte(PC()+1);
             PC() += 2;
         }
         addCycles(8);
     }
     void skipLong(bool condition)
     {
+        readByte(PC());
+        readByte(PC()+1);
         if(condition) {
             PC() += 2;
         }
@@ -229,9 +245,9 @@ public:
         auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
         if(bytes) *bytes = size;
         switch(size) {
-           case 2:  return fmt::format("{:04x}: {:02x} {:02x}  {}", addr, data[0], data[1], text);
+           case 2:  return fmt::format("{:04x}: {:02x} {:02x}     {}", addr, data[0], data[1], text);
            case 3:  return fmt::format("{:04x}: {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
-           default: return fmt::format("{:04x}: {:02x}     {}", addr, data[0], text);
+           default: return fmt::format("{:04x}: {:02x}        {}", addr, data[0], text);
         }
     }
 
@@ -387,6 +403,7 @@ public:
         }
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
+        _rI = opcode >> 4;
         _rN = opcode & 0xF;
         switch (opcode) {
             case 0x00: // IDL ; WAIT FOR DMA OR INTERRUPT; M(R(0)) → BUS
@@ -426,7 +443,8 @@ public:
                 branchShort(_inputNEF(3));
                 break;
             case 0x38: // SKP
-                PC()++;
+                readByte(PC());
+                ++PC();
                 break;
             case 0x39: // BNQ
                 branchShort(!_rQ);
@@ -456,7 +474,7 @@ public:
                 writeByte(RN(), _rD);
                 break;
             case 0x60: // IRX ; R(X) + 1 → R(X)
-                RX()++;
+                readByte(RX()++);
                 break;
             CASE_7(0x61): { // OUT 1/7 ; M(R(X)) → BUS; R(X) + 1 → R(X); N LINES = N
                 _output(_rN, readByte(RX()++));
@@ -576,7 +594,7 @@ public:
                 branchLong(_rDF);
                 break;
             case 0xC4: // NOP ; CONTINUE
-                addCycles(8);
+                skipLong(false);
                 break;
             case 0xC5: // LSNQ ; IF Q = 0, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(!_rQ);

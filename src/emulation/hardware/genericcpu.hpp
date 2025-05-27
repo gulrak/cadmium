@@ -36,7 +36,7 @@
 
 #include <emulation/time.hpp>
 #include <emulation/expressionist.hpp>
-#include <emulation//logger.hpp>
+#include <emulation/logger.hpp>
 
 namespace emu
 {

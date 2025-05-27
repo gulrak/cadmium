@@ -48,16 +48,18 @@ public:
 struct FuzzerMemory
 {
     enum CompareType { eMEMONLY, eWRITECYCLES, eALLCYCLES};
-    enum AccessType { eNONE, eREAD, eWRITE, eADDITIONAL_READ, eADDITIONAL_WRITE };
+    enum AccessType { eNONE, eNONE_PASSIVE, eREAD, eWRITE, eADDITIONAL_READ, eADDITIONAL_WRITE };
     struct MemEntry {
         uint16_t addr;
         uint8_t data;
     };
     using MemEntries = std::vector<MemEntry>;
-    struct BusCycle {
+    struct BusCycle
+    {
         uint16_t addr;
         uint8_t data;
         AccessType type;
+        bool operator==(const BusCycle& other) const = default;//{ return addr == other.addr && data == other.data && type == other.type; }
     };
     using BusCycles = std::vector<BusCycle>;
     FuzzerMemory(uint8_t opcode)
@@ -121,6 +123,10 @@ struct FuzzerMemory
     void passiveRead(uint16_t addr)
     {
         cycles.push_back({addr, 0, eNONE});
+    }
+    void passiveCycle(uint16_t addr)
+    {
+        cycles.push_back({addr, 0, eNONE_PASSIVE});
     }
     void writeByte(uint16_t addr, uint8_t val)
     {
@@ -222,6 +228,8 @@ inline void from_json(const json& j, FuzzerMemory::MemEntry& entry) {
 inline void to_json(json& j, const FuzzerMemory::BusCycle& entry) {
     if(entry.type == FuzzerMemory::eNONE)
         j = json::array({"n", entry.addr});
+    else if (entry.type == FuzzerMemory::eNONE_PASSIVE)
+        j = json::array({"n"});
     else
         j = json::array({entry.type == FuzzerMemory::eREAD || entry.type == FuzzerMemory::eADDITIONAL_READ ? "r" : "w", entry.addr, entry.data});
 }
@@ -229,14 +237,24 @@ inline void to_json(json& j, const FuzzerMemory::BusCycle& entry) {
 inline void from_json(const json& j, FuzzerMemory::BusCycle& entry) {
     std::string type;
     j.at(0).get_to(type);
-    j.at(1).get_to(entry.addr);
     if(type != "n") {
+        j.at(1).get_to(entry.addr);
         j.at(2).get_to(entry.data);
         entry.type = (type == "r" ? FuzzerMemory::eREAD : FuzzerMemory::eWRITE);
     }
     else {
+        entry.addr = 0;
         entry.data = 0;
-        entry.type = FuzzerMemory::eNONE;
+        if (j.size() > 1) {
+            j.at(1).get_to(entry.addr);
+            if (j.size() > 2) {
+                j.at(2).get_to(entry.data);
+            }
+            entry.type = FuzzerMemory::eNONE;
+        }
+        else {
+            entry.type = FuzzerMemory::eNONE_PASSIVE;
+        }
     }
 }
 
