@@ -40,7 +40,7 @@ class Cdp186x
 {
 public:
     enum Type { eCDP1861, eVP590, eCDP1861_C10, eCDP1861_62, eCDP1864 };
-    enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES};
+    enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES };
     using VideoType = VideoScreen<uint8_t, 256, 192>; // size for easier inter-operability with other CHIP-8 implementations, it just uses 64x128
     Cdp186x(Type type, Cdp1802& cpu, bool traceLog);
     void reset();

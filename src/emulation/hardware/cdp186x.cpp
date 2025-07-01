@@ -113,7 +113,7 @@ std::pair<int, bool> Cdp186x::executeStep()
         return {_frameCycle, vsync};
     if (_frameCycle < VIDEO_FIRST_VISIBLE_LINE * 14 && _frameCycle >= (VIDEO_FIRST_VISIBLE_LINE - 2) * 14 + 2 && _cpu.getIE()) {
         _displayEnabledLatch = _displayEnabled;
-        if (_displayEnabled) {
+        if (_displayEnabledLatch) {
             if (_traceLog)
                 Logger::log(Logger::eBACKEND_EMU, _cpu.cycles(), {_frameCounter, _frameCycle}, fmt::format("{:24} ; {}", "--- IRQ ---", _cpu.dumpStateLine()).c_str());
             _cpu.triggerInterrupt();
