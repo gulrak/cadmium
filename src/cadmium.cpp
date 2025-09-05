@@ -552,23 +552,8 @@ void CenterWindow(int width, int height)
 void LogHandler(int msgType, const char *text, va_list args)
 {
     static char buffer[4096];
-#ifndef PLATFORM_WEB
-    static std::ofstream ofs((fs::path(dataPath())/"logfile.txt").string().c_str());
-    ofs << date::format("[%FT%TZ]", std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
-    switch (msgType)
-    {
-        case LOG_INFO: ofs << "[INFO] : "; break;
-        case LOG_ERROR: ofs << "[ERROR]: "; break;
-        case LOG_WARNING: ofs << "[WARN] : "; break;
-        case LOG_DEBUG: ofs << "[DEBUG]: "; break;
-        default: break;
-    }
-#endif
     vsnprintf(buffer, 4095, text, args);
-#ifndef PLATFORM_WEB
-    ofs << buffer << std::endl;
-#endif
-    emu::Logger::log(emu::Logger::eHOST, 0, {0,0}, buffer);
+    emu::Logger::log((emu::LogLevel)msgType, buffer);
 }
 
 std::atomic_uint8_t g_soundTimer{0};
@@ -2255,7 +2240,7 @@ void main()
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
         }
         //gui::SetNextWidth(150);
-        if (prop.access() != emu::eWritable)
+        if (prop.hasFlags(emu::PropertyFlags::eWritable))
             GuiDisable();
         const auto rc = std::visit(emu::visitor{
                                 [](std::nullptr_t) -> int { gui::Label(""); return 0; },
@@ -2274,7 +2259,7 @@ void main()
                                     return val.index;
                                 }},
                    prop.getValue());
-        if (prop.access() != emu::eWritable)
+        if (prop.hasFlags(emu::PropertyFlags::eWritable))
             GuiEnable();
         if(pa == PA_RIGHT) {
             gui::EndColumns();
@@ -2347,7 +2332,12 @@ void main()
             props = *_properties;
         }
         if(_properties->containsFuzzy("Trace-log")) {
+            BeginColumns();
+            SetSpacing(4);
+            SetNextWidth(90);
             editProperty(_properties->at("Trace-log"), forceUpdate, PA_LEFT);
+            Button("File ...");
+            EndColumns();
         }
         else {
             static bool dummyTrace = false;
@@ -2378,76 +2368,6 @@ void main()
         EndColumns();
         Space(5);
         const int quirksHeight = 181;
-#if 0
-        if(_chipEmu->isGenericEmulation() && _options.behaviorBase != emu::Chip8EmulatorOptions::eCHIP8TE) {
-            BeginGroupBox("Quirks");
-            auto startY = GetCurrentPos().y;
-            Space(5);
-            BeginColumns();
-            SetNextWidth(GetContentAvailable().width/2);
-            Begin();
-            _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
-            _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
-            bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
-            bool newInc = CheckBox("Fx55/Fx65 increment I by X + 1", oldInc);
-            if(newInc != oldInc) {
-                _options.optLoadStoreIncIByX = !newInc;
-                _options.optLoadStoreDontIncI = false;
-            }
-            oldInc = _options.optLoadStoreIncIByX;
-            _options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", _options.optLoadStoreIncIByX);
-            if(_options.optLoadStoreIncIByX != oldInc) {
-                _options.optLoadStoreDontIncI = false;
-            }
-            oldInc = _options.optLoadStoreDontIncI;
-            _options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", _options.optLoadStoreDontIncI);
-            if(_options.optLoadStoreDontIncI != oldInc) {
-                _options.optLoadStoreIncIByX = false;
-            }
-            _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
-            _options.optCyclicStack = CheckBox("Cyclic stack", _options.optCyclicStack);
-            _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
-            _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
-            _options.optHas16BitAddr = CheckBox("Has 16 bit addresses", _options.optHas16BitAddr);
-            End();
-            Begin();
-            _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
-            _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
-            bool oldLoresWidth = _options.optLoresDxy0Is8x16;
-            _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
-            if(!oldLoresWidth && _options.optLoresDxy0Is8x16)
-                _options.optLoresDxy0Is16x16 = false;
-            oldLoresWidth = _options.optLoresDxy0Is16x16;
-            _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
-            if(!oldLoresWidth && _options.optLoresDxy0Is16x16)
-                _options.optLoresDxy0Is8x16 = false;
-            bool oldVal = _options.optSC11Collision;
-            _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
-            if(!oldVal && _options.optSC11Collision) {
-                _options.optAllowHires = true;
-            }
-            _options.optSCLoresDrawing = CheckBox("HP SuperChip lores drawing", _options.optSCLoresDrawing);
-            _options.optHalfPixelScroll = CheckBox("Half pixel scrolling", _options.optHalfPixelScroll);
-            bool oldAllowHires = _options.optAllowHires;
-            _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
-            if(!_options.optAllowHires && oldAllowHires) {
-                _options.optOnlyHires = false;
-                _options.optSC11Collision = false;
-            }
-            bool oldOnlyHires = _options.optOnlyHires;
-            _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
-            if(_options.optOnlyHires && !oldOnlyHires)
-                _options.optAllowHires = true;
-            _options.optModeChangeClear = CheckBox("Mode change clear", _options.optModeChangeClear);
-            End();
-            EndColumns();
-            auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used - 2);
-            EndGroupBox();
-            Space(4);
-        }
-        //else if(!_chipEmu->isGenericEmulation()) {
-#endif
         BeginGroupBox("System Configuration");
         auto startY = GetCurrentPos().y;
         auto colWidth1 = GetContentAvailable().width / 2 - 1;
@@ -2469,7 +2389,7 @@ void main()
                 Begin();
                 SetSpacing(2);
             }
-            else if(prop.access() != emu::eInvisible && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+            else if(prop.hasFlags(emu::PropertyFlags::eInvisible) && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
                 if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
                     editProperty(prop, forceUpdate, PA_LEFT);
                 }
@@ -2519,7 +2439,7 @@ void main()
             static int sel = customSel;
             if(_colorPalette.numBackgroundColors <= 1 && DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;C64;Intellivision;CGA;Custom", &sel, true)) {
                 switch(sel) {
-                    case 0:
+                    case 0: // Cadmium
                         setPalette({
                             0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff,
                             0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff,
@@ -2528,7 +2448,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 1:
+                    case 1: // Silicon-8
                         setPalette({
                             0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
                             0xff0000ff, 0x00ff00ff, 0x0000ffff, 0xffff00ff,
@@ -2537,7 +2457,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 2:
+                    case 2: // Pico-8
                         setPalette({
                             0x000000ff, 0xfff1e8ff, 0xc2c3c7ff, 0x5f574fff,
                             0xef7d57ff, 0x00e436ff, 0x29adffff, 0xffec27ff,
@@ -2546,7 +2466,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 3:
+                    case 3: // Octo Classic
                         setPalette({
                             0x996600ff, 0xFFCC00ff, 0xFF6600ff, 0x662200ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
@@ -2555,7 +2475,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 4:
+                    case 4: // LCD
                         setPalette({
                             0xf2fff2ff, 0x5b8c7cff, 0xadd9bcff, 0x0d1a1aff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
@@ -2564,7 +2484,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 5:
+                    case 5: // C64
                         setPalette({
                             0x000000ff, 0xffffffff, 0xadadadff, 0x626262ff,
                             0xa1683cff, 0x9ae29bff, 0x887ecbff, 0xc9d487ff,
@@ -2573,7 +2493,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 6:
+                    case 6: // Intellivision
                         setPalette({
                             0x0c0005ff, 0xfffcffff, 0xa7a8a8ff, 0x3c5800ff,
                             0xff3e00ff, 0x6ccd30ff, 0x002dffff, 0xfaea27ff,
@@ -2582,7 +2502,7 @@ void main()
                         }, 0, true);
                         sel = customSel;
                         break;
-                    case 7:
+                    case 7: // CGA
                         setPalette({
                             0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
                             0xff5555ff, 0x55ff55ff, 0x5555ffff, 0xffff55ff,
@@ -3114,10 +3034,16 @@ private:
 #ifndef PLATFORM_WEB
 std::string dumOctoStateLine(octo_emulator* octo)
 {
+    if (emu::Logger::getTraceFormat() == emu::Logger::TraceFormat::eCADMIUM2) [[likely]] {
+        return fmt::format("{:04x}:{:04x} V=[{:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}] I={:04x} SP={:1x}", octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1],
+            octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7],
+            octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
+            octo->i, octo->rp);
+    }
     return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}",
-    octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7], 
-    octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
-    octo->i, octo->rp, octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1]);
+        octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7],
+        octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
+        octo->i, octo->rp, octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1]);
 }
 #endif
 
@@ -3628,7 +3554,7 @@ int main(int argc, char* argv[])
         auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, info->prefix().empty() ? "default" : toOptionName(info->prefix())));
         for(size_t i = 0; i < proto.numProperties(); ++i) {
             auto& prop = proto[i];
-            if(prop.access() == emu::eWritable) {
+            if(prop.hasFlags(emu::PropertyFlags::eWritable)) {
                 auto dependencyCheck = [&presetName, info]() {
                     return info->hasVariant(presetName);
                 };

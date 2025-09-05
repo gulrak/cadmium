@@ -44,6 +44,7 @@ public:
     void clear();
 
     void doLog(Source source, uint64_t cycle, FrameTime frameTime, const char* msg) override;
+    void doLog(emu::LogLevel lvl, const char* msg) override;
     void draw(Font& font, Rectangle rect);
 
     static LogView* instance();

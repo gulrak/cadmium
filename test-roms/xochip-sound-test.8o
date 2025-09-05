@@ -1,0 +1,162 @@
+
+:const XOCHIP 1
+# Include the font-header first, it contains the constants and macros needed to
+# define and draw your strings
+:include "inc/font-header.8o"
+
+: pattern1
+  0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+  0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+: pattern2
+  0xFF 0xFF 0xFF 0xFF 0x00 0x00 0x00 0x00
+  0xFF 0xFF 0xFF 0xFF 0x00 0x00 0x00 0x00
+
+: pitches
+  211 215 219 223 227 231 235 239 243 247 251 255 211
+
+: main
+    clear
+    setFont font-5-pix-narrow
+    drawText xochip-str 1 1 64 32
+    drawText sound-str 27 1 64 32
+    drawText test-str 49 1 64 32
+    setFont font-4-pix-low
+    drawText version-str 50 27 64 32
+    setFont font-5-pix-narrow
+
+    v0 := 30
+    :call pause
+
+    drawText play-440-str 4 8 64 32
+    :call play_440
+    drawText done-str 45 8 64 32
+    v0 := 60
+    :call pause
+
+    drawText play-c4-c5-str 4 14 64 32
+    v0 := 10
+    v1 := 130
+    :call play_notes
+    drawText done-str 45 14 64 32
+    v0 := 60
+    :call pause
+
+    drawText play-effect-3x-str 4 20 64 32
+    v0 := 1
+    v1 := 13
+    :call play_notes
+    v0 := 1
+    v1 := 13
+    :call play_notes
+    v0 := 1
+    v1 := 13
+    :call play_notes
+    drawText done-str 45 20 64 32
+    v0 := 30
+    :call pause
+    exit
+
+: play_440
+  # Load the pattern into the XO-CHIP audio buffer
+  i := pattern1
+  audio
+  v0 := 247
+  pitch := v0
+
+  # Beep for ~1 second (60 ticks @ 60 Hz)
+  v0 := 60
+  delay := v0
+  buzzer := v0
+
+: wait
+  v1 := delay
+  if v1 != 0 then jump wait
+  return
+
+
+# --- subroutine: play 13 notes, one per frame, from [I] ---
+: play_notes
+  i := pattern1
+  audio
+  i := pitches
+  # Load 12 bytes from memory @I into v0..vC.
+  # (Fx65 advances I by 13 in most interpreters; that’s fine here.)
+  load v2 - ve
+
+  # Keep audio running long enough for 13 frames (~0.217 s); bump if you like.
+  vf := v1
+  buzzer := vf
+
+  # Step through the 13 registers, changing pitch each frame.
+  pitch := v2
+  :call pause
+  pitch := v3
+  :call pause
+  pitch := v4
+  :call pause
+  pitch := v5
+  :call pause
+  pitch := v6
+  :call pause
+  pitch := v7
+  :call pause
+  pitch := v8
+  :call pause
+  pitch := v9
+  :call pause
+  pitch := va
+  :call pause
+  pitch := vb
+  :call pause
+  pitch := vc
+  :call pause
+  pitch := vd
+  :call pause
+  i := pattern2
+  audio
+  pitch := ve
+  :call pause
+
+  # Optionally let the buzzer decay naturally; or silence explicitly:
+  # buzzer := 0
+
+  return
+
+# --- helper: wait exactly one frame using the delay timer ---
+: wait1
+  vf := 1
+  delay := vf
+: wait1_lp
+  vf := delay
+  if vf != 0 then jump wait1_lp
+  return
+
+: pause
+  delay := v0
+: pause_lp
+  v1 := delay
+  if v1 != 0 then jump pause_lp
+  return
+
+: xochip-str
+    str "XOCHIP" str-end
+: sound-str
+    str "Sound-" str-end
+: test-str
+    str "Test" str-end
+: version-str
+    str "v1.0" str-end
+: play-440-str
+    str "440Hz" str-end
+: play-c4-c5-str
+    str "C4 to C5" str-end
+: play-effect-3x-str
+    str "EFFECT x 3" str-end
+: done-str
+    str "done" str-end
+
+# Include the font library anywhere you like
+:include "inc/font-library.8o"
+
+:include "inc/fonts/5-pix-narrow.8o"
+:include "inc/fonts/4-pix-low.8o"

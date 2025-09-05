@@ -78,11 +78,13 @@ struct Chip8GenericOptions
     bool optHas16BitAddr{false};
     bool optXOChipSound{false};
     bool optChicueyiSound{false};
+    bool optCubeChipTone{false};
     bool optExtendedVBlank{false};
     bool optPalVideo{false};
     bool traceLog{false};
     int instructionsPerFrame{15};
     int frameRate{60};
+    std::string traceFile;
     ScreenRotation rotation{ScreenRotation::CW0};
     TouchInputMode touchInputMode{TouchInputMode::UNKNOWN};
     FontStyle5px fontStyle5{FontStyle5px::VIP};
@@ -293,6 +295,25 @@ public:
             int lines = opcode & 0xF;
             _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false);
         }
+#if SCREEN_DUMP
+        if (_options.traceLog) {
+            std::string result;
+            auto width = getCurrentScreenWidth();
+            auto maxWidth = 256; //chip8.getMaxScreenWidth();
+            auto height = getCurrentScreenHeight();
+            const auto* screen = getScreen();
+            if(screen) {
+                result.reserve(width * height + height);
+                for (int y = 0; y < height; ++y) {
+                    for (int x = 0; x < width; ++x) {
+                        result.push_back(screen->getPixel(x, y) ? '#' : '.');
+                    }
+                    result.push_back('\n');
+                }
+            }
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, result.c_str());
+        }
+#endif
         _screenNeedsUpdate = true;
     }
 

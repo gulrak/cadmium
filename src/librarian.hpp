@@ -96,6 +96,8 @@ public:
     int getSelectedIndex() const { return _activeEntry; }
     bool isKnownFile(const uint8_t* data, size_t size) const;
     bool isKnownFile(const Sha1::Digest& sha1) const;
+    bool isGenericChip8(const uint8_t* data, size_t size) const;
+    bool isGenericChip8(const Sha1::Digest& sha1) const;
 #ifdef NEW_ROMLIST_FORMAT
     std::string getPresetForFile(const Sha1::Digest& sha1) const;
     std::string getPresetForFile(const uint8_t* data, size_t size) const;

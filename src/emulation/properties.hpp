@@ -41,6 +41,8 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#include "ghc/bitenum.hpp"
+
 namespace emu {
 
 template<class... Ts>
@@ -50,8 +52,8 @@ template<class... Ts>
 
 visitor(Ts...) -> visitor<Ts...>;
 
-enum PropertyAccess { eReadOnly, eWritable, eInvisible };
-
+enum class PropertyFlags { eNone = 0, eWritable = 1, eInvisible = 2, eNeedsRelaunch = 4 };
+GHC_ENUM_ENABLE_BIT_OPERATIONS(PropertyFlags)
 
 class Property
 {
@@ -99,10 +101,10 @@ public:
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyAccess access_ = eReadOnly);
-    Property(const std::string& name, Value val, std::string description, PropertyAccess access_ = eReadOnly);
-    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, PropertyAccess access_ = eReadOnly);
-    Property(const NameAndKeyName& nameAndKey, Value val, PropertyAccess access_ = eReadOnly);
+    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyFlags flags_ = PropertyFlags::eNone);
+    Property(const std::string& name, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
+    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
+    Property(const NameAndKeyName& nameAndKey, Value val, PropertyFlags flags_ = PropertyFlags::eNone);
     Property(const Property& other);
     const std::string& getName() const { return _name; }
     const std::string& getJsonKey() const { return _jsonKey; }
@@ -111,7 +113,8 @@ public:
     const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
-    PropertyAccess access() const { return _access; }
+    PropertyFlags getFlags() const { return _flags; }
+    bool hasFlags(const PropertyFlags flags) const { return (_flags & flags) == flags; }
     bool isValid() const { return !std::holds_alternative<std::nullptr_t>(_value); }
     explicit operator bool() const { return isValid(); }
     Value& getValue() { return _value; }
@@ -152,7 +155,7 @@ private:
     Value _value;
     std::string _description;
     std::string _additionalInfo;
-    PropertyAccess _access{eReadOnly};
+    PropertyFlags _flags{PropertyFlags::eNone};
 };
 
 class Properties
@@ -228,10 +231,10 @@ public:
         }
         return iter->second;
     }
-    PropertyAccess access(size_t index) const
+    PropertyFlags getFlags(size_t index) const
     {
         auto iter = _valueMap.find(_valueList[index]);
-        return iter == _valueMap.end() ? eInvisible : iter->second.access();
+        return iter == _valueMap.end() ? PropertyFlags::eInvisible : iter->second.getFlags();
     }
     Property& operator[](const std::string& key)
     {
@@ -253,6 +256,15 @@ public:
     {
         for(auto& [mapKey, val] : _valueMap) {
             if(fuzzyCompare(mapKey, key)) {
+                return &val;
+            }
+        }
+        return find_json(key);
+    }
+    Property* find_json(std::string_view key)
+    {
+        for(auto& [mapKey, val] : _valueMap) {
+            if(fuzzyCompare(val.getJsonKey(), key)) {
                 return &val;
             }
         }

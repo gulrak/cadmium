@@ -271,6 +271,18 @@ bool Librarian::isKnownFile(const Sha1::Digest& sha1) const
     return _cfg.romConfigs.contains(sha1) || findKnownRom(sha1) != nullptr;
 }
 
+bool Librarian::isGenericChip8(const uint8_t* data, size_t size) const
+{
+    auto sha1 = calculateSha1(data, size);
+    return isGenericChip8(sha1);
+}
+
+bool Librarian::isGenericChip8(const Sha1::Digest& sha1) const
+{
+    auto* romInfo = findKnownRom(sha1);
+    return romInfo && std::string(romInfo->preset) == "generic-chip-8";
+}
+
 #ifdef NEW_ROMLIST_FORMAT
 
 std::string Librarian::getPresetForFile(const Sha1::Digest& sha1) const

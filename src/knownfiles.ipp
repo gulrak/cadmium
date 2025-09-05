@@ -559,6 +559,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"f11793f86baae9f5f0c77e5d7aa216c2180c3d07"_sha1, "schipc", "Super Particle Demo (zeroZshadow, 2008)",nullptr, nullptr},
     {"f12038dcd28ca71661162bfb6fc92a8826f7d6b9"_sha1, "xo-chip", "Sk8 H8 1988 (Team Out of Left Field, 2015)",nullptr, nullptr},
     {"f13766c14aeb02ad8d4d103cb5eadd282d20cddc"_sha1, "chip-8", "Brix (Andreas Gustafsson, 1990)",nullptr, nullptr},
+    {"f1780db6fc77379058b34903c2d1a7406cdd2ec5"_sha1, "xo-chip", "Mandelbrot, Elephant Valley",R"({"instructionsPerFrame":0})", nullptr},
     {"f199e23cbe29bb36f43373818b10bf72b35e9d05"_sha1, "chip-8", "Bongocat (Andrew James, 2021)",nullptr, nullptr},
     {"f1e036fb93b482b1ddfcb2bc1a4de43c8cf51def"_sha1, "chip-8", "Random Number Test (Matthew Mikolay, 2010)",nullptr, nullptr},
     {"f23ee6f22c3ada8c638096ec1209a65dd036cc52"_sha1, "chip-8", "Black Lives Matter Demo (Ben Smith, 2020)",nullptr, nullptr},

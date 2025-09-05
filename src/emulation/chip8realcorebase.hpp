@@ -67,6 +67,10 @@ public:
 
     std::string dumpStateLine() const override {
         uint16_t op = (readMemoryByte(getPC())<<8)|readMemoryByte(getPC() + 1);
+        if (Logger::getTraceFormat() == Logger::TraceFormat::eCADMIUM2) [[likely]] {
+            return fmt::format("{:04x}:{:04x} V=[{:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}] I={:04x} SP={:1x}", getPC(), op,
+                getV(0), getV(1), getV(2), getV(3), getV(4), getV(5), getV(6), getV(7), getV(8), getV(9), getV(10), getV(11), getV(12), getV(13), getV(14), getV(15),  getI(), getSP());
+        }
         return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}", getV(0), getV(1), getV(2),
                            getV(3), getV(4), getV(5), getV(6), getV(7), getV(8), getV(9), getV(10), getV(11), getV(12), getV(13), getV(14), getV(15), getI(), getSP(), getPC(), op);
     }

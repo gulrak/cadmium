@@ -165,8 +165,8 @@ private:
 class ThreadedBackgroundHost : public EmuHostEx
 {
 public:
-    explicit ThreadedBackgroundHost(double initialFrameRate = 60.0);
-    explicit ThreadedBackgroundHost(const Properties& options, double initialFrameRate = 60.0);
+    explicit ThreadedBackgroundHost(CadmiumConfiguration& cfg, double initialFrameRate = 60.0);
+    explicit ThreadedBackgroundHost(CadmiumConfiguration& cfg, const Properties& options, double initialFrameRate = 60.0);
     ~ThreadedBackgroundHost() override;
     void setFrameRate(double frequency);
     Properties& getProperties() { return *_properties; }
@@ -190,7 +190,7 @@ public:
 private:
     void worker();
     void tick();
-    CadmiumConfiguration _cfg;
+    //CadmiumConfiguration _cfg;
     Image* _screen{nullptr};
     Image _screen1{};
     Image _screen2{};

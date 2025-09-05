@@ -89,13 +89,13 @@ struct Dream6800Options
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", eWritable});
+            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_CPU, "M6800"s, "CPU type (currently only M6800)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1000000, 100000, 500'000'000}, "Clock frequency, default is 1000000", eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", eWritable});
-            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", eWritable});
+            prototype.registerProperty({PROP_CLOCK, Property::Integer{1000000, 100000, 500'000'000}, "Clock frequency, default is 1000000", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}, "Video hardware, only TTL"});
-            prototype.registerProperty({PROP_ROM_NAME, Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", eWritable});
+            prototype.registerProperty({PROP_ROM_NAME, Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", PropertyFlags::eWritable});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
             prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
         }

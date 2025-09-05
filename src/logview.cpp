@@ -26,10 +26,12 @@
 
 #include "logview.hpp"
 
-#include <rlguipp/rlguipp.hpp>
-#include <ghc/utf8.hpp>
 #include <fmt/format.h>
-//#include <iostream>
+#include <ghc/utf8.hpp>
+#include <rlguipp/rlguipp.hpp>
+
+#include "systemtools.hpp"
+// #include <iostream>
 
 #if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
 #include <iostream>
@@ -38,6 +40,7 @@
 namespace utf8 = ghc::utf8;
 
 LogView::LogView()
+    : Logger(dataPath())
 {
     _logBuffer.resize(HISTORY_SIZE);
     clear();
@@ -75,8 +78,27 @@ void LogView::doLog(LogView::Source source, uint64_t cycle, FrameTime frameTime,
     auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
     std::cout << content << std::endl;
 #else
-    //auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
-    //std::cout << content << std::endl;
+    // auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    // std::cout << content << std::endl;
+#endif
+}
+
+void LogView::doLog(emu::LogLevel lvl, const char* msg)
+{
+    std::unique_lock guard(_logMutex);
+    auto& logEntry = _logBuffer[_writeIndex++];
+    logEntry = {(uint64_t)lvl, FrameTime{0,0}, 0, Source::eHOST, msg};
+    if (_usedSlots < _logBuffer.size())
+        ++_usedSlots;
+    if (_writeIndex >= _logBuffer.size())
+        _writeIndex = 0;
+    _tosLine = _visibleLines >= _usedSlots ? 0 : _usedSlots - _visibleLines + 1;
+#if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
+    auto content = fmt::format("[{}] {}", emu::Logger::getLogLevelName(lvl), logEntry._line);
+    std::cout << content << std::endl;
+#else
+    // auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    // std::cout << content << std::endl;
 #endif
 }
 
@@ -125,7 +147,7 @@ void LogView::drawTextLine(const Font& font, int logLine, Vector2 position, floa
         float textOffsetX = 0.0f;
         size_t index = 0;
         auto& logEntry = _logBuffer[logLine];
-        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[{}] {}", getLogLevelName((emu::LogLevel)logEntry._cycle), logEntry._line);
         const char* text = content.data();
         const char* end = text + content.size();
         while(text < end && textOffsetX < width && *text != '\n') {

@@ -26,7 +26,9 @@ add_subdirectory(tools)
 add_subdirectory(resources)
 
 add_subdirectory(src)
-add_subdirectory(test)
+if(NOT EMSCRIPTEN)
+    add_subdirectory(test)
+endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
 #    add_subdirectory(experimental)

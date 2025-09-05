@@ -302,6 +302,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     // Properties knownProperties;
     auto fileData = std::vector(binary.data(), binary.data() + binary.size());
     auto isKnown = _librarian.isKnownFile(fileData.data(), fileData.size());
+    auto isGenericChip8 = _librarian.isGenericChip8(fileData.data(), fileData.size());
     TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1(fileData.data(), fileData.size()).to_hex().c_str());
     auto knownProperties = _librarian.getPropertiesForFile(fileData.data(), fileData.size());
     if (endsWith(filename, ".8o")) {
@@ -341,7 +342,8 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         }
         else {
             if (isKnown) {
-                updateEmulatorOptions(knownProperties);
+                if (!isGenericChip8)
+                    updateEmulatorOptions(knownProperties);
                 _chipEmu->reset();
                 if (_chipEmu->loadData(binary, loadAddress)) {
                     romImage.assign(binary.data(), binary.data() + binary.size());
@@ -658,8 +660,8 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
 }
 
 #ifdef CADMIUM_WITH_BACKGROUND_EMULATION
-ThreadedBackgroundHost::ThreadedBackgroundHost(double initialFrameRate)
-: EmuHostEx(_cfg)
+ThreadedBackgroundHost::ThreadedBackgroundHost(CadmiumConfiguration& cfg, double initialFrameRate)
+: EmuHostEx(cfg)
 , _workerThread(&ThreadedBackgroundHost::worker, this)
 {
     setFrameRate(initialFrameRate);
@@ -668,8 +670,8 @@ ThreadedBackgroundHost::ThreadedBackgroundHost(double initialFrameRate)
     _screen = &_screen1;
 }
 
-ThreadedBackgroundHost::ThreadedBackgroundHost(const Properties& options, double initialFrameRate)
-    : EmuHostEx(_cfg)
+ThreadedBackgroundHost::ThreadedBackgroundHost(CadmiumConfiguration& cfg, const Properties& options, double initialFrameRate)
+    : EmuHostEx(cfg)
     , _workerThread(&ThreadedBackgroundHost::worker, this)
 {
     setFrameRate(initialFrameRate);
