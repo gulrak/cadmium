@@ -1,0 +1,26 @@
+
+:include "inc/font-support.8o"
+
+: main
+    clear
+    setFont font-3x6
+    drawText test-text0 1 1
+    drawText test-text1 1 7
+    drawText test-text2 2 13
+    drawText test-text3 2 19
+    drawText test-text4 2 25
+
+    loop again
+
+: test-text0
+    str-3x6 "ABCDEFGHIJKLM" str-end
+: test-text1
+    str-3x6 "NOPQRSTUVWXYZ" str-end
+: test-text2
+    str-3x6 "abcdefghijklmno" str-end
+: test-text3
+    str-3x6 "pqrstuvwxyz" str-end
+: test-text4
+    str-3x6 "1234567890.,:!/?+" str-end
+
+:include "inc/font-3x6.8o"
