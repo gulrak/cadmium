@@ -1,0 +1,107 @@
+#----------------------------------------------------------------
+# Copyright (c) 2025, Steffen "Gulrak" Schümann
+# SPDX-License-Identifier: MIT
+#----------------------------------------------------------------
+# AUTO-DETECTION-CODE:
+# Jumps to the following labels:
+#   chip8_detected - CHIP-8
+#   chip48_sc10_detected - CHIP-48/SCHIP1.0
+#   schip_legacy_detected - SCHIP-LEGACY (SCHIP1.1)
+#   schip_modern_detected - SCHIP-MODERN
+#   original_megachip_detected - original MegaChip8
+#   megachip_detected - generic MegaChip8
+#   xochip_detected - XO-CHIP
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: autodetect
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# 1. Check for XO-CHIP
+# XO-CHIP skip would see this as a four byte opcode and skip all
+# others will just skip two byte executing the jump
+    if vf != vf then 0xF0 0x00 jump no_xo_support
+    jump xo_detected
+: no_xo_support
+    # 2. Check for SCHIP/MegaChip8
+    # Shifting on SCHIP/MC8 ignores vy and just shifts vx
+    # if v0 is 1, v1 was used and it is CHIP-8
+    v1 := 2
+    v0 := 0
+    v0 >>= v1
+    if v0 == 1 then
+        jump no_sc_support
+    # 3. SCHIP uses Bxnn, instead of Bnnn so SCHIP will
+    # jump to xnn + v2, while MegaChip8 will jump to nnn + v0
+    i := has_bnnn
+    v2 := 0x80
+    i += v2
+    i += v2
+    i += v2
+    i += v2
+    load v1
+    va := v0
+    vb := v1
+    :unpack 1 omc_detected
+    :call write_trampoline
+    v0 := 0
+    v2 := 2
+    jump0 has_bnnn
+: has_bnnn
+    jump mc_detected
+    jump sc_detected
+
+: restore_trampoline
+    v0 := va
+    v1 := vb
+: write_trampoline
+    i := has_bnnn
+    v2 := 0x80
+    i += v2
+    i += v2
+    i += v2
+    i += v2
+    save v1
+    return
+
+: no_sc_support
+    jump c8_detected
+
+: c8_detected
+    jump chip8_detected
+
+: autodetect-mem-quirk-data
+    0 1 2 0
+
+: sc_detected
+    :call restore_trampoline
+    i := autodetect-mem-quirk-data
+    load v1
+    load v0
+    if v0 == 1 then
+        jump chip48_sc10_detected
+    i := autodetect
+    v0 := 0
+    sprite v0 v0 0
+    v1 := 1
+    i += v1
+    v1 := 8
+    sprite v1 v0 1
+    v2 := vf
+    sprite v1 v0 1
+    i := autodetect
+    sprite v0 v0 0
+    if v2 == 0 then
+        jump schip_legacy_detected
+    jump schip_modern_detected
+
+: omc_detected
+    :call restore_trampoline
+    jump original_megachip_detected
+
+: mc_detected
+    :call restore_trampoline
+    jump megachip_detected
+
+: xo_detected
+    jump xochip_detected
+
+# AUTO-DETECTION-END
+#----------------------------------------------------------------
