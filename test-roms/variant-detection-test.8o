@@ -30,61 +30,7 @@
 : continue
     setFont font-3x6
 
-    drawText version 50 2
-    drawText detection_str 1 2
-    vd := 0
-    vc := 0
-    jump autodetect
-
 :include "inc/autodetect.8o"
-
-: chip8_detected
-    prepareText variant_chip8
-    i := quirks-chip8
-    jump print_detected_variant
-: chip48_sc10_detected
-    prepareText variant_chip48_sc10
-    i := quirks-chip48-sc10
-    jump print_detected_variant
-: schip_legacy_detected
-    prepareText variant_schip_legacy
-    i := quirks-schip11
-    jump print_detected_variant
-: schip_modern_detected
-    prepareText variant_schip_modern
-    i := quirks-schip-modern
-    jump print_detected_variant
-: original_megachip_detected
-    vd := 1
-    prepareText variant_original_megachip
-    i := quirks-org-mc8
-    jump print_detected_variant
-: megachip_detected
-    prepareText variant_megachip
-    i := quirks-mc8
-    jump print_detected_variant
-: xochip_detected
-    prepareText variant_xo_chip8
-    i := quirks-xochip
-
-: print_detected_variant
-    v6 := v0
-    v7 := v1
-    load v5
-    i := quirks-expected
-    save v5
-    v0 := v6
-    v1 := v7
-    v2 := 1
-    v3 := 10
-    drawTextRaw
-    :call detect-quirks
-    loop again
-
-:org 0x302
-    # If we are here, it's a CHIP-8 for ETI-660 without hires support
-    # (load to 0x600)
-    loop again
 
 : version
     str-3x6 "v1.3" str-end
@@ -92,11 +38,19 @@
 : detection_str
     str-3x6 "Detected" str-end
 
+:org 0x302
+    # If we are here, it's a CHIP-8 for ETI-660 without hires support
+    # (load to 0x600)
+    loop again
+
 : variant_chip8
     str-3x6 "CHIP-8" str-end
 
-: variant_chip48_sc10
-    str-3x6 "CHIP-48/SC10" str-end
+: variant_chip48
+    str-3x6 "CHIP-48" str-end
+
+: variant_schip10
+    str-3x6 "SCHIP-1.0" str-end
 
 : variant_schip_legacy
     str-3x6 "SCHIP-LEGACY" str-end
@@ -111,7 +65,7 @@
     str-3x6 "RS-M8001 MC8" str-end
 
 : variant_megachip
-    str-3x6 "MC8 MODERN" str-end
+    str-3x6 "MC8-MODERN" str-end
 
 :include "inc/font-3x6.8o"
 
@@ -407,29 +361,95 @@
     0b00000000
     0b01000000
 
-    00
+    #00
+
+#--------------------------------------------------------------
+: chip8_detected
+    prepareText variant_chip8
+    i := quirks-chip8
+    jump print_detected_variant
+: chip48_detected
+    prepareText variant_chip48
+    i := quirks-chip48
+    jump print_detected_variant
+: schip10_detected
+    prepareText variant_schip10
+    i := quirks-schip10
+    jump print_detected_variant
+: schip_legacy_detected
+    prepareText variant_schip_legacy
+    i := quirks-schip11
+    jump print_detected_variant
+: schip_modern_detected
+    prepareText variant_schip_modern
+    i := quirks-schip-modern
+    jump print_detected_variant
+: original_megachip_detected
+    vd := 1
+    prepareText variant_original_megachip
+    i := quirks-org-mc8
+    jump print_detected_variant
+: megachip_detected
+    prepareText variant_megachip
+    i := quirks-mc8
+    jump print_detected_variant
+: xochip_detected
+    prepareText variant_xo_chip8
+    i := quirks-xochip
+
+: print_detected_variant
+    v7 := v0
+    v8 := v1
+    load v6
+    i := quirks-expected
+    save v6
+
+    :call check-dwait-quirk
+    i := dw-result
+    save v0
+
+    drawText version 50 2
+    drawText detection_str 1 2
+    vd := 0
+    vc := 0
+
+    v0 := v7
+    v1 := v8
+    v2 := 1
+    v3 := 10
+    drawTextRaw
+    :call detect-quirks
+    loop again
+
 #--------------------------------------------------------------
 :macro checkAndShow quirknum {
     v0 := quirknum
     :call check-result
 }
 
-: quirks-chip8
-    0 2 5 1 0 0
-: quirks-chip48-sc10
-    3 1 0 0 0 0
+: quirks-chip8 # VFR MEM SHF JMP DWT WRP VIDEO-MODES (LORES=1, HIRES=2, MEGA=4)
+    0 2 5 1 1 3 1
+    0 2 5 1 1 3 1
+: quirks-chip48
+    3 1 0 0 1 3 1
+: quirks-schip10
+    3 1 0 0 1 3 3
 : quirks-schip11
-    3 0 0 0 0 0
+    3 0 0 0 1 3 3
 : quirks-schip-modern
-    3 0 0 0 0 0
+    3 0 0 0 0 3 3
 : quirks-org-mc8
-    3 0 0 2 0 0
+    3 0 0 2 0 3 7
 : quirks-mc8
-    3 0 0 1 0 0
+    3 0 0 1 0 0x43 7
 : quirks-xochip
-    3 2 5 0 0 0
+    3 2 5 0 0 0 0xB
 : quirks-expected
     0 0 0 0 0 0
+: video-modes
+    0 0
+: dw-result
+    0 0
 : detect-quirks
     # - - - - - - - - - - - - - - - - - -
     # logic
@@ -540,6 +560,11 @@
 
     # - - - - - - - - - - - - - - - - - -
     # display wait
+    # possible values:
+    # 0 none
+    # 1 lores
+    # 2 hires
+    # 3 hires+lores
     v6 := 44
     v7 := 18
     i := dwait-sprites
@@ -547,14 +572,30 @@
     v6 += 8
     i += v2
     sprite v6 v7 5
-
+    i := dw-result
+    load v0
+    vc := v0
+    i := question
+    if vc == 0 then
+        i := minus
+    if vc == 1 then
+        i := plus
     v6 += 4
-    i := minus
     sprite v6 v7 5
     checkAndShow 4
 
     # - - - - - - - - - - - - - - - - - -
     # wrapping
+    # possible values:
+    # 0 clip
+    # 1 wrap initial coordinates lores
+    # 2 wrap initial coordinates hires
+    # 4 wrap lores-x
+    # 8 wrap lores-y
+    # 16 wrap hires-x
+    # 32 wrap hires-y
+    # 64 wrap mega-8 x
+    # 128 wrap mega-8 y
     v6 := 44
     v7 := 24
     i := wrp-sprites
@@ -562,11 +603,58 @@
     v6 += 8
     i := letter-p
     sprite v6 v7 5
-
     v6 += 4
     i := minus
     sprite v6 v7 5
     checkAndShow 5
+    return
+
+: check-dwait-quirk
+    v0 := 1
+    :call dwait-test
+    vc := v0
+    i := video-modes
+    load v0
+    vf := 2
+    v0 &= vf
+    if v0 == 2 begin
+        hires
+        v0 := 2
+        :call dwait-test
+        vc |= v0
+        lores
+    end
+    v0 := vc
+    return
+
+: dwait-test
+    v4 := v0
+    v0 := 0
+    v1 := 0
+    v2 := 5
+    i := sprite-pixel
+    sprite v0 v0 1
+    delay := v2
+    loop
+        sprite v0 v0 1
+        v1 += 1
+        if v1 == 0 then
+            v1 := 0x80
+        v3 := delay
+        if v3 != 0 then
+    again
+    v3 := v1
+    v2 := 1
+    v3 &= v2
+    if v3 == 0 then
+        sprite v0 v0 1
+    if v1 >= 4 begin
+        if v1 <= 6 begin
+            v0 := v4
+        end
+    else
+        v0 := 0xff
+    end
     return
 
 : check-result

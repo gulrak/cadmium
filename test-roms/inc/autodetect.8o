@@ -75,8 +75,31 @@
     i := autodetect-mem-quirk-data
     load v1
     load v0
-    if v0 == 1 then
-        jump chip48_sc10_detected
+    if v0 == 1 begin
+        v0 := 15
+        i := hex v0
+        v0 := 5
+        i += v0
+        v1 := 10
+        v2 := 0
+        loop
+            load v0
+            v2 += v0
+            v0 := 1
+            i += v0
+            v1 -= 1
+            if v1 != 0 then
+        again
+        if v2 == 0x4e then
+            jump schip10_detected
+        if v2 == 0x7e then
+            jump schip10_detected
+        if v2 == 0xe2 then
+            jump schip10_detected
+        if v2 == 0x8e then
+            jump schip10_detected
+        jump chip48_detected
+    end
     i := autodetect
     v0 := 0
     sprite v0 v0 0
