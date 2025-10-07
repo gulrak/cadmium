@@ -8,7 +8,7 @@
 
 :macro str-end { :byte 0xFF }
 
-:stringmode str-3x6-uc "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:!" {
+:stringmode str-3x6-uc "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:!/?+-" {
   :byte VALUE
 }
 :stringmode str-3x6 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:!/?+-" {

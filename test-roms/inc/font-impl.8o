@@ -110,6 +110,10 @@
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 : font-impl-draw-char
+# Input:
+# v0 = the character to draw
+# v2 = x
+# v3 = y
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     v1 := v0
     :call font-impl-get-char-pointer
