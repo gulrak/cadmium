@@ -1,0 +1,37 @@
+#----------------------------------------------------------------
+# Copyright (c) 2025, Steffen "Gulrak" Schümann
+# SPDX-License-Identifier: MIT
+#----------------------------------------------------------------
+
+:unless FONT_SUPPORT
+:const FONT_SUPPORT 1
+
+:macro str-end { :byte 0xFF }
+
+:stringmode str-3x6-uc "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,:!/?+-" {
+  :byte VALUE
+}
+:stringmode str-3x6 "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:!/?+-" {
+  :byte VALUE
+}
+
+:macro setFont label {
+  :unpack 0xA label
+  :call font-impl-select-font
+}
+
+:macro drawText label X Y {
+  :unpack 0xA label
+  v2 := X
+  v3 := Y
+  :call font-impl-draw-text
+}
+
+:macro prepareText label {
+  :unpack 0xA label
+}
+:macro drawTextRaw {
+  :call font-impl-draw-text
+}
+
+:end

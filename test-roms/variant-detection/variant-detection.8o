@@ -1,0 +1,927 @@
+#----------------------------------------------------------------
+# Copyright (c) 2025, Steffen "Gulrak" Schümann
+# SPDX-License-Identifier: MIT
+#----------------------------------------------------------------
+:include "inc/font-support.8o"
+
+:macro vjump target base {
+    :calc dest { ( target - 0x200 ) + base }
+    jump dest
+}
+:macro vcall target base {
+    :calc dest { ( target - 0x200 ) + base }
+    :call dest
+}
+:macro vindex target base {
+    :calc dest { ( target - 0x200 ) + base }
+    i := dest
+}
+:macro unpackJump target base {
+    :calc dest { ( target - 0x200 ) + base }
+    :unpack 1 dest
+}
+
+:macro drawChar {
+    :call font-impl-draw-char
+}
+
+#--------------------------------------------------------------
+# Load address, we assume 0x200 at the start as that's most
+# of them, but jump first to dispatch non-0x200 based variants
+:org 0x200
+: main
+    jump 0x302
+
+#--------------------------------------------------------------
+# CHIP-8X, CHIP-8X TPD, CHIP-8X FPD
+# load address 0x300
+    vjump 0xA00 0x300
+
+: variant_chip8
+    str-3x6-uc "CHIP-8" str-end
+
+: variant_chip10
+    str-3x6-uc "CHIP-10" str-end
+
+: variant_chip48
+    str-3x6-uc "CHIP-48" str-end
+
+: variant_schip10_beta
+    str-3x6-uc "SCHIP-1.0-BETA" str-end
+
+: variant_schip10
+    str-3x6-uc "SCHIP-1.0" str-end
+
+: variant_schip_legacy
+    str-3x6-uc "SCHIP-1.1/LEGACY" str-end
+
+: variant_schip_modern
+    str-3x6-uc "SCHIP-MODERN" str-end
+
+: variant_xo_chip8
+    str-3x6-uc "XO-CHIP" str-end
+
+: variant_original_megachip
+    str-3x6-uc "RS-M8001 MC8" str-end
+
+: variant_megachip
+    str-3x6-uc "MC8-MODERN" str-end
+
+: vfr-str
+    str-3x6-uc "VFR" str-end
+
+: mem-str
+    str-3x6-uc "MEM" str-end
+
+: shf-str
+    str-3x6-uc "SHF" str-end
+
+: jmp-str
+    str-3x6-uc "JMP" str-end
+
+: dwait-str
+    str-3x6-uc "DWT" str-end
+
+: wrp-str
+    str-3x6-uc "WRP" str-end
+
+: wrp-fail-ol-str
+    str-3x6-uc "OL" str-end
+: wrp-fail-oh-str
+    str-3x6-uc "OH" str-end
+: wrp-fail-ox-str
+    str-3x6-uc "OX" str-end
+: wrp-fail-wl-str
+    str-3x6-uc "WL" str-end
+: wrp-fail-wh-str
+    str-3x6-uc "WH" str-end
+: wrp-fail-wx-str
+    str-3x6-uc "WX" str-end
+
+#--------------------------------------------------------------
+# CHIP-8 TPD
+:org 0x2A2
+    vjump 0xA60 0x260
+
+#--------------------------------------------------------------
+# CHIP-8 FPD
+:org 0x2BE
+    vjump 0x9C0 0x244
+
+: detect-sc-modern
+    i := dxy0-sprite
+    v0 := 0
+    v1 := 0
+    sprite v0 v1 0
+    i := sprite-pixel
+    v1 := 1
+    sprite v0 v1 1
+    return
+
+: dxy0-sprite
+: reg-safe
+    0x00 0x80 0x00 0x00 0x00 0x00 0x00 0x00
+    0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+:org 0x302
+#--------------------------------------------------------------
+# Most CHIP-8 variants, starting at 0x200
+: variant_0x200
+    setFont font-3x6-uc
+
+:include "inc/autodetect.8o"
+
+
+:include "inc/font-3x6-uc.8o"
+
+#--------------------------------------------------------------
+: drawSprites
+# Inputs:
+# v0 = x
+# v1 = y
+# v2 = number of sprites
+# ve != 0: set 8X color
+: draw-sprites-loop
+    if ve != 0 then
+        0xb0 0xe5
+    sprite v0 v1 5
+    vf := 5
+    i += vf
+    v0 += 8
+    v2 -= 1
+    if v2 != 0 then
+: draw-sprites-jump
+        jump draw-sprites-loop
+    if ve == 0x17 then
+        0x00 0xF0
+    return
+
+: chip8-sprites
+    0b11101010
+    0b10001010
+    0b10001110
+    0b10001010
+    0b11101010
+
+    0b10111000
+    0b10101000
+    0b10111011
+    0b10100000
+    0b10100000
+
+    0b00111000
+    0b00101000
+    0b10111000
+    0b00101000
+    0b00111000
+
+: c8x-sprites
+    0b11101010
+    0b10001010
+    0b10001110
+    0b10001010
+    0b11101010
+
+    0b10111000
+    0b10101000
+    0b10111011
+    0b10100000
+    0b10100000
+
+    0b00111010
+    0b00101010
+    0b10111001
+    0b00101010
+    0b00111010
+: sprite-pixel
+    0b10000000
+    0b10000000
+    0b00000000
+    0b10000000
+    0b10000000
+
+
+: detected-sprite
+    0b11000000
+    0b10100100
+    0b10101010
+    0b10101100
+    0b11000110
+
+: sprite-pixel2
+    0b01000000
+    0b11100100
+    0b01001010
+    0b01001100
+    0b00100110
+
+    0b00000100
+    0b11101110
+    0b10000100
+    0b10000100
+    0b11100010
+
+    0b00000010
+    0b01000110
+    0b10101010
+    0b11001010
+    0b01100110
+
+: version-sprites
+    0b00000100
+    0b10101100
+    0b10100100
+    0b10100100
+    0b01001110
+
+    0b00101000
+    0b00101000
+    0b00111000
+    0b00001000
+    0b10001000
+
+: sprite-2P
+    0b11101110
+    0b00101010
+    0b11101110
+    0b10001000
+    0b11101000
+: sprite-4P
+    0b10101110
+    0b10101010
+    0b11101110
+    0b00101000
+    0b00101000
+
+: vfr-sprites
+    0b10101110
+    0b10101000
+    0b10101100
+    0b10101000
+    0b01001000
+
+    0b11100000
+    0b10100000
+    0b11000000
+    0b10100000
+    0b10100000
+
+: mem-sprites
+    0b10101110
+    0b11101000
+    0b11101100
+    0b10101000
+    0b10101110
+
+: shf-sprites
+    0b11101010
+    0b10001010
+    0b11101110
+    0b00101010
+    0b11101010
+
+    0b11100000
+    0b10000000
+    0b11000000
+    0b10000000
+    0b10000000
+
+: jmp-sprites
+    0b00101010
+    0b00101110
+    0b00101110
+    0b10101010
+    0b01001010
+
+: letter-p
+    0b11100000
+    0b10100000
+    0b11100000
+    0b10000000
+    0b10000000
+
+: dwait-sprites
+    0b11001010
+    0b10101010
+    0b10101110
+    0b10101110
+    0b11001010
+
+    0b11100000
+    0b01000000
+    0b01000000
+    0b01000000
+    0b01000000
+
+: wrp-sprites
+    0b10101110
+    0b10101010
+    0b11101100
+    0b11101010
+    0b10101010
+
+: plus
+    0b00000000
+    0b01000000
+    0b11100000
+    0b01000000
+    0b00000000
+
+: minus
+    0b00000000
+    0b00000000
+    0b11100000
+    0b00000000
+    0b00000000
+
+: checkmark
+    0b00000000
+    0b10100000
+    0b11000000
+    0b10000000
+    0b00000000
+
+: fail
+    0b00000000
+    0b10100000
+    0b01000000
+    0b10100000
+    0b00000000
+
+: question
+    0b11100000
+    0b00100000
+    0b01000000
+    0b00000000
+    0b01000000
+
+    00
+
+#--------------------------------------------------------------
+: chip8_detected
+    v0 := 0
+    v1 := 0
+    v5 := 0
+    i := sprite-pixel
+    sprite v0 v1 1
+    v1 += 32
+    sprite v0 v1 1
+    clear
+    if vf == 0 then
+        jump chip10_detected
+    prepareText variant_chip8
+    i := quirks-chip8
+    jump print_detected_variant
+: chip10_detected
+    vd := 2
+    prepareText variant_chip10
+    i := quirks-chip10
+    jump print_detected_variant
+: chip48_detected
+    prepareText variant_chip48
+    i := quirks-chip48
+    jump print_detected_variant
+: schip10_beta_detected
+    prepareText variant_schip10_beta
+    i := quirks-schip10
+    jump print_detected_variant
+: schip10_detected
+    prepareText variant_schip10
+    i := quirks-schip10
+    jump print_detected_variant
+: schip_legacy_detected
+    :call detect-sc-modern
+    if vf == 0 then
+        jump schip_modern_detected
+    prepareText variant_schip_legacy
+    i := quirks-schip11
+    jump print_detected_variant
+: schip_modern_detected
+    prepareText variant_schip_modern
+    i := quirks-schip-modern
+    jump print_detected_variant
+: original_megachip_detected
+    vd := 1
+    prepareText variant_original_megachip
+    i := quirks-org-mc8
+    jump print_detected_variant
+: megachip_detected
+    prepareText variant_megachip
+    i := quirks-mc8
+    jump print_detected_variant
+: xochip_detected
+    prepareText variant_xo_chip8
+    i := quirks-xochip
+
+: print_detected_variant
+    v7 := v0
+    v8 := v1
+    load v6
+    i := quirks-expected
+    save v6
+
+    :call check-dwait-quirk
+    i := dw-result
+    save v0
+
+    i := reg-safe
+    save vf
+    :call check-wrap-quirk
+    i := wrp-result
+    save v1
+    i := reg-safe
+    load vf
+
+    i := version-sprites
+    v0 := 50
+    v1 := 2
+    v2 := 2
+    :call drawSprites
+    i := detected-sprite
+    v0 := 1
+    v1 := 2
+    v2 := 4
+    :call drawSprites
+
+    #vd := 0
+    vc := 0
+
+    v0 := v7
+    v1 := v8
+    v2 := 1
+    v3 := 10
+    drawTextRaw
+    :call detect-quirks
+    loop again
+
+#--------------------------------------------------------------
+:macro checkAndShow quirknum {
+    v0 := quirknum
+    :call check-result
+}
+
+: quirks-chip8 # VFR MEM SHF JMP DWT WRP VIDEO-MODES (LORES=1, HIRES=2, MEGA=4)
+    0 2 5 1 1 0 1
+: quirks-chip10
+    0 2 5 1 2 255 2
+: quirks-chip48
+    3 1 0 0 1 0 1
+: quirks-schip10
+    3 1 0 0 1 0 3
+: quirks-schip11
+    3 0 0 0 1 0x10 3
+: quirks-schip-modern
+    3 0 0 0 0 0 3
+: quirks-org-mc8
+    3 0 0 2 0 0 7
+: quirks-mc8
+    3 0 0 1 0 0 7
+: quirks-xochip
+    3 2 5 1 0 0xF 0xB
+: quirks-expected
+    0 0 0 0 0 0
+: video-modes
+    0 0
+: dw-result
+    0 0
+: wrp-result
+    0 0
+    0
+:const CHR_0 26
+:const CHR_1 27
+:const CHR_B 1
+:const CHR_H 7
+:const CHR_L 11
+:const CHR_N 13
+:const CHR_P 15
+:const CHR_X 23
+:const CHR_QM 42
+:const CHR_PLUS 43
+:const CHR_MINUS 44
+
+: detect-quirks
+    # - - - - - - - - - - - - - - - - - -
+    # logic
+    vf := 1
+    v0 |= v0
+    vc := vf
+    vf := 1
+    v0 &= v0
+    vc += vf
+    vf := 1
+    v0 ^= v0
+    vc += vf
+    drawText vfr-str 1 18
+    v0 := CHR_QM
+    if vc == 0 then
+        v0 := CHR_PLUS
+    if vc == 3 then
+        v0 := CHR_MINUS
+    drawChar
+    checkAndShow 0
+
+    # - - - - - - - - - - - - - - - - - -
+    # memory
+    :call font-lib-has-mem-quirk
+    vc := vf
+    drawText mem-str 1 24
+    v0 := 42
+    if vc == 0 then
+        v0 := CHR_0
+    if vc == 1 then
+        v0 := CHR_X
+    if vc == 2 then
+        v0 := CHR_1
+    drawChar
+    checkAndShow 1
+
+    # - - - - - - - - - - - - - - - - - -
+    # shifting
+    drawText shf-str 23 18
+
+    v1 := 2
+    v0 := 0
+    v0 >>= v1
+    vc := 0
+    vc += v0
+    v0 <<= v1
+    vc += v0
+
+    i := question
+    if vc == 0 then
+        v0 := CHR_PLUS
+    if vc == 5 then
+        v0 := CHR_MINUS
+    drawChar
+    checkAndShow 2
+
+    # - - - - - - - - - - - - - - - - - -
+    # Bxnn
+    drawText jmp-str 23 24
+    vc := 0
+    if vd == 1 begin
+        vc := 2
+        jump quirk-bnnn-result
+    end
+    v0 := 0
+    v7 := 2
+    jump0 quirk-has-bnnn
+: quirk-has-bnnn
+    vc := 1
+: quirk-bnnn-result
+    v0 := CHR_QM
+    if vc == 0 then
+        v0 := CHR_PLUS
+    if vc == 1 then
+        v0 := CHR_MINUS
+    drawChar
+    checkAndShow 3
+
+    # - - - - - - - - - - - - - - - - - -
+    # display wait
+    # possible values:
+    # 0 none
+    # 1 lores
+    # 2 hires
+    # 3 hires+lores
+    drawText dwait-str 45 18
+    i := dw-result
+    load v0
+    vc := v0
+    v0 := CHR_QM
+    if vc == 0 then
+        v0 := CHR_MINUS
+    if vc == 1 then
+        v0 := CHR_L
+    if vc == 2 then
+        v0 := CHR_H
+    if vc == 3 then
+        v0 := CHR_B
+    drawChar
+    checkAndShow 4
+
+    # - - - - - - - - - - - - - - - - - -
+    # wrapping
+    # possible values:
+    drawText wrp-str 45 24
+    i := wrp-result
+    load v1
+    vb := v1
+    vc := v0
+    if vd == 2 begin
+        if vb == 12 then
+            jump chip10-exception
+    end
+    if vc == 255 begin
+        prepareText wrp-fail-ol-str
+        v1 += vb
+        v0 += vf
+        drawTextRaw
+        return
+    end
+: chip10-exception
+    v0 := CHR_QM
+    if vc == 0 then
+        v0 := CHR_MINUS
+    if vc == 3 then
+        v0 := CHR_H
+    if vc == 0xC then
+        v0 := CHR_L
+    if vc == 0xF then
+        v0 := CHR_PLUS
+    if vc == 0x10 then
+        v0 := CHR_P
+    drawChar
+    checkAndShow 5
+    return
+
+: check-dwait-quirk
+    v0 := 1
+    :call dwait-test
+    vc := v0
+    i := video-modes
+    load v0
+    if v0 == 2 begin
+        vc <<= vc
+        v0 := vc
+        return
+    end
+    vf := 2
+    v0 &= vf
+    if v0 == 2 begin
+        hires
+        v0 := 2
+        :call dwait-test
+        vc |= v0
+        lores
+    end
+    v0 := vc
+    return
+
+: dwait-test
+    v4 := v0
+    v0 := 0
+    v1 := 0
+    v2 := 5
+    i := sprite-pixel
+    sprite v0 v0 1
+    delay := v2
+    loop
+        sprite v0 v0 1
+        v1 += 1
+        if v1 == 0 then
+            v1 := 0x80
+        v3 := delay
+        if v3 != 0 then
+    again
+    v3 := v1
+    v2 := 1
+    v3 &= v2
+    if v3 == 0 then
+        sprite v0 v0 1
+    if v1 >= 4 begin
+        if v1 <= 6 begin
+            v0 := v4
+        end
+    else
+        v0 := 0xff
+    end
+    return
+
+: check-wrap-quirk
+    i := video-modes
+    load v0
+    v0 >>= v0
+    va := v0
+    vb := 0
+    vc := 0
+    if vf != 0 begin
+        v0 := 64
+        v1 := 32
+        ve := 0
+        :call wrap-test
+        if v4 != 3 begin
+            v1 := 0
+            v0 := 0xff
+            return
+        end
+        v0 := 63
+        v1 := 31
+        ve := 1
+        :call wrap-test
+        if v4 > 3 begin
+            v1 := 9
+            v0 := 0xff
+            return
+        end
+        vc := v4
+        if va != 0 then
+            vb := 1
+    end
+    vc <<= vc
+    vc <<= vc
+    if va != 0 begin
+        if vb != 0 then
+            hires
+        v0 := 128
+        v1 := 64
+        ve := 0
+        :call wrap-test
+        if v4 != 3 begin
+            v1 := 3
+            v0 := 0xff
+            return
+        end
+        v0 := 127
+        v1 := 63
+        ve := 1
+        :call wrap-test
+        if v4 > 0x10 begin
+            v1 := 12
+            v0 := 0xff
+            if vb != 0 then
+                lores
+            return
+        end
+        vc |= v4
+        if vb != 0 then
+            lores
+    end
+    v0 := vc
+    v1 := 0
+    return
+
+: wrap-test
+    v4 := 0
+    v8 := 0
+    clear
+    v5 := 0
+    v6 := 0
+    i := test-80
+    sprite v5 v6 1
+    v5 := v0
+    if ve != 0 then
+        i := test-40
+    sprite v5 v6 1
+    i := test-80
+    if vF != 0 begin
+        v4 := 2
+    else
+        v5 := 0
+        v6 := 1
+        sprite v5 v6 1
+        if vf != 0 then
+            v4 := 255
+    end
+    clear
+    v5 := 0
+    v6 := 0
+    sprite v5 v6 1
+    v6 := v1
+    if ve != 0 then
+        i := test-0-80
+    sprite v5 v6 2
+    if vF != 0 begin
+        v6 := 0
+        i := test-80
+        sprite v5 v6 1
+        if vf == 0 begin
+            v4 += 1
+        else
+            v4 += 0x10
+        end
+    end
+    clear
+    return
+
+: test-80
+    0x80 0
+: test-40
+    0x40 0
+: test-0-80
+    0 0x80
+
+: check-result
+    i := quirks-expected
+    i += v0
+    load v0
+    i := fail
+    if v0 == vc then
+        i := checkmark
+    sprite v2 v3 5
+    return
+
+#--------------------------------------------------------------
+:org 0x9C0
+: c8fpd
+    unpackJump draw-sprites-loop 0x244
+    vindex draw-sprites-jump 0x244
+    save v1
+    v0 := 50
+    v1 := 2
+    v2 := 2
+    vindex version-sprites 0x244
+    vcall drawSprites 0x244
+    v0 := 1
+    v1 := 2
+    v2 := 4
+    vindex detected-sprite 0x244
+    vcall drawSprites 0x244
+
+    v0 := 1
+    v1 := 10
+    v2 := 3
+    vindex chip8-sprites 0x244
+    vcall drawSprites 0x244
+
+    v2 := 1
+    vindex sprite-4P 0x244
+    vcall drawSprites 0x244
+
+: c8fpd-end
+    vjump c8fpd-end 0x244
+
+#--------------------------------------------------------------
+:org 0xA00
+: c8x
+    unpackJump draw-sprites-loop 0x300
+    vindex draw-sprites-jump 0x300
+    save v1
+    v0 := 0
+    v1 := 0
+    v5 := 0
+    vindex sprite-pixel 0x300
+    sprite v0 v1 1
+    v1 += 32
+    sprite v0 v1 1
+    v5 += vf
+    if v5 != 0 then
+        sprite v0 v1 1
+    v1 += 32
+    sprite v0 v1 1
+    v5 += vf
+
+    v0 := 50
+    v1 := 2
+    v2 := 2
+    ve := 7 # text color white
+    if v5 == 1 then
+        ve := 0x17 # text color white, but with regular return
+    vindex version-sprites 0x300
+    vcall drawSprites 0x300
+
+    v0 := 1
+    v1 := 2
+    v2 := 4
+    vindex detected-sprite 0x300
+    vcall drawSprites 0x300
+
+    v0 := 1
+    v1 := 10
+    v2 := 4
+    vindex c8x-sprites 0x300
+    vcall drawSprites 0x300
+
+    0xb0 0xe5
+    v0 -= 4
+    0xb0 0xe5
+    if v5 == 0 then
+        vindex sprite-4P 0x300
+    if v5 == 1 then
+        vindex sprite-2P 0x300
+    if v5 != 2 then
+        sprite v0 v1 5
+
+: c8x-end
+    vjump c8x-end 0x300
+
+#--------------------------------------------------------------
+:org 0xA60
+: c8tpd
+    unpackJump draw-sprites-loop 0x260
+    vindex draw-sprites-jump 0x260
+    save v1
+    v0 := 50
+    v1 := 2
+    v2 := 2
+    ve := 0
+    vindex version-sprites 0x260
+    vcall drawSprites 0x260
+    v0 := 1
+    v1 := 2
+    v2 := 4
+    vindex detected-sprite 0x260
+    vcall drawSprites 0x260
+
+    v0 := 1
+    v1 := 10
+    v2 := 3
+    vindex chip8-sprites 0x260
+    vcall drawSprites 0x260
+
+    v2 := 1
+    vindex sprite-2P 0x260
+    vcall drawSprites 0x260
+
+: c8tpd-end
+    vjump c8tpd-end 0x260
