@@ -107,7 +107,7 @@ include_directories(${DOCTEST_INCLUDE_DIR})
 FetchContent_Declare(
         Chiplet
         GIT_REPOSITORY "https://github.com/gulrak/chiplet.git"
-        GIT_TAG "main"
+        GIT_TAG "dev-v1.x"
         GIT_SHALLOW TRUE
 )
 FetchContent_GetProperties(Chiplet)
