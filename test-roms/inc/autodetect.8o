@@ -42,7 +42,7 @@
     :unpack 1 omc_detected
     :call write_trampoline
     v0 := 0
-    v2 := 2
+    v3 := 2
     jump0 has_bnnn
 : has_bnnn
     jump mc_detected
@@ -70,33 +70,47 @@
 : autodetect-mem-quirk-data
     0 1 2 0
 
+: sc_detect_big0
+    v1 := 10
+    v2 := 0
+    loop
+        load v0
+        v2 += v0
+        v0 := 1
+        i += v0
+        v1 -= 1
+        if v1 != 0 then
+    again
+    vf := 0
+    if v2 == 0x4e then
+        vf := 1
+    if v2 == 0x7e then
+        vf := 1
+    if v2 == 0xe2 then
+        vf := 1
+    if v2 == 0x8e then
+        vf := 1
+    if v2 == 0x06 then
+        vf := 1
+    return
+
 : sc_detected
     :call restore_trampoline
     i := autodetect-mem-quirk-data
     load v1
     load v0
     if v0 == 1 begin
+        v0 := 16
+        i := hex v0
+        :call sc_detect_big0
+        if vf != 0 then
+            jump schip10_beta_detected
         v0 := 15
         i := hex v0
         v0 := 5
         i += v0
-        v1 := 10
-        v2 := 0
-        loop
-            load v0
-            v2 += v0
-            v0 := 1
-            i += v0
-            v1 -= 1
-            if v1 != 0 then
-        again
-        if v2 == 0x4e then
-            jump schip10_detected
-        if v2 == 0x7e then
-            jump schip10_detected
-        if v2 == 0xe2 then
-            jump schip10_detected
-        if v2 == 0x8e then
+        :call sc_detect_big0
+        if vf != 0 then
             jump schip10_detected
         jump chip48_detected
     end

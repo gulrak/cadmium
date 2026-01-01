@@ -42,6 +42,7 @@ public:
         {}
         const std::string& name() const { return _name; }
         const unsigned char* data() const { return _data; }
+        std::string dataAsString() const { return std::string(reinterpret_cast<const char*>(_data), _size); }
         size_t size() const { return _size; }
         bool empty() const { return !_data || !_size; }
     private:

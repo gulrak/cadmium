@@ -36,7 +36,7 @@
 
 #include <emulation/chip8genericbase.hpp>
 #include <emulation/emulatorhost.hpp>
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
 #include <chiplet/chip8meta.hpp>
 #include <emulation/time.hpp>
 
@@ -48,8 +48,9 @@ struct Chip8GenericOptions
     Properties asProperties() const;
     static Chip8GenericOptions fromProperties(const Properties& props);
     static Properties& registeredPrototype();
-    Chip8Variant variant() const;
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
+    chip8::Variant variant() const;
+    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP09, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
+    //enum SupportedPreset { eCHIP8, eCHIP8TPD, eCHIP8FPD, eCHIP10, eCHIP8E, eCHIP8X, eCHIP8XTPD, eCHIP8XFPD, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
     SupportedPreset behaviorBase{ eCHIP8 };
     enum class ScreenRotation { NONE=0, CW0=NONE, CW90, CW180, CW270 };
     enum class TouchInputMode { UNKNOWN=-1, NONE=0, SWIPE, SEG16, SEG16FILL, GAMEPAD, VIP };
@@ -68,6 +69,7 @@ struct Chip8GenericOptions
     bool optLoresDxy0Is16x16{false};
     bool optSC11Collision{false};
     bool optSCLoresDrawing{false};
+    bool optSCPreviewFx29{false};
     bool optHalfPixelScroll{false};
     bool optModeChangeClear{false};
     bool optJump0Bxnn{false};
@@ -98,6 +100,8 @@ struct Chip8GenericOptions
 class Chip8GenericEmulator : public Chip8GenericBase
 {
 public:
+    static constexpr unsigned MAX_SCREEN_WIDTH = 256;
+    static constexpr unsigned MAX_SCREEN_HEIGHT = 192;
     using OpcodeHandler = void (Chip8GenericEmulator::*)(uint16_t);
     uint32_t ADDRESS_MASK;
     int SCREEN_WIDTH;
@@ -317,6 +321,16 @@ public:
         _screenNeedsUpdate = true;
     }
 
+    bool handleDisplayWait()
+    {
+        if (_cpuState == eWAIT) {
+            //_inst
+        }
+        if (_cycleCounter % _options.instructionsPerFrame != 0) {
+            //if(_options.optExtendedVBlank
+        }
+    }
+
     template<uint16_t quirks>
     void opDxyn_displayWait(uint16_t opcode)
     {
@@ -441,7 +455,8 @@ public:
                     }
                     else {
                         if constexpr (quirks&SChip11Collisions) {
-                            ++collision;
+                            if (hires)
+                                ++collision;
                         }
                         if(width == 16)
                             ++data;
@@ -458,7 +473,7 @@ public:
     void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) override;
 
 protected:
-    void handleReset() override;
+    void handleReset(bool cold) override;
 
 private:
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
@@ -473,6 +488,7 @@ private:
         else {
             _screen.setAll(0);
             if (_options.behaviorBase == Chip8GenericOptions::eMEGACHIP) {
+                _screenCollision.setAll(0);
                 const auto blackTransparent = be32(0x00000000);
                 _workRGBA->setAll(blackTransparent);
             }
@@ -506,9 +522,10 @@ private:
     Chip8GenericOptions _options;
     uint16_t _randomSeed{};
     float _wavePhase{0};
-    VideoType _screen;
-    VideoRGBAType _screenRGBA1{};
-    VideoRGBAType _screenRGBA2{};
+    VideoType _screen{MAX_SCREEN_WIDTH,MAX_SCREEN_HEIGHT};
+    VideoType _screenCollision{MAX_SCREEN_WIDTH,MAX_SCREEN_HEIGHT};
+    VideoRGBAType _screenRGBA1{MAX_SCREEN_WIDTH,MAX_SCREEN_HEIGHT};
+    VideoRGBAType _screenRGBA2{MAX_SCREEN_WIDTH,MAX_SCREEN_HEIGHT};
     VideoRGBAType* _screenRGBA{};
     VideoRGBAType* _workRGBA{};
     std::array<uint8_t,16> _xoAudioPattern{};
@@ -540,6 +557,7 @@ private:
     int _chip8xBackgroundColor{0};
     uint8_t _vp595Frequency{0x80};
     int64_t _waitCycles{0};
+    int _waitFrames{0};
 #ifdef GEN_OPCODE_STATS
     std::map<uint16_t,int64_t> _opcodeStats;
 #endif

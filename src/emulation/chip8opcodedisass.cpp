@@ -10,7 +10,7 @@
 
 namespace emu {
 
-Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(Chip8Variant variant, SymbolResolver resolver)
+Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(chip8::VariantSet variant, SymbolResolver resolver)
 : _labelOrAddress(std::move(resolver))
 , _opcodeSet(variant)
 {

@@ -102,6 +102,7 @@ public:
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
     using NEFInputHandler = std::function<bool (uint8_t)>;
+    using QChangeHandler = std::function<void (bool)>;
     explicit Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
         : _bus(bus)
         , _systemTime(clockFreq)
@@ -109,6 +110,7 @@ public:
         _output = [](uint8_t, uint8_t){};
         _input = [](uint8_t){ return 0; };
         _inputNEF = [](uint8_t) { return true; };
+        _qChange = [](bool){};
         Cdp1802::reset();
     }
 
@@ -125,6 +127,11 @@ public:
     void setNEFInputHandler(NEFInputHandler handler)
     {
         _inputNEF = handler;
+    }
+
+    void setQChangeHandler(QChangeHandler handler)
+    {
+        _qChange = handler;
     }
 
     //void triggerIrq() { _irq = true; }
@@ -173,6 +180,9 @@ public:
         _rD = state.d;
         _rDF = state.df;
         _rIE = state.ie;
+        if(_rQ != state.q) {
+            _qChange(state.q);
+        }
         _rQ = state.q;
         _cycles = state.cycles;
     }
@@ -408,6 +418,7 @@ public:
         switch (opcode) {
             case 0x00: // IDL ; WAIT FOR DMA OR INTERRUPT; M(R(0)) → BUS
                 _cpuState = eIDLE;
+                readByte(_rR[0]);
                 break;
             CASE_15(0x01): // LDN Rn ; M(R(N)) → D; FOR N not 0
                 _rD = readByte(RN());
@@ -480,7 +491,19 @@ public:
                 _output(_rN, readByte(RX()++));
                 break;
             }
-            case 0x68: _cpuState = eERROR; _errorMessage = "Illegal opcode 0x68!"; PC()--; break; // ILLEGAL (still behaving as NOP on the original CDP1802)
+            case 0x68: {
+                // INP 0, BUS → M(R(X)); BUS → D; N LINES = N
+                if (_stopOn68) {
+                    // ILLEGAL (still behaving as NOP on the original CDP1802)
+                    _cpuState = eERROR; _errorMessage = "Illegal opcode 0x68!"; PC()--;
+                }
+                else {
+                    // the actual behavior on a 1802 when executing the opcode
+                    _rD = _input(0);
+                    writeByte(RX(), _rD);
+                }
+                break;
+            }
             CASE_7(0x69): { // INP 1/7 ; BUS → M(R(X)); BUS → D; N LINES = N
                 _rD = _input(_rN&7);
                 writeByte(RX(), _rD);
@@ -540,10 +563,16 @@ public:
                 _rR[2]--;
                 break;
             case 0x7A: // REQ ; 0 → Q
-                _rQ = false;
+                if (_rQ) {
+                    _qChange(false);
+                    _rQ = false;
+                }
                 break;
             case 0x7B: // SEQ ; 1 → Q
-                _rQ = true;
+                if (!_rQ) {
+                    _qChange(true);
+                    _rQ = true;
+                }
                 break;
             case 0x7C: { // ADCI ; M(R(P)) + D + DF → DF, D; R(P) + 1 → R(P)
                 auto t = uint16_t(readByte(PC()++)) + _rD + _rDF;
@@ -795,7 +824,12 @@ public:
             case 21: _rDF = value != 0; break;
             case 22: _rT = static_cast<uint8_t>(value); break;
             case 23: _rIE = value != 0; break;
-            case 24: _rQ = value != 0; break;
+            case 24:
+                if (bool newValue = value != 0; _rQ != newValue) {
+                    _qChange(value != 0);
+                    _rQ = newValue;
+                }
+                break;
             default: break;
         }
     }
@@ -810,11 +844,12 @@ public:
     }
 #endif
 protected:
-    void handleReset() override
+    void handleReset(bool cold) override
     {
         _rI = 0;
         _rN = 0;
         _rP = 0;
+        _qChange(false);
         _rQ = false;
         _rX = 0;
         _rR[0] = 0;
@@ -854,6 +889,7 @@ private:
     OutputHandler _output;
     InputHandler _input;
     NEFInputHandler _inputNEF;
+    QChangeHandler _qChange;
     CpuState _cpuState{eNORMAL};
     uint8_t _rD{};
     bool _rDF{};
@@ -866,6 +902,7 @@ private:
     bool _rIE{false};
     bool _rQ{false};
     bool _irq{false};
+    bool _stopOn68{false};
     int64_t _cycles{};
     int64_t _idleCycles{};
     int64_t _irqCycles{};

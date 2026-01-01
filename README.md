@@ -108,11 +108,12 @@ The Supported presets are (possible specific file extensions in parentheses):
 * First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP:
   * `strict-chip-8` - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (`.ch8`;`.c8vip`)
 * Hardware emulation of a COSMAC VIP:
-  * `vip-none` - Raw COSMAC VIP without any CHIP-8 preloaded (`.bin`;`.hex`;`.ram`;`.raw`)
+  * `vip-none` - Raw COSMAC VIP without any CHIP-8 preloaded (`.cos`;`.bin`;`.hex`;`.ram`;`.raw`)
   * `vip-chip-8` - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (`.ch8`;`.c8vip`;`.hc8`)
   * `vip-chip-10` - 128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (`.ch10`;`.c10`)
   * `vip-chip-8-rb` - CHIP-8 modification with relative branching (BFnn, FBnn), from #VIPER-V2-I1, by Wayne Smith, 1979 (`.c8rb`)
   * `vip-chip-8-tpd` - CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979 (`.c8tpd`;`.c8h`)
+  * `vip-chip-8-tpd-ts` - CHIP-8 with two page display (64x64), from PIPS for VIPS, originally by Andy Modla and Jef Winsor, modified by Tom Swan, 1979 (`.c8tpdts`)
   * `vip-chip-8-fpd` - CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980 (`.c8fpd`)
   * `vip-chip-8x` - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (`.c8x`)
   * `vip-chip-8x-tpd` - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (`.c8xtpd`)
@@ -122,32 +123,31 @@ The Supported presets are (possible specific file extensions in parentheses):
 **NOTE:** Be aware that are no established standard file extension beyond `.ch8` in the CHIP-8 world. Different emulators come with files
 with different conventions, so this project used existing ones where they seemed fitting and invented their own where
 none where found. You can always use `.ch8`, for files known to Cadmium (short of 600 are known by it), this will
-work seamlessly, for others the settings screen allows to remember a configuration for a file, and like the known
-roms it is only based on the SHA1 of the content, so as long as any valid extension is used the detection will
-work.
+work seamlessly. For programs undetected, the settings screen allows to remember a configuration for a file. Like known
+roms, it is only based on the SHA1 of the content, so as long as any valid extension is used the detection will work.
+For undetected files with a specific extension that multiple variants support, the first one in the order above will be
+used.
+
+### Roadmap of upcoming variants that are currently in development (no promises on a date):
+
+* Hardware emulation of a DREAM6800:
+  * `dream-none` - Raw DREAM6800 for programs written in M6800 assembler (`.d68`;`.bin`;`.hex`;`.ram`;`.raw`)
+  * `dream-chipos` - CHIPOS, that is CHIP-8 on an emulated DREAM6800 by Mike Bauer, 1978 (`.ch8d`)
+  * `dream-chiposlo` - CHIPOSLO is an extension of CHIPOS, adding the missing opcodes, on an emulated DREAM6800, by Tobias V. Langhoff, 2020
+* Hardware emulation of an ETI-660:
+  * `et660-none` - Raw ETI-660 without any CHIP-8 preloaded (`.et660`;`.bin`;`.hex`;`.ram`;`.raw`)
+  * `et660-chip-8` - The CHIP-8 on an emulated ETI-660
+* Hardware emulation of "enough of" a HP-48SX (not a full HP-48SX, so not usable as calculator):
+  * `hp48-chip-48`
+  * `hp48-schip-1-0-beta`
+  * `hp48-schip-1-0`
+  * `hp48-schip-1-1`
+  * `hp48-schpc`
+* Hardware emulation of "enough of" an Amiga (just enough to faithfully run Paul Hayters CHIP-8):
+  * `amiga-chip-8`
+
 
 ----
-* CHIP-8
-* CHIP-8-STRICT (cycle exact HLE VIP CHIP-8)
-* CHIP-8E
-* CHIP-8X
-* CHIP-10
-* CHIP-48
-* SUPER-CHIP 1.0
-* SUPER-CHIP 1.1
-* SUPER-CHIP COMP
-* MODERN-SUPER-CHIP
-* MegaChip 8 (with Mega8 wrapping/scrolling support if wrapping is enabled)
-* XO-CHIP
-* VIP-CHIP-8 (CHIP-8 on an emulated COSMAC VIP)
-* VIP-CHIP-8 with relative branching ()
-* VIP-CHIP-8 TPD (same, but with 64x64 display)
-* VIP-HI-RES-CHIP-8 (same, but with 64x128 display)
-* VIP-CHIP-8E (same, with CHIP-8E interpreter)
-* VIP-CHIP-8X (same, with CHIP-8X and VP-590/VP-595 add-on boards)
-* VIP-CHIP-8X TPD (same hardware as VIP-CHIP-8X but 64x64)
-* VIP-HI-RES-CHIP-8X (same hardware as VIP-CHIP-8X but 64x128)
-* CHIP-8-DREAM (CHIP-8 on an emulated DREAM6800)
 
 Whith `CHIP-8-STRICT` Cadmium might be the first high-level emulator that has
 a core that can execute CHIP-8 with the behavior and timing of the initial
@@ -164,7 +164,7 @@ to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
 quirks that, while correct for the original SCHIP1.1, are not common in modern
 programs.
 
-The `MODERN-SUPER-CHIP` is more or less Octo's interpretation of SUSER-CHIP
+The `MODERN-SUPER-CHIP` is more or less Octo's interpretation of SUPER-CHIP
 and what Timendus test suite v4.1 checks for as modern SCHIP.
 
 The `VIP-CHIP-8` variant presets activate a core that is emulating a COSMAC
@@ -270,12 +270,6 @@ General Options:
   --draw-dump
     Dump screen after every draw when in trace mode.
 
-  --dump-interpreter <arg>
-    Dump the given interpreter in a local file named '<interpreter>.ram' and exit
-
-  --dump-library-nickel
-    Dump library table for Nickel
-
   --opcode-json
     Dump opcode information as JSON to stdout
 
@@ -288,6 +282,9 @@ General Options:
   -b <arg>, --benchmark <arg>
     Run given number of cycles as benchmark
 
+  -c, --compare
+    Run and compare with reference engine, trace until diff
+
   -h, --help
     Show this help text
 
@@ -296,98 +293,115 @@ General Options:
         Default HLE CHIP-8 emulation:
             chip-8 - The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker, 1977 (.ch8)
             chip-10 - 128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (.ch10)
-            chip-8e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
-            chip-8x - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (.c8x)
+            chip-8-e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
+            chip-8-x - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (.c8x)
             chip-48 - The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson, 1990 (.ch48;.c48)
+            schip-1-0-beta - SUPER-CHIP v1.0 beta expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991 (.sc10b)
             schip-1-0 - SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991 (.sc10)
             schip-1-1 - SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991 (.sc8;.sc11)
             schipc - SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017 (.scc)
             schip-modern - Modern SUPER-CHIP interpretation as done in Octo by John Earnest, 2014 (.scm)
             megachip - MegaChip as specified by Martijn Wanting, Revival-Studios, 2007 (.mc8)
-            xo-chip - A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014 (xo8)
+            xo-chip - A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014 (.xo8)
         First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP:
             strict-chip-8 - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (.ch8;.c8vip)
         Hardware emulation of a COSMAC VIP:
-            vip-none - Raw COSMAC VIP without any CHIP-8 preloaded (.bin;.hex;.ram;.raw)
+            vip-none - Raw COSMAC VIP without any CHIP-8 preloaded (.bin;.hex;.ram;.raw;.cos)
             vip-chip-8 - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (.ch8;.c8vip;.hc8)
             vip-chip-10 - 128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (.ch10;.c10)
             vip-chip-8-rb - CHIP-8 modification with relative branching (BFnn, FBnn), from #VIPER-V2-I1, by Wayne Smith, 1979 (.c8rb)
             vip-chip-8-tpd - CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979 (.c8tpd;.c8h)
+            vip-chip-8-tpd-ts - CHIP-8 with two page display (64x64), from PIPS for VIPS, originally by Andy Modla and Jef Winsor, modified by Tom Swan, 1979 (.c8tpdts)
             vip-chip-8-fpd - CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980 (.c8fpd)
-            vip-chip-8x - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (.c8x)
-            vip-chip-8x-tpd - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (.c8xtpd)
-            vip-chip-8x-fpd - A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug (.c8xfpd)
-            vip-chip-8e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
+            vip-chip-8-x - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (.c8x)
+            vip-chip-8-x-tpd - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (.c8xtpd)
+            vip-chip-8-x-fpd - A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug (.c8xfpd)
+            vip-chip-8-e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
+        Hardware emulation of a DREAM6800:
+            dream-none - Raw DREAM6800 (.bin;.hex;.ram;.raw)
+            dream-chip-8 - CHIP-8 DREAM6800 (.bin;.hex;.ram;.raw)
+            dream-chip-8-lop - CHIP-8 with logical operators on DREAM6800 (.bin;.hex;.ram;.raw)
+        Hardware emulation of an ETI660:
+            eti-none - Raw ETI660 (.bin;.hex;.ram;.raw)
 
-  -r, --run
+  -r, --[no-]run
     if a ROM is given (positional) start it
 
   -t <arg>, --trace <arg>
     Run headless and dump given number of trace lines
 
 CHIP-8 GENERIC Options (only available if preset uses default core):
-  --clean-ram
-    Delete ram on startup
+  --[no-]clean-ram
+    Clean RAM
 
-  --cyclic-stack
+  --[no-]cubechip-tone
+    CubeChip contextual tone
+
+  --[no-]cyclic-stack
     Cyclic stack
 
-  --dont-reset-vf
+  --[no-]dont-reset-vf
     8xy1/8xy2/8xy3 don't reset VF
 
-  --extended-vblank
+  --[no-]extended-vblank
     Extended CHIP-8 wait emulation
 
   --frame-rate <arg>
     Number of frames per second, default 60
 
-  --half-pixel-scroll
+  --[no-]half-pixel-scroll
     Half pixel scrolling
 
-  --instant-dxyn
+  --[no-]instant-dxyn
     Dxyn doesn't wait for vsync
 
   --instructions-per-frame <arg>
     Number of instructions per frame, default depends on variant
 
-  --jump0-bxnn
+  --[no-]jump-0-bxnn
     Bxnn/jump0 uses Vx
 
-  --just-shift-vx
+  --[no-]just-shift-vx
     8xy6/8xyE just shift VX
 
-  --load-store-inc-i-by-x
+  --[no-]load-store-inc-i-by-x
     Fx55/Fx65 increment I by X
 
-  --load-store-inc-i-by-x-plus-1
+  --[no-]load-store-inc-i-by-x-plus-1
     Fx55/Fx65 increment I by X + 1
 
-  --lores-dxy0-is-16x16
+  --[no-]lores-dxy-0-is-16-x-16
     Lores Dxy0 draws 16 pixel width
 
-  --lores-dxy0-is-8x16
+  --[no-]lores-dxy-0-is-8-x-16
     Lores Dxy0 draws 8 pixel width
 
   --memory <arg>
     Size of ram in bytes (2048, 4096, 8192, 16384, 32768, 65536, 16777216)
 
-  --mode-change-clear
+  --[no-]mode-change-clear
     Mode change clear
 
-  --schip-11-collision
+  --[no-]schip-11-collision
     Dxyn uses SCHIP1.1 collision
 
-  --schip-lores-drawing
+  --[no-]schip-lores-drawing
     HP SuperChip lores drawing
 
-  --trace-log
+  --[no-]schip-preview-fx-29
+    HP SuperChip 1.0 'preview' Fx29
+
+  --trace-file <arg>
+    Trace log file
+
+  --[no-]trace-log
     Enable trace log
 
-  --wrap-sprites
+  --[no-]wrap-sprites
     Wrap sprite pixels
 
 CHIP-8 STRICT Options (only available if preset uses strict core):
-  --clean-ram
+  --[no-]clean-ram
     Delete ram on startup
 
   --clock-rate <arg>
@@ -396,11 +410,11 @@ CHIP-8 STRICT Options (only available if preset uses strict core):
   --memory <arg>
     Size of ram in bytes (2048, 4096, 8192, 12288, 16384, 32768)
 
-  --trace-log
+  --[no-]trace-log
     Enable trace log
 
 COSMAC-VIP Options (only available if preset uses vip core):
-  --clean-ram
+  --[no-]clean-ram
     Delete ram on startup
 
   --clock-rate <arg>
@@ -409,11 +423,43 @@ COSMAC-VIP Options (only available if preset uses vip core):
   --memory <arg>
     Size of ram in bytes (2048, 4096, 8192, 12288, 16384, 32768)
 
-  --trace-log
+  --[no-]trace-log
+    Enable trace log
+
+  --[no-]trace-video
+    Insert video events into trace log
+
+DREAM6800 Options (only available if preset uses dream core):
+  --[no-]clean-ram
+    Delete ram on startup
+
+  --clock-rate <arg>
+    Clock frequency, default is 1000000
+
+  --memory <arg>
+    Size of ram in bytes (2048, 4096)
+
+  --rom-name <arg>
+    Rom image name, default c8-monitor (none, chipos, chiposlo)
+
+  --[no-]trace-log
+    Enable trace log
+
+ETI660 Options (only available if preset uses eti core):
+  --[no-]clean-ram
+    Delete ram on startup
+
+  --clock-rate <arg>
+    Clock frequency, default is 1773448
+
+  --memory <arg>
+    Size of ram in bytes (3072)
+
+  --[no-]trace-log
     Enable trace log
 
 ...
-    ROM file or source to load (.bin, .c10, .c48, .c8e, .c8fpd, .c8h, .c8rb, .c8tpd, .c8vip, .c8x, .c8xfpd, .c8xtpd, .ch10, .ch48, .ch8, .hc8, .hex, .mc8, .ram, .raw, .sc10, .sc11, .sc8, .scc, .scm, xo8)
+    ROM file or source to load (.bin, .c10, .c48, .c8e, .c8fpd, .c8h, .c8rb, .c8tpd, .c8tpdts, .c8vip, .c8x, .c8xfpd, .c8xtpd, .ch10, .ch48, .ch8, .cos, .hc8, .hex, .mc8, .ram, .raw, .sc10, .sc10b, .sc11, .sc8, .scc, .scm, .xo8)
 ```
 
 ## Versioning

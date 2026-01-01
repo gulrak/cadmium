@@ -226,7 +226,7 @@ private:
 
 inline std::string formatUnit(double val, const std::string& suffix, int minScale = -1)
 {
-    static const char* prefix[] = {"n", "u", "m", "", "k", "M", "G", "T"};
+    static const char* prefix[] = {"n", "μ", "m", "", "k", "M", "G", "T"};
     if(std::isnan(val))
         return "";
     bool isNeg = val < 0;

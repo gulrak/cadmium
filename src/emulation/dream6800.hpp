@@ -98,7 +98,7 @@ public:
     Properties& getProperties() override;
 
 protected:
-    void handleReset() override;
+    void handleReset(bool cold) override;
 
 private:
     int frameCycle() const;

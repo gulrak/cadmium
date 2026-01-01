@@ -74,10 +74,10 @@ public:
     };
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
-    void reset()
+    void reset(bool cold = true)
     {
         initExpressionist();
-        handleReset();
+        handleReset(cold);
     }
     virtual int executeInstruction() = 0;
     virtual int64_t executeFor(int64_t microseconds) = 0;
@@ -205,7 +205,7 @@ public:
         return _expressionist.parseExpression(expr);
     }
 protected:
-    virtual void handleReset() = 0;
+    virtual void handleReset(bool) = 0;
     virtual void initExpressionist() = 0;
     virtual void doLog(const std::string& message) const
     {

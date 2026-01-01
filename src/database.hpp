@@ -59,7 +59,7 @@ public:
     explicit Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path);
     ~Database();
     int scanLibrary();
-    FileInfo scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
+    ghc::expected<FileInfo,LoadError> scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
     std::optional<Program> getSelectedProgram() const;
     bool render(Font& font); // returns true if a program was selected
     bool fetchC8PDB();

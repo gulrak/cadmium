@@ -38,18 +38,20 @@ void Debugger::setExecMode(ExecMode mode)
 void Debugger::updateCore(emu::IEmulationCore* core)
 {
     _core = core;
-    _realCore = dynamic_cast<emu::Chip8RealCoreBase*>(core);
-    _backend = _realCore != nullptr ? &_realCore->getBackendCpu() : nullptr;
-    _visibleExecUnit = 0;
-    _activeInstructionsTab = 0;
-    // ensure cached data has the correct size by actually forcing a capture
-    _instructionOffset.resize(_core->numberOfExecutionUnits());
-    _cpuStates.resize(_core->numberOfExecutionUnits());
-    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
-        _instructionOffset[i] = -1;
-        _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
+    if (_core) {
+        _realCore = dynamic_cast<emu::Chip8RealCoreBase*>(core);
+        _backend = _realCore != nullptr ? &_realCore->getBackendCpu() : nullptr;
+        _visibleExecUnit = 0;
+        _activeInstructionsTab = 0;
+        // ensure cached data has the correct size by actually forcing a capture
+        _instructionOffset.resize(_core->numberOfExecutionUnits());
+        _cpuStates.resize(_core->numberOfExecutionUnits());
+        for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+            _instructionOffset[i] = -1;
+            _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
+        }
+        captureStates();
     }
-    captureStates();
 }
 
 void Debugger::captureStates()
@@ -548,9 +550,11 @@ void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
 {
     if(auto core = chip8Core(); core) {
         for(uint32_t addr = 0; addr < std::min(core->memSize(), 65536); ++addr) {
-            const auto* bpn = compiler.breakpointForAddr(addr);
-            if(bpn)
-                core->setBreakpoint(addr, {.label = bpn, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
+            const auto bpn = compiler.breakpointForAddr(addr);
+            if(!bpn.empty()) {
+                auto label = std::string(bpn);
+                core->setBreakpoint(addr, {.label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
+            }
             else {
                 if (auto* bpi = core->findBreakpoint(addr); bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
                     core->removeBreakpoint(addr);

@@ -46,6 +46,9 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         case C8TV_C48:
             options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP48);
             break;
+        case C8TV_SC09:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP09);
+            break;
         case C8TV_SC10:
             options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10);
             break;
@@ -125,11 +128,14 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         case C8TV_C48:
             options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP48);
             break;
+        case C8TV_SC09:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP09);
+            break;
         case C8TV_SC10:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP10);
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10);
             break;
         case C8TV_SC11:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
             break;
         case C8TV_MC8:
             options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP);

@@ -188,7 +188,7 @@ public:
             _colorRamMaskLores = 0x3e7;
         }
         _properties = _options.asProperties();
-        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_eti660_c8_monitor, 1024).to_hex().substr(0,8)));
+        _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_eti660_c8_monitor).to_hex().substr(0,8)));
         _memorySize = _options.ramSize;
         _ram.resize(_options.ramSize, 0);
     }
@@ -218,7 +218,7 @@ public:
     std::array<uint8_t,256> _colorRam{};
     std::array<uint8_t,1024> _rom{};
     std::span<uint8_t> _stackSpan{};
-    VideoType _screen;
+    VideoType _screen{64,192,4};
 };
 
 
@@ -332,7 +332,7 @@ Eti660::Eti660(EmulatorHost& host, Properties& properties, IEmulationCore* other
 
 Eti660::~Eti660() = default;
 
-void Eti660::handleReset()
+void Eti660::handleReset(bool cold)
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
@@ -341,7 +341,7 @@ void Eti660::handleReset()
     }
     else {
         if(_impl->_powerOn) {
-            ghc::RandomLCG rnd(42);
+            ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
             std::ranges::generate(_impl->_ram, rnd);
         }
     }
@@ -768,7 +768,7 @@ uint16_t Eti660::getMaxScreenHeight() const
     return 192;
 }
 
-const VideoType* Eti660::getScreen() const
+const VideoRGBAType* Eti660::getScreenRGBA() const
 {
     return &_impl->_video.getScreen();
 }

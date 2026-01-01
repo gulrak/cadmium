@@ -6,8 +6,6 @@ set(CHIP8_EMU_SOURCE
     chip8genericbase.hpp
     chip8opcodedisass.cpp
     chip8opcodedisass.hpp
-    chip8options.cpp
-    chip8options.hpp
     chip8strict.cpp
     chip8strict.hpp
     coreregistry.cpp
@@ -37,8 +35,20 @@ set(CHIP8_EMU_SOURCE
     utility.cpp
     expressionist.cpp
     expressionist.hpp
-    #octocartridge.cpp
+        video/framedescriptor.hpp
+        video/iframeeffect.hpp
+        video/frameprocessor.hpp
+        video/frameprocessor.cpp
+        video/iframeeffect.cpp
+        video/plaineffect.hpp
+        video/plaineffect.cpp
+        video/scanlineeffect.hpp
+        video/scanlineeffect.cpp
+        video/lcdeffect.hpp
+        video/lcdeffect.cpp
+        #octocartridge.cpp
     #octocartridge.hpp
+    #megachip_original.cpp
 )
 
 add_library(emulation OBJECT ${CHIP8_EMU_SOURCE})

@@ -539,7 +539,7 @@ public:
 
 
 protected:
-    void handleReset() override
+    void handleReset(bool cold) override
     {
         _rA = 0;
         _rB = 0;

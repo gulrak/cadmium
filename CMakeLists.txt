@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0...3.24)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum MacOS deployment version" FORCE)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum MacOS deployment version" FORCE)
 project(cadmium VERSION 1.9.90 LANGUAGES C CXX)
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
     cmake_policy(VERSION 3.21)
@@ -27,11 +27,12 @@ add_subdirectory(resources)
 
 add_subdirectory(src)
 if(NOT EMSCRIPTEN)
+    add_subdirectory(test-roms)
     add_subdirectory(test)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
-#    add_subdirectory(experimental)
+    add_subdirectory(experimental)
 endif()
 
 set(CPACK_PACKAGE_VENDOR "gulrak.net")

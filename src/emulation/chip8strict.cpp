@@ -97,7 +97,7 @@ bool Chip8StrictEmulator::updateProperties(Properties& props, Property& changed)
 
 GenericCpu::StackContent Chip8StrictEmulator::stack() const
 {
-    return {2, eBIG, eDOWNWARDS, std::span(_memory.data() + _options.ramSize - 0x160, 48)};
+    return {2, eBIG, eDOWNWARDS, std::span(_memory.data() + _options.ramSize - 0x15f, 46)};
 }
 
 void Chip8StrictEmulator::setPalette(const Palette& palette)

@@ -69,32 +69,35 @@ int main(int argc, char* argv[])
     int totalSize = 0;
     int filenamesSize = 0;
     if (argc < 3) {
-        puts("USAGE: resourcer <directory> <outputfile>");
+        puts("USAGE: resourcer <outputfile> <directory> ...");
         exit(-1);
     }
 
-    std::string dir = argv[1];
-    if (!dir.empty() && dir[dir.length() - 1] != '/' && dir[dir.length() - 1] != '\\') {
-        dir += "/";
-    }
-
-    fs::path inputDir = fs::canonical(dir);
-    std::clog << "Reading content of '" << inputDir.string() << "' ..." << std::endl;
-
-    for (fs::recursive_directory_iterator dir(inputDir); dir != fs::recursive_directory_iterator(); ++dir) {
-        std::string filepath = dir->path().string().substr(inputDir.string().length() + 1);
-        if (!filepath.empty() && filepath[0] != '.' && fs::is_regular_file(*dir)) {
-            long size = (long)fs::file_size(*dir);
-            std::cout << filepath << " (" << size << ")" << std::endl;
-            files[filepath] = size;
-            totalSize += size;
-            filenamesSize += filepath.length();
+    // Process all directory arguments starting from argv[2]
+    //for (int argIdx = 2; argIdx < argc; ++argIdx) {
+        std::string dir = argv[2];
+        if (!dir.empty() && dir[dir.length() - 1] != '/' && dir[dir.length() - 1] != '\\') {
+            dir += "/";
         }
-    }
+
+        fs::path inputDir = fs::canonical(dir);
+        std::clog << "Reading content of '" << inputDir.string() << "' ..." << std::endl;
+
+        for (fs::recursive_directory_iterator dir(inputDir); dir != fs::recursive_directory_iterator(); ++dir) {
+            std::string filepath = dir->path().string().substr(inputDir.string().length() + 1);
+            if (!filepath.empty() && filepath[0] != '.' && fs::is_regular_file(*dir)) {
+                long size = (long)fs::file_size(*dir);
+                std::cout << filepath << " (" << size << ")" << std::endl;
+                files[filepath] = size;
+                totalSize += size;
+                filenamesSize += filepath.length();
+            }
+        }
+    //}
 
     std::clog << "Found " << files.size() << " files with " << totalSize << " bytes of data, processing..." << std::endl;
 
-    std::ofstream output(argv[2], std::ios::trunc);
+    std::ofstream output(argv[1], std::ios::trunc);
     int resourceDataSize = (totalSize + 4 + files.size() * 12 + filenamesSize + 1);
     output << "const int g_resourceDataSize = " << resourceDataSize << ";" << std::endl;
     output << "const unsigned char g_resourceData[" << resourceDataSize << "] = {" << std::endl;

@@ -1,0 +1,114 @@
+# Build directories
+/build/
+/Build/
+/BUILD/
+/cmake-build-*/
+/out/
+/bin/
+/lib/
+/obj/
+/target/
+/Debug/
+/Release/
+/x64/
+/x86/
+
+# IDE files
+## CLion
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+## Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+
+## VSCode
+.vscode/
+.history/
+
+## Eclipse
+.classpath
+.project
+.settings/
+.metadata/
+
+# Editor backup files
+*~
+*.swp
+*.swo
+.*.swp
+.*.swo
+*.bak
+*.tmp
+
+# OS specific files
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+## Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+## Linux
+.directory
+.Trash-*
+
+# C/C++ specific
+## Compiled Object files
+*.o
+*.obj
+*.lo
+*.slo
+
+## Precompiled Headers
+*.gch
+*.pch
+
+## Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+## Compiled Static libraries
+*.a
+*.la
+*.lai
+*.lib
+
+## Executables
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake

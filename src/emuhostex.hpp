@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
 #include <emulation/emulatorhost.hpp>
 #include <emulation/iemulationcore.hpp>
 #include <emulation/palette.hpp>
@@ -53,6 +53,9 @@
 #include <cmath>
 
 namespace emu {
+
+static constexpr int SUPPORTED_SCREEN_WIDTH = 384;
+static constexpr int SUPPORTED_SCREEN_HEIGHT = 262;
 
 class IChip8Emulator;
 
@@ -198,8 +201,8 @@ private:
     std::atomic_bool _shutdown{false};
     std::atomic<std::chrono::steady_clock::duration> _frameDuration{std::chrono::steady_clock::duration::zero()};
     std::recursive_mutex _mutex;
-    std::thread _workerThread;
     SMA<120> _smaFrameTime_us;
+    std::thread _workerThread;
 };
 #endif
 

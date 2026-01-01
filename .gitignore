@@ -43,4 +43,7 @@ arch
 
 # patched on-the-fly files
 **/zxorm-src/CMakeLists.txt
+
+CMakeUserPresets.json
+
 rcore_desktop_glfw.c

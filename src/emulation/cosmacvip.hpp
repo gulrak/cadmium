@@ -38,7 +38,7 @@ namespace emu {
 extern const uint8_t _chip8_cvip[0x200];
 extern const uint8_t _rom_cvip[0x200];
 
-enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
+enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8TPDTS, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
 
 /// COSMAC VIP Emulation Core
 /// This core emulates the hardware of a COSMAC VIP and allows a few hardware configuration
@@ -75,6 +75,7 @@ public:
     int executeInstruction() override;
     void executeInstructions(int numInstructions) override;
     int64_t machineCycles() const override;
+    void traceNextFrame() override;
 
     uint8_t* memory() override;
     int memSize() const override;
@@ -90,6 +91,7 @@ public:
     uint16_t getMaxScreenWidth() const override;
     uint16_t getMaxScreenHeight() const override;
     const VideoType* getScreen() const override;
+    const VideoRGBAType* getScreenRGBA() const override;
     void setPalette(const Palette& palette) override;
     int getMaxColors() const override;
 
@@ -113,11 +115,12 @@ public:
     static std::vector<uint8_t> getInterpreterCode(const std::string& name);
 
 protected:
-    void handleReset() override;
+    void handleReset(bool cold) override;
 
 private:
     static uint16_t justPatchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);
     uint16_t patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size);
+    void qChanged(bool newQ);
     int frameCycle() const;
     int videoLine() const;
     bool executeCdp1802();

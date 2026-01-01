@@ -240,5 +240,64 @@ inline std::string heuristicUtf8(const std::string& str)
     }
 }
 
+inline std::vector<std::string> wordWrap(const std::string_view text, const size_t width)
+{
+    if (width == 0) {
+        return {};
+    }
+
+    std::vector<std::string> result;
+    std::vector<uint32_t> currentLine;
+
+    const char* ptr = text.data();
+    const char* end = ptr + text.size();
+
+    auto findLastWrapPoint = [&]() -> int {
+        for (auto i = static_cast<int>((std::min)(currentLine.size(), width) - 1); i >= 0; --i) {
+            auto cp = currentLine[i];
+            if (cp == ' ' || cp == '.' || cp == ',' ||
+               cp == ';' || cp == '-' || cp == '/') {
+                return i;
+            }
+        }
+        return -1;
+    };
+
+    auto commitLine = [&](size_t endPos) {
+        std::string line;
+        for (size_t i = 0; i < endPos; ++i) {
+            append(line, currentLine[i]);
+        }
+        if (!line.empty()) {
+            result.push_back(std::move(line));
+        }
+        currentLine.erase(currentLine.begin(), currentLine.begin() + endPos);
+    };
+
+    while (ptr < end) {
+        uint32_t codepoint = fetchCodepoint(ptr, end);
+        currentLine.push_back(codepoint);
+        if (currentLine.size() > width) {
+            int wrapPoint = findLastWrapPoint();
+
+            if (wrapPoint >= 0) {
+                commitLine(wrapPoint + 1);
+            } else {
+                commitLine(width);
+            }
+        }
+    }
+
+    if (!currentLine.empty()) {
+        std::string line;
+        for (uint32_t cp : currentLine) {
+            append(line, cp);
+        }
+        result.push_back(line);
+    }
+
+    return result;
+}
+
 }  // namespace utf8
 } // namespace ghc

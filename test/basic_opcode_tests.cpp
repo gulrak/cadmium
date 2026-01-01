@@ -75,6 +75,12 @@
 #undef QUIRKS
 #undef C8CORE
 
+#define C8CORE "schip-1-0-BETA"
+#define QUIRKS (QUIRK_VF_NOT_RESET|QUIRK_LOAD_X|QUIRK_JUMP_VX|QUIRK_SHIFT_VX|QUIRK_SCALE_X2|QUIRK_SCALE_Y2)
+#include "basic_opcode_tests.hpp"
+#undef QUIRKS
+#undef C8CORE
+
 #define C8CORE "schip-1-0"
 #define QUIRKS (QUIRK_VF_NOT_RESET|QUIRK_LOAD_X|QUIRK_JUMP_VX|QUIRK_SHIFT_VX|QUIRK_SCALE_X2|QUIRK_SCALE_Y2)
 #include "basic_opcode_tests.hpp"

@@ -595,7 +595,7 @@ void Editor::drawHighlightedTextLine(Font& font, const char* text, const char* e
 
 void Editor::safeInsert(uint32_t offset, const std::string& text)
 {
-    assert(("Text offset is actually in text", offset <= _text.size()));
+    assert(offset <= _text.size() && "Text offset is actually in text");
     if(offset > _text.size()) {
         TraceLog(LOG_ERROR, "Trying to insert after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
     }
@@ -606,7 +606,7 @@ void Editor::safeInsert(uint32_t offset, const std::string& text)
 
 void Editor::safeErase(uint32_t offset, uint32_t length)
 {
-    assert(("Text offset is actually in text", offset <= _text.size()));
+    assert(offset <= _text.size() && "Text offset is actually in text");
     if(offset > _text.size()) {
         TraceLog(LOG_ERROR, "Trying to erase after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
         return;

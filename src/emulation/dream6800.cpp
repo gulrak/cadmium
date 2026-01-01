@@ -199,7 +199,7 @@ public:
     std::atomic<float> _wavePhase{0};
     std::vector<uint8_t> _ram{};
     std::array<uint8_t,1024> _rom{};
-    VideoType _screen;
+    VideoType _screen{64,128, 4};
     Properties& _properties;
 };
 
@@ -291,11 +291,11 @@ Dream6800::Dream6800(EmulatorHost& host, Properties& props, IChip8Emulator* othe
 {
     if(_impl->_options.romName == "CHIPOSLO") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800ChipOslo, 512).to_hex().substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800ChipOslo).to_hex().substr(0,8)));
     }
     else {
         std::memcpy(_impl->_rom.data(), dream6800Rom, sizeof(dream6800Rom));
-        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800Rom, 512).to_hex().substr(0,8)));
+        _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800Rom).to_hex().substr(0,8)));
     }
     _impl->_pia.irqAOutputHandler = [this](bool level) {
         if(!level)
@@ -354,7 +354,7 @@ Dream6800::~Dream6800()
 
 }
 
-void Dream6800::handleReset()
+void Dream6800::handleReset(bool cold)
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
@@ -362,7 +362,7 @@ void Dream6800::handleReset()
         std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
     }
     else {
-        ghc::RandomLCG rnd(42);
+        ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
         std::ranges::generate(_impl->_ram, rnd);
     }
     _impl->_screen.setAll(0);

@@ -74,7 +74,7 @@ target_compile_definitions(cadmium PUBLIC
         CADMIUM_WITH_BACKGROUND_EMULATION)
 if(CADMIUM_WITH_DATABASE)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_DATABASE)
-    target_link_libraries(cadmium PUBLIC zxorm::zxorm ssl httplib::httplib)
+    target_link_libraries(cadmium PUBLIC ghc::sqlite ssl httplib::httplib)
 endif()
 if(WEB_WITH_CLIPBOARD)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_CLIPBOARD)

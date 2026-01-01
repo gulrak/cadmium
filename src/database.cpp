@@ -31,9 +31,9 @@
 #include <c8db/database.hpp>
 
 #include <raylib.h>
-#include <sqlite3/sqlite3.h>
+#include <ghc/sqlite.hpp>
 #include <rlguipp/rlguipp.hpp>
-#include <zxorm/zxorm.hpp>
+
 
 #ifndef _WIN32
 #include <httplib.h>
@@ -41,7 +41,7 @@
 
 #include "fmt/os.h"
 
-using namespace zxorm;
+namespace db = ghc::sqlite;
 
 struct DBVersion
 {
@@ -86,7 +86,8 @@ struct DBBinary
     std::string sha1;
     std::string release;
     std::string description;
-    std::vector<uint8_t> data;
+    db::Blob data;
+
     std::vector<std::string> filenames;
     std::vector<int> tags;
     std::vector<DBBinaryConfig> configs;
@@ -120,64 +121,176 @@ struct DBBinaryConfigTag
     int tag_id{0};
 };
 
-using VersionTable = Table<"version",
-                                  DBVersion,
-                                  Column<"id", &DBVersion::id, PrimaryKey<>>,
-                                  Column<"schema_version", &DBVersion::schema_version, Unique<conflict_t::ignore>>>;
-using ProgramsTable = Table<"programs",
-                                  DBProgram,
-                                  Column<"id", &DBProgram::id, PrimaryKey<>>,
-                                  Column<"name", &DBProgram::name>,
-                                  Column<"origin", &DBProgram::origin>,
-                                  Column<"description", &DBProgram::description>,
-                                  Column<"release", &DBProgram::release>>;
-using BinariesTable = Table<"binaries",
-                                 DBBinary,
-                                 Column<"id", &DBBinary::id, PrimaryKey<>>,
-                                 Column<"program_id", &DBBinary::program_id, ForeignKey<"programs", "id", action_t::cascade, action_t::cascade>>,
-                                 Column<"sha1", &DBBinary::sha1, Unique<conflict_t::ignore>>,
-                                 Column<"release", &DBBinary::release>,
-                                 Column<"description", &DBBinary::description>,
-                                 Column<"data", &DBBinary::data>>;
-using BinaryConfigsTable = Table<"binary_configs",
-                                    DBBinaryConfig,
-                                    Column<"id", &DBBinaryConfig::id, PrimaryKey<>>,
-                                    Column<"binary_id", &DBBinaryConfig::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
-                                    Column<"preset", &DBBinaryConfig::preset>,
-                                    Column<"properties", &DBBinaryConfig::properties>>;
-using FilenamesTable = Table<"filenames",
-                                    DBFilename,
-                                    Column<"id", &DBFilename::id, PrimaryKey<>>,
-                                    Column<"binary_id", &DBFilename::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
-                                    Column<"name", &DBFilename::name, Unique<conflict_t::ignore>>>;
-using TagsTable = Table<"tags",
-                               DBTags,
-                               Column<"id", &DBTags::id, PrimaryKey<>>,
-                               Column<"name", &DBTags::name, Unique<conflict_t::ignore>>,
-                               Column<"color", &DBTags::color>>;
-using ProgramsTagsTable = Table<"programs_tags",
-                                       DBProgramTag,
-                                       Column<"id", &DBProgramTag::id, PrimaryKey<>>,
-                                       Column<"program_id", &DBProgramTag::program_id, ForeignKey<"programs", "id", action_t::cascade, action_t::cascade>>,
-                                       Column<"tag_id", &DBProgramTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
-using BinariesTagsTable = Table<"binaries_tags",
-                                       DBBinaryTag,
-                                       Column<"id", &DBBinaryTag::id, PrimaryKey<>>,
-                                       Column<"binary_id", &DBBinaryTag::binary_id, ForeignKey<"binaries", "id", action_t::cascade, action_t::cascade>>,
-                                       Column<"tag_id", &DBBinaryTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
-using BinaryConfigTagsTable = Table<"binary_config_tags",
-                                       DBBinaryConfigTag,
-                                       Column<"id", &DBBinaryConfigTag::id, PrimaryKey<>>,
-                                       Column<"binary_config_id", &DBBinaryConfigTag::binary_config_id, ForeignKey<"binary_configs", "id", action_t::cascade, action_t::cascade>>,
-                                       Column<"tag_id", &DBBinaryConfigTag::tag_id, ForeignKey<"tags", "id", action_t::cascade, action_t::cascade>>>;
+void registerTables()
+{
+    static bool registered = false;
+    if (registered) return;
+    registered = true;
+    db::Table<DBVersion>("version")
+        .column("id", &DBVersion::id)
+        .column("schema_version", &DBVersion::schema_version)
+        .registerTable();
 
-using DBConnection = Connection<VersionTable, ProgramsTable, BinariesTable, BinaryConfigsTable, FilenamesTable, TagsTable, ProgramsTagsTable, BinariesTagsTable, BinaryConfigTagsTable>;
+    db::Table<DBProgram>("programs")
+        .column("id", &DBProgram::id)
+        .column("name", &DBProgram::name)
+        .column("origin", &DBProgram::origin)
+        .column("description", &DBProgram::description)
+        .column("release", &DBProgram::release)
+        .column("url", &DBProgram::url)
+        .column("year", &DBProgram::year)
+        .registerTable();
 
+    db::Table<DBBinary>("binaries")
+        .column("id", &DBBinary::id)
+        .column("program_id", &DBBinary::program_id, "programs", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("sha1", &DBBinary::sha1, true)
+        .column("release", &DBBinary::release)
+        .column("description", &DBBinary::description)
+        .column("data", &DBBinary::data)
+        .registerTable();
+
+    db::Table<DBBinaryConfig>("binary_configs")
+        .column("id", &DBBinaryConfig::id)
+        .column("binary_id", &DBBinaryConfig::binary_id, "binaries", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("preset", &DBBinaryConfig::preset)
+        .column("properties", &DBBinaryConfig::properties)
+        .registerTable();
+
+    db::Table<DBFilename>("filenames")
+        .column("id", &DBFilename::id)
+        .column("binary_id", &DBFilename::binary_id, "binaries", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("name", &DBFilename::name)
+        .registerTable();
+
+    db::Table<DBTags>("tags")
+        .column("id", &DBTags::id)
+        .column("name", &DBTags::name, true)
+        .column("color", &DBTags::color)
+        .registerTable();
+
+    db::Table<DBProgramTag>("program_tags")
+        .column("id", &DBProgramTag::id)
+        .column("program_id", &DBProgramTag::program_id, "programs", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("tag_id", &DBProgramTag::tag_id, "tags", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .registerTable();
+
+    db::Table<DBBinaryTag>("binary_tags")
+        .column("id", &DBBinaryTag::id)
+        .column("binary_id", &DBBinaryTag::binary_id, "binaries", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("tag_id", &DBBinaryTag::tag_id, "tags", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .registerTable();
+
+    db::Table<DBBinaryConfigTag>("binary_config_tags")
+        .column("id", &DBBinaryConfigTag::id)
+        .column("binary_config_id", &DBBinaryConfigTag::binary_config_id, "binary_configs", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("tag_id", &DBBinaryConfigTag::tag_id, "tags", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .registerTable();
+}
+
+#if 0
+inline auto initStorage(const std::string &path) {
+    // clang-format off
+    return make_storage(
+        path + "/cadmium_library.cd48db",
+        make_table("version",
+            make_column("id", &DBVersion::id, primary_key().autoincrement()),
+            make_column("schema_version", &DBVersion::schema_version, unique())
+        ),
+        make_table("programs",
+            make_column("id", &DBProgram::id, primary_key().autoincrement()),
+            make_column("name", &DBProgram::name),
+            make_column("origin", &DBProgram::origin),
+            make_column("description", &DBProgram::description),
+            make_column("release", &DBProgram::release)
+        ),
+        make_table("binaries",
+            make_column("id", &DBBinary::id, primary_key().autoincrement()),
+            make_column("program_id", &DBBinary::program_id),
+            make_column("sha1", &DBBinary::sha1, unique()),
+            make_column("release", &DBBinary::release),
+            make_column("description", &DBBinary::description),
+            make_column("data", &DBBinary::data),
+            foreign_key(&DBBinary::program_id)
+                .references(&DBProgram::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        ),
+        make_table("binary_configs",
+            make_column("id", &DBBinaryConfig::id, primary_key().autoincrement()),
+            make_column("binary_id", &DBBinaryConfig::binary_id),
+            make_column("preset", &DBBinaryConfig::preset),
+            make_column("properties", &DBBinaryConfig::properties),
+            foreign_key(&DBBinaryConfig::binary_id)
+                .references(&DBBinary::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        ),
+        make_table("filenames",
+            make_column("id", &DBFilename::id, primary_key().autoincrement()),
+            make_column("binary_id", &DBFilename::binary_id),
+            make_column("name", &DBFilename::name, unique()),
+            foreign_key(&DBFilename::binary_id)
+                .references(&DBBinary::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        ),
+        make_table("tags",
+            make_column("id", &DBTags::id, primary_key().autoincrement()),
+            make_column("name", &DBTags::name, unique()),
+            make_column("color", &DBTags::color)
+        ),
+        make_table("programs_tags",
+            make_column("id", &DBProgramTag::id, primary_key().autoincrement()),
+            make_column("program_id", &DBProgramTag::program_id),
+            make_column("tag_id", &DBProgramTag::tag_id),
+            foreign_key(&DBProgramTag::program_id)
+                .references(&DBProgram::id)
+                .on_update.cascade()
+                .on_delete.cascade(),
+            foreign_key(&DBProgramTag::tag_id)
+                .references(&DBTags::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        ),
+        make_table("binaries_tags",
+            make_column("id", &DBBinaryTag::id, primary_key().autoincrement()),
+            make_column("binary_id", &DBBinaryTag::binary_id),
+            make_column("tag_id", &DBBinaryTag::tag_id),
+            foreign_key(&DBBinaryTag::binary_id)
+                .references(&DBBinary::id)
+                .on_update.cascade()
+                .on_delete.cascade(),
+            foreign_key(&DBBinaryTag::tag_id)
+                .references(&DBTags::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        ),
+        make_table("binarie_config_tags",
+            make_column("id", &DBBinaryConfigTag::id, primary_key().autoincrement()),
+            make_column("binary_id", &DBBinaryConfigTag::binary_config_id),
+            make_column("tag_id", &DBBinaryConfigTag::tag_id),
+            foreign_key(&DBBinaryConfigTag::binary_config_id)
+                .references(&DBBinaryConfig::id)
+                .on_update.cascade()
+                .on_delete.cascade(),
+            foreign_key(&DBBinaryConfigTag::tag_id)
+                .references(&DBTags::id)
+                .on_update.cascade()
+                .on_delete.cascade()
+        )
+    );
+    // clang-format on
+}
+
+using Storage = decltype(initStorage(""));
+#endif
 
 struct Database::Private
 {
     std::mutex mutex;
-    std::unique_ptr<DBConnection> connection;
+    db::Database database;
+    //db::Session session{database};
     int newTagId{1};
     int unclassifiedTagId{2};
     std::unordered_map<int, DBProgram> programs;
@@ -191,6 +304,15 @@ struct Database::Private
     Vector2 tagsScrollPos{};
     float listContentHeight{0};
     emu::ThreadedBackgroundHost backgroundHost;
+
+
+    explicit Private(CadmiumConfiguration& cfg, const std::string& path)
+        : database(path + "/cadmium_library.cd48db", 4)
+        , backgroundHost(cfg)
+    {
+        registerTables();
+        db::Registry::syncTables(database);
+    }
 
     void updateFilter()
     {
@@ -242,24 +364,70 @@ struct Database::Private
     }
 };
 
+
+#define IGNORE(INSERT_EXPR)                                                 \
+    do {                                                                    \
+        try {                                                               \
+            (INSERT_EXPR);                                                  \
+        } catch (const std::system_error& ex) {                             \
+            std::cerr << ex.what() << std::endl;                            \
+            /* sqlite_orm wraps every engine error in std::system_error*/   \
+            /* whose `.code()` is the underlying SQLite result code */      \
+            const int ec = ex.code().value();                               \
+            if (ec == SQLITE_CONSTRAINT                                     \
+                || ec == SQLITE_CONSTRAINT_UNIQUE                           \
+                || ((ex.what() &&                                           \
+                std::strstr(ex.what(), "UNIQUE constraint") != nullptr))) { \
+                    /* duplicate → ignore */                                \
+            } else {                                                        \
+                throw;  /* something else went wrong → bubble up  */        \
+            }                                                               \
+        }                                                                   \
+    } while (false)
+
+
 Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path)
     : _registry(registry)
     , _threadPool(threadPool)
     , _configuration(configuration)
-    , _pimpl(std::make_unique<Private>())
+    , _pimpl(std::make_unique<Private>(configuration, path))
 {
-    _pimpl->connection = std::make_unique<DBConnection>((path + "/cadmium_library.sqlite").c_str(), 0, nullptr, [](auto level, const auto& msg) {
+    /*_pimpl->connection = std::make_unique<DBConnection>((path + "/cadmium_library.sqlite").c_str(), 0, nullptr, [](auto level, const auto& msg) {
         if (zxorm::log_level::Error == level)
             std::cerr << "Ooops: " << msg << std::endl;
         else
             std::cout << msg << std::endl;
-    });
-    _pimpl->connection->create_tables();
-    _pimpl->connection->insert_record(DBVersion{});
-    _pimpl->connection->insert_record(DBTags{0,"new", "#00C0E0"});
-    _pimpl->connection->insert_record(DBTags{0,"???", "#E04040"});
-    //_pimpl->newTagId = _pimpl->connection->select_query<Select<TagsTable::field_t<"id">>>().where_one(TagsTable::field_t<"name">().like("new")).exec().value_or(0);
-    //_pimpl->newTagId = _pimpl->connection->select_query<Select<TagsTable::field_t<"id">>>().where_one(TagsTable::field_t<"name">().like("???")).exec().value_or(0);
+    });*/
+    ////_pimpl->connection->create_tables();
+    //_pimpl->session.insert(or_ignore(), into<DBVersion>(), columns(&DBVersion::schema_version), values(std::make_tuple(DBVersion{}.schema_version)));
+    {
+        _pimpl->tags.clear();
+        {
+            auto session = db::Session(_pimpl->database);
+            auto tags = session.fetchAll<DBTags>();
+            bool hasNewTag = false;
+            bool hasUnclassifiedTag = false;
+            for (const auto& tag : tags) {
+                _pimpl->tags.emplace(tag.id, tag);
+                if (tag.name == "new") {
+                    hasNewTag = true;
+                }
+                if (tag.name == "???") {
+                    hasUnclassifiedTag = true;
+                }
+            }
+            if (!hasNewTag) {
+                DBTags newTag{0,"new", "#00C0E0"};
+                session.insert(newTag);
+                _pimpl->tags.emplace(newTag.id, newTag);
+            }
+            if (!hasUnclassifiedTag) {
+                DBTags unclassifiedTag{0,"???", "#E04040"};
+                session.insert(unclassifiedTag);
+                _pimpl->tags.emplace(unclassifiedTag.id, unclassifiedTag);
+            }
+        }
+    }
     fetchProgramInfo();
 }
 
@@ -312,19 +480,22 @@ void Database::fetchProgramInfo()
 {
     {
         std::lock_guard lock(_pimpl->mutex);
+        auto session = db::Session(_pimpl->database);
         {
             _pimpl->tags.clear();
-            auto tags = _pimpl->connection->select_query<DBTags>().many().exec();
+            auto tags = session.fetchAll<DBTags>();
             for (const auto& tag : tags) {
                 _pimpl->tags.emplace(tag.id, tag);
             }
+            _pimpl->newTagId = session.select(db::col(&DBTags::id)).where(db::like(db::col(&DBTags::name), "new")).valueOrDefault(0);
+            _pimpl->unclassifiedTagId = session.select(db::col(&DBTags::id)).where(db::like(db::col(&DBTags::name), "???")).valueOrDefault(0);
         }
         {
             _pimpl->programs.clear();
-            auto programs = _pimpl->connection->select_query<DBProgram>().many().exec();
+            auto programs = session.fetchAll<DBProgram>();
             for (const auto& program : programs) {
                 auto [iter, added] = _pimpl->programs.emplace(program.id, program);
-                auto binaries = _pimpl->connection->select_query<Select<BinariesTable::field_t<"id">>>().where_many(BinariesTable::field_t<"program_id">() == program.id).exec();
+                auto binaries = session.select(db::col(&DBBinary::id)).where(db::col(&DBBinary::program_id) == program.id);
                 iter->second.binaries.clear();
                 for (const auto& bin : binaries) {
                     iter->second.binaries.push_back(bin);
@@ -335,15 +506,15 @@ void Database::fetchProgramInfo()
             // TODO: Don't load all binaries data into memory ;-)
             _pimpl->binaries.clear();
             _digests.clear();
-            auto binaries = _pimpl->connection->select_query<DBBinary>().many().exec();
+            auto binaries = session.fetchAll<DBBinary>();
             for (const auto& binary : binaries) {
                 auto [iter, added] = _pimpl->binaries.emplace(binary.id, binary);
                 _digests.insert(Sha1::Digest(binary.sha1));
-                auto configs = _pimpl->connection->select_query<DBBinaryConfig>().where_many(BinaryConfigsTable::field_t<"binary_id">() == binary.id).exec();
+                auto configs = session.select<DBBinaryConfig>().where(db::col(&DBBinaryConfig::binary_id) == binary.id);
                 for (const auto& config : configs) {
                     iter->second.configs.push_back(config);
                 }
-                auto filenames = _pimpl->connection->select_query<Select<FilenamesTable::field_t<"name">>>().where_many(FilenamesTable::field_t<"binary_id">() == binary.id).exec();
+                auto filenames = session.select(db::col(&DBFilename::name)).where(db::col(&DBFilename::binary_id) == binary.id);
                 for (const auto& filename : filenames) {
                     iter->second.filenames.push_back(filename);
                 }
@@ -362,94 +533,99 @@ int Database::scanLibrary()
     auto extensions = _registry.getSupportedExtensions();
     std::vector<const KnownRomInfo*> foundRoms;
     int numFiles = 0;
+    auto session = db::Session(_pimpl->database);
     for (const auto& folder : _configuration.libraryPath) {
         try {
             for (const auto& de : fs::recursive_directory_iterator(folder, fs::directory_options::skip_permission_denied)) {
                 if (de.is_regular_file() && extensions.contains(de.path().extension().string())) {
                     std::vector<uint8_t> data;
                     auto info = scanFile(de.path().string(), &data);
-                    bool digested = false;
-                    {
-                        std:std::lock_guard lock(_pimpl->mutex);
-                        digested = _digests.contains(info.digest);
-                        if (!digested) {
-                            _digests.emplace(info.digest);
+                    if (info) {
+                        bool digested = false;
+                        {
+                            std:std::lock_guard lock(_pimpl->mutex);
+                            digested = _digests.contains(info->digest);
+                            if (!digested) {
+                                _digests.emplace(info->digest);
+                            }
                         }
-                    }
-                    if (!digested) {
-                        DBProgram program;
-                        DBBinary binary;
-                        std::string name = "";
-                        std::string preset = "???";
-                        if (Librarian::findKnownRoms(info.digest, foundRoms)) {
-                            name = foundRoms.front()->name ? fmt::format(" {} -", foundRoms.front()->name) : "";
-                            preset = foundRoms.front()->preset;
-                            try {
-                                _pimpl->connection->transaction([this,&foundRoms, &info, &data, &de, &program, &binary]() {
+                        if (!digested) {
+                            DBProgram program;
+                            DBBinary binary;
+                            std::string name;
+                            std::string preset = "???";
+                            if (Librarian::findKnownRoms(info->digest, foundRoms)) {
+                                name = foundRoms.front()->name ? fmt::format(" {} -", foundRoms.front()->name) : "";
+                                preset = foundRoms.front()->preset;
+                                try {
+                                    db::Transaction transaction{session};
                                     program = DBProgram{.name = std::string(foundRoms.front()->name) };
-                                    _pimpl->connection->insert_record(program);
-                                    binary = DBBinary{.program_id = program.id, .sha1 = info.digest.to_hex(), .data = data};
-                                    _pimpl->connection->insert_record(binary);
+                                    session.insert(program);
+                                    binary = DBBinary{.program_id = program.id, .sha1 = info->digest.to_hex(), .data = db::Blob(data.begin(), data.end())};
+                                    session.insert(binary);
                                     for (const auto* romInfo : foundRoms) {
                                         auto config = DBBinaryConfig{.binary_id = binary.id, .preset = std::string(romInfo->preset), .properties = std::string(romInfo->options ? romInfo->options : "")};
                                         binary.configs.push_back(config);
-                                        _pimpl->connection->insert_record(config);
+                                        session.insert( config);
                                         //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                                         auto filename = DBFilename{.binary_id = binary.id, .name = de.path().string()};
-                                        //std::cout << "insert DBFilename: " << filename.binary_id << ", " << filename.name << std::endl;
-                                        _pimpl->connection->insert_record(filename);
-                                        _pimpl->connection->insert_record(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
+                                        std::cout << "insert DBFilename: " << filename.binary_id << ", " << filename.name << std::endl;
+                                        session.insert(filename);
+                                        DBProgramTag progTag{.program_id = program.id, .tag_id = _pimpl->newTagId};
+                                        session.insert(progTag);
                                     }
-                                });
+                                    transaction.commit();
+                                }
+                                catch (const std::system_error& ex) {
+                                    std::cerr << "SQLExecutionError: " << ex.what() << std::endl;
+                                }
                             }
-                            catch (const SQLExecutionError& ex) {
-                                std::cerr << "SQLExecutionError: " << ex.what() << std::endl;
-                            }
-                        }
-                        else {
-                            try {
-                                _pimpl->connection->transaction([this, &info, &data, &de, &program, &binary]() {
+                            else {
+                                std::cout << "already digested " << info->digest.to_hex() << std::endl;
+                                try {
+                                    db::Transaction transaction{session};
                                     auto extension = de.path().extension().string();
                                     std::string preset;
                                     if (extension != ".ch8") {
                                         preset = toLower(emu::CoreRegistry::presetForExtension(extension));
                                     }
                                     program = DBProgram{.name = de.path().filename().stem().string() };
-                                    _pimpl->connection->insert_record(program);
-                                    binary = DBBinary{.program_id = program.id, .sha1 = info.digest.to_hex(), .data = data};
-                                    _pimpl->connection->insert_record(binary);
+                                    session.insert(program);
+                                    binary = DBBinary{.program_id = program.id, .sha1 = info->digest.to_hex(), .data = db::Blob(data.begin(), data.end())};
+                                    session.insert( binary);
                                     if (!preset.empty()) {
                                         auto config = DBBinaryConfig{.binary_id = binary.id, .preset = preset};
-                                        _pimpl->connection->insert_record(config);
+                                        session.insert(config);
                                         binary.configs.push_back(config);
                                     }
-                                    _pimpl->connection->insert_record(DBFilename{.binary_id = binary.id, .name = de.path().string()});
-                                    _pimpl->connection->insert_record(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
-                                    _pimpl->connection->insert_record(DBBinaryTag{.binary_id =binary.id, .tag_id = _pimpl->unclassifiedTagId});
-                                });
+                                    session.insert(DBFilename{.binary_id = binary.id, .name = de.path().string()});
+                                    session.insert(DBProgramTag{.program_id = program.id, .tag_id = _pimpl->newTagId});
+                                    session.insert(DBBinaryTag{.binary_id =binary.id, .tag_id = _pimpl->unclassifiedTagId});
+                                    transaction.commit();
+                                }
+                                catch (const std::system_error& ex) {
+                                    std::cerr << "SQLExecutionError: " << ex.what() << std::endl;
+                                }
                             }
-                            catch (const SQLExecutionError& ex) {
-                                std::cerr << "SQLExecutionError: " << ex.what() << std::endl;
+                            TraceLog(LOG_INFO, fmt::format("found {}: {:14}{} '{}'", info->digest.to_hex(), preset, name, de.path().string()).c_str());
+                            {
+                                std::lock_guard lock(_pimpl->mutex);
+                                const auto iter = _pimpl->programs.emplace(program.id, program).first;
+                                iter->second.binaries.push_back(binary.id);
+                                _pimpl->binaries.emplace(binary.id, binary);
+                                if ((numFiles & 63) == 0) {
+                                    _pimpl->updateFilter();
+                                }
+                            }
+                        }
+                        else {
+                            const std::string digest = info->digest.to_hex();
+                            auto bid = session.select(db::col(&DBBinary::id)).where(db::col(&DBBinary::sha1) == digest);
+                            if (!bid.empty()) {
+                                session.insert(DBFilename{.binary_id = bid.first(), .name = de.path().string()});
                             }
                         }
                         ++numFiles;
-                        TraceLog(LOG_INFO, fmt::format("found {}: {:14}{} '{}'", info.digest.to_hex(), preset, name, de.path().string()).c_str());
-                        {
-                            std::lock_guard lock(_pimpl->mutex);
-                            const auto iter = _pimpl->programs.emplace(program.id, program).first;
-                            iter->second.binaries.push_back(binary.id);
-                            _pimpl->binaries.emplace(binary.id, binary);
-                            if ((numFiles & 63) == 0) {
-                                _pimpl->updateFilter();
-                            }
-                        }
-                    }
-                    else {
-                        const std::string digest = info.digest.to_hex();
-                        auto bid = _pimpl->connection->select_query<Select<BinariesTable::field_t<"id">>>().where_one(BinariesTable::field_t<"sha1">().like(digest)).exec();
-                        if (bid) {
-                            _pimpl->connection->insert_record(DBFilename{.binary_id = *bid, .name = de.path().string()});
-                        }
                     }
                 }
             }
@@ -457,7 +633,7 @@ int Database::scanLibrary()
         catch (const fs::filesystem_error& e) {
             // ...
         }
-        catch (const SQLConstraintError& e) {
+        catch (const std::system_error& e) {
             std::cerr << "SQLConstraintError: " << e.what() << std::endl;
         }
     }
@@ -468,14 +644,18 @@ int Database::scanLibrary()
     durationOfLastJob = std::chrono::steady_clock::now() - start;
     return numFiles;
 }
-Database::FileInfo Database::scanFile(const std::string& filePath, std::vector<uint8_t>* outData)
+
+ghc::expected<Database::FileInfo,LoadError> Database::scanFile(const std::string& filePath, std::vector<uint8_t>* outData)
 {
     auto data = loadFile(filePath);
-    auto result = FileInfo{filePath, calculateSha1(data.data(), data.size())};
-    if (outData) {
-        std::swap(*outData, data);
+    if (data) {
+        auto result = FileInfo{filePath, calculateSha1(*data)};
+        if (outData) {
+            std::swap(*outData, *data);
+        }
+        return result;
     }
-    return result;
+    return ghc::unexpected(data.error());
 }
 
 std::optional<Database::Program> Database::getSelectedProgram() const
@@ -578,7 +758,8 @@ bool Database::render(Font& font)
                                             props.applyDiff(nlohmann::json::parse(propString));
                                         }
                                     }
-                                    _selectedProgram = {.name = program.name, .properties = props, .data = _pimpl->binaries[program.binaries.front()].data};
+                                    const auto& data = _pimpl->binaries[program.binaries.front()].data;
+                                    _selectedProgram = {.name = program.name, .properties = props, .data = std::vector<uint8_t>(data.begin(), data.end())};
                                     _pimpl->backgroundHost.killEmulation();
                                     _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
                                     binarySelected = true;

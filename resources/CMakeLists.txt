@@ -1,4 +1,11 @@
-file(GLOB RESOURCE_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png ${CMAKE_SOURCE_DIR}/files/*.ttf ${CMAKE_SOURCE_DIR}/files/*.vs ${CMAKE_SOURCE_DIR}/files/*.fs)
+file(GLOB
+    RESOURCE_FILES
+    CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png
+    ${CMAKE_SOURCE_DIR}/files/*.ttf
+    ${CMAKE_SOURCE_DIR}/files/*.vs
+    ${CMAKE_SOURCE_DIR}/files/*.fs
+)
 if (${PLATFORM} MATCHES "Web")
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
         add_custom_command(
@@ -34,7 +41,7 @@ else()
     endif()
     add_custom_command(
         OUTPUT resourcedata.c
-        COMMAND resourcer ${CMAKE_CURRENT_SOURCE_DIR}/files/ ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
+        COMMAND resourcer ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c  ${CMAKE_CURRENT_SOURCE_DIR}/files/
         DEPENDS resourcer ${RESOURCE_FILES}
     )
 endif()

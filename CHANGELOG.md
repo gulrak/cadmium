@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Enhanced memory compatibility in strict CHIP-8 core to have the same ram state as CHIP-8 on a VIP
 - Changed hardly visible memory change highlight color on darker columns
 - When running the program and the view is on settings or editor, the view will now switch to the
   last used run-view (those are full video or debugger)
@@ -55,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Octo-Assembler would hang on macro definitions without name or parameter
 - High-level emulation didn't finish a frame with the right amount of cycles if part of it was
   single stepped or breakpoints involved
+- Added wrapping behavior for ram and rom, including the unconnected second 2k of a 2k
+  VIP in strict CHIP-8 and VIP emulation
 - Wrong initial cycles after a reset for the COSMAC VIP and the CHIP-8 strict timing core, the
   time in ROM was not counted in
 - COSMAC VIP could make Cadmium hang on opcode 0x68

@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
 #include <emulation/config.hpp>
 #include <emulation/videoscreen.hpp>
 
@@ -41,7 +41,6 @@ class Cdp186x
 public:
     enum Type { eCDP1861, eVP590, eCDP1861_C10, eCDP1861_62, eCDP1864 };
     enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES };
-    using VideoType = VideoScreen<uint8_t, 256, 192>; // size for easier inter-operability with other CHIP-8 implementations, it just uses 64x128
     Cdp186x(Type type, Cdp1802& cpu, bool traceLog);
     void reset();
     bool getNEFX() const;
@@ -71,7 +70,7 @@ public:
     void incrementBackground();
     int frames() const { return _frameCounter; }
     int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }
-    const VideoType& getScreen() const;
+    const VideoRGBAType& getScreen() const;
     void setPalette(const Palette& palette);
     static int64_t machineCycle(cycles_t cycles)
     {
@@ -98,7 +97,7 @@ private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
     SubMode _subMode{eNONE};
-    VideoScreen<uint8_t,256,192> _screen;
+    VideoRGBAType _screen;
     const int VIDEO_FIRST_VISIBLE_LINE{0};
     const int VIDEO_FIRST_INVISIBLE_LINE{0};
     const int VIDEO_CYCLES_PER_FRAME{0};

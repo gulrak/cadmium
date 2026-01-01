@@ -506,7 +506,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"de259351c65f790af035a4607a508c366bf4eaf2"_sha1, "chip-8", "Nonogram (Verisimilitudes, 2021)",nullptr, nullptr},
     {"dea204fbfda4ed63fe2a2be255617bb9ee770a61"_sha1, "chip-8", "3D Vip'R Maze (Tim Franssen, 2021)",nullptr, nullptr},
     {"debfea355f5737be394d3e62d4970e733ec3b6fc"_sha1, "schip-1.1", "Character Test (A-KouZ1, 2016)",nullptr, nullptr},
-    {"df5ced9c20d00bf7be7d3361d76f27d0d577abfb"_sha1, "schip-1.1", "Horsey Jump (LarissaR, 2015-10-30)",R"({"instructionsPerFrame":20,"justShiftVx":false,"loadStoreIncIByXPlus1":true,"palette":{"border":"#000000","colors":["#006c00","#c3c3c3","#ff6600","#662200"],"signal":"#ffaa00"}})", nullptr},
+    {"df5ced9c20d00bf7be7d3361d76f27d0d577abfb"_sha1, "schip-modern", "Horsey Jump (LarissaR, 2015-10-30)",R"({"instructionsPerFrame":20,"palette":{"border":"#000000","colors":["#006c00","#c3c3c3","#ff6600","#662200"],"signal":"#ffaa00"}})", nullptr},
     {"e0596d264ead3c71cf76b352f71959c82c748519"_sha1, "generic-chip-8", "4-Flags (Timendus, 2023-11-13)",nullptr, nullptr},
     {"e14350d3b19443e5ad2848172bef9719a8680b01"_sha1, "xo-chip", "Red October V (Kesha, 2018-10-31)",R"({"instructionsPerFrame":10000,"palette":{"border":"#400000","colors":["#b22d10","#000000","#ffff00","#808000"],"signal":"#400000"}})", nullptr},
     {"e2005db6391f589534dd2d63a95b429338bd667c"_sha1, "chip-8", "Rocket Launcher",nullptr, nullptr},

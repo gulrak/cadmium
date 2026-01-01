@@ -1,4 +1,4 @@
-
+#
 :const XOCHIP 1
 # Include the font-header first, it contains the constants and macros needed to
 # define and draw your strings
@@ -74,13 +74,12 @@
   return
 
 
-# --- subroutine: play 13 notes, one per frame, from [I] ---
+# --- subroutine: play 13 notes, one per v0 frames, from [I] ---
 : play_notes
   i := pattern1
   audio
   i := pitches
-  # Load 12 bytes from memory @I into v0..vC.
-  # (Fx65 advances I by 13 in most interpreters; that’s fine here.)
+  # Load 12 bytes from memory @I into v2..ve.
   load v2 - ve
 
   # Keep audio running long enough for 13 frames (~0.217 s); bump if you like.

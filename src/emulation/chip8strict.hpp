@@ -27,7 +27,6 @@
 
 #include <chiplet/chip8meta.hpp>
 #include <emulation/chip8genericbase.hpp>
-#include <emulation/chip8options.hpp>
 #include <emulation/emulatorhost.hpp>
 #include <emulation/logger.hpp>
 #include <emulation/time.hpp>
@@ -60,7 +59,7 @@ public:
     static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
 
     Chip8StrictEmulator(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr)
-        : Chip8GenericBase(Chip8Variant::CHIP_8, CPU_CLOCK_FREQUENCY)
+        : Chip8GenericBase(chip8::Variant::CHIP_8, CPU_CLOCK_FREQUENCY)
         , _host(host)
         , _options(Chip8StrictOptions::fromProperties(properties))
     {
@@ -175,7 +174,7 @@ public:
                     if(!_rSP)
                         errorHalt("STACK UNDERFLOW");
                     --_rSP;
-                    _rPC = (_memory[_options.ramSize - 0x130 - _rSP * 2 - 2] << 8) | _memory[_options.ramSize - 0x130 - _rSP * 2 - 1];
+                    _rPC = (_memory[_options.ramSize - 0x131 - _rSP * 2 - 2] << 8) | _memory[_options.ramSize - 0x131 - _rSP * 2 - 1];
                     addCycles(10);
                     if (_execMode == eSTEPOUT)
                         _execMode = ePAUSED;
@@ -193,8 +192,8 @@ public:
             case 2:  // 2nnn - :call NNN
                 if(_rSP == 0x15)
                     errorHalt("STACK OVERFLOW");
-                _memory[_options.ramSize - 0x130 - _rSP * 2 - 2] = _rPC >> 8;
-                _memory[_options.ramSize - 0x130 - _rSP * 2 - 1] = _rPC & 0xFF;
+                _memory[_options.ramSize - 0x131 - _rSP * 2 - 2] = _rPC >> 8;
+                _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = _rPC & 0xFF;
                 _rSP++;
                 _rPC = opcode & 0xFFF;
                 addCycles(26);
@@ -244,8 +243,8 @@ public:
                 break;
             case 8: {
                 if(opcode & 0xF) {
-                    _memory[_options.ramSize - 0x130 - _rSP * 2 - 2] = 0xF0 + (opcode & 0xF);
-                    _memory[_options.ramSize - 0x130 - _rSP * 2 - 1] = 0xD3;
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 2] = 0xF0 + (opcode & 0xF);
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = 0xD3;
                 }
                 switch (opcode & 0xF) {
                     case 0:  // 8xy0 - vX := vY
@@ -344,7 +343,7 @@ public:
                 auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
                 if(_cpuState != eWAIT) {
                     auto prepareTime = 68 + lines * (46 + 20 * (x & 7));
-                    _memory[_options.ramSize - 0x130 - _rSP * 2 - 1] = x & 7;
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = x & 7;
                     _cpuState = eWAIT;
                     _rPC = uint16_t(_rPC - 2);
                     _instructionCycles = (prepareTime > cyclesLeftInFrame) ? prepareTime - cyclesLeftInFrame : 0;
@@ -508,8 +507,50 @@ public:
         bool collision = false;
         auto bitOffset = x & 7;
         int drawTime = 26;
-        x %= 64;
-        y %= 32;
+        x &= 63;
+        y &= 31;
+        auto workOffset = _memory.size() - 0x130;
+        for (int l = 0; l < height; ++l) {
+            uint8_t value = readByte(data++);
+            _memory[workOffset + l*2] = value >> bitOffset;
+            _memory[workOffset + l*2 + 1] = bitOffset ? value << (8 - bitOffset) : 0;
+        }
+        auto xOff = x>>3;
+        for (int l = 0; l < height; ++l) {
+            if (y + l < 32) {
+                drawTime += 34;
+                auto xPos = xOff<<3;
+                auto frameOffset = _memory.size() - 0x100 + xOff + ((y+l)<<3);
+                auto drawByte = _memory[workOffset + l*2];
+                if (drawByte) {
+                    auto& screenByte = _memory[frameOffset];
+                    if (screenByte & drawByte) {
+                        collision = true;
+                        drawTime += 4;
+                    }
+                    screenByte ^= drawByte;
+                    for (int i = 0; i < 8; ++i, drawByte<<=1) {
+                        _screen.setPixel(xPos + i, y + l, (screenByte >> (7-i)) & 1);
+                    }
+                }
+                if (xOff < 7) {
+                    auto drawByte2 = _memory[workOffset + l*2 + 1];
+                    drawTime += 16;
+                    if (drawByte2) {
+                        auto& screenByte = _memory[frameOffset + 1];
+                        if (screenByte & drawByte2) {
+                            collision = true;
+                            drawTime += 4;
+                        }
+                        screenByte ^= drawByte2;
+                        for (int i = 0; i < 8; ++i) {
+                            _screen.setPixel(xPos + i + 8, y + l, (screenByte >> (7-i)) & 1);
+                        }
+                    }
+                }
+            }
+        }
+        /*
         for (int l = 0; l < height; ++l) {
             uint8_t value = readByte(data++);
             _memory[_memory.size() - 0x130 + l*2] = value >> bitOffset;
@@ -530,6 +571,7 @@ public:
                 drawTime += 34 + col1 + (x < 56 ? 16 : 0) + col2;
             }
         }
+        */
         addCycles(drawTime);
         _screenNeedsUpdate = true;
         return collision;
@@ -555,7 +597,7 @@ public:
     void setPalette(const Palette& palette) override;
 
 protected:
-    void handleReset() override
+    void handleReset(bool cold) override
     {
         _cycleCounter = 0;
         _frameCounter = 0;
@@ -594,19 +636,19 @@ protected:
     }
     uint8_t readByte(uint16_t addr) const
     {
-        if(addr < _options.ramSize) {
-            return _memory[addr];
+        if(addr < 0x8000) {
+            return _memory[addr % _options.ramSize];
         }
-        if(addr >= 0x8000 && addr < 0x8200)
+        if(addr >= 0x8000 /*&& addr < 0x8200*/)
         {
             return _rom_cvip[addr & 0x1ff];
         }
-        return 0;
+        return 0xFF;
     }
     void writeByte(uint16_t addr, uint8_t val)
     {
-        if(addr < _options.ramSize) {
-            _memory[addr] = val;
+        if(addr < 0x8000) {
+            _memory[addr % _options.ramSize] = val;
         }
     }
     int64_t calcNextFrame() const { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
@@ -622,6 +664,15 @@ protected:
         if (!_rST)
             _wavePhase = 0;
         if(_screenNeedsUpdate) {
+            for (int x = 0; x < 8; ++x) {
+                for (int y = 0; y < 32; ++y) {
+                    auto data = _memory[_memory.size() - 0x100 + x + (y<<3)];
+                    for (int i = 0; i < 8; ++i) {
+                        bool bit = data & (0x80 >> i);
+                        _screen.setPixel(x*8 + i, y, bit);
+                    }
+                }
+            }
             _host.updateScreen();
         }
     }
@@ -646,7 +697,7 @@ protected:
     int _clearCounter{};
     int _instructionCycles{};
     bool _screenNeedsUpdate{};
-    VideoType _screen{};
+    VideoType _screen{64,32};
 };
 
 }

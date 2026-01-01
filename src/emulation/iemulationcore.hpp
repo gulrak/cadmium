@@ -68,9 +68,9 @@ public:
 
     virtual ~IEmulationCore() = default;
 
-    void reset()
+    void reset(bool cold = true)
     {
-        handleReset();
+        handleReset(cold);
     }
 
     virtual bool updateProperties(Properties& props, Property& changed) = 0;
@@ -92,6 +92,7 @@ public:
     virtual GenericCpu::ExecMode execMode() const = 0;
     virtual void setExecMode(GenericCpu::ExecMode mode) = 0;
 
+    virtual void traceNextFrame() {}
     virtual void executeFrame() = 0;
     virtual int64_t cycles() const = 0;
     virtual int64_t machineCycles() const = 0;
@@ -120,7 +121,7 @@ public:
     virtual void setPalette(const Palette& palette) = 0;
     virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
 protected:
-    virtual void handleReset() = 0;
+    virtual void handleReset(bool cold) = 0;
 };
 
 } // emu

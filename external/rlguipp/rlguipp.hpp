@@ -152,6 +152,7 @@ RLGUIPP_API void Space(float size = -1);                                        
 RLGUIPP_API void Separator(float size = -1);                                                                              // Insert a seperator line
 RLGUIPP_API void Label(const char* text);                                                                                 // Label control, shows text
 RLGUIPP_API bool Button(const char* text);                                                                                // Button control, returns true when clicked
+RLGUIPP_API std::optional<MouseButton> ButtonMulti(const char* text);                                                     // Button control, returns mouse button when clicked
 RLGUIPP_API bool LabelButton(const char* text);                                                                           // Label button control, show true when clicked
 RLGUIPP_API bool Toggle(const char* text, bool active);                                                                   // Toggle Button control, returns true when active
 RLGUIPP_API int ToggleGroup(const char* text, int active);                                                                // Toggle Group control, returns active toggle index

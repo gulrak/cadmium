@@ -989,6 +989,7 @@ void main()
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
+        UnloadTexture(_overlayTexture);
         UnloadTexture(_screenShotTexture);
         UnloadTexture(_crtTexture);
         UnloadTexture(_screenTexture);
@@ -1484,6 +1485,10 @@ void main()
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
 
+        if (_traceFrame) {
+            _chipEmu->traceNextFrame();
+            _traceFrame = false;
+        }
         if(_chipEmu->execMode() != ExecMode::ePAUSED) {
             _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
             if(_partialFrameTime > 10000) {
@@ -1574,10 +1579,11 @@ void main()
         int scrWidth = _chipEmu->getCurrentScreenWidth();
         //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
         int scrHeight = _chipEmu->getCurrentScreenHeight();
-        auto videoScaleX = dest.width / scrWidth;
-        auto videoScaleY = _chipEmu->getScreen() && _chipEmu->getScreen()->ratio() ? videoScaleX / _chipEmu->getScreen()->ratio() : videoScaleX;
-        auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
-        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
+        auto videoScaleX = dest.width / as<float>(scrWidth);
+        auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
+        auto videoScaleY = ratio ? videoScaleX / as<float>(ratio) : videoScaleX;
+        auto videoX = (dest.width - as<float>(_chipEmu->getCurrentScreenWidth()) * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - as<float>(_chipEmu->getCurrentScreenHeight()) * videoScaleY) / 2 + dest.y;
         if(_chipEmu->getMaxScreenWidth() > 128)
             DrawRectangleRec(dest, {0,0,0,255});
         else
@@ -1628,6 +1634,20 @@ void main()
         gui::SetNextWidth(20);
         auto result = gui::Button(GuiIconText(iconId, ""));
         return result;
+    }
+    static std::optional<MouseButton> iconButtonDual(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
+    {
+        using namespace gui;
+        StyleManager::Scope guard;
+        auto fg = guard.getStyle(gui::Style::TEXT_COLOR_NORMAL);
+        auto bg = guard.getStyle(gui::Style::BASE_COLOR_NORMAL);
+        if(isPressed) {
+            guard.setStyle(gui::Style::BASE_COLOR_NORMAL, fg);
+            guard.setStyle(gui::Style::TEXT_COLOR_NORMAL, bg);
+        }
+        //guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
+        SetNextWidth(20);
+        return ButtonMulti(GuiIconText(iconId, ""));
     }
 
     const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(uint32_t addr, int n)
@@ -1892,14 +1912,27 @@ void main()
                 }
                 GuiEnable();
                 SetTooltip("STEP OUT [Shift+F7]");
-                if (iconButton(ICON_RESTART)) {
-                    reloadRom(true);
-                    resetStats();
-                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
-                        _mainView = _lastRunView;
+                if (const auto button = iconButtonDual(ICON_RESTART); button.has_value()) {
+                    if (button == MOUSE_BUTTON_LEFT) {
+                        reloadRom(true);
+                        resetStats();
+                        if (_mainView == eEDITOR || _mainView == eSETTINGS) {
+                            _mainView = _lastRunView;
+                        }
+                    }
+                    if (button == MOUSE_BUTTON_RIGHT) {
+                        auto oldMode = _chipEmu->execMode();
+                        _chipEmu->reset(false);
+                        if (oldMode == ExecMode::eRUNNING) {
+                            _debugger.setExecMode(ExecMode::eRUNNING);
+                        }
+                        resetStats();
+                        if (_mainView == eEDITOR || _mainView == eSETTINGS) {
+                            _mainView = _lastRunView;
+                        }
                     }
                 }
-                SetTooltip("RESTART");
+                SetTooltip("RESTART/RESET");
                 int buttonsRight = 8;
                 ++buttonsRight;
                 int avail = _screenWidth - GetCurrentPos().x;
@@ -1917,8 +1950,14 @@ void main()
                 GuiEnable();
                 SetTooltip("TOGGLE GRID");
                 Space(10);
-                if (iconButton(ICON_ZOOM_ALL, _mainView == eVIDEO))
-                    _mainView = eVIDEO;
+                if (const auto button = iconButtonDual(ICON_ZOOM_ALL, _mainView == eVIDEO); button.has_value()) {
+                    if (button == MOUSE_BUTTON_LEFT) {
+                        _mainView = eVIDEO;
+                    }
+                    if (button == MOUSE_BUTTON_RIGHT) {
+                        _traceFrame = true;
+                    }
+                }
                 SetTooltip("FULL VIDEO");
                 if (iconButton(ICON_CPU, _mainView == eDEBUGGER))
                     _mainView = eDEBUGGER;
@@ -1952,8 +1991,8 @@ void main()
                         _screenOverlay = video;
                         _screenScale = scale;
                         if (_videoRenderMode == eHIRES) {
-                            rlSetBlendFactors(1, 0, 0x8006);
-                            rlSetBlendMode(RL_BLEND_CUSTOM);
+                            rlSetBlendFactorsSeparate(RL_ZERO, RL_ONE, RL_ZERO, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+                            BeginBlendMode(BLEND_CUSTOM_SEPARATE);
                             DrawRectangleRec(_screenOverlay, {0,0,0,255});
                             rlSetBlendMode(RL_BLEND_ALPHA);
                         }
@@ -1969,8 +2008,8 @@ void main()
                     _screenOverlay = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
                     _screenScale = gridScale;
                     if (_videoRenderMode == eHIRES) {
-                        rlSetBlendFactors(1, 0, 0x8006);
-                        rlSetBlendMode(RL_BLEND_CUSTOM);
+                        rlSetBlendFactorsSeparate(RL_ZERO, RL_ONE, RL_ZERO, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+                        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
                         DrawRectangleRec(_screenOverlay, {0,0,0,255});
                         rlSetBlendMode(RL_BLEND_ALPHA);
                     }
@@ -2240,7 +2279,7 @@ void main()
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
         }
         //gui::SetNextWidth(150);
-        if (prop.hasFlags(emu::PropertyFlags::eWritable))
+        if (!prop.hasFlags(emu::PropertyFlags::eWritable))
             GuiDisable();
         const auto rc = std::visit(emu::visitor{
                                 [](std::nullptr_t) -> int { gui::Label(""); return 0; },
@@ -2259,7 +2298,7 @@ void main()
                                     return val.index;
                                 }},
                    prop.getValue());
-        if (prop.hasFlags(emu::PropertyFlags::eWritable))
+        if (!prop.hasFlags(emu::PropertyFlags::eWritable))
             GuiEnable();
         if(pa == PA_RIGHT) {
             gui::EndColumns();
@@ -2389,7 +2428,7 @@ void main()
                 Begin();
                 SetSpacing(2);
             }
-            else if(prop.hasFlags(emu::PropertyFlags::eInvisible) && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+            else if(!prop.hasFlags(emu::PropertyFlags::eInvisible) && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
                 if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
                     editProperty(prop, forceUpdate, PA_LEFT);
                 }
@@ -2941,7 +2980,7 @@ void main()
             _audioBuffer.reset();
             updateScreen();
             auto loadAddress = _chipEmu->defaultLoadAddress();
-            if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
+            if(Librarian::isPrefixedTPDRom(_romImage))
                 std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
             else
                 std::memcpy(_chipEmu->memory() + loadAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - loadAddress)));
@@ -2961,12 +3000,14 @@ private:
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
+    Image _overlayImage{};
     Image _icon{};
     Font _font{};
     Image _screen{};
     Image _crt{};
     Image _screenShot{};
     Texture2D _titleTexture{};
+    Texture2D _overlayTexture{};
     Texture2D _screenTexture{};
     Texture2D _crtTexture{};
     Texture2D _screenShotTexture{};
@@ -2980,7 +3021,7 @@ private:
     int _screenWidth{};
     int _screenHeight{};
     bool _windowInvisible{false};
-    VideoRenderMode _videoRenderMode{eFAST};
+    VideoRenderMode _videoRenderMode{eHIRES};
     std::unique_ptr<TextureScaler> _textureScaler;
     //RenderTexture _renderTexture{};
     AudioStream _audioStream{};
@@ -3000,6 +3041,7 @@ private:
     bool _updateScreen{false};
     int _frameBoost{1};
     std::atomic_uint _audioCallbackAvgFrames{};
+    bool _traceFrame{false};
     bool _colorSelectOpen{false};
     emu::Palette::Color* _selectedColor{nullptr};
     std::string _colorText;
@@ -3151,7 +3193,7 @@ std::string formatOpcode(emu::OpcodeType type, uint16_t opcode)
     return fmt::format("<a href=\"https://chip8.gulrak.net/reference/opcodes/{}\">{}</a>", dst, opStr);
 }
 
-void dumpOpcodeTable(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Variant)0x3FFFFFFFFFFFFFFF)
+void dumpOpcodeTable(std::ostream& os, emu::chip8::VariantSet variants = emu::chip8::ALL_VARIANTS)
 {
     std::regex quirkRE(R"(\s*\[Q:([^\]]+)\])");
     std::map<std::string, size_t> quirkMap;
@@ -3172,7 +3214,10 @@ div.footer { font-size: 0.7em; }
 </style></head>
 <body><h2>CHIP-8 Variant Opcode Table</h2>
 <table class="opcodes"><tr><th class="opcodes">Opcode</th>)";
-    auto mask = static_cast<uint64_t>(variants);
+    for (auto variant : variants) {
+        os << R"(<th class="rotate"><div><span>)" << emu::Chip8Decompiler::chipVariantName(variant).first << "</span></div></th>";
+    }
+    /*
     while(mask) {
         auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
         mask &= mask - 1;
@@ -3218,11 +3263,12 @@ div.footer { font-size: 0.7em; }
         os << "<li id=\"quirk" << qidx << "\"> Quirk " << qidx << ": " << quirk << "</li>\n";
         ++qidx;
     }
+    */
     auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     os << "</ul><div class=\"footer\">Generated by Cadmium v" << CADMIUM_VERSION << ", on " << std::put_time( std::gmtime( &t ), "%F" ) << "</div></body></html>";
 }
 
-void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Variant)0x3FFFFFFFFFFFFFFF)
+void dumpOpcodeJSON(std::ostream& os, emu::chip8::VariantSet variants = emu::chip8::ALL_VARIANTS)
 {
     using namespace nlohmann;
     ordered_json root = ordered_json::object({});
@@ -3231,7 +3277,7 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
     std::map<std::string, size_t> quirkMap;
     std::vector<std::string> quirkList;
     for(const auto& info : emu::detail::opcodes) {
-        if(uint64_t(info.variants & variants) != 0) {
+        if(info.variants.containsAny(variants)) {
             auto obj = ordered_json::object({});
             obj["opcode"] = formatOpcodeString(info.type, info.opcode);
             obj["mask"] = emu::detail::opcodeMasks[info.type];
@@ -3245,12 +3291,16 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
                 obj["chipper"] = info.mnemonic;
             }
             obj["platforms"] = json::array();
+            for (auto variant : variants) {
+                obj["platforms"].push_back(emu::Chip8Decompiler::chipVariantName(variant).first);
+            }
+            /*
             auto mask = static_cast<uint64_t>(variants & info.variants);
             while(mask) {
                 auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
                 mask &= mask - 1;
                 obj["platforms"].push_back(emu::Chip8Decompiler::chipVariantName(cv).first);
-            }
+            }*/
             auto desc = info.description;
             std::smatch m;
             size_t qidx = 0;
@@ -3517,18 +3567,18 @@ int main(int argc, char* argv[])
     int64_t testSuiteMenuVal = 0;
     cli.category("General Options");
 #ifndef PLATFORM_WEB
-    cli.option({"-h", "--help"}, showHelp, "Show this help text");
+    cli.optionEnable({"-h", "--help"}, showHelp, "Show this help text");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
-    cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
+    cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
-    cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
-    cli.option({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
+    cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
+    cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
     cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
-    cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
+    cli.optionEnable({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
 #ifndef NDEBUG
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
-    cli.option({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
-    cli.option({"--convert-rom-list"}, convertRomList, "Convert list of known roms (just temporary available)");
+    cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
+    cli.optionEnable({"--convert-rom-list"}, convertRomList, "Convert list of known roms (just temporary available)");
 #endif
 #else
 #ifdef WEB_WITH_FETCHING

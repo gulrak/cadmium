@@ -43,10 +43,8 @@ using json = nlohmann::ordered_json;
 
 using cycles_t = uint64_t;
 
-static constexpr int SUPPORTED_SCREEN_WIDTH = 256;
-static constexpr int SUPPORTED_SCREEN_HEIGHT = 192;
-using VideoType = VideoScreen<uint8_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
-using VideoRGBAType = VideoScreen<uint32_t, SUPPORTED_SCREEN_WIDTH, SUPPORTED_SCREEN_HEIGHT>;
+using VideoType = VideoScreen<uint8_t>;
+using VideoRGBAType = VideoScreen<uint32_t>;
 
 class InternalErrorException : public std::exception
 {

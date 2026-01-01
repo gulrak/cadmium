@@ -78,7 +78,7 @@ public:
     uint16_t getCurrentScreenHeight() const override;
     uint16_t getMaxScreenWidth() const override;
     uint16_t getMaxScreenHeight() const override;
-    const VideoType* getScreen() const override;
+    const VideoRGBAType* getScreenRGBA() const override;
     void setPalette(const Palette& palette) override;
 
     bool isDisplayEnabled() const override;
@@ -96,7 +96,7 @@ public:
     Properties& getProperties() override;
 
 protected:
-    void handleReset() override;
+    void handleReset(bool cold) override;
 
 private:
     int frameCycle() const;

@@ -104,14 +104,14 @@ size_t Librarian::findKnownRoms(const Sha1::Digest& sha1, std::vector<const Know
 
 std::string Librarian::Info::minimumOpcodeProfile() const
 {
-    auto mask = static_cast<uint64_t>(possibleVariants);
-    if(mask) {
-        auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
+    if(!possibleVariants.is_empty()) {
+        auto cv = possibleVariants.lowestVariant();
         return emu::Chip8Decompiler::chipVariantName(cv).second;
     }
     return "unknown";
 }
 
+#if 0
 emu::Chip8EmulatorOptions::SupportedPreset Librarian::Info::minimumOpcodePreset() const
 {
     auto mask = static_cast<uint64_t>(possibleVariants);
@@ -126,6 +126,7 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::Info::minimumOpcodePreset(
     }
     return emu::Chip8EmulatorOptions::eCHIP8;
 }
+#endif
 
 Librarian::Librarian(const CadmiumConfiguration& cfg)
 : _cfg(cfg)
@@ -208,32 +209,35 @@ bool Librarian::update(const emu::Properties& properties)
                 if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 16) {
                     if (entry.variant == "chip-8") {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
-                        entry.isKnown = isKnownFile(file.data(), file.size());
-                        entry.sha1sum = calculateSha1(file.data(), file.size());
+                        if (!file) {
+                            entry.type = Info::eUNKNOWN_FILE;
+                        }
+                        entry.isKnown = isKnownFile(*file);
+                        entry.sha1sum = calculateSha1(*file);
                         if(entry.isKnown) {
                             entry.variant = getPresetForFile(entry.sha1sum);
                         }
                         else {
                             uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-                            emu::Chip8Decompiler dec{file, startAddress};
+                            emu::Chip8Decompiler dec{*file, startAddress};
                             dec.decompile(entry.filePath, startAddress, nullptr, true, true);
                             entry.possibleVariants = dec.possibleVariants();
-                            if ((uint64_t)dec.possibleVariants()) {
+                            if (!dec.possibleVariants().is_empty()) {
                                 /* TODO:
                                 if (dec.supportsVariant(options.presetAsVariant()))
                                     entry.variant = options.behaviorBase;
                                 else */
-                                if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
+                                if (dec.supportsVariant(emu::chip8::Variant::XO_CHIP))
                                     entry.variant = "xo-chip";
-                                else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
+                                else if (dec.supportsVariant(emu::chip8::Variant::MEGA_CHIP))
                                     entry.variant = "megachip";
-                                else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
+                                else if (dec.supportsVariant(emu::chip8::Variant::SCHIP_1_1))
                                     entry.variant = "schip-1.1";
-                                else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
+                                else if (dec.supportsVariant(emu::chip8::Variant::SCHIP_1_0))
                                     entry.variant = "schip-1.0";
-                                else if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
+                                else if (dec.supportsVariant(emu::chip8::Variant::CHIP_48))
                                     entry.variant = "chip-48";
-                                else if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
+                                else if (dec.supportsVariant(emu::chip8::Variant::CHIP_10))
                                     entry.variant = "chip-10";
                                 else
                                     entry.variant = "chip-8";
@@ -246,9 +250,11 @@ bool Librarian::update(const emu::Properties& properties)
                     }
                     else {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
-                        entry.isKnown = isKnownFile(file.data(), file.size());
-                        entry.sha1sum = calculateSha1(file.data(), file.size());
-                        entry.variant = getPresetForFile(entry.sha1sum);
+                        if (file) {
+                            entry.isKnown = isKnownFile(*file);
+                            entry.sha1sum = calculateSha1(*file);
+                            entry.variant = getPresetForFile(entry.sha1sum);
+                        }
                     }
                 }
                 entry.analyzed = true;
@@ -260,9 +266,9 @@ bool Librarian::update(const emu::Properties& properties)
     return foundOne;
 }
 
-bool Librarian::isKnownFile(const uint8_t* data, size_t size) const
+bool Librarian::isKnownFile(std::span<const uint8_t> data) const
 {
-    auto sha1 = calculateSha1(data, size);
+    auto sha1 = calculateSha1(data);
     return _cfg.romConfigs.contains(sha1) || findKnownRom(sha1) != nullptr;
 }
 
@@ -271,9 +277,9 @@ bool Librarian::isKnownFile(const Sha1::Digest& sha1) const
     return _cfg.romConfigs.contains(sha1) || findKnownRom(sha1) != nullptr;
 }
 
-bool Librarian::isGenericChip8(const uint8_t* data, size_t size) const
+bool Librarian::isGenericChip8(std::span<const uint8_t> data) const
 {
-    auto sha1 = calculateSha1(data, size);
+    auto sha1 = calculateSha1(data);
     return isGenericChip8(sha1);
 }
 
@@ -295,13 +301,13 @@ std::string Librarian::getPresetForFile(const Sha1::Digest& sha1) const
     return romInfo ? romInfo->preset : "chip-8";
 }
 
-std::string Librarian::getPresetForFile(const uint8_t* data, size_t size) const
+std::string Librarian::getPresetForFile(std::span<const uint8_t> data) const
 {
-    auto sha1 = calculateSha1(data, size);
+    auto sha1 = calculateSha1(data);
     return getPresetForFile(sha1);
 }
 
-std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std::string_view currentPreset, const uint8_t* data, size_t size) const
+std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std::string_view currentPreset, std::span<const uint8_t> data) const
 {
     // TODO: Avoid generating a CoreRegistry instance
     std::string result;
@@ -309,24 +315,24 @@ std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std:
         result = emu::CoreRegistry::presetForExtension(fs::path(filename).extension().string());
     if(result.empty()) {
         uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-        emu::Chip8Decompiler dec{{data, size}, startAddress};
+        emu::Chip8Decompiler dec{data, startAddress};
         dec.decompile("", startAddress, nullptr, true, true);
         //auto possibleVariants = dec.possibleVariants();
-        if ((uint64_t)dec.possibleVariants()) {
+        if (!dec.possibleVariants().is_empty()) {
             /*if (dec.supportsVariant(emu::Chip8EmulatorOptions::variantForPreset(currentPreset))) {
                 return currentPreset;
             }*/
-            if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
+            if (dec.supportsVariant(emu::chip8::Variant::XO_CHIP))
                 return "xo-chip";
-            if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
+            if (dec.supportsVariant(emu::chip8::Variant::MEGA_CHIP))
                 return "megachip";
-            if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
+            if (dec.supportsVariant(emu::chip8::Variant::SCHIP_1_1))
                 return "schip-1.1";
-            if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
+            if (dec.supportsVariant(emu::chip8::Variant::SCHIP_1_0))
                 return "schip-1.0";
-            if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
+            if (dec.supportsVariant(emu::chip8::Variant::CHIP_48))
                 return "chip-48";
-            if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
+            if (dec.supportsVariant(emu::chip8::Variant::CHIP_10))
                 return "chip-10";
         }
         return "chip-8";
@@ -334,9 +340,9 @@ std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std:
     return result;
 }
 
-emu::Properties Librarian::getPropertiesForFile(const uint8_t* data, size_t size) const
+emu::Properties Librarian::getPropertiesForFile(std::span<const uint8_t> data) const
 {
-    auto sha1 = calculateSha1(data, size);
+    auto sha1 = calculateSha1(data);
     return getPropertiesForFile(sha1);
 }
 
@@ -536,14 +542,14 @@ Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::arra
     return Librarian::Screenshot();
 }
 
-bool Librarian::isPrefixedTPDRom(const uint8_t* data, size_t size)
+bool Librarian::isPrefixedTPDRom(std::span<const uint8_t> data)
 {
     static const uint8_t magic[] = {0x12, 0x60, 0x01, 0x7a, 0x42, 0x70, 0x22, 0x78};
-    return size > 0x60 && std::memcmp(magic, data, 8) == 0;
+    return data.size() > 0x60 && std::memcmp(magic, data.data(), 8) == 0;
 }
 
-bool Librarian::isPrefixedRSTDPRom(const uint8_t* data, size_t size)
+bool Librarian::isPrefixedRSTDPRom(std::span<const uint8_t> data)
 {
     static const uint8_t magic[] = {0x9c, 0x7c, 0x00, 0xbc, 0xfb, 0x10, 0x30, 0xfc};
-    return size > 0xC0 && isPrefixedTPDRom(data, size) && std::memcmp(magic, data + 0x50, 8) == 0;
+    return data.size() > 0xC0 && isPrefixedTPDRom(data) && std::memcmp(magic, data.data() + 0x50, 8) == 0;
 }

@@ -1261,6 +1261,32 @@ bool Button(const char* text)
     return detail::defaultWidget(GuiButton, text);
 }
 
+std::optional<MouseButton> ButtonMulti(const char* text)
+{
+    auto& ctx = detail::context();
+    auto size = ctx.standardSize();
+    Rectangle bounds{ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y};
+    ctx.increment(size);
+    std::optional<MouseButton> result{};
+    GuiState state = static_cast<GuiState>(GetState());
+    if ((state != STATE_DISABLED) && !guiLocked && !guiControlExclusiveMode)
+    {
+        Vector2 mousePoint = GetMousePosition();
+        if (CheckCollisionPointRec(mousePoint, bounds))
+        {
+            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) result = MOUSE_BUTTON_LEFT;
+            if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) result = MOUSE_BUTTON_RIGHT;
+            if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE)) result = MOUSE_BUTTON_MIDDLE;
+            if (result) state = STATE_PRESSED;
+            else state = STATE_FOCUSED;
+        }
+    }
+    GuiDrawRectangle(bounds, GuiGetStyle(BUTTON, BORDER_WIDTH), GetColor(GuiGetStyle(BUTTON, BORDER + (state*3))), GetColor(GuiGetStyle(BUTTON, BASE + (state*3))));
+    GuiDrawText(text, GetTextBounds(BUTTON, bounds), GuiGetStyle(BUTTON, TEXT_ALIGNMENT), GetColor(GuiGetStyle(BUTTON, TEXT + (state*3))));
+    if (state == STATE_FOCUSED) GuiTooltip(bounds);
+    return result;
+}
+
 bool LabelButton(const char* text)
 {
     return detail::defaultWidget(GuiLabelButton, text);

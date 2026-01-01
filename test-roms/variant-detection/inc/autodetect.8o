@@ -18,7 +18,7 @@
 # XO-CHIP skip would see this as a four byte opcode and skip all
 # others will just skip two byte executing the jump
     if vf != vf then 0xF0 0x00 jump no_xo_support
-    jump xo_detected
+    jump xochip_detected
 : no_xo_support
     # 2. Check for SCHIP/MegaChip8
     # Shifting on SCHIP/MC8 ignores vy and just shifts vx
@@ -62,10 +62,26 @@
     return
 
 : no_sc_support
-    jump c8_detected
+    :unpack 1 c8e_detected
+    i := 0xAFE
+    save v1
+    v0 := 0xBB
+    v1 := 0x02
+    i := 0xB00
+    save v1
+    :unpack 1 chip8_detected
+    i := 0xB02
+    save v1
+    :unpack 1 chip8_detected
+    i := 0xB04
+    save v1
+    v0 := 0
+    vb := 2
+    jump 0xb00
 
-: c8_detected
-    jump chip8_detected
+: c8e_detected
+    vd := 3
+    jump chip8e_detected
 
 : autodetect-mem-quirk-data
     0 1 2 0
@@ -136,9 +152,6 @@
 : mc_detected
     :call restore_trampoline
     jump megachip_detected
-
-: xo_detected
-    jump xochip_detected
 
 # AUTO-DETECTION-END
 #----------------------------------------------------------------

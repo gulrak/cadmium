@@ -152,8 +152,7 @@ public:
         int bottom = -1;
         auto width = _core->getCurrentScreenWidth();
         auto height = _core->getCurrentScreenHeight();
-        const auto* screen = _core->getScreen();
-        if(screen) {
+        auto scanScreen = [&](const auto* screen) {
             for (int y = 0; y < height; y += scaleY) {
                 for (int x = 0; x < width; x += scaleX) {
                     if(screen->getPixelDebugBW(x, y) == '#') {
@@ -164,12 +163,20 @@ public:
                     }
                 }
             }
-            if(result.x < 0) return {0,0,0,0};
-            result.w = right - result.x + 1;
-            result.h = bottom - result.y + 1;
-            return result;
+        };
+        if(const auto* screenPal = _core->getScreen()) {
+            scanScreen(screenPal);
         }
-        return {0,0,0,0};
+        else if(const auto* screenRGB = _core->getScreenRGBA()) {
+            scanScreen(screenRGB);
+        }
+        else {
+            return {0,0,0,0};
+        }
+        if(result.x < 0) return {0,0,0,0};
+        result.w = right - result.x + 1;
+        result.h = bottom - result.y + 1;
+        return result;
     }
     std::string chip8EmuScreen(bool hires = false) const
     {
@@ -179,8 +186,7 @@ public:
         if(!hires) {
             auto scaleX = width / 64;
             auto scaleY = height / 32;
-            const auto* screen = _core->getScreen();
-            if(screen) {
+            auto workScreen = [&](const auto* screen) {
                 result.reserve(width * height + height);
                 for (int y = 0; y < height; y += scaleY) {
                     for (int x = 0; x < width; x += scaleX) {
@@ -188,6 +194,12 @@ public:
                     }
                     result.push_back('\n');
                 }
+            };
+            if(const auto* screenPal = _core->getScreen()) {
+                workScreen(screenPal);
+            }
+            else if(const auto* screenRGB = _core->getScreenRGBA()) {
+                workScreen(screenRGB);
             }
         }
         return result;
@@ -197,10 +209,9 @@ public:
         std::string result;
         auto width = _core->getCurrentScreenWidth();
         auto height = _core->getCurrentScreenHeight();
-        const auto* screen = _core->getScreen();
         executeFrame();
         executeFrame();
-        if(screen) {
+        auto workScreen = [&](const auto* screen) -> std::pair<Rect, std::string> {
             auto rect = findContentRectangle(scaleX, scaleY);
             if(rect.w) {
                 result.reserve(rect.w * rect.h + rect.h);
@@ -216,6 +227,13 @@ public:
                 }
                 return {{rect.x/scaleX, rect.y/scaleY, rect.w/scaleX, rect.h/scaleY}, result};
             }
+            return {{0,0,0,0}, result};
+        };
+        if(const auto* screen = _core->getScreen()) {
+            return workScreen(screen);
+        }
+        if(const auto* screen = _core->getScreenRGBA()) {
+            return workScreen(screen);
         }
         return {{0,0,0,0}, result};
     }
@@ -224,10 +242,9 @@ public:
         std::string result;
         auto width = _core->getCurrentScreenWidth();
         auto height = _core->getCurrentScreenHeight();
-        const auto* screen = _core->getScreen();
         executeFrame();
         executeFrame();
-        if(screen) {
+        auto workScreen = [&](const auto* screen) -> std::pair<Rect, std::string> {
             auto rect = findContentRectangle(scaleX, scaleY);
             if(rect.w) {
                 result.reserve(rect.w * rect.h + rect.h);
@@ -243,6 +260,13 @@ public:
                 }
                 return {{rect.x/scaleX, rect.y/scaleY, rect.w/scaleX, rect.h/scaleY}, result};
             }
+            return {{0,0,0,0}, result};
+        };
+        if(const auto* screen = _core->getScreen()) {
+            return workScreen(screen);
+        }
+        if(const auto* screen = _core->getScreenRGBA()) {
+            return workScreen(screen);
         }
         return {{0,0,0,0}, result};
     }

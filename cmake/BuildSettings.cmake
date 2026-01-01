@@ -104,22 +104,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(raylib)
 
-if (CADMIUM_WITH_DATABASE)
-    add_subdirectory(${PROJECT_SOURCE_DIR}/external/sqlite3)
-    set(SQLite3_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/external/sqlite3")
-    set(SQLite3_LIBRARY SQLite::SQLite3)
-    set(zxorm_patch git apply ${PROJECT_SOURCE_DIR}/cmake/zxorm.patch)
-    FetchContent_Declare(
-        ZxOrm
-        GIT_REPOSITORY "https://github.com/crabmandable/zxorm.git"
-        GIT_TAG "92cd52ec0530fb3e66061058548916fb879879e7"
-        GIT_SHALLOW TRUE
-        PATCH_COMMAND ${zxorm_patch}
-        UPDATE_DISCONNECTED TRUE
-    )
-    FetchContent_MakeAvailable(ZxOrm)
-endif()
-
 if(PLATFORM STREQUAL "Desktop")
     set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
     set(LIBRESSL_APPS OFF CACHE BOOL "" FORCE)
@@ -154,7 +138,7 @@ endif()
 FetchContent_Declare(
         DocTest
         GIT_REPOSITORY "https://github.com/doctest/doctest.git"
-        GIT_TAG "v2.4.9"
+        GIT_TAG "v2.4.12"
         GIT_SHALLOW TRUE
         EXCLUDE_FROM_ALL
 )
@@ -196,4 +180,10 @@ if(DOXYGEN_FOUND)
         VERBATIM )
 else()
     message("Doxygen need to be installed to generate the doxygen documentation")
+endif()
+
+if (CADMIUM_WITH_DATABASE)
+    set(GHC_CUSTOM_LOGGER_PROVIDED ${PROJECT_SOURCE_DIR}/src/emulation/logger.hpp)
+    set(USE_FMTLIB_POLYFILL ON)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/ghc/sqlite)
 endif()

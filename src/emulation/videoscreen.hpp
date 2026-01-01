@@ -31,17 +31,19 @@
 #include <cstring>
 #include <emulation/properties.hpp>
 #include <ghc/bit.hpp>
+#include <emulation/logger.hpp>
 
 namespace emu {
 
-template<typename PixelType, int Width, int Height>
+template<typename PixelType>
 class VideoScreen
 {
 public:
-    static constexpr int WIDTH = Width;
-    static constexpr int HEIGHT = Height;
-    VideoScreen()
+    VideoScreen(int width, int height, int ratio = -1)
+    : _stride(width)
+    , _totalRows(height)
     {
+        setMode(width, height, ratio);
         _palette[0] = be32(0x00000000);
         _palette[1] = be32(0xFFFFFFFF);
         _palette[2] = be32(0xCCCCCCFF);
@@ -50,9 +52,16 @@ public:
     }
     void setMode(int width, int height, int ratio = -1)
     {
-        _width = width;
-        _height = height;
-        _ratio = ratio > 0 ? ratio : (width/height/2);
+        if (width <= _stride) {
+            _width = width;
+            _height = height;
+            if (_screenBuffer.size() != _stride * _totalRows)
+                _screenBuffer.resize(_stride * _totalRows);
+            _ratio = ratio > 0 ? ratio : (width/height/2);
+        }
+        else {
+            ERROR_LOG("Can't upsize a VideoScreen beyond its stride!");
+        }
     }
     void setOverlayCellHeight(int height) {
         _overlayCellHeight = height;
@@ -66,8 +75,12 @@ public:
     {
         _backgroundVariants[0] = background;
         _palette[0] = background;
-
     }
+    uint32_t getBackgroundRGBA() const
+    {
+        return _backgroundColor;
+    }
+
     void setBackgroundPal(size_t background)
     {
         _backgroundColor = _backgroundVariants[background & _backgroundVariantsMask];
@@ -128,8 +141,9 @@ public:
     }
     char getPixelDebugBW(int x, int y) const
     {
-        if constexpr (isRGBA()) {
-            return _screenBuffer[y * _stride + x] & be32(0xFFFFFF00) ? "#" : '.';
+        if  (isRGBA()) {
+            const auto p = _screenBuffer[y * _stride + x];
+            return p != _backgroundColor ? '#' : '.';
         }
         return _screenBuffer[y * _stride + x] ? '#' : '.';
     }
@@ -224,7 +238,7 @@ public:
                 pixel = value;
         }
         else {
-            std::memset(_screenBuffer.data(), value, Width * Height);
+            std::memset(_screenBuffer.data(), value, _screenBuffer.size());
         }
     }
     void binaryAND(PixelType mask)
@@ -250,7 +264,7 @@ public:
     }
     void scrollLeft(int n)
     {
-        for(int y = 0; y < Height; ++y) {
+        for(int y = 0; y < _totalRows; ++y) {
             std::memmove(_screenBuffer.data() + y * _stride, _screenBuffer.data() + y * _stride + n, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + _stride - n + i] = _black;
@@ -261,7 +275,7 @@ public:
     }
     void scrollRight(int n)
     {
-        for(int y = 0; y < Height; ++y) {
+        for(int y = 0; y < _totalRows; ++y) {
             std::memmove(_screenBuffer.data() + y * _stride + n, _screenBuffer.data() + y * _stride, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + i] = _black;
@@ -347,24 +361,25 @@ protected:
     static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
     {
         int a = alpha;
-        auto* dst = (uint8_t*)dest;
+        auto* dst = reinterpret_cast<uint8_t*>(dest);
         const auto* c1 = dst;
-        const auto* c2 = (const uint8_t*)col;
+        const auto* c2 = reinterpret_cast<const uint8_t*>(col);
         *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
         *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
         *dst++ = (a * *c2 + (255 - a) * *c1) >> 8;
         *dst = 255;
     }
-    const int _stride{Width};
-    int _width{Width};
-    int _height{Height};
+    const int _stride{};
+    const int _totalRows{};
+    int _width{};
+    int _height{};
     int _ratio{1};
     int _overlayCellHeight{0};
     uint8_t _paletteMask{0xFF};
     uint8_t _backgroundVariantsMask{0xF};
     PixelType _black{isRGBA() ? be32(0x00000000) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
-    std::array<PixelType, Width*Height> _screenBuffer;
+    std::vector<PixelType> _screenBuffer;
     std::array<uint32_t, 256> _palette{};
     std::array<uint32_t, 16> _backgroundVariants{};
     size_t _backgroundIndex{};

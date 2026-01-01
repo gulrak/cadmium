@@ -657,7 +657,7 @@ TEST_CASE(C8CORE ": Cxnn - vx := random nn")
 
 TEST_CASE(C8CORE ": Dxyn - sprite vx vy n, simple draw")
 {
-    std::string pacImage = "..####.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
+    std::string pacImage = "..##.#.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
     write(core, start, {0x6003, 0x6104, 0xA400, 0xD018, uint16_t(0x1000 + start + 8)});
@@ -849,6 +849,7 @@ TEST_CASE(C8CORE ": Fx55 - save vx, i is incremented by x+1")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
+    core->memory()[0x402] = 0;
     write(core, start, {0xA400, 0x6042, 0x6107, 0x6233, 0xF155});
     step(core);
     CheckState(core, {.i = 0x400, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "i := 0x400");
@@ -869,6 +870,7 @@ TEST_CASE(C8CORE ": Fx55 - save vx, i is incremented by x")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
+    core->memory()[0x402] = 0;
     write(core, start, {0xA400, 0x6042, 0x6107, 0x6233, 0xF155});
     step(core);
     CheckState(core, {.i = 0x400, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "i := 0x400");
@@ -889,6 +891,7 @@ TEST_CASE(C8CORE ": Fx55 - save vx, i is unchanged")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
+    core->memory()[0x402] = 0;
     write(core, start, {0xA400, 0x6042, 0x6107, 0x6233, 0xF155});
     step(core);
     CheckState(core, {.i = 0x400, .pc = start + 2, .sp = 0, .dt = TIMER_DEFAULT, .st = TIMER_DEFAULT, .v = {0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0}, .stack = {}}, "i := 0x400");

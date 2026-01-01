@@ -18,15 +18,15 @@ endif()
 target_link_libraries(chip8_emulation_tests PUBLIC doctest emulation)
 target_code_coverage(chip8_emulation_tests AUTO ALL)
 doctest_discover_tests(chip8_emulation_tests)
-if (NOT DEFINED ENV{CI})
-add_custom_command(
-    TARGET chip8_emulation_tests
-    COMMENT "Run tests"
-    POST_BUILD
-    COMMAND chip8_emulation_tests
-)
-add_dependencies(cadmium chip8_emulation_tests)
-endif()
+#if (OR NOT DEFINED ENV{CI})
+#    add_custom_command(
+#        TARGET chip8_emulation_tests
+#        COMMENT "Run tests"
+#        POST_BUILD
+#        COMMAND chip8_emulation_tests
+#    )
+#    add_dependencies(cadmium chip8_emulation_tests)
+#endif()
 
 add_executable(cdp1802test cdp1802test.cpp)
 target_link_libraries(cdp1802test emulation)

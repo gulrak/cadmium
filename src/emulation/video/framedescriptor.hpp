@@ -1,8 +1,8 @@
 //---------------------------------------------------------------------------------------
-// tests/chip8adapter.hpp
+// src/video/framedescriptor.hpp
 //---------------------------------------------------------------------------------------
 //
-// Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
+// Copyright (c) 2025, Steffen Schümann <s.schuemann@pobox.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,33 +25,46 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/ichip8.hpp>
-#include <emulation/emulatorhost.hpp>
-#include <emulation/chip8options.hpp>
-#include <memory>
+#include <array>
+#include <cstdint>
+#include <span>
+#include <variant>
 
-//#define TEST_CHIP8EMULATOR_FP
-//#define TEST_CHIP8EMULATOR_TS
-//#define TEST_C_OCTO
-//#define TEST_JAMES_GRIFFIN_CHIP_8
-//#define TEXT_WERNSEY_CHIP_8
+namespace video {
 
-class Chip8HeadlessTestHost : public emu::EmulatorHost
+struct PaletteFrame
 {
-public:
-    explicit Chip8HeadlessTestHost(const emu::Chip8EmulatorOptions& options_) : options(options_) {}
-    ~Chip8HeadlessTestHost() override = default;
-    bool isHeadless() const override { return true; }
-    int getKeyPressed() override { return 0; }
-    bool isKeyDown(uint8_t key) override { return false; }
-    const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
-    void updateScreen() override {}
-    void vblank() override {}
-    void updatePalette(const std::array<uint8_t,16>& palette) override {}
-    void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
-    emu::Chip8EmulatorOptions options;
+    std::span<const uint8_t> pixels;
+    std::span<const uint32_t> palette;  // RGBA colors
+    int width;
+    int height;
+    int pitch;
 };
 
-enum Chip8TestVariant { C8TV_GENERIC, C8TV_C8, C8TV_C10, C8TV_C48, C8TV_SC10, C8TV_SC11, C8TV_MC8, C8TV_XO };
-using EmuCore = std::unique_ptr<emu::IChip8Emulator>;
-extern EmuCore createChip8Instance(Chip8TestVariant variant = C8TV_GENERIC);
+struct RGBAFrame
+{
+    std::span<const uint32_t> pixels;
+    int width;
+    int height;
+    int pitch;
+    bool hasBorders = false;  // true for PAL/NTSC with borders
+};
+
+using SourceFrame = std::variant<PaletteFrame, RGBAFrame>;
+
+struct RenderTarget
+{
+    uint32_t* pixels;  // RGBA output buffer
+    int width;
+    int height;
+    int pitch;  // bytes per row (may differ from width * 4)
+};
+
+struct ScaledRegion
+{
+    int x, y;           // Top-left position in target
+    int width, height;  // Scaled dimensions
+    int scaleFactor;    // Integer scaling factor applied
+};
+
+}  // namespace video

@@ -34,20 +34,23 @@ namespace ghc
 class RandomLCG
 {
 public:
-    enum Type { };
-    explicit RandomLCG(uint32_t seed = 1)
-        : _state(seed ? seed : 1)
+    enum class Type { eNormal, eSparse };
+    explicit RandomLCG(Type type, uint32_t seed = 1)
+        : _type(type)
+        , _state(seed ? seed : 1)
     {}
     uint16_t operator()()
     {
-        next();
-        return _state >> 16;
+        const uint16_t part = (_type == Type::eSparse ? next() : 0xffff);
+        return next() & part;
     }
 private:
-    void next()
+    uint16_t next()
     {
         _state = ((_state * 1103515245) + 12345) & 0x7FFFFFFF;
+        return _state >> 16;
     }
+    Type _type{Type::eNormal};
     uint32_t _state{1};
 };
 

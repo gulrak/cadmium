@@ -106,7 +106,7 @@
 #--------------------------------------------------------------
 # CHIP-8 FPD
 :org 0x2BE
-    vjump 0x9C0 0x244
+    vjump 0x9D0 0x244
 
 : detect-sc-modern
     i := dxy0-sprite
@@ -253,87 +253,6 @@
     0b00101000
     0b00101000
 
-: vfr-sprites
-    0b10101110
-    0b10101000
-    0b10101100
-    0b10101000
-    0b01001000
-
-    0b11100000
-    0b10100000
-    0b11000000
-    0b10100000
-    0b10100000
-
-: mem-sprites
-    0b10101110
-    0b11101000
-    0b11101100
-    0b10101000
-    0b10101110
-
-: shf-sprites
-    0b11101010
-    0b10001010
-    0b11101110
-    0b00101010
-    0b11101010
-
-    0b11100000
-    0b10000000
-    0b11000000
-    0b10000000
-    0b10000000
-
-: jmp-sprites
-    0b00101010
-    0b00101110
-    0b00101110
-    0b10101010
-    0b01001010
-
-: letter-p
-    0b11100000
-    0b10100000
-    0b11100000
-    0b10000000
-    0b10000000
-
-: dwait-sprites
-    0b11001010
-    0b10101010
-    0b10101110
-    0b10101110
-    0b11001010
-
-    0b11100000
-    0b01000000
-    0b01000000
-    0b01000000
-    0b01000000
-
-: wrp-sprites
-    0b10101110
-    0b10101010
-    0b11101100
-    0b11101010
-    0b10101010
-
-: plus
-    0b00000000
-    0b01000000
-    0b11100000
-    0b01000000
-    0b00000000
-
-: minus
-    0b00000000
-    0b00000000
-    0b11100000
-    0b00000000
-    0b00000000
-
 : checkmark
     0b00000000
     0b10100000
@@ -347,13 +266,6 @@
     0b01000000
     0b10100000
     0b00000000
-
-: question
-    0b11100000
-    0b00100000
-    0b01000000
-    0b00000000
-    0b01000000
 
     00
 
@@ -371,6 +283,10 @@
         jump chip10_detected
     prepareText variant_chip8
     i := quirks-chip8
+    jump print_detected_variant
+: chip8e_detected
+    prepareText variant_chip8
+    i := quirks-chip8e
     jump print_detected_variant
 : chip10_detected
     vd := 2
@@ -451,6 +367,10 @@
     v2 := 1
     v3 := 10
     drawTextRaw
+    if vd == 3 begin
+        v0 := 4 # CHR_E
+        drawChar
+    end
     :call detect-quirks
     loop again
 
@@ -462,6 +382,8 @@
 
 : quirks-chip8 # VFR MEM SHF JMP DWT WRP VIDEO-MODES (LORES=1, HIRES=2, MEGA=4)
     0 2 5 1 1 0 1
+: quirks-chip8e
+    0 2 5 3 1 0 1
 : quirks-chip10
     0 2 5 1 2 255 2
 : quirks-chip48
@@ -494,6 +416,7 @@
 :const CHR_L 11
 :const CHR_N 13
 :const CHR_P 15
+:const CHR_R 17
 :const CHR_X 23
 :const CHR_QM 42
 :const CHR_PLUS 43
@@ -547,7 +470,7 @@
     v0 <<= v1
     vc += v0
 
-    i := question
+    i := CHR_QM
     if vc == 0 then
         v0 := CHR_PLUS
     if vc == 5 then
@@ -563,6 +486,11 @@
         vc := 2
         jump quirk-bnnn-result
     end
+    if vd == 3 begin
+        v0 := CHR_R
+        vc := 3
+        jump show-bnnn-result
+    end
     v0 := 0
     v7 := 2
     jump0 quirk-has-bnnn
@@ -574,6 +502,7 @@
         v0 := CHR_PLUS
     if vc == 1 then
         v0 := CHR_MINUS
+: show-bnnn-result
     drawChar
     checkAndShow 3
 
@@ -812,7 +741,7 @@
     return
 
 #--------------------------------------------------------------
-:org 0x9C0
+:org 0x9D0
 : c8fpd
     unpackJump draw-sprites-loop 0x244
     vindex draw-sprites-jump 0x244
