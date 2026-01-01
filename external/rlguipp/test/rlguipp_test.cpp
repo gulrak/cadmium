@@ -23,7 +23,6 @@
 //---------------------------------------------------------------------------------------
 #include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
-#include <ghc/fs_impl.hpp>
 
 class RlGuippApp
 {
