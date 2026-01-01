@@ -15,7 +15,7 @@
 #include <string>
 #include <optional>
 #include <cstdlib>
-//#include <ghc/fs_impl.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <cctype>
 
 #ifndef _WIN32
