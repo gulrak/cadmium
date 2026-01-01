@@ -128,9 +128,9 @@ UserDirectories getUserDirectories() {
     #elif defined(__linux__)
         // Linux: Read $HOME/.config/user-dirs.dirs
         if (!dirs.home.empty()) {
-            std::filesystem::path configFile = std::filesystem::path(dirs.home) / ".config" / "user-dirs.dirs";
-            if (std::filesystem::exists(configFile)) {
-                std::ifstream in(configFile);
+            ghc::filesystem::path configFile = ghc::filesystem::path(dirs.home) / ".config" / "user-dirs.dirs";
+            if (ghc::filesystem::exists(configFile)) {
+                ghc::filesystem::ifstream in(configFile.string());
                 std::string line;
                 while (std::getline(in, line)) {
                     // Skip empty lines and comments.
