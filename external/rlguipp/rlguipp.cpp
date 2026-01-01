@@ -8,7 +8,7 @@
 #define RAYGUI_IMPLEMENTATION
 #define RLGUIPP_IMPLEMENTATION
 #include <rlguipp/rlguipp.hpp>
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -2127,7 +2127,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
                         info.path = ghc::filesystem::path(info.path).parent_path().string();
                     }
                     else {
-                        info.path = ghc::filesystem::path(info.path) / entry.name;
+                        info.path = (ghc::filesystem::path(info.path) / entry.name).string();
                     }
                 }
                 else if (entry.type == FileDialogInfo::DirEntry::File && IsMouseButtonPressed(0)) {
@@ -2146,7 +2146,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
         })) {
             TableNextColumn(272, [&entry,&font,&textColor](Rectangle rect) {
                 GuiDrawIcon(entry.icon, rect.x + 1, rect.y, 1, textColor);
-                DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().c_str(), {rect.x + 20, rect.y + yo}, textColor);
+                DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().string().c_str(), {rect.x + 20, rect.y + yo}, textColor);
             });
             TableNextColumn(8*6, [&entry,&font,&textColor](Rectangle rect) {
                 if (entry.type == FileDialogInfo::DirEntry::Dir) {

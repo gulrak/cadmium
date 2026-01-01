@@ -31,9 +31,9 @@ if(NOT EMSCRIPTEN)
     add_subdirectory(test)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
-    add_subdirectory(experimental)
-endif()
+#if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
+#    add_subdirectory(experimental)
+#endif()
 
 set(CPACK_PACKAGE_VENDOR "gulrak.net")
 set(CPACK_PACKAGE_CONTACT "s.schuemann@pobox.com")
