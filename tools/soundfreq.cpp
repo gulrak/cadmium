@@ -23,6 +23,7 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
+#include <array>
 #include <iostream>
 #include <iomanip>
 #include <cmath>
@@ -54,7 +55,7 @@ std::pair<std::string, float> closestNoteX(float freq) {
 
     // Note names (use sharps)
     static constexpr std::array<const char*, 12> names{
-        "C-","C#","D-","D#","E-","F-","F#","G-","G#","A-","A#","B-"
+        "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"
     };
 
     // Index within octave [0..11], handle negatives safely
@@ -83,6 +84,27 @@ int main()
         auto [note3, frac3] = closestNoteX(freq * 4);
         std::cout << std::left << std::setw(4) << note3 << std::right << " (" << std::setw(5) << frac3 << ") ";
         std::cout << std::setprecision(4) << (freq * 128) << " " << (freq / 44100.0) << " " << (freq / 48000.0) << std::endl;
+        // std::cout << i << " : " << freq << " Hz - (" << closestNote(freq) << "Hz, " << closestNote(freq*2) << "Hz, " << closestNote(freq*4) << "Hz)" << std::endl;
+    }
+    for(int i = 0; i < 256; ++i) {
+        auto freq = 4000 * std::pow(2.0f, (i - 64) / 48.0f) / 128;
+        std::cout << "| " << std::setw(3) << i << std::fixed << std::setprecision(2);
+        auto [note, frac] = closestNoteX(freq);
+        if (std::fabs(frac) < 0.1f)
+            std::cout << " | " << freq << "Hz ~" << note;
+        else
+            std::cout << " | " << freq << "Hz";
+        auto [note2, frac2] = closestNoteX(freq * 2);
+        if (std::fabs(frac2) < 0.1f)
+            std::cout << " | " << freq*2  << "Hz ~" << note2;
+        else
+            std::cout << " | " << freq*2  << "Hz";
+        auto [note3, frac3] = closestNoteX(freq * 4);
+        if (std::fabs(frac3) < 0.1f)
+            std::cout << " | " << freq*4 << "Hz ~" << note3;
+        else
+            std::cout << " | " << freq*4 << "Hz";
+        std::cout << " | " << (freq * 128) << " | " << std::setprecision(6) << (freq / 44100.0) << " | " << (freq / 48000.0) << " |" << std::endl;
         // std::cout << i << " : " << freq << " Hz - (" << closestNote(freq) << "Hz, " << closestNote(freq*2) << "Hz, " << closestNote(freq*4) << "Hz)" << std::endl;
     }
 }
