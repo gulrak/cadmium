@@ -35,20 +35,6 @@ set(CHIP8_EMU_SOURCE
     utility.cpp
     expressionist.cpp
     expressionist.hpp
-        video/framedescriptor.hpp
-        video/iframeeffect.hpp
-        video/frameprocessor.hpp
-        video/frameprocessor.cpp
-        video/iframeeffect.cpp
-        video/plaineffect.hpp
-        video/plaineffect.cpp
-        video/scanlineeffect.hpp
-        video/scanlineeffect.cpp
-        video/lcdeffect.hpp
-        video/lcdeffect.cpp
-        #octocartridge.cpp
-    #octocartridge.hpp
-    #megachip_original.cpp
 )
 
 add_library(emulation OBJECT ${CHIP8_EMU_SOURCE})
