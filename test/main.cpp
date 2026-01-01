@@ -6,7 +6,7 @@
 
 #ifndef WITHOUT_STB_IMAGE
 #define STB_IMAGE_IMPLEMENTATION
-#include <../../chiplet/external/nothings/stb_image.h>
+#include <nothings/stb_image.h>
 #endif
 
 int main(int argc, char** argv) {
