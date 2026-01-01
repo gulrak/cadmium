@@ -657,7 +657,7 @@ TEST_CASE(C8CORE ": Cxnn - vx := random nn")
 
 TEST_CASE(C8CORE ": Dxyn - sprite vx vy n, simple draw")
 {
-    std::string pacImage = "..##.#.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
+    std::string pacImage = "..####.\n.######\n##.###.\n#####..\n#####..\n######.\n.######\n..####.\n";
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
     write(core, start, {0x6003, 0x6104, 0xA400, 0xD018, uint16_t(0x1000 + start + 8)});
