@@ -47,7 +47,7 @@ static void runTestForScreen(const std::string& test, const std::string& referen
     auto [host, core, start] = createChip8Instance(preset);
     auto rom = loadFile(fs::path(CHIP8_TEST_SUITE) / "bin" / test);
     core->reset();
-    host->load(rom);
+    host->load(rom.value_or(Bytes{}));
     if(preselector) {
         host->writeByte(0x1ff, preselector);
     }

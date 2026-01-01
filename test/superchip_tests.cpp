@@ -167,7 +167,7 @@ void runSchip1xDrawTest(std::string preset)
         {2, 0x220, 22}, {3, 0x226, 20}, {4, 0x22A, 20}
     };
     core->reset();
-    host->load(rom);
+    host->load(rom.value_or(Bytes{}));
     HeadlessTestHost::Rect rect;
     std::string content;
     int key = 1;
