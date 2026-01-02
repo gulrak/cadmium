@@ -242,7 +242,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         static auto lastExecMode = emu::GenericCpu::eRUNNING;
         if(_memViewFollow && chip8Core() && (_core->focussedExecutionUnit()->execMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
-            memScroll.y = -(float)(chip8Core()->getI() / 8) * lineSpacing;
+            memScroll.y = -(float)(chip8Core()->getI() / 16) * lineSpacing;
         lastExecMode = _core->focussedExecutionUnit()->execMode();
         auto bytesPerLine = 16;
         BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/bytesPerLine + 1) * lineSpacing}, &memScroll);
