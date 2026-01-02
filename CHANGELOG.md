@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.9-1.1.11] (wip)
+## [1.1.9-1.9.90] (wip)
 
 ### Added
 
@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Desktop only] Library/Research screen and database integration allows for easier research on existing roms
   and interpreters, all information about programs, and even the binaries themselves are now kept
   in a local SQLite3 file in the configuration directory (<10MB for all known programs combined)
-- [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed.
+- [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed
+- Cadmium now has a `--version` command line option and shows the git commit hash in the about dialog
 
 ### Changed
 
@@ -51,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disassembly sometimes only showed hex bytes instead of opcodes
 - The VIP-CHIP-8E interpreter had a typo leading to `BBnn` not working ([#12](https://github.com/gulrak/cadmium/issues/12))
 - Disassembling 0x7C, 0x7D or 0x7F generated single byte opcodes instead two byte ones ([#13](https://github.com/gulrak/cadmium/issues/12))
 - Octo-Assembler would hang on macro definitions without name or parameter

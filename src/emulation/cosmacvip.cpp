@@ -872,6 +872,11 @@ std::string CosmacVIP::name() const
     return "Chip-8-RVIP";
 }
 
+chip8::VariantSet CosmacVIP::supportedChip8Variants() const
+{
+    return getVariantForInterpreter(_impl->_options.interpreter);
+}
+
 unsigned CosmacVIP::stackSize() const
 {
     return 24;

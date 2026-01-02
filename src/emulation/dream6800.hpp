@@ -44,6 +44,7 @@ public:
 
     bool updateProperties(Properties& props, Property& changed) override;
     std::string name() const override;
+    chip8::VariantSet supportedChip8Variants() const override;
 
     // IEmulationCore
     size_t numberOfExecutionUnits() const override;

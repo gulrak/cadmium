@@ -384,10 +384,10 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             auto startAddress = _properties->get<Property::Integer>("startAddress");
             auto loadAddress = startAddress ? startAddress->intValue : 0;
             emu::Chip8Decompiler decomp{_romImage, static_cast<uint32_t>(loadAddress)};
-            decomp.setVariants(chip8::Variant::CHIP_8 /*_options.presetAsVariant()*/, true); // TODO: Fix this!!
-            // TraceLog(LOG_INFO, "Setting variant.");
-            // decomp.setVariant(Chip8Variant::CHIP_8, true);
-            // TraceLog(LOG_INFO, "About to decompile...");
+            auto chip8Emu = dynamic_cast<emu::IChip8Emulator*>(_chipEmu->executionUnit(0));
+            TraceLog(LOG_INFO, "Setting variant.");
+            decomp.setVariants(chip8Emu ? chip8Emu->supportedChip8Variants() : chip8::Variant::NONE, true);
+            TraceLog(LOG_INFO, "About to decompile...");
             decomp.decompile(filename, loadAddress, &os, false, true);
             source = os.str();
         }

@@ -74,6 +74,7 @@ public:
     {
         return "Chip-8-Strict";
     }
+    chip8::VariantSet supportedChip8Variants() const override;
     uint32_t cpuID() const override { return 0xC856; }
     uint8_t readMemoryByte(uint32_t addr) const override { return readByte(addr); }
     uint16_t getCurrentScreenWidth() const override { return 64; }

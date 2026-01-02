@@ -783,6 +783,11 @@ Chip8GenericEmulator::~Chip8GenericEmulator()
 #endif
 }
 
+chip8::VariantSet Chip8GenericEmulator::supportedChip8Variants() const
+{
+    return _options.variant();
+}
+
 int64_t Chip8GenericEmulator::executeFor(int64_t micros)
 {
     if (_execMode == ePAUSED || _cpuState == eERROR) {

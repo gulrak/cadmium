@@ -34,6 +34,7 @@
 #include <string>
 #include <utility>
 
+#include "chiplet/chip8variants.hpp"
 #include "iemulationcore.hpp"
 
 namespace emu
@@ -56,6 +57,7 @@ class IChip8Emulator : public GenericCpu
 {
 public:
     ~IChip8Emulator() override = default;
+    virtual chip8::VariantSet supportedChip8Variants() const = 0;
     virtual void executeInstructions(int numInstructions) = 0;
 
     virtual uint8_t getV(uint8_t index) const = 0;

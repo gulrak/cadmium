@@ -413,6 +413,11 @@ std::string Eti660::name() const
     return "Chip-8-RVIP";
 }
 
+chip8::VariantSet Eti660::supportedChip8Variants() const
+{
+    return chip8::Variant::NONE;
+}
+
 unsigned Eti660::stackSize() const
 {
     return 16;

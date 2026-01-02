@@ -395,6 +395,11 @@ std::string Dream6800::name() const
     return "DREAM6800";
 }
 
+chip8::VariantSet Dream6800::supportedChip8Variants() const
+{
+    return _impl->_options.romName == "CHIPOS" ? chip8::Variant::CHIP_8_D6800 : chip8::Variant::CHIP_8_D6800_LOP;
+}
+
 bool Dream6800::updateProperties(Properties& props, Property& changed)
 {
     if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {

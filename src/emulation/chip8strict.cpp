@@ -85,6 +85,11 @@ struct StrictFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8StrictEmu
 
 static bool registeredStrictC8 = CoreRegistry::registerFactory(PROP_CLASS, std::make_unique<StrictFactoryInfo>("First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP"));
 
+chip8::VariantSet Chip8StrictEmulator::supportedChip8Variants() const
+{
+    return chip8::Variant::CHIP_8;
+}
+
 bool Chip8StrictEmulator::updateProperties(Properties& props, Property& changed)
 {
     (void)registeredStrictC8;

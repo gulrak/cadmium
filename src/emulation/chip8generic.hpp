@@ -114,6 +114,7 @@ public:
     {
         return "Chip-8-MPT";
     }
+    chip8::VariantSet supportedChip8Variants() const override;
     uint32_t cpuID() const override { return 0xC8; }
     bool updateProperties(Properties& props, Property& changed) override;
     int64_t machineCycles() const override { return 0; }

@@ -1811,7 +1811,7 @@ void main()
                     DrawTextureRec(_titleTexture, {34, 2, 60, 60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
                     auto styleColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
                     SetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(WHITE));
-                    Label("           Cadmium v" CADMIUM_VERSION);
+                    Label("           Cadmium v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH);
                     SetStyle(LABEL, TEXT_COLOR_NORMAL, styleColor);
                     Space(4);
                     Label("           (c) 2022 by Steffen 'Gulrak' Schümann");
@@ -3550,6 +3550,7 @@ int main(int argc, char* argv[])
     bool compareRun = false;
     int64_t benchmark= 0;
     bool showHelp = false;
+    bool showVersion = false;
     bool opcodeTable = false;
     bool opcodeJSON = false;
     bool dumpLibNickel = false;
@@ -3568,6 +3569,7 @@ int main(int argc, char* argv[])
     cli.category("General Options");
 #ifndef PLATFORM_WEB
     cli.optionEnable({"-h", "--help"}, showHelp, "Show this help text");
+    cli.optionEnable({"-v", "--version"}, showVersion, "Show version information");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
@@ -3696,6 +3698,11 @@ int main(int argc, char* argv[])
     }
     if(showHelp) {
         cli.usage();
+        exit(0);
+    }
+    if(showVersion) {
+        std::cout << "Cadmium v" << CADMIUM_VERSION << "-" << CADMIUM_GIT_HASH << std::endl;
+        std::cout << "(c) Copyright 2022 by Steffen 'Gulrak' Schümann" << std::endl;
         exit(0);
     }
 #ifndef PLATFORM_WEB
