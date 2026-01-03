@@ -2930,6 +2930,7 @@ void main()
     void whenEmuChanged(emu::IEmulationCore& emu) override
     {
         _debugger.updateCore(&emu);
+        _debugger.updateOctoBreakpoints(_editor.compiler());
         _propsMemento = *_properties;
         auto startAddress = _chipEmu->defaultLoadAddress();
         _editor.updateCompilerOptions(startAddress);

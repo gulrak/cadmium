@@ -50,6 +50,7 @@ public:
     int64_t frames() const override { return _frameCounter; }
     int frameRate() const override { return 60; };
     const ClockedTime& time() const override { return _systemTime; }
+    Logger::FrameTime frameTime() const override { return {_frameCounter & 0x7FFF,static_cast<int>(_cycleCounter & 0x7FFF)}; }
     const std::string& errorMessage() const override { return _errorMessage; }
     uint8_t getV(uint8_t index) const override { return _rV[index]; }
     uint32_t getPC() const override { return _rPC; }

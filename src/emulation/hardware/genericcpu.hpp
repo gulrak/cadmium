@@ -103,6 +103,7 @@ public:
     virtual uint32_t getPC() const = 0;
     virtual int64_t cycles() const = 0;
     virtual const ClockedTime& time() const = 0;
+    virtual Logger::FrameTime frameTime() const { return Logger::FrameTime{0,0}; }
     virtual uint8_t readMemoryByte(uint32_t addr) const = 0;
     virtual unsigned stackSize() const = 0;
     virtual StackContent stack() const = 0;
@@ -182,7 +183,9 @@ public:
                 auto& bpi = iter->second;
                 ++bpi.numHits;
                 if (bpi.conditionExpr.first) {
-                    return bpi.conditionExpr.first->eval() != 0;
+                    auto triggered = bpi.conditionExpr.first->eval() != 0;
+                    doLog(fmt::format("{}: {}", _expressionist.format(bpi.label), triggered ? "triggered" : "not triggered"));
+                    return triggered;
                 }
                 doLog(_expressionist.format(bpi.label));
                 return true;
@@ -210,7 +213,7 @@ protected:
     virtual void doLog(const std::string& message) const
     {
         if (!message.empty()) {
-            Logger::log(Logger::eBACKEND_EMU, cycles(), Logger::FrameTime(0,0), message.c_str());
+            Logger::log(Logger::eBACKEND_EMU, cycles(), frameTime(), message.c_str());
         }
     }
     template<typename T>

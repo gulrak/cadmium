@@ -55,6 +55,7 @@ public:
     int64_t cycles() const override { return _cycles; }
     int64_t frames() const override { return _frames; }
     const ClockedTime& time() const override { return getBackendCpu().time(); }
+    Logger::FrameTime frameTime() const override { return {_frames & 0x7FFF,static_cast<int>(_cycles & 0x7FFF)}; }
 
     virtual GenericCpu& getBackendCpu() = 0;
     const GenericCpu& getBackendCpu() const

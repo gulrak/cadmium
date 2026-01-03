@@ -429,7 +429,8 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
             SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
             SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
         }
-        if (TextBox(bpinfo->condition, 256)) {
+        auto prevCondition = bpinfo->condition;
+        if (TextBox(bpinfo->condition, 256) || prevCondition != bpinfo->condition) {
             bpinfo->conditionExpr = execUnit->parseExpression(bpinfo->condition);
             DEBUG_LOG("Parsing breakpoint condition result: {}", bpinfo->conditionExpr.first ? "Okay" : bpinfo->conditionExpr.second.c_str());
         }
@@ -553,7 +554,13 @@ void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
             const auto bpn = compiler.breakpointForAddr(addr);
             if(!bpn.empty()) {
                 auto label = std::string(bpn);
-                core->setBreakpoint(addr, {.label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
+                auto compiled = core->parseExpression(label);
+                if(compiled.first) {
+                    core->setBreakpoint(addr, {.condition = label, .label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true, .conditionExpr = std::move(compiled)});
+                }
+                else {
+                    core->setBreakpoint(addr, {.label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
+                }
             }
             else {
                 if (auto* bpi = core->findBreakpoint(addr); bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
@@ -561,6 +568,7 @@ void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
             }
         }
     }
+    refreshBreakpoints();
 }
 
 bool Debugger::supportsStepOver() const

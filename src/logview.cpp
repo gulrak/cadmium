@@ -147,7 +147,7 @@ void LogView::drawTextLine(const Font& font, int logLine, Vector2 position, floa
         float textOffsetX = 0.0f;
         size_t index = 0;
         auto& logEntry = _logBuffer[logLine];
-        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[{}] {}", getLogLevelName((emu::LogLevel)logEntry._cycle), logEntry._line);
+        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[{}] {}", getLogLevelName((emu::LogLevel)logEntry._cycle), logEntry._line);
         const char* text = content.data();
         const char* end = text + content.size();
         while(text < end && textOffsetX < width && *text != '\n') {
