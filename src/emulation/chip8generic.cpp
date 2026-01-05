@@ -788,45 +788,6 @@ chip8::VariantSet Chip8GenericEmulator::supportedChip8Variants() const
     return _options.variant();
 }
 
-int64_t Chip8GenericEmulator::executeFor(int64_t micros)
-{
-    if (_execMode == ePAUSED || _cpuState == eERROR) {
-        setExecMode(ePAUSED);
-        return 0;
-    }
-    if(_options.instructionsPerFrame) {
-        auto startTime = _cycleCounter;
-        auto microsPerCycle = 1000000.0 / ((int64_t)_options.instructionsPerFrame * _options.frameRate);
-        auto endCycles = startTime + int64_t(micros/microsPerCycle);
-        auto nextFrame = calcNextFrame();
-        while(_execMode != ePAUSED && nextFrame <= endCycles) {
-            executeInstructions(nextFrame - _cycleCounter);
-            if(_cycleCounter == nextFrame) {
-                handleTimer();
-                nextFrame += _options.instructionsPerFrame;
-            }
-        }
-        while (_execMode != ePAUSED && _cycleCounter < endCycles) {
-            executeInstruction();
-        }
-        auto excessTime = int64_t((endCycles - _cycleCounter) * microsPerCycle);
-        return excessTime;// > 0 ? excessTime : 0;
-    }
-    else {
-        using namespace std::chrono;
-        handleTimer();
-        auto start = _cycleCounter;
-        auto endTime = steady_clock::now() + microseconds(micros > 2000 ? micros * 3 / 4 : 0);
-        do {
-            executeInstructions(487);
-        }
-        while(_execMode != ePAUSED && steady_clock::now() < endTime);
-        uint32_t actualIPF = _cycleCounter - start;
-        _systemTime.setFrequency((_systemTime.getClockFreq() + actualIPF)>>1);
-    }
-    return 0;
-}
-
 void Chip8GenericEmulator::executeFrame()
 {
     if(!_options.instructionsPerFrame) {

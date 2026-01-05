@@ -121,7 +121,6 @@ public:
     int executeInstruction() override;
     void executeInstructionNoBreakpoints();
     void executeInstructions(int numInstructions) override;
-    int64_t executeFor(int64_t microseconds) override;
     void executeFrame() override;
     bool supportsFrameBoost() const override { return _options.instructionsPerFrame != 0; }
     void handleTimer() override;

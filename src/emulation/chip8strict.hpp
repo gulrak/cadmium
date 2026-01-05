@@ -100,18 +100,6 @@ public:
         return 0x200;
     }
 
-    int64_t executeFor(int64_t microseconds) override
-    {
-        if(_execMode != ePAUSED) {
-            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
-            while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-                executeInstruction();
-            }
-            return _systemTime.difference_us(endTime);
-        }
-        return 0;
-    }
-
     void executeFrame() override
     {
         if (_execMode == ePAUSED || _cpuState == eERROR) {

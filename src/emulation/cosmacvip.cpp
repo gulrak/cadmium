@@ -851,7 +851,7 @@ void CosmacVIP::qChanged(bool)
             if (false && samples) {
                 if (_impl->_tapeAudio.isOpen())
                 for (auto i = 0; i < samples; ++i) {
-                    _impl->_qOutput.push(_impl->_waveOsc.processSample());
+                    (void)_impl->_qOutput.push(_impl->_waveOsc.processSample());
                 }
             }
         }
@@ -1173,19 +1173,6 @@ void CosmacVIP::executeFrame()
         _impl->_options.traceLog = false;
         _impl->_video.setTrace(false);
     }
-}
-
-int64_t CosmacVIP::executeFor(int64_t microseconds)
-{
-    if(_execMode != ePAUSED) {
-        auto cpuTime = _impl->_cpu.time();
-        auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
-        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.time() < endTime) {
-            executeInstruction();
-        }
-        return _impl->_cpu.time().difference_us(endTime);
-    }
-    return 0;
 }
 
 bool CosmacVIP::isDisplayEnabled() const

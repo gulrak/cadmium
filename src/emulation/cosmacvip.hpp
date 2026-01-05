@@ -72,7 +72,6 @@ public:
     ExecMode execMode() const override;
     void setExecMode(ExecMode mode) override;
 
-    int64_t executeFor(int64_t microseconds) override;
     int executeInstruction() override;
     void executeInstructions(int numInstructions) override;
     int64_t machineCycles() const override;

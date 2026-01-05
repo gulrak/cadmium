@@ -664,19 +664,6 @@ void Dream6800::executeFrame()
     }
 }
 
-int64_t Dream6800::executeFor(int64_t microseconds)
-{
-    if(_execMode != ePAUSED) {
-        auto cpuTime = _impl->_cpu.time();
-        auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
-        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.time() < endTime) {
-            executeInstruction();
-        }
-        return _impl->_cpu.time().difference_us(endTime);
-    }
-    return 0;
-}
-
 bool Dream6800::isDisplayEnabled() const
 {
     return true; //_impl->_video.isDisplayEnabled();

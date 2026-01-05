@@ -80,7 +80,6 @@ public:
         handleReset(cold);
     }
     virtual int executeInstruction() = 0;
-    virtual int64_t executeFor(int64_t microseconds) = 0;
     virtual ExecMode execMode() const { return _execMode; }
     virtual void setExecMode(ExecMode mode) { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = getSP(); }
     virtual bool inErrorState() const = 0;

@@ -703,19 +703,6 @@ void Eti660::executeFrame()
     }
 }
 
-int64_t Eti660::executeFor(int64_t microseconds)
-{
-    if(_execMode != ePAUSED) {
-        auto cpuTime = _impl->_cpu.time();
-        auto endTime = cpuTime + Time::fromMicroseconds(microseconds);
-        while(_execMode != GenericCpu::ePAUSED && _impl->_cpu.time() < endTime) {
-            executeInstruction();
-        }
-        return _impl->_cpu.time().difference_us(endTime);
-    }
-    return 0;
-}
-
 bool Eti660::isDisplayEnabled() const
 {
     return _impl->_video.isDisplayEnabled();

@@ -418,21 +418,6 @@ public:
         return emu::format("A:{:02X} B:{:02X} X:{:04X} SP:{:04X} PC:{:04X} SR:{}", _rA, _rB, _rIX, _rSP, _rPC, _rCC.asString().substr(2));
     }
 
-#ifdef CADMIUM_WITH_GENERIC_CPU
-    int64_t executeFor(int64_t microseconds) override
-    {
-        if(_execMode != GenericCpu::ePAUSED) {
-            auto startTime = _systemTime;
-            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
-            while (_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-                executeInstruction();
-            }
-            return startTime.excessTime_us(_systemTime, microseconds);
-        }
-        return 0;
-    }
-#endif
-
     int executeInstruction() override
     {
 #ifdef CADMIUM_WITH_GENERIC_CPU
