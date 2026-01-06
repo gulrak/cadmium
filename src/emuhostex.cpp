@@ -108,7 +108,7 @@ void EmuHostEx::setPalette(const Palette& palette)
 
 std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmulationCore* iother)
 {
-    auto [variantName, emuCore] = CoreRegistry::create(*this, properties);
+    auto [variantName, emuCore] = CoreRegistry::create(*this, properties, iother);
     if (emuCore) {
         emuCore->reset();
         _variantName = variantName;
@@ -202,6 +202,13 @@ std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmula
 #endif
 }
 
+void EmuHostEx::resetAllBreakpoints()
+{
+    if(!_chipEmu) return;
+    for (auto& unit : *_chipEmu) {
+        unit.removeAllBreakpoints();
+    }
+}
 
 void EmuHostEx::updateEmulatorOptions(const Properties& properties)
 {
@@ -267,6 +274,7 @@ bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
         _colorPalette = _defaultPalette;
         auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
         if (fileData) {
+            resetAllBreakpoints();
             return loadBinary(filename, *fileData, loadOpt);
         }
     }

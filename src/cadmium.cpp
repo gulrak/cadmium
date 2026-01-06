@@ -1500,13 +1500,17 @@ void main()
                     _partialFrameTime -= 1000;
                     for(int i = 0; i < getFrameBoost(); ++i) {
                         _chipEmu->executeFrame();
+                        bool breakpoint = false;
                         for(auto& unit : *_chipEmu) {
                             if(unit.isBreakpointTriggered()) {
                                 _mainView = eDEBUGGER;
                                 _debugger.setBreakpointTriggered(true);
+                                breakpoint = true;
                                 break;
                             }
                         }
+                        if (!breakpoint)
+                            _debugger.setBreakpointTriggered(false);
                     }
                     _fps.add(GetTime()*1000);
                 }

@@ -100,6 +100,7 @@ public:
 
 protected:
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
+    void resetAllBreakpoints();
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
     static int saturatedCast(double value) {

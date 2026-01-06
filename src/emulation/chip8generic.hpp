@@ -107,7 +107,7 @@ public:
     int SCREEN_WIDTH;
     int SCREEN_HEIGHT;
     
-    Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other = nullptr);
+    Chip8GenericEmulator(EmulatorHost& host, Properties& props, IEmulationCore* other = nullptr);
     ~Chip8GenericEmulator() override;
 
     std::string name() const override

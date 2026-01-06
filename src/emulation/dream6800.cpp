@@ -285,10 +285,18 @@ static const uint8_t dream6800ChipOslo[] = {
     0x39, 0x7a, 0x00, 0x20, 0x7a, 0x00, 0x21, 0x7d, 0x80, 0x12, 0x3b, 0xde, 0x00, 0x6e, 0x00, 0x00, 0xc3, 0xf3, 0x00, 0x80, 0x00, 0x83, 0xc3, 0x60
 };
 
-Dream6800::Dream6800(EmulatorHost& host, Properties& props, IChip8Emulator* other)
+Dream6800::Dream6800(EmulatorHost& host, Properties& props, IEmulationCore* other)
     : Chip8RealCoreBase(host)
     , _impl(new Private(host, *this, props))
 {
+    if (other) {
+        if (auto otherVIP = dynamic_cast<Dream6800*>(other)) {
+            _impl->_cpu.swapBreakpoints(otherVIP->_impl->_cpu);
+        }
+        if (auto otherC8 = other->chip8Core()) {
+            swapBreakpoints(*otherC8);
+        }
+    }
     if(_impl->_options.romName == "CHIPOSLO") {
         std::memcpy(_impl->_rom.data(), dream6800ChipOslo, sizeof(dream6800ChipOslo));
         _impl->_properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(dream6800ChipOslo).to_hex().substr(0,8)));

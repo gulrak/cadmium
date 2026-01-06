@@ -376,32 +376,39 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
     BeginTableView(area.height - (10 * 14.0f + 6), 3, &scroll);
     SetRowHeight(11);
     int count = -1;
+    bool foundTriggeredBP = false;
     for (const auto& [address, bpinfo] : _breakpointCache) {
         auto execUnit = _core->executionUnit(bpinfo->unit);
         auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
         ++count;
-        if (bpinfo->isEnabled && _isBreakpointTriggered && execUnit->getPC() == address)
-            _selectedBreakpoint = count;
+        //if (bpinfo->isEnabled && _triggeredBreakpointAddress == address && execUnit->getPC() == address)
+        //    _selectedBreakpoint = count;
         TableNextRow(11.0f, count == _selectedBreakpoint ? StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL): Color{0,0,0,0});
-        TableNextColumn(16, [&](Rectangle rect){
+        TableNextColumn(24, [&](Rectangle rect){
+            GuiDrawIcon(address == _triggeredBreakpointAddress ? ICON_ARROW_RIGHT_FILL_SMALL : ICON_NONE, rect.x - 2, rect.y - 3, 1, YELLOW);
+            if (address == _triggeredBreakpointAddress && execUnit->getPC() == address)
+                foundTriggeredBP = true;
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
                 bpinfo->isEnabled = !bpinfo->isEnabled;
-                _selectedBreakpoint = count;
+                selectBreakpoint(count);
             }
-            GuiDrawIcon(bpinfo->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, rect.x, rect.y - 3, 1, RED);
+            GuiDrawIcon(bpinfo->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, rect.x + 6, rect.y - 3, 1, RED);
         });
         TableNextColumn(32, [&](Rectangle rect){
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
-                _selectedBreakpoint = count;
+                selectBreakpoint(count);
             }
             DrawTextClipped(font, fmt::format("{:04x}", address).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
         });
         TableNextColumn(area.width - 50, [&](Rectangle rect){
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
-                _selectedBreakpoint = count;
+                selectBreakpoint(count);
             }
             DrawTextClipped(font, fmt::format("{} breakpoint", isChip8 ? "CHIP-8" : execUnit->name()).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
         });
+    }
+    if (!foundTriggeredBP) {
+        setBreakpointTriggered(false);
     }
     EndTableView();
     SetRowHeight(14);
@@ -460,6 +467,17 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
     Space(GetContentAvailable().height);
 }
 
+void Debugger::selectBreakpoint(int idx)
+{
+    if (idx < 0 || idx >= _breakpointCache.size()) {
+        _selectedBreakpoint = -1;
+        _bpHitCount = "";
+        return;
+    }
+    _selectedBreakpoint = idx;
+    _bpHitCount = fmt::format("{}", _breakpointCache[idx].second->numHits);
+}
+
 void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const
 {
     using namespace gui;
@@ -512,7 +530,7 @@ void Debugger::refreshBreakpoints()
             return a.first < b.first;
         }
     );
-    _selectedBreakpoint = _breakpointCache.empty() ? -1 : 0;
+    selectBreakpoint(_breakpointCache.empty() ? -1 : 0);
 }
 
 const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n)
@@ -544,6 +562,7 @@ void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
     else {
         cpu.setBreakpoint(address, {.label = fmt::format("BP@{:x}", address), .type = emu::GenericCpu::BreakpointInfo::eTRANSIENT, .isEnabled = true, .unit = static_cast<uint8_t>(_activeInstructionsTab)});
     }
+    selectBreakpoint(-1);
     refreshBreakpoints();
 }
 
@@ -568,10 +587,31 @@ void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
             }
         }
     }
+    selectBreakpoint(-1);
     refreshBreakpoints();
 }
 
 bool Debugger::supportsStepOver() const
 {
     return _core->focussedExecutionUnit()->cpuID() != 1802;
+}
+
+void Debugger::setBreakpointTriggered(bool triggered)
+{
+    _isBreakpointTriggered = triggered;
+    if (triggered) {
+        int count = -1;
+        for (const auto& [address, bpinfo] : _breakpointCache) {
+            auto execUnit = _core->executionUnit(bpinfo->unit);
+            auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
+            ++count;
+            if (bpinfo->isEnabled && execUnit->getPC() == address) {
+                _triggeredBreakpointAddress = address;
+                _selectedBreakpoint = count;
+            }
+        }
+    }
+    else {
+        _triggeredBreakpointAddress = ~0;
+    }
 }

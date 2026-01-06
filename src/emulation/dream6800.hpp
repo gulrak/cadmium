@@ -39,7 +39,7 @@ public:
     //constexpr static uint32_t MAX_MEMORY_SIZE = 4096;
     //constexpr static uint32_t MAX_ADDRESS_MASK = MAX_MEMORY_SIZE-1;
 
-    Dream6800(EmulatorHost& host, Properties& properties, IChip8Emulator* other = nullptr);
+    Dream6800(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr);
     ~Dream6800() override;
 
     bool updateProperties(Properties& props, Property& changed) override;

@@ -257,6 +257,14 @@ Eti660::Eti660(EmulatorHost& host, Properties& properties, IEmulationCore* other
     , _impl(new Private(host, *this, properties))
 {
     //options.optTraceLog = true;
+    if (other) {
+        if (auto otherVIP = dynamic_cast<Eti660*>(other)) {
+            _impl->_cpu.swapBreakpoints(otherVIP->_impl->_cpu);
+        }
+        if (auto otherC8 = other->chip8Core()) {
+            swapBreakpoints(*otherC8);
+        }
+    }
     _execChip8 = false; //_impl->_options.interpreter != VC8I_NONE;
     //if(_impl->_options.interpreter == VC8I_NONE)
         _isHybridChipMode = false;

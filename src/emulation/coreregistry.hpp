@@ -79,8 +79,8 @@ public:
         void cacheVariantMappings() const;
         bool hasVariant(const std::string& variant) const;
         Properties variantProperties(const std::string& variant) const;
-        virtual std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel) const = 0;
-        virtual std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const = 0;
+        virtual std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel, IEmulationCore* other) const = 0;
+        virtual std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props, IEmulationCore* other) const = 0;
         std::string description;
         std::string variantsCombo{};
         int score{0};
@@ -118,7 +118,7 @@ public:
         {
             return index < numberOfVariants() ? presets[index].supportedChip8Variants : presets[0].supportedChip8Variants;
         }
-        std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel) const override
+        std::pair<std::string, EmulatorInstance> createCore(const std::string& variant, EmulatorHost& host, Properties& props, PropertySelector propSel, IEmulationCore* other) const override
         {
             Properties defaultProps;
             auto newVariant = variant;
@@ -132,9 +132,9 @@ public:
                 props = defaultProps ? defaultProps : presets[0].options.asProperties();
             }
             auto options = OptionsType::fromProperties(props);
-            return {newVariant, std::make_unique<CoreType>(host, props)};
+            return {newVariant, std::make_unique<CoreType>(host, props, other)};
         }
-        std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props) const override
+        std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props, IEmulationCore* other) const override
         {
             std::string variant;
             auto idx = variantIndex(props);
@@ -147,7 +147,7 @@ public:
                 variant += "*";
             }
             auto options = OptionsType::fromProperties(props);
-            return {variant, std::make_unique<CoreType>(host, props)};
+            return {variant, std::make_unique<CoreType>(host, props, other)};
         }
     private:
         ghc::span<const PresetType> presets{nullptr};
@@ -182,22 +182,22 @@ public:
         return false;
     }
 
-    static std::pair<std::string, EmulatorInstance> create(const std::string& name, const std::string& variant, EmulatorHost& host, Properties& properties, PropertySelector propSel)
+    static std::pair<std::string, EmulatorInstance> create(const std::string& name, const std::string& variant, EmulatorHost& host, Properties& properties, PropertySelector propSel, IEmulationCore* other)
     {
         if (auto iter = factoryMap().find(name); iter != factoryMap().end()) {
-            return iter->second->createCore(variant, host, properties, propSel);
+            return iter->second->createCore(variant, host, properties, propSel, other);
         }
         for(const auto& [coreName, info] : factoryMap()) {
             if(fuzzyCompare(info->prefix(), name) || fuzzyCompare(coreName, name))
-                return info->createCore(variant, host, properties, propSel);
+                return info->createCore(variant, host, properties, propSel, other);
         }
         return {};
     }
 
-    static std::pair<std::string, EmulatorInstance> create(EmulatorHost& host, Properties& properties)
+    static std::pair<std::string, EmulatorInstance> create(EmulatorHost& host, Properties& properties, IEmulationCore* other)
     {
         if (auto iter = factoryMap().find(properties.propertyClass()); iter != factoryMap().end()) {
-            return iter->second->createCore(host, properties);
+            return iter->second->createCore(host, properties, other);
         }
         return {};
     }

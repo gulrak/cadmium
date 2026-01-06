@@ -361,13 +361,18 @@ static uint32_t rgb332To888(uint8_t c)
 }
 
 
-Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IChip8Emulator* other)
+Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props, IEmulationCore* other)
 : Chip8GenericBase(Chip8GenericOptions::fromProperties(props).variant(), {})
 , _host(host)
 , _options(Chip8GenericOptions::fromProperties(props))
 , _opcodeHandler(0x10000, &Chip8GenericEmulator::opInvalid)
 {
     (void)registeredHleC8;
+    if (other) {
+        if (auto otherC8 = other->chip8Core()) {
+            swapBreakpoints(*otherC8);
+        }
+    }
     ADDRESS_MASK = _options.ramSize - 1; //_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.ramSize>4096 ? 0xFFFF : 0xFFF;
     SCREEN_WIDTH = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : (_options.optAllowHires ? 128 : 64);
     SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32));

@@ -121,6 +121,12 @@ public:
     virtual size_t disassemblyPrefixSize() const = 0;
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
 
+    void swapBreakpoints(GenericCpu& other)
+    {
+        std::swap(_breakpoints, other._breakpoints);
+        std::swap(_breakMap, other._breakMap);
+    }
+
     virtual void setBreakpoint(uint32_t address, BreakpointInfo&& bpi)
     {
         _breakpoints[address] = std::move(bpi);

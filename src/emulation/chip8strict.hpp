@@ -63,6 +63,11 @@ public:
         , _host(host)
         , _options(Chip8StrictOptions::fromProperties(properties))
     {
+        if (other) {
+            if (auto otherC8 = other->chip8Core()) {
+                swapBreakpoints(*otherC8);
+            }
+        }
         _memory.resize(_options.ramSize, 0);
         _rV = _memory.data() + _options.ramSize - 0x110;
         _systemTime.setFrequency(CPU_CLOCK_FREQUENCY>>3);
