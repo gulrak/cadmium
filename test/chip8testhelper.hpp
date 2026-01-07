@@ -308,7 +308,7 @@ inline std::tuple<std::unique_ptr<HeadlessTestHost>, emu::IChip8Emulator*, int> 
     auto properties = emu::CoreRegistry::propertiesForPreset(presetName);
     auto startAddress = properties.get<emu::Property::Integer>("startAddress");
     auto host = std::make_unique<HeadlessTestHost>(properties);
-    auto [variantName, emuCore] = emu::CoreRegistry::create(*host, host->properties());
+    auto [variantName, emuCore] = emu::CoreRegistry::create(*host, host->properties(), nullptr);
     host->setCore(std::move(emuCore));
     return std::make_tuple(std::move(host), host->chip8Emulator(), startAddress ? startAddress->intValue : 0x200);
 }

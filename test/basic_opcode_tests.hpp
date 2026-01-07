@@ -584,7 +584,7 @@ TEST_CASE(C8CORE ": 9xy0 - skip if vx != vy")
 }
 
 #if QUIRKS & QUIRK_LONG_SKIP
-TEST_CASE(C8CORE ": 9xy0 - skip if vx != vy")
+TEST_CASE(C8CORE ": 9xy0 - skip long opcode if vx != vy")
 {
     auto [host, core, start] = createChip8Instance(C8CORE);
     core->reset();
