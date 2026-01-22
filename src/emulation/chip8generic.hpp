@@ -321,6 +321,7 @@ public:
         _screenNeedsUpdate = true;
     }
 
+    /*
     bool handleDisplayWait()
     {
         if (_cpuState == eWAIT) {
@@ -330,6 +331,7 @@ public:
             //if(_options.optExtendedVBlank
         }
     }
+    */
 
     template<uint16_t quirks>
     void opDxyn_displayWait(uint16_t opcode)

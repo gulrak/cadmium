@@ -76,6 +76,9 @@ public:
     virtual ~GenericCpu() = default;
     void reset(bool cold = true)
     {
+        for(auto& [addr, bpi] : _breakpoints) {
+            bpi.numHits = 0;
+        }
         initExpressionist();
         handleReset(cold);
     }

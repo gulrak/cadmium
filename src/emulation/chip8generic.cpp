@@ -528,6 +528,7 @@ bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed
 void Chip8GenericEmulator::setPalette(const Palette& palette)
 {
     _screen.setPalette(palette);
+    _screenNeedsUpdate = true;
 }
 
 int Chip8GenericEmulator::getMaxColors() const

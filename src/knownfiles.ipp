@@ -123,6 +123,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"3450e0d92e0bbf8e9d3065fd088cd6dfa5f9441d"_sha1, "chip-8", "Octo Bird (Cody Hoover, 2016)",nullptr, nullptr},
     {"346f2760ca55bb6d45b1f255fe4960a7d244191e"_sha1, "vip-chip-8", "Bingo (Andrew Modla)",nullptr, nullptr},
     {"35158696bd94ea22ef34e899fff1f15f7154d4fd"_sha1, "chip-8", "Craps (Camerlo Cortez, 1978)",nullptr, nullptr},
+    {"36363ecdd850dd1a099e272fae6d9b786c2a7d36"_sha1, "xo-chip", "Raycaster (A-KouZ1, 2018)",R"({"instructionsPerFrame":200000,"palette":{"border":"#000000","colors":["#000000","#555555","#aaaaaa","#ffffff"],"signal":"#888888"}})", nullptr},
     {"3643118e2e237deab98151b742f34caf9533dc05"_sha1, "chip-8", "Mandelbrot Program (A-KouZ1, 2018)",nullptr, nullptr},
     {"39970ccfd3a3f00180d53464d4fd7862193eaf0f"_sha1, "chip-8", "Octo: A Chip 8 Story (SystemLogoff, 2015-10-29)",R"({"instructionsPerFrame":7,"palette":{"border":"#222222","colors":["#111111","#eeeeee"],"signal":"#ffff00"}})", nullptr},
     {"3a840c33442ad9e912df1fa2aa61833bf571af34"_sha1, "chip-8", "Private Eye (TCNJ S.572.37)",nullptr, nullptr},

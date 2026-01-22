@@ -227,9 +227,6 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
         _previousProperties = properties;
         _chipEmu = create(*_properties, _chipEmu.get());
         if (_chipEmu) {
-            if (_chipEmu->getMaxColors() != _properties->palette().colors.size()) {
-                _properties->palette().colors.clear();
-            }
             if(_chipEmu->getScreen())
                 (void)_chipEmu->getScreen();
             whenEmuChanged(*_chipEmu);

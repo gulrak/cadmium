@@ -108,6 +108,7 @@ GenericCpu::StackContent Chip8StrictEmulator::stack() const
 void Chip8StrictEmulator::setPalette(const Palette& palette)
 {
     _screen.setPalette(palette);
+    _screenNeedsUpdate = true;
 }
 
 }

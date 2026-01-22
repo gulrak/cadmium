@@ -2227,6 +2227,8 @@ void main()
                 SetNextWidth(60);
                 if (Button("Ok")) {
                     _defaultPalette = _colorPalette;
+                    setPalette(_defaultPalette);
+                    _chipEmu->setPalette(_defaultPalette);
                     _selectedColor = nullptr;
                     _colorSelectOpen = false;
                 }
@@ -2941,9 +2943,25 @@ void main()
         reloadRom();
         updateBehaviorSelects();
         resetStats();
+        // ensure palette has enough colors, else fill up
         if (_properties->palette().empty() || _properties->palette().size() != _chipEmu->getMaxColors()) {
-            _colorPalette = _defaultPalette;
-            _colorPalette.colors.resize(_chipEmu->getMaxColors());
+            _colorPalette = _properties->palette();
+            size_t currentSize = _colorPalette.colors.size();
+            size_t targetSize = _chipEmu->getMaxColors();
+            if (currentSize < targetSize) {
+                _colorPalette.colors.reserve(targetSize);
+                for (size_t i = currentSize; i < targetSize; ++i) {
+                    if (i < _defaultPalette.colors.size()) {
+                        _colorPalette.colors.push_back(_defaultPalette.colors[i]);
+                    }
+                    else {
+                        _colorPalette.colors.push_back(emu::Palette::Color{0});
+                    }
+                }
+            }
+            else if (currentSize > targetSize) {
+                _colorPalette.colors.resize(targetSize);
+            }
             _properties->palette() = _colorPalette;
             _chipEmu->setPalette(_colorPalette);
         }
