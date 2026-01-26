@@ -27,8 +27,11 @@
 #include "coreregistry.hpp"
 
 #include <chiplet/utility.hpp>
+#include <chiplet/octocartridge.hpp>
 
 #include <set>
+
+#include <nlohmann/json.hpp>
 
 namespace emu {
 
@@ -56,6 +59,34 @@ Properties CoreRegistry::IFactoryInfo::variantProperties(const std::string& vari
     if(const auto iter = presetMappings.find(toOptionName(variant)); iter != presetMappings.end())
         return variantProperties(iter->second);
     return {};
+}
+
+Properties CoreRegistry::propertiesFromOctoOptions(const OctoOptions& options)
+{
+    Properties result;
+    auto pXO = propertiesForPreset("XO-CHIP");
+    auto j = nlohmann::json::object();
+    to_json(j, pXO);
+    j["class"] = "CHIP-8 GENERIC";
+    j["behaviorBase"] = "XO-CHIP";
+    j["memory"] = "65536";
+    j["cleanRam"] = true;
+    j["frameRate"] = 60;
+    j["instructionsPerFrame"] = options.tickrate;
+    j["justShiftVx"] = options.qShift;
+    j["loadStoreIncIByXPlus1"] = !options.qLoadStore;
+    j["loadStoreIncIByX"] = false;
+    j["jump0Bxnn"] = options.qJump0;
+    j["dontResetVf"] = !options.qLogic;
+    j["wrapSprites"] = !options.qClip;
+    j["instantDxyn"] = !options.qVBlank;
+    auto palette = nlohmann::json::array();
+    for (auto col : options.colors) {
+        palette.push_back(Palette::Color::fromRGB(col).toStringRGB());
+    }
+    j["palette"] = palette;
+    from_json(j, result);
+    return result;
 }
 
 CoreRegistry::CoreRegistry()

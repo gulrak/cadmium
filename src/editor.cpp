@@ -431,10 +431,10 @@ void Editor::recompile()
         _compiler.reset();
         if(_text.empty() || _text.back() != '\n') {
             auto text = _text + '\n';
-            _compiler.compile(_filename, text.data(), text.data() + text.size() + 1);
+            _compiler.compile(_filename, text);
         }
         else {
-            _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+            _compiler.compile(_filename, _text);
         }
         auto time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         TraceLog(LOG_INFO, "Recompilation took %dms", (int)time_ms);

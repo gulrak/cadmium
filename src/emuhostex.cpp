@@ -269,6 +269,37 @@ bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
         unsigned int size = 0;
         _customPalette = false;
         _colorPalette = _defaultPalette;
+        // TODO: Refactor this
+        if (filename.ends_with(".gif")) {
+            auto cart = emu::OctoCartridge(std::string(filename));
+            if (cart.loadCartridge()) {
+                auto options = cart.getOptions();
+                auto properties = CoreRegistry::propertiesFromOctoOptions(options);
+                auto source = cart.getSource();
+                updateEmulatorOptions(properties);
+                auto c8c = std::make_unique<emu::OctoCompiler>();
+                if (c8c->compile(filename, source).resultType == emu::CompileResult::eOK) {
+                    auto loadAddress = _chipEmu->defaultLoadAddress();
+                    if (c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
+                        _chipEmu->reset();
+                        auto binary = std::span<const uint8_t>(c8c->code(), c8c->code() + c8c->codeSize());
+                        if (_chipEmu->loadData(binary, loadAddress)) {
+                            _romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
+                            _romSha1 = c8c->sha1();
+                            _romName = filename;
+                            _romIsWellKnown = false;
+                        }
+                    }
+                    whenRomLoaded(_romName, loadOpt & LoadOptions::SetToRun, c8c.get(), source);
+                    return true;
+                }
+                else {
+                    _romName = filename;
+                    whenRomLoaded(_romName, false, c8c.get(), source);
+                    return true;
+                }
+            }
+        }
         auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
         if (fileData) {
             resetAllBreakpoints();
@@ -319,8 +350,8 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1(fileData).to_hex().c_str());
     auto knownProperties = _librarian.getPropertiesForFile(fileData);
     if (endsWith(filename, ".8o")) {
-        c8c = std::make_unique<emu::OctoCompiler>();
         source.assign((const char*)fileData.data(), fileData.size());
+        c8c = std::make_unique<emu::OctoCompiler>();
         if (c8c->compile(filename).resultType == emu::CompileResult::eOK) {
             auto loadAddress = _chipEmu->defaultLoadAddress();
             if (c8c->codeSize() < _chipEmu->memSize() - loadAddress) {

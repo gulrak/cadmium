@@ -41,6 +41,8 @@
 
 namespace emu {
 
+class OctoOptions;
+
 enum PropertySelector {PropertiesFromVariant, PropertiesAsGiven};
 class CoreRegistry {
 public:
@@ -262,6 +264,8 @@ public:
         }
         return {};
     }
+
+    static Properties propertiesFromOctoOptions(const OctoOptions& options);
 
     Iterator begin() const
     {
