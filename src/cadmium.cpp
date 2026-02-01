@@ -1828,8 +1828,8 @@ void main()
                 if (iconButton(ICON_BURGER_MENU, PopupMenu::isMenuOpen(_mainMenu)) && !PopupMenu::isOpen())
                     PopupMenu::open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
                 if (IsSysKeyDown()) {
-                    PopupMenu::close();
                     if (IsKeyPressed(KEY_N)) {
+                        PopupMenu::close();
                         _mainView = eEDITOR;
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
@@ -1839,6 +1839,7 @@ void main()
                         }
                     }
                     if (IsKeyPressed(KEY_O)) {
+                        PopupMenu::close();
 #ifdef PLATFORM_WEB
                         loadFileWeb();
 #else
@@ -1847,17 +1848,21 @@ void main()
 #endif
                     }
                     if (IsKeyPressed(KEY_S)) {
+                        PopupMenu::close();
                         _mainView = eROM_EXPORT;
 #ifndef PLATFORM_WEB
                         _librarian.fetchDir(_currentDirectory);
 #endif
                     }
                     if (IsKeyPressed(KEY_K)) {
+                        PopupMenu::close();
                         _showKeyMap = !_showKeyMap;
                     }
 #ifndef PLATFORM_WEB
-                    if (IsKeyPressed(KEY_Q))
+                    if (IsKeyPressed(KEY_Q)) {
+                        PopupMenu::close();
                         _shouldClose = true;
+                    }
 #endif
                 }
                 if (_aboutOpen) {
