@@ -37,7 +37,7 @@ class Palette
 {
 public:
     struct Color {
-        Color() = default;
+        Color() : r(0), g(0), b(0), a(255) {}
         Color(const Color& other) = default;
         Color(const uint8_t rval, const uint8_t gval, const uint8_t bval, const uint8_t aval = 255) : r(rval), g(gval), b(bval), a(aval) {}
         //explicit Color(uint32_t val) : r(val >> 16), g(val >> 8), b(val) {}

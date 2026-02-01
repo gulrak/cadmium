@@ -211,8 +211,6 @@ static std::pair<std::size_t, double> parseOctoNumber(const char* text, const ch
 
 void Highlighter::highlightLineOcto(const char* text, const char* end)
 {
-    static emu::OctoCompiler::Lexer lexer;
-    lexer.setRange("", text, end);
     _highlighting.resize(end - text);
     size_t index = 0;
     bool wasColon = false;
@@ -251,14 +249,67 @@ void Highlighter::highlightLineOcto(const char* text, const char* end)
         }
     }
 }
+
 void Highlighter::highlightLineChipper(const char* text, const char* end)
 {
 
 }
 
+static std::unordered_set<std::string> g_cdp1802Opcodes = {
+    "ADC",  "ADCI", "ADD",  "ADI",  "AND",  "ANI",  "B1",   "B2",   "B3",  "B4",   "BDF",  "BN1",  "BN2",  "BN3",  "BN4", "BNF", "BNQ",  "BNZ", "BQ",  "BR",
+    "BZ",   "DEC",  "DIS",  "GHI",  "GLO",  "IDL",  "INC",  "INP",  "IRX", "LBDF", "LBNF", "LBNQ", "LBNZ", "LBQ",  "LBR", "LBZ", "LDA",  "LDI", "LDN", "LDX",
+    "LDXA", "LSDF", "LSIE", "LSKP", "LSNF", "LSNQ", "LSNZ", "LSQ",  "LSZ", "MARK", "NOP",  "OR",   "ORI",  "OUT",  "PHI", "PLO", "REQ",  "RET", "SAV", "SD",
+    "SDB",  "SDBI", "SDI",  "SEP",  "SEQ",  "SEX",  "SHL",  "SHLC", "SHR", "SHRC", "SKP",  "SM",   "SMB",  "SMBI", "SMI", "STR", "STXD", "XOR", "XRI"
+};
+
+static std::unordered_set<std::string> g_cdp1802Directives = {
+    "#include", "define", "#undef", "#if", "#ifdef", "#ifndef", "#else", "#elif", "#endif", "#error"
+};
+
 void Highlighter::highlightLine1802(const char* text, const char* end)
 {
-
+    _highlighting.resize(end - text);
+    size_t index = 0;
+    bool wasColon = false;
+    const char* token;
+    while (text < end && *text != '\n') {
+        token = text;
+        uint32_t cp = utf8::fetchCodepoint(text, end);
+        if (cp == ' ')
+            ++index;
+        else if (cp == ';') {
+            while (text < end)
+                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+        }
+        else {
+            auto start = index++;
+            bool isColon = false;
+            while (text < end && *text > ' ')
+                utf8::fetchCodepoint(text, end), ++index;
+            auto len = index - start;
+            Color col = _colors[eNORMAL];
+            if ((cp == ':' && len == 1) || wasColon)
+                col = _colors[eLABEL], isColon = true;
+            else if (cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
+                col = _colors[eNUMBER];
+            else if (len > 2 && (cp == '#' || (*(token + 1)>= '0' && *(token + 1) <= '9'))) {
+                _highlighting[start++].front = _colors[eNORMAL];
+                col = _colors[eNUMBER];
+            }
+            else if ((len == 2 || len == 3) && (cp == 'r' || cp == 'R') && isHexDigit(*(token + 1)))
+                col = _colors[eREGISTER];
+            else {
+                std::string tok(token, text - token);
+                if (g_cdp1802Opcodes.contains(tok))
+                    col = _colors[eOPCODE];
+                else if (g_cdp1802Directives.contains(tok))
+                    col = _colors[eDIRECTIVE];
+            }
+            while (start < index)
+                _highlighting[start++].front = col;
+            wasColon = isColon;
+        }
+    }
 }
 
 void Highlighter::highlightLine6800(const char* text, const char* end)
@@ -297,9 +348,5 @@ void Highlighter::drawHighlightedTextLine(Font& font, const char* textRoot, cons
 
 void Highlighter::setDialect(Dialect dialect)
 {
-    switch (dialect) {
-        case eCHIP8OCTO:
-
-            break;
-    }
+    _dialect = dialect;
 }

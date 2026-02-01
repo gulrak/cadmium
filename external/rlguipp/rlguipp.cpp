@@ -253,6 +253,7 @@ struct GuiContext
     inline static Vector2 positionLimits{};
     inline static int64_t frameId{0};  // Note: even at 1000fps this would have just overflown when started around the start of the permian (about 300Ma) ;-)
     inline static Vector2 guiScale{1.0f, 1.0f};
+    inline static PopupMenu::System popup;
     struct DropdownInfo
     {
         Rectangle rect{};
@@ -604,6 +605,7 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
     GuiContext::tooltipText.clear();
     ++GuiContext::frameId;
     GuiContext::guiScale = guiScale;
+    GuiContext::popup.update(GetFrameTime());
     /*
     if (renderTexture) {
         GuiContext::guiScale = {(float)GetScreenWidth() / renderTexture->texture.width, (float)GetScreenHeight() / renderTexture->texture.height};
@@ -624,6 +626,7 @@ void EndGui()
     g_contextStack = std::stack<GuiContext>();
     GuiContext::handleDeferredDropBoxes();
     PopupContext::renderPopups();
+    GuiContext::popup.render();
 #if !defined(PLATFORM_WEB) && !defined(NDEBUG) && defined(RLGUIPP_DEBUG_CURSOR)
     auto pos = GetMousePosition();
     GuiDrawIcon(20, pos.x - 1, pos.y, 1, ::WHITE);
@@ -2331,6 +2334,440 @@ Vector3 HsvFromColor(Color col)
     return ConvertRGBtoHSV(vcolor);
 }
 
+namespace PopupMenu {
+
+void System::open(Vector2 position, const Menu& menu) {
+    close();
+
+    if (menu.empty()) return;
+
+    detail::OpenMenu root;
+    root.items = &menu;
+    root.width = calculateMenuWidth(menu);
+
+    // Adjust position to keep menu on screen
+    int height = calculateMenuHeight(menu);
+    int guiWidth = GuiContext::positionLimits.x;
+    int guiHeight = GuiContext::positionLimits.y;
+
+    if (position.x + root.width > guiWidth) {
+        position.x = static_cast<float>(guiWidth - root.width - style.shadowOffset);
+    }
+    if (position.x < 0) {
+        position.x = 0;
+    }
+    if (position.y + height > guiHeight) {
+        position.y = static_cast<float>(guiHeight - height - style.shadowOffset);
+    }
+    if (position.y < 0) {
+        position.y = 0;
+    }
+
+    root.position = position;
+    _menuChain.push_back(root);
+}
+
+void System::close() {
+    _menuChain.clear();
+    _closeGraceTimer = 0.0f;
+    _closeGraceLevel = -1;
+}
+
+bool System::isOpen() const {
+    return !_menuChain.empty();
+}
+
+bool System::isMenuOpen(const Menu& menu) const
+{
+    return !_menuChain.empty() && _menuChain.front().items == &menu;
+}
+
+bool System::update(float dt) {
+    _lastTriggeredAction.reset();
+
+    if (_menuChain.empty()) return false;
+
+    Vector2 mouse = GetMousePosition();
+    bool actionTriggered = false;
+
+    // Update grace timer
+    if (_closeGraceTimer > 0) {
+        _closeGraceTimer -= dt;
+    }
+
+    // Find which menu (if any) the mouse is over
+    // Process from deepest to root - deeper menus have priority
+    int hitLevel = -1;
+    int hitItem = -1;
+
+    for (int level = static_cast<int>(_menuChain.size()) - 1; level >= 0; --level) {
+        Rectangle bounds = getMenuBounds(_menuChain[level]);
+
+        if (CheckCollisionPointRec(mouse, bounds)) {
+            hitLevel = level;
+            hitItem = getItemAtYPos(_menuChain[level], mouse.y);
+            break;
+        }
+    }
+
+    // Handle hover state changes
+    if (hitLevel >= 0) {
+        auto& menu = _menuChain[hitLevel];
+        auto const& items = *menu.items;
+
+        // Skip separators for hover
+        if (hitItem >= 0 && items[hitItem].type == Item::Type::Separator) {
+            hitItem = -1;
+        }
+
+        if (hitItem != menu.hoveredIndex) {
+            // Hover changed
+            int oldHover = menu.hoveredIndex;
+            menu.hoveredIndex = hitItem;
+            menu.hoverTime = 0.0f;
+
+            // If we moved to a different item at this level, close deeper submenus
+            // But give a grace period if we might be moving toward an open submenu
+            if (hitLevel < static_cast<int>(_menuChain.size()) - 1) {
+                // There's a submenu open - check if old hover was its parent
+                if (oldHover >= 0 && items[oldHover].hasSubmenu()) {
+                    // Start grace period
+                    _closeGraceTimer = style.submenuCloseDelay;
+                    _closeGraceLevel = hitLevel;
+                } else {
+                    // Close submenus immediately
+                    _menuChain.resize(hitLevel + 1);
+                }
+            }
+        } else {
+            // Same item - accumulate hover time
+            menu.hoverTime += dt;
+        }
+
+        // Clear hover on shallower menus (but keep their selection for visual)
+        // Actually, we want to keep parent highlights when in submenu
+        // So only clear hover time
+        for (int i = hitLevel + 1; i < static_cast<int>(_menuChain.size()); ++i) {
+            _menuChain[i].hoverTime = 0.0f;
+        }
+
+        // Check if grace period expired - close submenus
+        if (_closeGraceTimer <= 0 && _closeGraceLevel == hitLevel) {
+            if (hitLevel < static_cast<int>(_menuChain.size()) - 1) {
+                // Only close if we're not hovering the item that opened the submenu
+                auto const& parentItems = *_menuChain[hitLevel].items;
+                int submenuParent = -1;
+                if (hitLevel + 1 < static_cast<int>(_menuChain.size())) {
+                    // Find which item opened the next submenu
+                    for (int i = 0; i < static_cast<int>(parentItems.size()); ++i) {
+                        if (parentItems[i].hasSubmenu() &&
+                            &parentItems[i].children == _menuChain[hitLevel + 1].items) {
+                            submenuParent = i;
+                            break;
+                        }
+                    }
+                }
+                if (menu.hoveredIndex != submenuParent) {
+                    _menuChain.resize(hitLevel + 1);
+                }
+            }
+            _closeGraceLevel = -1;
+        }
+
+        // Open submenu after delay
+        if (menu.hoveredIndex >= 0 && menu.hoverTime >= style.submenuOpenDelay) {
+            auto const& item = items[menu.hoveredIndex];
+            if (item.hasSubmenu() && item.enabled) {
+                // Check if this submenu is already open
+                bool alreadyOpen = (hitLevel + 1 < static_cast<int>(_menuChain.size()) &&
+                                    _menuChain[hitLevel + 1].items == &item.children);
+                if (!alreadyOpen) {
+                    openSubmenu(hitLevel, menu.hoveredIndex);
+                }
+            }
+        }
+    } else {
+        // Mouse not over any menu
+        // Check grace period for moving between menus
+        if (_closeGraceTimer <= 0 && _closeGraceLevel >= 0) {
+            // Grace expired outside menus - might want to close deeper levels
+            // But let's be lenient and only close if clicking outside
+            _closeGraceLevel = -1;
+        }
+    }
+
+    // Handle clicks
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        if (hitLevel >= 0 && hitItem >= 0) {
+            auto const& item = (*_menuChain[hitLevel].items)[hitItem];
+            if (item.canReact()) {
+                triggerItem(item);
+                actionTriggered = true;
+                close();
+            } else if (item.type == Item::Type::Toggle && item.enabled) {
+                // Toggle items
+                if (item.toggleValue) {
+                    *item.toggleValue = !(*item.toggleValue);
+                }
+                if (item.action) {
+                    item.action();
+                }
+                _lastTriggeredAction = item.label;
+                actionTriggered = true;
+                // Don't close menu for toggles - let user toggle multiple
+            }
+            // Clicking on submenu item does nothing (opens on hover)
+        } else {
+            // Clicked outside - close
+            close();
+        }
+    }
+
+    // Handle right-click outside to close (optional, common UX pattern)
+    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && hitLevel < 0) {
+        close();
+    }
+
+    // Escape key closes menus
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        close();
+    }
+
+    return actionTriggered;
+}
+
+void System::render() const {
+    if (_menuChain.empty()) return;
+
+    // Draw from root to deepest (so submenus appear on top)
+    for (auto const& menu : _menuChain) {
+        drawMenu(menu);
+    }
+}
+
+Rectangle System::getMenuBounds(detail::OpenMenu const& menu) const {
+    return Rectangle{
+        menu.position.x,
+        menu.position.y,
+        static_cast<float>(menu.width),
+        static_cast<float>(calculateMenuHeight(*menu.items))
+    };
+}
+
+int System::calculateMenuWidth(Menu const& items) const {
+    int maxLabelWidth = 0;
+    int maxShortcutWidth = 0;
+
+    for (auto const& item : items) {
+        if (item.type == Item::Type::Separator) continue;
+
+        int labelWidth = calculateTextWidth(item.label);
+        maxLabelWidth = std::max(maxLabelWidth, labelWidth);
+
+        if (!item.shortcut.empty()) {
+            int shortcutWidth = calculateTextWidth(item.shortcut);
+            maxShortcutWidth = std::max(maxShortcutWidth, shortcutWidth);
+        }
+    }
+
+    int width = style.iconWidth + style.itemPaddingX + maxLabelWidth;
+    if (maxShortcutWidth > 0) {
+        width += 20 + maxShortcutWidth;  // gap + shortcut
+    }
+    width += style.itemPaddingRight;
+
+    return std::max(width, style.minWidth);
+}
+
+int System::calculateTextWidth(const std::string& text) const
+{
+    return std::round(MeasureTextEx(GuiGetFont(), text.c_str(), style.fontSize, 0).x);
+}
+
+int System::calculateMenuHeight(Menu const& items) const {
+    int height = style.borderWidth * 2 + style.menuPaddingY * 2;  // top and bottom border
+    for (auto const& item : items) {
+        height += getItemHeight(item);
+    }
+    return height;
+}
+
+int System::getItemHeight(Item const& item) const {
+    return (item.type == Item::Type::Separator) ? style.separatorHeight : style.itemHeight;
+}
+
+int System::getItemAtYPos(detail::OpenMenu const& menu, float y) const {
+    float localYPos = y - menu.position.y - style.borderWidth - style.menuPaddingY;
+    if (localYPos < 0) return -1;
+
+    float accumulated = 0;
+    for (int i = 0; i < static_cast<int>(menu.items->size()); ++i) {
+        float itemHeight = static_cast<float>(getItemHeight((*menu.items)[i]));
+        if (localYPos < accumulated + itemHeight) {
+            return i;
+        }
+        accumulated += itemHeight;
+    }
+    return -1;
+}
+
+void System::openSubmenu(int parent_level, int item_index) {
+    auto const& parent = _menuChain[parent_level];
+    auto const& item = (*parent.items)[item_index];
+
+    if (!item.hasSubmenu()) return;
+
+    // Calculate position of the item that spawned this submenu
+    float itemYPos = parent.position.y + style.borderWidth + style.menuPaddingY;
+    for (int i = 0; i < item_index; ++i) {
+        itemYPos += getItemHeight((*parent.items)[i]);
+    }
+
+    detail::OpenMenu submenu;
+    submenu.items = &item.children;
+    submenu.width = calculateMenuWidth(item.children);
+
+    int submenuHeight = calculateMenuHeight(item.children);
+    int guiWidth = GuiContext::positionLimits.x;
+    int guiHeight = GuiContext::positionLimits.y;
+
+    Rectangle parentBounds = getMenuBounds(parent);
+
+    // Try to position to the right
+    float x = parentBounds.x + parentBounds.width - 2;  // slight overlap
+    if (x + submenu.width > guiWidth) {
+        // Flip to left
+        x = parentBounds.x - submenu.width + 2;
+    }
+    if (x < 0) x = 0;
+
+    // Vertical positioning - align with parent item, adjust if off screen
+    float subYPos = itemYPos - style.borderWidth - style.menuPaddingY;
+    if (subYPos + submenuHeight > guiHeight) {
+        subYPos = static_cast<float>(guiHeight - submenuHeight - style.shadowOffset);
+    }
+    if (subYPos < 0) subYPos = 0;
+
+    submenu.position = {x, subYPos};
+
+    // Close any existing deeper submenus and add this one
+    _menuChain.resize(parent_level + 1);
+    _menuChain.push_back(submenu);
+}
+
+void System::triggerItem(Item const& item) {
+    if (item.action) {
+        item.action();
+    }
+    _lastTriggeredAction = item.label;
+}
+
+void System::drawMenu(detail::OpenMenu const& menu) const {
+    Rectangle bounds = getMenuBounds(menu);
+
+    // Shadow
+    DrawRectangle(
+        static_cast<int>(bounds.x) + style.shadowOffset,
+        static_cast<int>(bounds.y) + style.shadowOffset,
+        static_cast<int>(bounds.width),
+        static_cast<int>(bounds.height),
+        style.shadow
+    );
+
+    // Background
+    DrawRectangleRec(bounds, GetColor(GetStyle(DEFAULT, BACKGROUND_COLOR)));
+
+    // Border
+    DrawRectangleLinesEx(bounds, static_cast<float>(style.borderWidth), GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)));
+
+    // Items
+    float y = bounds.y + style.borderWidth + style.menuPaddingY;
+    for (int i = 0; i < static_cast<int>(menu.items->size()); ++i) {
+        auto const& item = (*menu.items)[i];
+        int itemHeight = getItemHeight(item);
+
+        Rectangle itemBounds = {bounds.x + style.borderWidth, y, bounds.width - style.borderWidth * 2, static_cast<float>(itemHeight)};
+        bool hovered = (i == menu.hoveredIndex);
+        drawItem(item, itemBounds, hovered);
+
+        y += itemHeight;
+    }
+}
+
+void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
+    // Separator
+    if (item.type == Item::Type::Separator) {
+        float y = bounds.y + bounds.height / 2;
+        DrawLine(
+            static_cast<int>(bounds.x + 4),
+            static_cast<int>(y),
+            static_cast<int>(bounds.x + bounds.width - 4),
+            static_cast<int>(y),
+            GetColor(GetStyle(DEFAULT, BORDER_COLOR_DISABLED))
+        );
+        return;
+    }
+
+    Color textCol =  GetColor(GetStyle(LABEL, item.enabled ? TEXT_COLOR_NORMAL : TEXT_COLOR_DISABLED));
+    Color shortcutCol = textCol;
+
+    // Hover highlight
+    if (hovered && item.enabled) {
+        DrawRectangleRec(bounds, GetColor(GetStyle(DEFAULT, BASE_COLOR_FOCUSED)));
+        textCol = GetColor(GetStyle(LABEL, TEXT_COLOR_FOCUSED));
+        shortcutCol = textCol;
+    }
+
+    int textYPos = static_cast<int>(bounds.y + (bounds.height - style.fontSize) / 2) + 1;
+    auto const& font = GuiGetFont();
+
+    // Checkmark for toggle items
+    if (item.type == Item::Type::Toggle && item.toggleValue && *item.toggleValue) {
+        int checkXPos = static_cast<int>(bounds.x + style.iconWidth / 2 - 3);
+        DrawTextClipped(font, "✓", Vector2(checkXPos, textYPos), textCol);
+    }
+
+    // Label
+    int labelXPos = static_cast<int>(bounds.x + style.iconWidth);
+    DrawTextClipped(font, item.label.c_str(), Vector2(labelXPos, textYPos), textCol);
+
+    // Shortcut hint
+    if (!item.shortcut.empty()) {
+        int shortcutWidth = calculateTextWidth(item.shortcut);
+        int shortcutXPos = static_cast<int>(bounds.x + bounds.width - style.itemPaddingRight - shortcutWidth);
+        DrawTextClipped(font, item.shortcut.c_str(), Vector2(shortcutXPos, textYPos), shortcutCol);
+    }
+
+    // Submenu arrow
+    if (item.hasSubmenu()) {
+        int arrowXPos = static_cast<int>(bounds.x + bounds.width - style.submenuArrowOffset);
+        DrawTextClipped(font, "›", Vector2(arrowXPos, textYPos), textCol);
+    }
+}
+
+void open(Vector2 position, const Menu& menu)
+{
+    GuiContext::popup.open(position, menu);
+}
+
+void close()
+{
+    GuiContext::popup.close();
+}
+
+bool isOpen()
+{
+    return GuiContext::popup.isOpen();
+}
+
+bool isMenuOpen(const Menu& menu)
+{
+    return GuiContext::popup.isMenuOpen(menu);
+}
+
+} // namespace PopupMenu
+
+
 }  // namespace gui
 
 extern "C" {
@@ -2564,4 +3001,4 @@ void DrawPanelClipped(Rectangle rec, int borderWidth, Color borderColor, Color c
     }
 }
 
-}
+} // extern "C"

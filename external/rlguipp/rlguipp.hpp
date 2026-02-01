@@ -79,8 +79,15 @@ extern "C" {
 #endif
 #endif  // __GNUC__
 
+#if defined(__APPLE__) && defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include "raygui4.5.h"
 #include "rlgl.h"
+#if defined(__APPLE__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #pragma GCC diagnostic pop
 }
@@ -229,6 +236,206 @@ RLGUIPP_API const std::unordered_map<std::string_view, int>& GetDefaultFileIcons
 RLGUIPP_API void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons);
 RLGUIPP_API bool ModalFileDialog(FileDialogInfo& info, bool* isOpen);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
+
+namespace PopupMenu {
+
+// ============================================================================
+// Configuration - adjust these to match your UI style
+// ============================================================================
+
+struct Style {
+    Color shadow            = {0, 0, 0, 80};
+    // Dimensions
+    int itemHeight          = 11;
+    int itemPaddingX        = 12;
+    int itemPaddingRight    = 6;   // space for submenu arrow
+    int menuPaddingY        = 2;
+    int minWidth            = 64;
+    int separatorHeight     = 3;
+    int borderWidth         = 1;
+    int shadowOffset        = 4;
+    int fontSize            = 8;
+    int submenuArrowOffset  = 10;
+    int iconWidth           = 12;   // reserved space for checkmarks/icons
+
+    // Behavior
+    float submenuOpenDelay  = 0.20f;  // seconds before submenu opens on hover
+    float submenuCloseDelay = 0.15f;  // grace period when moving to submenu
+};
+
+// ============================================================================
+// Menu Item
+// ============================================================================
+
+struct Item {
+    enum class Type { Action, Submenu, Separator, Toggle };
+
+    Type type = Type::Action;
+    std::string label;
+    std::string shortcut;                // optional shortcut hint text (display only)
+    std::function<void()> action;
+    std::vector<Item> children;
+    bool enabled = true;
+    bool* toggleValue = nullptr;        // for toggle items
+
+    // Check if this item has a submenu
+    [[nodiscard]] bool hasSubmenu() const { return !children.empty(); }
+
+    // Check if this item can react (can be clicked)
+    [[nodiscard]] bool canReact() const {
+        return enabled && type != Type::Separator && !hasSubmenu();
+    }
+};
+
+// Convenience type alias
+using Menu = std::vector<Item>;
+
+// ============================================================================
+// Factory functions for creating menu items
+// ============================================================================
+
+inline Item Action(std::string label, std::function<void()> action, std::string shortcut = "") {
+    return Item{
+        .type = Item::Type::Action,
+        .label = std::move(label),
+        .shortcut = std::move(shortcut),
+        .action = std::move(action),
+        .children = {},
+        .enabled = true,
+        .toggleValue = nullptr
+    };
+}
+
+inline Item Submenu(std::string label, std::vector<Item> children) {
+    return Item{
+        .type = Item::Type::Submenu,
+        .label = std::move(label),
+        .shortcut = {},
+        .action = nullptr,
+        .children = std::move(children),
+        .enabled = true,
+        .toggleValue = nullptr
+    };
+}
+
+inline Item Separator() {
+    return Item{
+        .type = Item::Type::Separator,
+        .label = {},
+        .shortcut = {},
+        .action = nullptr,
+        .children = {},
+        .enabled = true,
+        .toggleValue = nullptr
+    };
+}
+
+inline Item Toggle(std::string label, bool* value, std::function<void()> on_change = nullptr, std::string shortcut = "") {
+    return Item{
+        .type = Item::Type::Toggle,
+        .label = std::move(label),
+        .shortcut = std::move(shortcut),
+        .action = std::move(on_change),
+        .children = {},
+        .enabled = true,
+        .toggleValue = value
+    };
+}
+
+inline Item Disabled(Item item) {
+    item.enabled = false;
+    return item;
+}
+
+// ============================================================================
+// Internal: Open menu state
+// ============================================================================
+
+namespace detail {
+
+struct OpenMenu {
+    Vector2 position{0, 0};
+    Menu const* items = nullptr;
+    int hoveredIndex = -1;
+    float hoverTime = 0.0f;
+    int width = 0;                       // cached calculated width
+};
+
+} // namespace detail
+
+// ============================================================================
+// Popup Menu System
+// ============================================================================
+
+class System {
+public:
+    Style style;
+
+    // Open a popup menu at the given position
+    void open(Vector2 position, const Menu& menu);
+
+    // Close all menus
+    void close();
+
+    // Check if any menu is currently open
+    [[nodiscard]] bool isOpen() const;
+
+    [[nodiscard]] bool isMenuOpen(const Menu& menu) const;
+
+    // Update menu state - call once per frame
+    // Returns true if a menu action was triggered this frame
+    bool update(float dt);
+
+    // Draw menus - call after drawing your scene (menus draw on top)
+    void render() const;
+
+    // Get the last triggered action's label (for debugging/logging)
+    [[nodiscard]] std::optional<std::string> lastAction() const { return _lastTriggeredAction; }
+
+private:
+    std::vector<detail::OpenMenu> _menuChain;
+    std::optional<std::string> _lastTriggeredAction;
+    float _closeGraceTimer = 0.0f;
+    int _closeGraceLevel = -1;
+
+    // Calculate bounds for a menu panel
+    [[nodiscard]] Rectangle getMenuBounds(const detail::OpenMenu& menu) const;
+
+    // Calculate the width needed for a menu
+    [[nodiscard]] int calculateMenuWidth(const Menu& items) const;
+
+    // Calculate the text width for gui font
+    [[nodiscard]] int calculateTextWidth(const std::string& text) const;
+
+    // Calculate total height of a menu
+    [[nodiscard]] int calculateMenuHeight(const Menu& items) const;
+
+    // Get item height (separators are shorter)
+    [[nodiscard]] int getItemHeight(const Item& item) const;
+
+    // Get which item index is at a Y position within a menu, or -1
+    [[nodiscard]] int getItemAtYPos(const detail::OpenMenu& menu, float y) const;
+
+    // Open a submenu for the given parent level and item index
+    void openSubmenu(int parent_level, int item_index);
+
+    // Trigger an item's action
+    void triggerItem(const Item& item);
+
+    // Draw a single menu panel
+    void drawMenu(const detail::OpenMenu& menu) const;
+
+    // Draw a single item within a menu
+    void drawItem(const Item& item, Rectangle bounds, bool hovered) const;
+};
+
+RLGUIPP_API void open(Vector2 position, const Menu& menu);
+RLGUIPP_API void close();
+RLGUIPP_API bool isOpen();
+RLGUIPP_API bool isMenuOpen(const Menu& menu);
+
+} // namespace PopupMenu
+
 
 }  // namespace gui
 

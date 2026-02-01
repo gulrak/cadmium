@@ -312,7 +312,10 @@ Chip8GenericSetupInfo genericPresets[] = {
         "MegaChip as specified by Martijn Wanting, Revival-Studios, 2007",
         ".mc8",
         chip8::Variant::MEGA_CHIP,
-        {.behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = false, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::MEGACHIP}
+        {
+            .behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = false, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::MEGACHIP,
+            .palette = { std::string("#001020"), std::string("#a1c0f0") }
+        }
     },
     {
         "XO-CHIP",

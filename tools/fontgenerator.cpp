@@ -39,31 +39,37 @@ int main(int argc, char* argv[])
     std::ifstream is(argv[1]);
     std::string line;
     uint32_t codepoint = 0;
-    uint8_t buffer[5];
+    uint8_t buffer[7];
     uint8_t bit = 1;
+    uint8_t width = 5;
     while(std::getline(is, line)) {
         if(line.rfind("char: ", 0) == 0) {
             if(codepoint) {
-                std::cout << "    {" << codepoint;
-                for(auto b : buffer) std::cout << "," << (int)b;
+                std::cout << "    {" << codepoint << "," << (int)width;
+                for(int i = 0; i < width; ++i) std::cout << "," << (int)buffer[i];
                 std::cout << "}," << std::endl;
             }
             codepoint = std::strtoul(line.c_str() + 6, nullptr, 0);
             //std::cout << codepoint << std::endl;
-            std::memset(buffer, 0, 5);
+            std::memset(buffer, 0, 7);
             bit = 1;
+            width = 5;
         }
         else if(line.size() >= 6 && (line[0] == '-' || line[0] == '#')) {
-            for(int i = 0; i < 5; ++i) {
-                if(line[i] != '-')
+            for(int i = 0; i < line.size(); ++i) {
+                if(line[i] != '-') {
                     buffer[i] |= bit;
+                    if (width <= i)
+                        width = i + 1;
+                }
             }
             bit <<= 1;
         }
+
     }
     if(codepoint) {
-        std::cout << "    {" << codepoint;
-        for(auto b : buffer) std::cout << "," << (int)b;
+        std::cout << "    {" << codepoint << "," << (int)width;
+        for(int i = 0; i < width; ++i) std::cout << "," << (int)buffer[i];
         std::cout << "}," << std::endl;
     }
 }

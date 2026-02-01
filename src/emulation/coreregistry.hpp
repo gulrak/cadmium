@@ -283,7 +283,7 @@ public:
 
     CoreRegistry();
     const std::string& getCoresCombo() const { return coresCombo; }
-    const std::set<std::string>& getSupportedExtensions() const { return supportedExtensions; }
+    static const std::set<std::string>& getSupportedExtensions() { return supportedExtensions; }
 
 private:
     std::string coresCombo{};

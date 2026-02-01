@@ -313,6 +313,13 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
             instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? 0xFFFF : 4096 - 9 * 2);
         }
     }
+    auto dialect = Dialect::eCHIP8OCTO;
+    switch (cpu.cpuID()) {
+        case 1802: dialect = Dialect::eCDP1802; break;
+        case 6800: dialect = Dialect::eM6800;
+        default: break;
+    }
+    setDialect(dialect);
     auto visibleInstructions = int(area.height / lineSpacing);
     auto extraLines = visibleInstructions / 2 + 1;
     auto insOff = instructionOffset >= 0 ? instructionOffset : pc;
