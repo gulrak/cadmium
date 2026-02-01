@@ -2704,7 +2704,7 @@ FilenameResult truncatePathFilenameWithEllipsis(std::string_view text, std::size
     if (maxSize == 0) {
         return {};
     }
-    std::filesystem::path fsPath{text};
+    ghc::filesystem::path fsPath{text};
     std::string filename = fsPath.filename().string();
     std::string parentPath = fsPath.parent_path().string();
     auto filenameLength = static_cast<std::size_t>(ghc::utf8::length(filename));
@@ -2713,7 +2713,7 @@ FilenameResult truncatePathFilenameWithEllipsis(std::string_view text, std::size
     std::size_t totalLength = hasParent ? (parentLength + 1 + filenameLength) : filenameLength;
     if (totalLength <= maxSize) {
         if (hasParent) {
-            parentPath += std::filesystem::path::preferred_separator;
+            parentPath += ghc::filesystem::path::preferred_separator;
         }
         return {std::move(parentPath), std::move(filename)};
     }
@@ -2725,7 +2725,7 @@ FilenameResult truncatePathFilenameWithEllipsis(std::string_view text, std::size
         return {{}, std::move(filename)};
     }
     std::string truncatedPath = ghc::utf8::truncateWithEllipsis(parentPath, pathBudget - 1);
-    truncatedPath += std::filesystem::path::preferred_separator;
+    truncatedPath += ghc::filesystem::path::preferred_separator;
     return {std::move(truncatedPath), std::move(filename)};
 }
 
