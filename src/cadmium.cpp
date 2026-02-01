@@ -907,6 +907,7 @@ void main()
         Cadmium::whenEmuChanged(*_chipEmu);
         _debugger.updateCore(_chipEmu.get());
         _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
+        _overlayTexture = LoadRenderTexture(emu::SUPPORTED_SCREEN_WIDTH,emu::SUPPORTED_SCREEN_HEIGHT);
         _screenTexture = LoadTextureFromImage(_screen);
         _crt = GenImageColor(256,512,BLACK);
         _crtTexture = LoadTextureFromImage(_crt);
@@ -1005,10 +1006,10 @@ void main()
         UnloadImage(_fontImage);
         UnloadImage(_microFont);
         //UnloadRenderTexture(_renderTexture);
+        UnloadRenderTexture(_overlayTexture);
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
-        UnloadTexture(_overlayTexture);
         UnloadTexture(_screenShotTexture);
         UnloadTexture(_crtTexture);
         UnloadTexture(_screenTexture);
@@ -1698,7 +1699,7 @@ void main()
         PopupMenu::close();
         PopupMenu::Menu lruFiles;
         for (auto& recent : _recentFiles) {
-            lruFiles.push_back(PopupMenu::Action(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() { loadRom(recent, LoadOptions::None); }));
+            lruFiles.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() { loadRom(recent, LoadOptions::None); }));
         }
         if (!lruFiles.empty()) {
             lruFiles.push_back(PopupMenu::Separator());
@@ -3095,12 +3096,12 @@ private:
     Image _crt{};
     Image _screenShot{};
     Texture2D _titleTexture{};
-    Texture2D _overlayTexture{};
     Texture2D _screenTexture{};
     Texture2D _crtTexture{};
     Texture2D _screenShotTexture{};
     Librarian::Screenshot _screenshotData;
     Sha1::Digest _screenShotSha1;
+    RenderTexture _overlayTexture{};
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
     int64_t _audioGaps{};

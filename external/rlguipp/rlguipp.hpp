@@ -268,7 +268,7 @@ struct Style {
 // ============================================================================
 
 struct Item {
-    enum class Type { Action, Submenu, Separator, Toggle };
+    enum class Type { Action, Submenu, Separator, Toggle, Filename };
 
     Type type = Type::Action;
     std::string label;
@@ -339,6 +339,18 @@ inline Item Toggle(std::string label, bool* value, std::function<void()> on_chan
         .children = {},
         .enabled = true,
         .toggleValue = value
+    };
+}
+
+inline Item Filename(std::string label, std::function<void()> action) {
+    return Item{
+        .type = Item::Type::Filename,
+        .label = std::move(label),
+        .shortcut = {},
+        .action = std::move(action),
+        .children = {},
+        .enabled = true,
+        .toggleValue = nullptr
     };
 }
 

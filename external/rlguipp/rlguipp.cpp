@@ -9,6 +9,7 @@
 #define RLGUIPP_IMPLEMENTATION
 #include <rlguipp/rlguipp.hpp>
 #include <ghc/fs_fwd.hpp>
+#include <ghc/utf8.hpp>
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -2694,6 +2695,40 @@ void System::drawMenu(detail::OpenMenu const& menu) const {
     }
 }
 
+struct FilenameResult {
+    std::string path;
+    std::string filename;
+};
+
+FilenameResult truncatePathFilenameWithEllipsis(std::string_view text, std::size_t maxSize) {
+    if (maxSize == 0) {
+        return {};
+    }
+    std::filesystem::path fsPath{text};
+    std::string filename = fsPath.filename().string();
+    std::string parentPath = fsPath.parent_path().string();
+    auto filenameLength = static_cast<std::size_t>(ghc::utf8::length(filename));
+    auto parentLength = static_cast<std::size_t>(ghc::utf8::length(parentPath));
+    bool hasParent = !parentPath.empty();
+    std::size_t totalLength = hasParent ? (parentLength + 1 + filenameLength) : filenameLength;
+    if (totalLength <= maxSize) {
+        if (hasParent) {
+            parentPath += std::filesystem::path::preferred_separator;
+        }
+        return {std::move(parentPath), std::move(filename)};
+    }
+    if (filenameLength > maxSize) {
+        return {{}, ghc::utf8::truncateWithEllipsis(filename, maxSize)};
+    }
+    std::size_t pathBudget = maxSize - filenameLength;
+    if (pathBudget < 2) {
+        return {{}, std::move(filename)};
+    }
+    std::string truncatedPath = ghc::utf8::truncateWithEllipsis(parentPath, pathBudget - 1);
+    truncatedPath += std::filesystem::path::preferred_separator;
+    return {std::move(truncatedPath), std::move(filename)};
+}
+
 void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
     // Separator
     if (item.type == Item::Type::Separator) {
@@ -2729,8 +2764,17 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
 
     // Label
     int labelXPos = static_cast<int>(bounds.x + style.iconWidth);
-    DrawTextClipped(font, item.label.c_str(), Vector2(labelXPos, textYPos), textCol);
-
+    if (item.type == Item::Type::Filename) {
+        auto parts = truncatePathFilenameWithEllipsis(item.label, 64);
+        if (!parts.path.empty()) {
+            DrawTextClipped(font, parts.path.c_str(), Vector2(labelXPos, textYPos), textCol);
+            labelXPos += calculateTextWidth(parts.path);
+        }
+        DrawTextClipped(font, parts.filename.c_str(), Vector2(labelXPos, textYPos), GetColor(GetStyle(LABEL, TEXT_COLOR_FOCUSED)));
+    }
+    else {
+        DrawTextClipped(font, item.label.c_str(), Vector2(labelXPos, textYPos), textCol);
+    }
     // Shortcut hint
     if (!item.shortcut.empty()) {
         int shortcutWidth = calculateTextWidth(item.shortcut);
