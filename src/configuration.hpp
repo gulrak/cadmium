@@ -27,9 +27,11 @@
 
 #include <emulation/properties.hpp>
 #include <nlohmann/json_fwd.hpp>
+#include "recentfiles.hpp"
 #include <sha1/sha1.hpp>
 #include <map>
 #include <string>
+
 
 struct CadmiumConfiguration
 {
@@ -41,6 +43,7 @@ struct CadmiumConfiguration
     uint8_t guiSat{80};
     std::string workingDirectory;
     std::vector<std::string> libraryPath;
+    RecentFiles recentFiles;
     emu::Properties emuProperties;
     std::map<Sha1::Digest,emu::Properties> romConfigs;
     bool load(const std::string& filepath);

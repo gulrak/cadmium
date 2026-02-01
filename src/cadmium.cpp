@@ -47,6 +47,7 @@
 #include <emulation/time.hpp>
 #include <emulation/timecontrol.hpp>
 #include <ghc/cli.hpp>
+#include <ghc/utf8.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
 #include <resourcemanager.hpp>
@@ -627,6 +628,7 @@ public:
         }
         SetWindowPosition(winPos.x, winPos.y);
         _currentMonitor = GetCurrentMonitor();
+        _recentFiles = cfg.recentFiles;
 #ifdef RESIZABLE_GUI
         if(GetMonitorWidth(_curentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) {
             SetWindowSize(_screenWidth * 2, _screenHeight * 2);
@@ -981,6 +983,7 @@ void main()
         if(_volume > 1.0f)
             _volume = _volumeSlider = 1.0f;
         updateKeyboardOverlay();
+        updateMainMenu();
         SetMasterVolume(_volume);
     }
 
@@ -1689,6 +1692,61 @@ void main()
         return disassembly;
     }
 
+    void updateMainMenu()
+    {
+        using namespace gui;
+        PopupMenu::close();
+        PopupMenu::Menu lruFiles;
+        for (auto& recent : _recentFiles) {
+            lruFiles.push_back(PopupMenu::Action(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() { loadRom(recent, LoadOptions::None); }));
+        }
+        if (!lruFiles.empty()) {
+            lruFiles.push_back(PopupMenu::Separator());
+            lruFiles.push_back(PopupMenu::Action("Clear recent files", [this]() { _recentFiles.clear(); updateMainMenu(); }));
+        }
+        _mainMenu = PopupMenu::Menu{
+            PopupMenu::Action("About Cadmium...", [this]() {
+                _aboutOpen = true;
+                _aboutScroll = {0, 0};
+            }),
+            PopupMenu::Separator(),
+            PopupMenu::Action("New...", [this](){
+                _mainView = eEDITOR;
+                _editor.setText(": main\n    jump main");
+                _romName = "unnamed.8o";
+                _editor.setFilename("");
+                for(auto& unit : *_chipEmu) {
+                  unit.removeAllBreakpoints();
+                }
+            }, "⌘N"),
+            PopupMenu::Action("Open...", [this]() {
+#ifdef PLATFORM_WEB
+                loadFileWeb();
+#else
+                _mainView = eROM_SELECTOR;
+                _librarian.fetchDir(_currentDirectory);
+#endif
+            }, "⌘O")
+        };
+        if(!_recentFiles.empty()) {
+            _mainMenu.push_back(PopupMenu::Submenu("Open recent", lruFiles));
+        }
+        _mainMenu.insert(_mainMenu.end(), {
+            PopupMenu::Action("Save...", [this]() {
+                _mainView = eROM_EXPORT;
+#ifndef PLATFORM_WEB
+                _librarian.fetchDir(_currentDirectory);
+#endif
+            }, "⌘S"),
+            PopupMenu::Separator(),
+            PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
+#ifndef PLATFORM_WEB
+            PopupMenu::Separator(),
+            PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, "⌘Q")
+#endif
+        });
+    }
+
     void drawGui()
     {
         using namespace gui;
@@ -1766,51 +1824,13 @@ void main()
                 SetRowHeight(20);
                 SetSpacing(0);
                 SetNextWidth(20);
-                static bool menuOpen = false;
-                static bool aboutOpen = false;
                 static Vector2 aboutScroll{};
-                static PopupMenu::Menu burgerMenu{
-                    PopupMenu::Action("About Cadmium...", [this](){
-                        aboutOpen = true, aboutScroll = {0, 0};
-                    }),
-                    PopupMenu::Separator(),
-                    PopupMenu::Action("New...", [this](){
-                        _mainView = eEDITOR;
-                        _editor.setText(": main\n    jump main");
-                        _romName = "unnamed.8o";
-                        _editor.setFilename("");
-                        for(auto& unit : *_chipEmu) {
-                          unit.removeAllBreakpoints();
-                        }
-                    }, "⌘N"),
-                    PopupMenu::Action("Open...", [this]() {
-#ifdef PLATFORM_WEB
-                        loadFileWeb();
-#else
-                        _mainView = eROM_SELECTOR;
-                        _librarian.fetchDir(_currentDirectory);
-#endif
-                    }, "⌘O"),
-                    PopupMenu::Action("Save...", [this]() {
-                        _mainView = eROM_EXPORT;
-#ifndef PLATFORM_WEB
-                        _librarian.fetchDir(_currentDirectory);
-#endif
-                    }, "⌘S"),
-                    PopupMenu::Separator(),
-                    PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
-#ifndef PLATFORM_WEB
-                    PopupMenu::Separator(),
-                    PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, "⌘Q")
-#endif
-                };
-                if (iconButton(ICON_BURGER_MENU, PopupMenu::isMenuOpen(burgerMenu)) && !PopupMenu::isOpen())
-                    PopupMenu::open({1.0f, GetCurrentPos().y + 20}, burgerMenu);
+                if (iconButton(ICON_BURGER_MENU, PopupMenu::isMenuOpen(_mainMenu)) && !PopupMenu::isOpen())
+                    PopupMenu::open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
                 if (IsSysKeyDown()) {
                     PopupMenu::close();
                     if (IsKeyPressed(KEY_N)) {
                         _mainView = eEDITOR;
-                        menuOpen = false;
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
@@ -1840,8 +1860,8 @@ void main()
                         _shouldClose = true;
 #endif
                 }
-                if (aboutOpen) {
-                    aboutOpen = !BeginWindowBox({-1, -1, 460, 300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
+                if (_aboutOpen) {
+                    _aboutOpen = !BeginWindowBox({-1, -1, 460, 300}, "About Cadmium", &_aboutOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
                     static size_t newlines = std::count_if(aboutText.begin(), aboutText.end(), [](char c) { return c ==        '\n'; });
                     BeginScrollPanel(-1, {0, 0, 445, newlines * 10.0f + 100}, &aboutScroll);
@@ -1876,7 +1896,7 @@ void main()
                     SetStyle(DEFAULT, BORDER_WIDTH, 1);
                     EndWindowBox();
                     if (IsKeyPressed(KEY_ESCAPE))
-                        aboutOpen = false;
+                        _aboutOpen = false;
                 }
                 SetNextWidth(20);
                 if (iconButton(ICON_ROM, _mainView == eROM_SELECTOR)) {
@@ -1899,12 +1919,12 @@ void main()
 #ifndef PLATFORM_WEB
                     _librarian.fetchDir(_currentDirectory);
 #endif
-                    menuOpen = false;
                 }
                 SetTooltip("SAVE PROGRAM");
-                SetNextWidth(130);
-                SetStyle(TEXTBOX, BORDER_WIDTH, 1);
-                TextBox(_romName, 4095);
+                //SetNextWidth(130);
+                //SetStyle(TEXTBOX, BORDER_WIDTH, 1);
+                //TextBox(_romName, 4095);
+                Space(64);
 
                 bool chip8Control = _debugger.isControllingChip8();
                 Color controlBack = {3, 127, 161};
@@ -2013,8 +2033,9 @@ void main()
                     volumeClick = std::chrono::steady_clock::now();
                 SetTooltip("VOLUME");
 
-                static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
-                DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
+                static const char* titleString = "v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH;
+                static Vector2 versionSize = MeasureTextEx(GuiGetFont(), titleString, 8, 0);
+                DrawTextEx(GuiGetFont(), titleString, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleMode != 1))
                     _scaleMode = _scaleMode >= 3 ? 1 : _scaleMode + 1;
@@ -2953,6 +2974,7 @@ void main()
             _cfg.windowPosX = GetWindowPosition().x;
             _cfg.windowPosY = GetWindowPosition().y;
             _cfg.scaleMode = _scaleMode;
+            _cfg.recentFiles = _recentFiles;
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -3021,6 +3043,8 @@ void main()
         updateBehaviorSelects();
         _editor.setText(source);
         _editor.setFilename(filename);
+        _recentFiles.usingFile(filename);
+        updateMainMenu();
         resetStats();
         if(compiler)
             _debugger.updateOctoBreakpoints(*compiler);
@@ -3055,6 +3079,7 @@ private:
     std::mutex _audioMutex;
     ResourceManager _resources;
     gui::StyleManager _styleManager;
+    gui::PopupMenu::Menu _mainMenu{};
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
@@ -3125,6 +3150,9 @@ private:
     LogView _logView;
     Editor _editor;
     Shader _scanLineShader;
+    bool _aboutOpen{false};
+    Vector2 _aboutScroll{0,0};
+    RecentFiles _recentFiles;
 
     inline static KeyboardKey _keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
     inline static int _keyPosition[16] = {1,2,3,12, 4,5,6,13, 7,8,9,14, 10,0,11,15};

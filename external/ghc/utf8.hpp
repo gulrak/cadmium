@@ -125,6 +125,11 @@ inline int length(const std::string& text)
     return length(text.data(), text.data() + text.size());
 }
 
+inline int length(std::string_view text)
+{
+    return length(text.data(), text.data() + text.size());
+}
+
 inline std::wstring toWString(const std::string& utf8String)
 {
     std::wstring result;
@@ -296,6 +301,26 @@ inline std::vector<std::string> wordWrap(const std::string_view text, const size
         result.push_back(line);
     }
 
+    return result;
+}
+
+inline std::string truncateWithEllipsis(std::string_view text, std::size_t maxSize) {
+    if (maxSize == 0) {
+        return {};
+    }
+    auto cpCount = static_cast<std::size_t>(length(text));
+    if (cpCount <= maxSize) {
+        return std::string{text};
+    }
+    std::size_t skipCount = cpCount - (maxSize - 1);
+    const char* iter = text.data();
+    const char* end = text.data() + text.size();
+    for (std::size_t i = 0; i < skipCount && iter < end; ++i) {
+        utf8::fetchCodepoint(iter, end);
+    }
+    std::string result;
+    append(result, 0x2026);  // U+2026 HORIZONTAL ELLIPSIS '…'
+    result.append(iter, end);
     return result;
 }
 

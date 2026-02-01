@@ -427,7 +427,8 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
             decomp.decompile(filename, loadAddress, &os, false, true);
             source = os.str();
         }
-        whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
+       //whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
+        whenRomLoaded(fs::path(_romName).string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
     }
     // TODO: Fix this
 #if 0

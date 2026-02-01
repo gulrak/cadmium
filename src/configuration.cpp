@@ -69,6 +69,7 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
         {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
         {"libraryPath", cc.libraryPath},
+        {"recentFiles", cc.recentFiles},
         {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
     };
@@ -99,6 +100,12 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
                 }
             }
         }
+    }
+    if (j.contains("recentFiles")) {
+        j.at("recentFiles").get_to(cc.recentFiles);
+    }
+    else {
+        cc.recentFiles.clear();
     }
     cc.volume = j.value("volume", 0.5f);
     cc.guiHue = j.value("guiHue", 192);
