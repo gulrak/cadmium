@@ -2533,13 +2533,12 @@ void main()
             Label("    Colors");
 //#if 0 // TODO: fix this
             auto numColors = _colorPalette.colors.size()>16 ? 2 : _colorPalette.colors.size();
+            auto prevPalette = _colorPalette.colors;
             for (int i = 0; i < numColors; ++i) {
                 renderColorField({pos.x + xOffset + i*18, pos.y}, _colorPalette.colors[i]);
             }
-            static std::vector<emu::Palette::Color> prevPalette(_colorPalette.colors.begin(), _colorPalette.colors.end());
             if(prevPalette != _colorPalette.colors) {
                 setPalette(_colorPalette);
-                prevPalette =_colorPalette.colors;
             }
 //#endif
             static constexpr int customSel = 8;

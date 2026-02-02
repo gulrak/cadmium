@@ -2657,10 +2657,11 @@ void System::openSubmenu(int parent_level, int item_index) {
 }
 
 void System::triggerItem(Item const& item) {
+    auto actionLabel = item.label;
     if (item.action) {
         item.action();
     }
-    _lastTriggeredAction = item.label;
+    _lastTriggeredAction = actionLabel;
 }
 
 void System::drawMenu(detail::OpenMenu const& menu) const {

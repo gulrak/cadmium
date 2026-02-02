@@ -1329,7 +1329,6 @@ void Chip8GenericEmulator::op02nn(uint16_t opcode)
         _mcPalette[i + 1] = be32((r << 24) | (g << 16) | (b << 8) | a);
         cols.push_back(be32((r << 24) | (g << 16) | (b << 8) | a));
     }
-    _host.updatePalette(cols, 1);
 }
 
 void Chip8GenericEmulator::op03nn(uint16_t opcode)

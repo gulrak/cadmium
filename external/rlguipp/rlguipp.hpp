@@ -258,9 +258,9 @@ struct Style {
     int submenuArrowOffset  = 10;
     int iconWidth           = 12;   // reserved space for checkmarks/icons
 
-    // Behavior
-    float submenuOpenDelay  = 0.20f;  // seconds before submenu opens on hover
-    float submenuCloseDelay = 0.15f;  // grace period when moving to submenu
+    // Behavior (TODO: for now 0, because of some side-effects)
+    float submenuOpenDelay  = 0.00f;  // seconds before submenu opens on hover
+    float submenuCloseDelay = 0.00f;  // grace period when moving to submenu
 };
 
 // ============================================================================
