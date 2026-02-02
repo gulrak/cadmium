@@ -399,7 +399,7 @@ public:
     bool update(float dt);
 
     // Draw menus - call after drawing your scene (menus draw on top)
-    void render() const;
+    void render();
 
     // Get the last triggered action's label (for debugging/logging)
     [[nodiscard]] std::optional<std::string> lastAction() const { return _lastTriggeredAction; }
@@ -409,6 +409,7 @@ private:
     std::optional<std::string> _lastTriggeredAction;
     float _closeGraceTimer = 0.0f;
     int _closeGraceLevel = -1;
+    bool _needsUnlock = false;
 
     // Calculate bounds for a menu panel
     [[nodiscard]] Rectangle getMenuBounds(const detail::OpenMenu& menu) const;

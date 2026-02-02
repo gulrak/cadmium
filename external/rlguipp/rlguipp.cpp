@@ -2337,7 +2337,8 @@ Vector3 HsvFromColor(Color col)
 
 namespace PopupMenu {
 
-void System::open(Vector2 position, const Menu& menu) {
+void System::open(Vector2 position, const Menu& menu)
+{
     close();
 
     if (menu.empty()) return;
@@ -2368,13 +2369,15 @@ void System::open(Vector2 position, const Menu& menu) {
     _menuChain.push_back(root);
 }
 
-void System::close() {
+void System::close()
+{
     _menuChain.clear();
     _closeGraceTimer = 0.0f;
     _closeGraceLevel = -1;
 }
 
-bool System::isOpen() const {
+bool System::isOpen() const
+{
     return !_menuChain.empty();
 }
 
@@ -2383,10 +2386,15 @@ bool System::isMenuOpen(const Menu& menu) const
     return !_menuChain.empty() && _menuChain.front().items == &menu;
 }
 
-bool System::update(float dt) {
+bool System::update(float dt)
+{
     _lastTriggeredAction.reset();
 
-    if (_menuChain.empty()) return false;
+    if (_menuChain.empty())
+        return false;
+
+    GuiUnlock();
+    _needsUnlock = true;
 
     Vector2 mouse = GetMousePosition();
     bool actionTriggered = false;
@@ -2534,19 +2542,32 @@ bool System::update(float dt) {
         close();
     }
 
+    GuiLock();
+
     return actionTriggered;
 }
 
-void System::render() const {
-    if (_menuChain.empty()) return;
+void System::render()
+{
+    if (_menuChain.empty()) {
+        if (_needsUnlock) {
+            GuiUnlock();
+            _needsUnlock = false;
+        }
+        return;
+    }
 
+    GuiUnlock();
     // Draw from root to deepest (so submenus appear on top)
     for (auto const& menu : _menuChain) {
         drawMenu(menu);
     }
+    if (!_menuChain.empty())
+        GuiLock();
 }
 
-Rectangle System::getMenuBounds(detail::OpenMenu const& menu) const {
+Rectangle System::getMenuBounds(detail::OpenMenu const& menu) const
+{
     return Rectangle{
         menu.position.x,
         menu.position.y,
@@ -2555,7 +2576,8 @@ Rectangle System::getMenuBounds(detail::OpenMenu const& menu) const {
     };
 }
 
-int System::calculateMenuWidth(Menu const& items) const {
+int System::calculateMenuWidth(Menu const& items) const
+{
     int maxLabelWidth = 0;
     int maxShortcutWidth = 0;
 

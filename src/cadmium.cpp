@@ -1699,7 +1699,10 @@ void main()
         PopupMenu::close();
         PopupMenu::Menu lruFiles;
         for (auto& recent : _recentFiles) {
-            lruFiles.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() { loadRom(recent, LoadOptions::None); }));
+            lruFiles.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() {
+                loadRom(recent, LoadOptions::None);
+                _mainView = eVIDEO;
+            }));
         }
         if (!lruFiles.empty()) {
             lruFiles.push_back(PopupMenu::Separator());
