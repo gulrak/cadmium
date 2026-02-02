@@ -2744,12 +2744,14 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
     }
 
     Color textCol =  GetColor(GetStyle(LABEL, item.enabled ? TEXT_COLOR_NORMAL : TEXT_COLOR_DISABLED));
+    Color highlightCol = GetColor(GetStyle(LABEL, TEXT_COLOR_FOCUSED));
     Color shortcutCol = textCol;
 
     // Hover highlight
     if (hovered && item.enabled) {
         DrawRectangleRec(bounds, GetColor(GetStyle(DEFAULT, BASE_COLOR_FOCUSED)));
         textCol = GetColor(GetStyle(LABEL, TEXT_COLOR_FOCUSED));
+        highlightCol = GetColor(GetStyle(LABEL, BASE_COLOR_NORMAL));
         shortcutCol = textCol;
     }
 
@@ -2770,7 +2772,7 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
             DrawTextClipped(font, parts.path.c_str(), Vector2(labelXPos, textYPos), textCol);
             labelXPos += calculateTextWidth(parts.path);
         }
-        DrawTextClipped(font, parts.filename.c_str(), Vector2(labelXPos, textYPos), GetColor(GetStyle(LABEL, TEXT_COLOR_FOCUSED)));
+        DrawTextClipped(font, parts.filename.c_str(), Vector2(labelXPos, textYPos), highlightCol);
     }
     else {
         DrawTextClipped(font, item.label.c_str(), Vector2(labelXPos, textYPos), textCol);
