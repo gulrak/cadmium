@@ -355,11 +355,11 @@ public:
             if(bytes) *bytes = size;
             switch (size) {
                 case 2:
-                    return emu::format("{:04X}: {:02X} {:02X}     {}", address, data[0], data[1], text);
+                    return emu::format("{:04X}  {:02X} {:02X}     {}", address, data[0], data[1], text);
                 case 3:
-                    return emu::format("{:04X}: {:02X} {:02X} {:02X}  {}", address, data[0], data[1], data[2], text);
+                    return emu::format("{:04X}  {:02X} {:02X} {:02X}  {}", address, data[0], data[1], data[2], text);
                 default:
-                    return emu::format("{:04X}: {:02X}        {}", address, data[0], text);
+                    return emu::format("{:04X}  {:02X}        {}", address, data[0], text);
             }
         }
         else {

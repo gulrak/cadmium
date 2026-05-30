@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <ghc/span2d.hpp>
 #include <array>
 #include <cstdint>
 #include <span>
@@ -34,19 +35,13 @@ namespace video {
 
 struct PaletteFrame
 {
-    std::span<const uint8_t> pixels;
+    ghc::span2d<const uint8_t> pixels;
     std::span<const uint32_t> palette;  // RGBA colors
-    int width;
-    int height;
-    int pitch;
 };
 
 struct RGBAFrame
 {
-    std::span<const uint32_t> pixels;
-    int width;
-    int height;
-    int pitch;
+    ghc::span2d<const uint32_t> pixels;
     bool hasBorders = false;  // true for PAL/NTSC with borders
 };
 
@@ -54,10 +49,7 @@ using SourceFrame = std::variant<PaletteFrame, RGBAFrame>;
 
 struct RenderTarget
 {
-    uint32_t* pixels;  // RGBA output buffer
-    int width;
-    int height;
-    int pitch;  // bytes per row (may differ from width * 4)
+    ghc::span2d<uint32_t> pixels;  // RGBA output buffer
 };
 
 struct ScaledRegion

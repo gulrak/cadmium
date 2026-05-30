@@ -89,6 +89,13 @@ Properties CoreRegistry::propertiesFromOctoOptions(const OctoOptions& options)
     return result;
 }
 
+OctoOptions CoreRegistry::octoOptionsFromProperties(const Properties& properties)
+{
+    OctoOptions result;
+    //from_json(properties, result);
+    return result;
+}
+
 CoreRegistry::CoreRegistry()
 {
     for(auto& [key, info] : factoryMap()) {

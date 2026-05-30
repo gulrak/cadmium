@@ -35,6 +35,23 @@ set(CHIP8_EMU_SOURCE
     utility.cpp
     expressionist.cpp
     expressionist.hpp
+    #video/framedescriptor.hpp
+    #video/iframeeffect.hpp
+    #video/frameprocessor.hpp
+    #video/frameprocessor.cpp
+    #video/iframeeffect.cpp
+    #video/plaineffect.hpp
+    #video/plaineffect.cpp
+    #video/scanlineeffect.hpp
+    #video/scanlineeffect.cpp
+    #video/lcdeffect.hpp
+    #video/lcdeffect.cpp
+    hp48/display.cpp
+    hp48/display.hpp
+    hp48/font.cpp
+    hp48/font.hpp
+    hp48/stack.cpp
+    hp48/stack.hpp
 )
 
 add_library(emulation OBJECT ${CHIP8_EMU_SOURCE})

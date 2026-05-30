@@ -1444,21 +1444,40 @@ void main()
     {
         auto* pixel = (uint32_t*)_screen.data;
         if(pixel) {
-            const auto* screen = _chipEmu->getScreen();
-            if (screen) {
-                if (!_renderCrt) {
-                    screen->convert(pixel, _screen.width, 255, nullptr);
-                    UpdateTexture(_screenTexture, _screen.data);
-                }
-                else {
-                }
+            auto rgbaSpan = _chipEmu->getRGBASpan(
+                {static_cast<uint32_t*>(_screen.data), static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)}
+                );
+            if(!rgbaSpan.empty()) {
+                auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
+                std::ranges::copy(rgbaSpan, std::begin(textureSpan));
+                UpdateTexture(_screenTexture, _screen.data);
+                _screenRatio = 1;
+                _screenSize = {static_cast<float>(rgbaSpan.width()), static_cast<float>(rgbaSpan.height())};
+                _screenBorderColor = {0,0,0,255};
             }
             else {
-                // TraceLog(LOG_INFO, "Updating MC8 screen!");
-                const auto* screenRgb = _chipEmu->getScreenRGBA();
-                if(screenRgb) {
-                    screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                    UpdateTexture(_screenTexture, _screen.data);
+                const auto* screen = _chipEmu->getScreen();
+                if (screen) {
+                    if (!_renderCrt) {
+                        screen->convert(pixel, _screen.width, 255, nullptr);
+                        UpdateTexture(_screenTexture, _screen.data);
+                        _screenRatio = screen->ratio();
+                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
+                        _screenBorderColor = GetColor(be32(screen->getBorderColor()));
+                    }
+                    else {
+                    }
+                }
+                else {
+                    // TraceLog(LOG_INFO, "Updating MC8 screen!");
+                    const auto* screenRgb = _chipEmu->getScreenRGBA();
+                    if(screenRgb) {
+                        screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                        UpdateTexture(_screenTexture, _screen.data);
+                        _screenRatio = screenRgb->ratio();
+                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
+                        _screenBorderColor = GetColor(be32(screenRgb->getBorderColor()));
+                    }
                 }
             }
         }
@@ -1595,7 +1614,77 @@ void main()
         EndDrawing();
     }
 
+    void drawScreen(Rectangle dest, int /*gridScale*/)
+    {
+        int scrWidth = _screenSize.x; //_chipEmu->getCurrentScreenWidth();
+        int scrHeight = _screenSize.y; //_chipEmu->getCurrentScreenHeight();
 
+        //int ratio = 1;
+        Color borderColor = _screenBorderColor; //{0,0,0,255};
+        //if (auto* s = _chipEmu->getScreen()) { ratio = s->ratio(); borderColor = GetColor(be32(s->getBorderColor())); }
+        //else if (auto* srgba = _chipEmu->getScreenRGBA()) { ratio = srgba->ratio(); }
+        int ratio = _screenRatio;
+        if (ratio <= 0) ratio = 1;
+
+        // Background (keep your existing look)
+        DrawRectangleRec(dest, borderColor);
+
+        if (scrWidth <= 0 || scrHeight <= 0 || dest.width <= 0.0f || dest.height <= 0.0f)
+            return;
+
+        // Logical "display" height includes the vertical stretch ratio.
+        const float contentW = static_cast<float>(scrWidth);
+        const float contentH = static_cast<float>(scrHeight / ratio);
+
+        // Integer scale that fits the stretched content into dest.
+        const float maxScaleX = dest.width / contentW;
+        const float maxScaleY = dest.height / contentH;
+        const int scale = std::max(1, static_cast<int>(std::floor(std::min(maxScaleX, maxScaleY))));
+
+        const float dstW = contentW * static_cast<float>(scale);
+        const float dstH = contentH * static_cast<float>(scale);
+
+        // Center inside dest. Round to whole pixels to avoid subpixel wobble.
+        const float videoX = std::floor(dest.x + (dest.width - dstW) * 0.5f);
+        const float videoY = std::floor(dest.y + (dest.height - dstH) * 0.5f);
+
+        const Rectangle srcRect{0.0f, 0.0f, static_cast<float>(scrWidth), static_cast<float>(scrHeight)};
+        const Rectangle dstRect{videoX, videoY, dstW, dstH};
+
+        DrawTexturePro(_screenTexture, srcRect, dstRect, {0.0f, 0.0f}, 0.0f, WHITE);
+
+        if(_showKeyMap) {
+            auto s = scale / _screenScale;
+            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * scale - 40.0f*s, videoY + scrHeight * scale - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
+        }
+        if(GetTime() < 5 && _romImage.empty()) {
+            auto scale = dest.width / 128;
+            auto offsetX = (dest.width - 60*scale) / 2;
+            auto offsetY = (dest.height - 60*scale) / 2;
+            DrawTexturePro(_titleTexture, {34, 2, 60, 60}, {dest.x + offsetX, dest.y + offsetY, 60*scale, 60*scale}, {0, 0}, 0, {255,255,255,uint8_t(GetTime()>4 ? 255.0f*(4.0f-GetTime()) : 255.0f)});
+        }
+    }
+#if 0
+    void drawScreen(Rectangle dest, int /*gridScale*/)
+    {
+        const Color gridLineCol{40,40,40,255};
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        auto videoScaleX = dest.width / as<float>(scrWidth);
+        auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
+        auto videoScaleY = ratio ? videoScaleX / as<float>(ratio) : videoScaleX;
+        auto videoX = (dest.width - as<float>(_chipEmu->getCurrentScreenWidth()) * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - as<float>(_chipEmu->getCurrentScreenHeight()) * videoScaleY) / 2 + dest.y;
+        if(_chipEmu->getMaxScreenWidth() > 128)
+            DrawRectangleRec(dest, {0,0,0,255});
+        else
+            DrawRectangleRec(dest, {0,12,24,255});
+
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+    }
+#endif
+
+#if 0
     void drawScreen(Rectangle dest, int gridScale)
     {
         const Color gridLineCol{40,40,40,255};
@@ -1643,6 +1732,7 @@ void main()
         rlSetBlendMode(RL_BLEND_ALPHA);
 #endif
     }
+#endif
 
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
     {
@@ -3140,6 +3230,9 @@ private:
     Rectangle _screenOverlay{};
     int _currentMonitor{0};
     int _screenScale{1};
+    int _screenRatio{1};
+    Vector2 _screenSize{0,0};
+    Color _screenBorderColor{0,0,0,255};
     emu::Properties _propsMemento{};
     std::string _avgGuiRenderTime;
 

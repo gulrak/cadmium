@@ -409,6 +409,7 @@
 : wrp-result
     0 0
     0
+    0
 :const CHR_0 26
 :const CHR_1 27
 :const CHR_B 1
@@ -624,100 +625,100 @@
     va := v0
     vb := 0
     vc := 0
-    if vf != 0 begin
-        v0 := 64
-        v1 := 32
-        ve := 0
+    if vf != 0 begin        # is lores video mode supported?
+        v0 := 64            # set x to 64 to test origin-wraparound
+        v1 := 32            # set y to 32 to test origin-wraparound
+        ve := 0             # signal same-pixel-test
         :call wrap-test
-        if v4 != 3 begin
-            v1 := 0
-            v0 := 0xff
+        if v4 != 3 begin    # if the result is not 3 (origin-wrapping in x and y) then fail
+            v1 := 0         # set error to WRPOL
+            v0 := 0xff      # signal error
             return
         end
-        v0 := 63
-        v1 := 31
-        ve := 1
+        v0 := 63            # set x to 63 to test for subsequent pixel wraparound
+        v1 := 31            # set y to 31 to test for subsequent pixel wraparound
+        ve := 1             # signal subsequent-pixel-test
         :call wrap-test
-        if v4 > 3 begin
-            v1 := 9
-            v0 := 0xff
+        if v4 > 3 begin     # if it is bigger than 3, that is an error
+            v1 := 9         # set error to WRPWL
+            v0 := 0xff      # signal error
             return
         end
         vc := v4
-        if va != 0 then
-            vb := 1
+        if va != 0 then     # if there are video modes left
+            vb := 1         # mark that we had lores
     end
-    vc <<= vc
-    vc <<= vc
-    if va != 0 begin
-        if vb != 0 then
+    vc <<= vc               # shift the lores result two bits up
+    vc <<= vc               # to make room for hires
+    if va != 0 begin        # if we should test hires
+        if vb != 0 then     # if there was lores, we need to switch to hires
             hires
-        v0 := 128
-        v1 := 64
-        ve := 0
+        v0 := 128           # set x to 128 to test origin-wraparound
+        v1 := 64            # set y to 64 to test origin-wraparound
+        ve := 0             # signal same-pixel-test
         :call wrap-test
-        if v4 != 3 begin
-            v1 := 3
-            v0 := 0xff
+        if v4 != 3 begin    # if the result is not 3 (origin-wrapping in x and y) then fail
+            v1 := 3         # set error to WRPOH
+            v0 := 0xff      # signal error
             return
         end
-        v0 := 127
-        v1 := 63
-        ve := 1
+        v0 := 127           # set x to 127 to test for subsequent pixel wraparound
+        v1 := 63            # set y to 63 to test for subsequent pixel wraparound
+        ve := 1             # signal subsequent-pixel-test
         :call wrap-test
-        if v4 > 0x10 begin
-            v1 := 12
-            v0 := 0xff
-            if vb != 0 then
-                lores
+        if v4 > 0x10 begin  # if this is greater than 0x10 hires wrapping is broken
+            v1 := 12        # set error to WRPWH
+            v0 := 0xff      # signal error
+            if vb != 0 then # if we had lores, thus enabled hires, we need to switch back to
+                lores       # lores
             return
         end
-        vc |= v4
-        if vb != 0 then
-            lores
+        vc |= v4            # combine the results
+        if vb != 0 then     # if we had lores, we need to switch back to
+            lores           # it
     end
     v0 := vc
     v1 := 0
     return
 
 : wrap-test
-    v4 := 0
+    v4 := 0                 # initialize result to 0
     v8 := 0
-    clear
-    v5 := 0
+    clear                   # clear the screen
+    v5 := 0                 # set vx/vy for next draw to (0,0)
     v6 := 0
-    i := test-80
-    sprite v5 v6 1
-    v5 := v0
-    if ve != 0 then
-        i := test-40
-    sprite v5 v6 1
-    i := test-80
-    if vF != 0 begin
-        v4 := 2
+    i := test-80            # load sprite byte 1000_0000 (single pixel at left edge of 8-bit row)
+    sprite v5 v6 1          # draw at (0,0); establishes a known starting state
+    v5 := v0                # move X so the next draw happens x-wrapped
+    if ve != 0 then         # if we're testing for subsequent pixel wraparound
+        i := test-40        # choose the 0100_0000 sprite
+    sprite v5 v6 1          # draw again, if wrapping happens, the subsequent pixel should hit the first one
+    i := test-80            # prepare 1000_0000 sprite for next draw
+    if vF != 0 begin        # if we had a collision
+        v4 := 2             # mark x-wrapping
     else
-        v5 := 0
+        v5 := 0             # set vx/vy to (0,1)
         v6 := 1
-        sprite v5 v6 1
-        if vf != 0 then
-            v4 := 255
+        sprite v5 v6 1      # draw a pixel
+        if vf != 0 then     # if this collided, we had a wrap-around to the next line
+            v4 := 255       # mark as error
     end
-    clear
-    v5 := 0
+    clear                   # clear for next axis
+    v5 := 0                 # set vx/vy for next draw to (0,0) again
     v6 := 0
-    sprite v5 v6 1
-    v6 := v1
-    if ve != 0 then
+    sprite v5 v6 1          # draw a single pixel
+    v6 := v1                # move y so that the next draw happens y-wrapped
+    if ve != 0 then         # if we are testing for subsequent pixels, select a sprite with a pixel in the second row left
         i := test-0-80
-    sprite v5 v6 2
-    if vF != 0 begin
-        v6 := 0
-        i := test-80
-        sprite v5 v6 1
-        if vf == 0 begin
-            v4 += 1
+    sprite v5 v6 2          # draw the selected collision pattern
+    if vF != 0 begin        # if we had a collision
+        v6 := 0             # set vy  back to 0
+        i := test-80        # load the single pixel sprite
+        sprite v5 v6 1      # draw it
+        if vf == 0 begin    # if no collision happens
+            v4 += 1         # we had a real collision marking an y-wrap, as the initial pixel was gone
         else
-            v4 += 0x10
+            v4 += 0x10      # else we probably had a clip-row-count (schip-1.1 hires)
         end
     end
     clear

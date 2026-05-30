@@ -32,6 +32,7 @@
 #include <emulation/properties.hpp>
 #include <ghc/bit.hpp>
 #include <emulation/logger.hpp>
+#include <ghc/span2d.hpp>
 
 namespace emu {
 
@@ -85,6 +86,8 @@ public:
     {
         _backgroundColor = _backgroundVariants[background & _backgroundVariantsMask];
     }
+    uint32_t getBorderColor() const { return _borderColor; }
+    uint32_t getSignalColor() const { return _signalColor; }
     int width() const { return _width; }
     int height() const { return _height; }
     int stride() const { return _stride; }
@@ -119,6 +122,8 @@ public:
             _backgroundColor = _backgroundVariants[_backgroundIndex];
         }
         _paletteMask = (1u << ghc::bit_width(palette.size())) - 1u;
+        _borderColor = palette.borderColor ? be32(palette.borderColor->toRGBAInt()) : _palette[0];
+        _signalColor = palette.signalColor ? be32(palette.signalColor->toRGBAInt()) : _borderColor;
     }
     uint32_t getPixel(int x, int y) const
     {
@@ -177,6 +182,32 @@ public:
         if(_overlayCellHeight > 0)
             _colorOverlay[((y * _overlayCellHeight)&31) * 8 + (x & 7)] = value & 0xF;
     }
+
+    void convertHp48(ghc::span2d<uint8_t> destination) const
+    {
+        if constexpr (!isRGBA()) {
+            // Convert _screenBuffer values 0 or 1 into packed bits (MSB first)
+            // Each row is 16 bytes in destination, stride is 17
+            for (int y = 0; y < _height; ++y) {
+                auto srcPtr = _screenBuffer.data() + y * _stride;
+                auto dstPtr = destination.data() + y * 17;
+
+                // Process 128 pixels (16 bytes) per row
+                for (int byteIdx = 0; byteIdx < 16; ++byteIdx) {
+                    uint8_t byte = 0;
+                    // Pack 8 bits, MSB first
+                    for (int bitIdx = 0; bitIdx < 8; ++bitIdx) {
+                        int pixelX = byteIdx * 8 + bitIdx;
+                        if (pixelX < _width && srcPtr[pixelX]) {
+                            byte |= (1 << (7 - bitIdx));
+                        }
+                    }
+                    dstPtr[byteIdx] = byte;
+                }
+            }
+        }
+    }
+
     void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen* background = nullptr) const
     {
         if(isRGBA() || !_overlayCellHeight) {
@@ -384,6 +415,8 @@ protected:
     std::array<uint32_t, 16> _backgroundVariants{};
     size_t _backgroundIndex{};
     uint32_t _backgroundColor{};
+    uint32_t _borderColor{};
+    uint32_t _signalColor{};
     std::array<uint8_t, 256> _colorOverlay{};
 };
 

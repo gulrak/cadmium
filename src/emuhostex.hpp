@@ -54,8 +54,8 @@
 
 namespace emu {
 
-static constexpr int SUPPORTED_SCREEN_WIDTH = 384;
-static constexpr int SUPPORTED_SCREEN_HEIGHT = 262;
+static constexpr int SUPPORTED_SCREEN_WIDTH = 540;
+static constexpr int SUPPORTED_SCREEN_HEIGHT = 296;
 
 class IChip8Emulator;
 

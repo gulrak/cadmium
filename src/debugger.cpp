@@ -150,13 +150,14 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
     }
     BeginColumns();
     SetSpacing(-1);
-    SetNextWidth(256 + 2);
+    SetNextWidth(270 + 2);
     Begin();
     SetSpacing(0);
     BeginPanel("Video", {1, 0});
     {
-        video = {GetCurrentPos().x, GetCurrentPos().y, (float)256, (float)(megaChipVideo ? 192 : 128)};
-        Space(megaChipVideo ? 192 + 1 : 128 + 1);
+        auto height = (float)(megaChipVideo ? 192 : 148) + 6;
+        video = {GetCurrentPos().x, GetCurrentPos().y, (float)270, (float)height};
+        Space(int(height));
     }
     EndPanel();
     drawScreen(video, debugScale);
@@ -189,7 +190,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
     }
     EndTabView();
     End();
-    SetNextWidth(50);
+    SetNextWidth(44);
     BeginPanel("Regs");
     {
         auto pos = GetCurrentPos();
@@ -199,7 +200,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
         showGenericRegs(*_core->focussedExecutionUnit(), _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos);
     }
     EndPanel();
-    SetNextWidth(50);
+    SetNextWidth(44);
     if(!_realCore || _realCore->hybridChipMode()) {
         BeginPanel("Stack");
         {
@@ -210,7 +211,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
             auto stack = _core->executionUnit(_visibleExecUnit)->stack();
             for (int i = 0; i < _core->executionUnit(_visibleExecUnit)->stackSize(); ++i) {
                 auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit].data());
-                DrawTextEx(font, TextFormat("%X: %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
+                DrawTextEx(font, TextFormat("%X %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
             }
         }
     }
@@ -267,7 +268,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
         memPage = addr < 0 ? 0 : addr >> 16;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * bytesPerLine >= 0 && addr + i * bytesPerLine < _core->memSize()) {
-                DrawTextClipped(font, TextFormat("%06X", (addr + i * bytesPerLine)), {pos.x, pos.y + i * lineSpacing}, lightgrayCol);
+                DrawTextClipped(font, TextFormat("%06X", (addr + i * bytesPerLine)), {pos.x - 1, pos.y + i * lineSpacing}, lightgrayCol);
                 for (int j = 0; j < bytesPerLine; ++j) {
                     auto offset = j >= 8 ? 49.0f : 43.0f;
                     if (!showChipCPU || addr + i * bytesPerLine + j > _core->memSize() || _core->memory()[addr + i * bytesPerLine + j] == _memBackup[addr + i * bytesPerLine + j]) {
@@ -499,23 +500,28 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
         switch (reg.size) {
             case 1:
             case 4:
-                DrawTextEx(font, TextFormat("%2s: %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 8:
-                DrawTextEx(font, TextFormat("%2s: %02X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %02X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 12:
-                DrawTextEx(font, TextFormat("%2s: %03X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %03X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 16:
-                DrawTextEx(font, TextFormat("%2s:%04X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                if (cpu.registerNames()[i].size() == 1)
+                    DrawTextEx(font, TextFormat("%s %04X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                else {
+                    DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                    DrawTextEx(font, TextFormat("  %04X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                }
                 break;
             case 24:
-                DrawTextEx(font, TextFormat("%2s:", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
                 DrawTextEx(font, TextFormat("%06X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             default:
-                DrawTextEx(font, TextFormat("%2s:%X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
+                DrawTextEx(font, TextFormat("%2s %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
                 break;
         }
         lastSize = reg.size;

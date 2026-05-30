@@ -255,9 +255,9 @@ public:
         auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
         if(bytes) *bytes = size;
         switch(size) {
-           case 2:  return fmt::format("{:04x}: {:02x} {:02x}     {}", addr, data[0], data[1], text);
-           case 3:  return fmt::format("{:04x}: {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
-           default: return fmt::format("{:04x}: {:02x}        {}", addr, data[0], text);
+           case 2:  return fmt::format("{:04x}  {:02x} {:02x}     {}", addr, data[0], data[1], text);
+           case 3:  return fmt::format("{:04x}  {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
+           default: return fmt::format("{:04x}  {:02x}        {}", addr, data[0], text);
         }
     }
 

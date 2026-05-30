@@ -43,20 +43,21 @@ static const std::string PROP_CLASS = "CHIP-8 GENERIC";
 static const std::string PROP_INSTRUCTIONS_PER_FRAME = "Instructions per frame";
 static const std::string PROP_FRAME_RATE = "Frame rate";
 static const std::string PROP_TRACE_LOG = "Trace Log";
-static const std::string PROP_TRACE_FILE = "Trace FIle";
+static const std::string PROP_TRACE_FILE = "Trace File";
 static const std::string PROP_RAM = "Memory";
 static const std::string PROP_CLEAN_RAM = "Clean RAM";
 static const std::string PROP_BEHAVIOR_BASE = "Behavior Base";
 static const std::string PROP_START_ADDRESS = "Start Address";
-static const std::string PROP_Q_JUST_SHIFT_VX = "8xy6/8xyE just shift VX";
+static const std::string PROP_Q_JUST_SHIFT_VX = "8xy6/8xyE just shift Vx";
 static const std::string PROP_Q_DONT_RESET_VF = "8xy1/8xy2/8xy3 don't reset VF";
-static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE = "Fx55/Fx65 increment I by X + 1";
-static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X = "Fx55/Fx65 increment I by X";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE = "Fx55/Fx65 increment I by x + 1";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X = "Fx55/Fx65 increment I by x";
 static const std::string PROP_Q_WRAP_SPRITES = "Wrap sprite pixels";
 static const std::string PROP_Q_INSTANT_DXYN = "Dxyn doesn't wait for vsync";
 static const std::string PROP_Q_LORES_DXY0_IS_8X16 = "Lores Dxy0 draws 8 pixel width";
 static const std::string PROP_Q_LORES_DXY0_IS_16X16 = "Lores Dxy0 draws 16 pixel width";
 static const std::string PROP_Q_SC11_COLLISION = "Dxyn uses SCHIP1.1 collision";
+static const std::string PROP_Q_HP48_DISPLAY = "HP-48SX display emulation";
 static const std::string PROP_Q_SC_LORES_DRAWING = "HP SuperChip lores drawing";
 static const std::string PROP_Q_SC_PREVIEW_FX29 = "HP SuperChip 1.0 'preview' Fx29";
 static const std::string PROP_Q_HALF_PIXEL_SCROLL = "Half pixel scrolling";
@@ -95,6 +96,7 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_Q_INSTANT_DXYN].setBool(optInstantDxyn);
     result[PROP_Q_LORES_DXY0_IS_8X16].setBool(optLoresDxy0Is8x16);
     result[PROP_Q_LORES_DXY0_IS_16X16].setBool(optLoresDxy0Is16x16);
+    result[PROP_Q_HP48_DISPLAY].setBool(optHP48Display);
     result[PROP_Q_SC11_COLLISION].setBool(optSC11Collision);
     result[PROP_Q_SC_LORES_DRAWING].setBool(optSCLoresDrawing);
     result[PROP_Q_SC_PREVIEW_FX29].setBool(optSCPreviewFx29);
@@ -138,6 +140,7 @@ Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
     opts.optLoresDxy0Is8x16 = props[PROP_Q_LORES_DXY0_IS_8X16].getBool();
     opts.optLoresDxy0Is16x16 = props[PROP_Q_LORES_DXY0_IS_16X16].getBool();
     opts.optSC11Collision = props[PROP_Q_SC11_COLLISION].getBool();
+    opts.optHP48Display = props[PROP_Q_HP48_DISPLAY].getBool();
     opts.optSCLoresDrawing = props[PROP_Q_SC_LORES_DRAWING].getBool();
     opts.optSCPreviewFx29 = props[PROP_Q_SC_PREVIEW_FX29].getBool();
     opts.optHalfPixelScroll = props[PROP_Q_HALF_PIXEL_SCROLL].getBool();
@@ -184,6 +187,7 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_8X16, "lores-Dxy0-Is-8x16"}, false, PropertyFlags::eWritable});
         prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_16X16, "lores-Dxy0-Is-16x16"}, false, PropertyFlags::eWritable});
         prototype.registerProperty({{PROP_Q_SC11_COLLISION, "schip-11-Collision"}, false, PropertyFlags::eWritable});
+        prototype.registerProperty({{PROP_Q_HP48_DISPLAY, "hp48-Display"}, false, PropertyFlags::eWritable});
         prototype.registerProperty({{PROP_Q_SC_LORES_DRAWING, "schip-Lores-Drawing"}, false, PropertyFlags::eWritable});
         prototype.registerProperty({{PROP_Q_SC_PREVIEW_FX29, "schip-Preview-Fx29"}, false, PropertyFlags::eWritable});
         prototype.registerProperty({{PROP_Q_HALF_PIXEL_SCROLL, "half-Pixel-Scroll"}, false, PropertyFlags::eWritable});
@@ -313,7 +317,7 @@ Chip8GenericSetupInfo genericPresets[] = {
         ".mc8",
         chip8::Variant::MEGA_CHIP,
         {
-            .behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = false, .optAllowHires = true, .instructionsPerFrame = 3000, .frameRate = 50, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::MEGACHIP,
+            .behaviorBase = Chip8GenericOptions::eMEGACHIP, .ramSize = 0x1000000, .optJustShiftVx = true, .optDontResetVf = true, .optLoadStoreDontIncI = true, .optLoresDxy0Is8x16 = true, .optSC11Collision = true, .optModeChangeClear = true, .optJump0Bxnn = false, .optAllowHires = true, .instructionsPerFrame = 5000, .frameRate = 50, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::MEGACHIP,
             .palette = { std::string("#001020"), std::string("#a1c0f0") }
         }
     },
@@ -490,7 +494,7 @@ void Chip8GenericEmulator::handleReset(bool cold)
     _cpuState = eNORMAL;
     _errorMessage.clear();
     _wavePhase = 0;
-    _simpleRandState = _simpleRandSeed;
+    _simpleRandState = _options.cleanRam ? _simpleRandSeed : (std::rand() & 255) + 13;
     _isHires = _options.optOnlyHires;
     _isInstantDxyn = _options.optInstantDxyn;
     _isMegaChipMode = false;
@@ -585,12 +589,13 @@ void Chip8GenericEmulator::setHandler()
     //    randomGen = _options.advanced.at("random");
     //    _randomSeed = _options.advanced.at("seed");
     //}
+    _randomSeed = _options.cleanRam ? 0 : _randomSeed;
     //if(randomGen == "rand-lcg")
-        on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn_randLCG);
+    //    on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn_randLCG);
     //else if(randomGen == "counting")
     //    on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn_counting);
     //else
-    //    on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn);
+        on(0xF000, 0xC000, &Chip8GenericEmulator::opCxnn);
     if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X) {
         if(_options.optInstantDxyn)
             on(0xF000, 0xD000, &Chip8GenericEmulator::opDxyn<0>);
@@ -823,6 +828,17 @@ void Chip8GenericEmulator::executeFrame()
     }
 }
 
+ghc::span2d<const uint32_t> Chip8GenericEmulator::getRGBASpan(ghc::span2d<uint32_t> target) const
+{
+    if (_options.optHP48Display) {
+        auto result = target.subspan(0, 0, 540, 296);
+        _screen.convertHp48({_hp48Framebuffer.data(), 16, 64, 17});
+        _hp48Display.render(result, hp48::Display::Mode::FrameBuffer);
+        return result.as_const();
+    }
+    return {};
+}
+
 void Chip8GenericEmulator::handleTimer()
 {
     if(_execMode != ePAUSED) {
@@ -839,7 +855,6 @@ void Chip8GenericEmulator::handleTimer()
         if (!_rST)
             _wavePhase = 0;
         if(_screenNeedsUpdate) {
-
             _host.updateScreen();
             _screenNeedsUpdate = false;
         }

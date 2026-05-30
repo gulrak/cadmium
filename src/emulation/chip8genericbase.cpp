@@ -330,8 +330,8 @@ std::string Chip8GenericBase::disassembleInstructionWithBytes(int32_t pc, int* b
     if(bytes)
         *bytes = size;
     if (size == 2)
-        return fmt::format("{:04X}: {:04X}       {}", pc, (code[0] << 8)|code[1], instruction);
-    return fmt::format("{:04X}: {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
+        return fmt::format("{:04X}  {:04X}       {}", pc, (code[0] << 8)|code[1], instruction);
+    return fmt::format("{:04X}  {:04X} {:04X}  {}", pc, (code[0] << 8)|code[1], (code[2] << 8)|code[3], instruction);
 }
 std::string Chip8GenericBase::dumpStateLine() const
 {

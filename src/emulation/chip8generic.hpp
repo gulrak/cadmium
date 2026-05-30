@@ -39,6 +39,8 @@
 //#include <emulation/chip8options.hpp>
 #include <chiplet/chip8meta.hpp>
 #include <emulation/time.hpp>
+#include <emulation/hp48/display.hpp>
+#include <emulation/hp48/stack.hpp>
 
 namespace emu
 {
@@ -67,6 +69,7 @@ struct Chip8GenericOptions
     bool optInstantDxyn{false};
     bool optLoresDxy0Is8x16{false};
     bool optLoresDxy0Is16x16{false};
+    bool optHP48Display{false};
     bool optSC11Collision{false};
     bool optSCLoresDrawing{false};
     bool optSCPreviewFx29{false};
@@ -131,6 +134,7 @@ public:
     uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : 64; }
     const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
+    ghc::span2d<const uint32_t> getRGBASpan(ghc::span2d<uint32_t>) const override;
     uint8_t getScreenAlpha() const override { return _screenAlpha; }
     void setPalette(const Palette& palette) override;
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
@@ -457,8 +461,8 @@ public:
                     }
                     else {
                         if constexpr (quirks&SChip11Collisions) {
-                            if (hires)
-                                ++collision;
+                            //if (hires)
+                            //    ++collision;
                         }
                         if(width == 16)
                             ++data;
@@ -560,6 +564,10 @@ private:
     uint8_t _vp595Frequency{0x80};
     int64_t _waitCycles{0};
     int _waitFrames{0};
+    mutable std::array<uint8_t,1088> _hp48Framebuffer{};
+    hp48::ObjectStack _hp48Stack;
+    std::vector<std::string> _hp48Menu;
+    mutable hp48::Display _hp48Display{{_hp48Framebuffer.data(),_hp48Framebuffer.size()}, _hp48Stack, _hp48Menu};
 #ifdef GEN_OPCODE_STATS
     std::map<uint16_t,int64_t> _opcodeStats;
 #endif

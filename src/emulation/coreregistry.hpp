@@ -266,6 +266,7 @@ public:
     }
 
     static Properties propertiesFromOctoOptions(const OctoOptions& options);
+    static OctoOptions octoOptionsFromProperties(const Properties& properties);
 
     Iterator begin() const
     {

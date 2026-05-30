@@ -61,6 +61,7 @@ private:
     uint16_t _rIN{};    // 10 bit
     uint16_t _rOUT{};   // 10 bit
     uint32_t _rPC{};
+    uint32_t _rPCOpcode{}; // The PC of the current opcode
     uint32_t _rD0{};
     uint32_t _rD1{};
     uint16_t _rST{};

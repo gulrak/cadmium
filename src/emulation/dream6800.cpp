@@ -557,7 +557,7 @@ int Dream6800::executeVDG()
     auto fc = frameCycle();
     if(fc < lastFC) {
         flushScreen();
-        // CPU is halted for 124*64 Cycles while video frame is generated
+        // CPU is halted for 128*64 Cycles while video frame is generated
         _impl->_cpu.addCycles(128*64);
         ++_frames;
         // Trigger RTC/VSYNC on PIA (Will trigger IRQ on CPU)

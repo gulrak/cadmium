@@ -30,6 +30,8 @@
 #include <emulation/palette.hpp>
 #include <emulation/videoscreen.hpp>
 
+#include <ghc/span2d.hpp>
+
 #include <cassert>
 #include <optional>
 #include <span>
@@ -117,6 +119,7 @@ public:
     virtual const VideoType* getScreen() const { return nullptr; }
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
     virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }
+    virtual ghc::span2d<const uint32_t> getRGBASpan(ghc::span2d<uint32_t>) const { return {}; }
     virtual uint8_t getScreenAlpha() const { return 255; }
     virtual void setPalette(const Palette& palette) = 0;
     virtual void renderAudio(int16_t* samples, size_t frames, int sampleFrequency) { while (frames--) *samples++ = 0; }
