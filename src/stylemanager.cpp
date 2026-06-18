@@ -56,7 +56,7 @@ static const uint32_t cadmiumPalette[7] = {
 static float cadmiumAverageHue = 200.0f;
 
 
-#define CHIP8_STYLE_PROPS_COUNT 16
+#define CHIP8_STYLE_PROPS_COUNT 17
 static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 0, 2},   // F! DEFAULT_BORDER_COLOR_NORMAL
     {0, 1, 1},   // D! DEFAULT_BASE_COLOR_NORMAL
@@ -74,6 +74,7 @@ static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 19, 0},  // E! DEFAULT_BACKGROUND_COLOR
     {0, 16, 0x00000008},  // DEFAULT_TEXT_SIZE
     {0, 17, 0x00000000},  // DEFAULT_TEXT_SPACING
+    {2, 12, 1},  // BUTTON_BORDER_WIDTH = 1 (raygui defaults to 2)
 };
 
 #if 0

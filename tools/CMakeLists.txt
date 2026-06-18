@@ -25,6 +25,10 @@ target_link_libraries(rpgt PUBLIC emulation ghc_filesystem)
 #target_link_libraries(c8db PUBLIC emulation ghc_filesystem raylib)
 #target_code_coverage(c8db)
 
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/detectcycle.cpp)
+    add_executable(detectcycle detectcycle.cpp)
+endif()
+
 #add_executable(hp48prgtest hp48prgtest.cpp hpsaturnbase.cpp)
 #target_include_directories(hp48prgtest PUBLIC ../../chiplet/include/ ../external)
 #target_link_libraries(hp48prgtest PUBLIC emulation fmt::fmt)

@@ -172,7 +172,7 @@ RLGUIPP_API void SetKeyboardFocus(void* key);                                   
 RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
 RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
 RLGUIPP_API bool TextBox(std::string& text, int textSize);                                                                // same for std::string
-RLGUIPP_API bool TextBoxMulti(char* text, int textSize, bool editMode);                                                   // Text Box control with multiple lines
+// TextBoxMulti(float height, char* text, int textSize) — not yet implemented (GuiTextBoxMulti removed in raygui 4.5)
 RLGUIPP_API float Slider(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);       // Slider control, returns selected value
 RLGUIPP_API float Slider(const char* textLeft, float value, float minValue, float maxValue);                              // Slider control with default "%.2f" formatting, returns selected value
 RLGUIPP_API float SliderBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);    // Slider Bar control, returns selected value
@@ -236,6 +236,18 @@ RLGUIPP_API const std::unordered_map<std::string_view, int>& GetDefaultFileIcons
 RLGUIPP_API void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons);
 RLGUIPP_API bool ModalFileDialog(FileDialogInfo& info, bool* isOpen);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
+
+// Draw an N-digit 7-segment LED display at the current layout position.
+// height     - pixel height of the display; width is derived automatically.
+// value      - value to show; negative values are shown as absolute.
+// numDigits  - number of digit cells.
+// decimalPos - which dp dot to light, counted from the right (0 = none lit).
+//              Every digit always has a dp dot slot to its right (always drawn,
+//              dim or bright), so the total width never changes when decimalPos
+//              changes — no digit positions ever shift.
+// hexMode    - false → decimal, true → hexadecimal (0-9 A-F).
+// Colors:    - lit segments/dot use TEXT_COLOR_NORMAL, dark use TEXT_COLOR_DISABLED.
+RLGUIPP_API void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimalPos = 0, bool hexMode = false);
 
 namespace PopupMenu {
 

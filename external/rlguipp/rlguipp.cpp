@@ -1343,9 +1343,10 @@ bool CheckBox(const char* text, bool checked)
     return checked;
 }
 
-int ComboBox(const char* text, int* active)
+int ComboBox(const char* text, int active)
 {
-    return detail::defaultWidget(GuiComboBox, text, active);
+    detail::defaultWidget(GuiComboBox, text, &active);
+    return active;
 }
 
 int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
@@ -1594,20 +1595,8 @@ bool TextBox(std::string& text, int textSize)
     text.resize(std::strlen(text.data()));
     return rc;
 }
-/*
-bool TextBoxMulti(float height, char* text, int textSize)
-{
-    auto& ctx = detail::context();
-    auto size = ctx.standardSize(height);
-    auto editMode = HasKeyboardFocus((void*)text);
-    auto rc = GuiTextBoxMulti({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, textSize, &editMode);
-    if (rc) {
-        SetKeyboardFocus(editMode ? nullptr : (void*)text);
-    }
-    ctx.increment(size);
-    return rc;
-}
-*/
+// TextBoxMulti is not available in raygui 4.5 (GuiTextBoxMulti was removed).
+// bool TextBoxMulti(float height, char* text, int textSize) — not implemented
 int ListView(float height, const char* text, int* scrollIndex, int active)
 {
     auto& ctx = detail::context();
@@ -2320,6 +2309,99 @@ bool IsSysKeyDown()
 #else
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 #endif
+}
+
+// ----------------------------------------------------------------------------
+// Seven-segment LED display
+// ----------------------------------------------------------------------------
+
+// "gfedcba" encoding (bit 0 = a, bit 6 = g) for hex digits 0-F.
+static const uint8_t kSegEncoding[16] = {
+    0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07,
+    0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
+};
+
+// Draw one digit cell at (x0, y0) with the given segment mask and colors.
+//
+// Layout (H = height, T = thickness, W = width, HH = H/2, gY = g-segment top):
+//
+//   +--a--+        rows 0 .. T-1
+//   f     b        rows T+1 .. gY-2
+//   +--g--+        rows gY .. gY+T-1
+//   e     c        rows gY+T+1 .. H-T-2
+//   +--d--+        rows H-T .. H-1
+//
+// One-pixel gap separates every pair of adjacent segment ends.
+static void drawOneSegDigit(float x0, float y0, float H, uint8_t segs, Color onColor, Color offColor)
+{
+    int T  = std::max(1, (int)(H / 8));
+    int W  = std::max(T * 4 + 2, (int)(H * 0.55f + 0.5f));
+    int gY = (int)(H / 2) - T / 2;
+    int bH = gY - T - 2;          // vertical half-height (top)
+    int cH = (int)H - gY - 2*T - 2; // vertical half-height (bottom)
+
+    auto draw = [&](bool on, float sx, float sy, float sw, float sh) {
+        if (sw >= 1.0f && sh >= 1.0f)
+            DrawRectangleRec({x0 + sx, y0 + sy, sw, sh}, on ? onColor : offColor);
+    };
+
+    float fw = (float)(W - 2*T - 2);  // horizontal segment width
+    draw(segs & 0x01, (float)(T+1),   0.0f,              fw,        (float)T);   // a top
+    draw(segs & 0x02, (float)(W-T),   (float)(T+1),      (float)T,  (float)bH);  // b top-right
+    draw(segs & 0x04, (float)(W-T),   (float)(gY+T+1),   (float)T,  (float)cH);  // c bot-right
+    draw(segs & 0x08, (float)(T+1),   (float)((int)H-T), fw,        (float)T);   // d bottom
+    draw(segs & 0x10, 0.0f,           (float)(gY+T+1),   (float)T,  (float)cH);  // e bot-left
+    draw(segs & 0x20, 0.0f,           (float)(T+1),      (float)T,  (float)bH);  // f top-left
+    draw(segs & 0x40, (float)(T+1),   (float)gY,         fw,        (float)T);   // g middle
+}
+
+void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimalPos, bool hexMode)
+{
+    if (numDigits <= 0) return;
+    auto& ctx = detail::context();
+
+    int T       = std::max(1, (int)(height / 8));
+    int W       = std::max(T * 4 + 2, (int)(height * 0.55f + 0.5f));
+    int dpDot   = T;             // decimal-point dot size (square)
+    int dpExtra = 1 + dpDot + 1; // fixed slot after every digit: gap + dot + gap
+
+    // Every digit cell is W + dpExtra wide.  The dp dot is always drawn (dim or
+    // bright), so the total width is constant regardless of decimalPos.
+    int totalW = numDigits * (W + dpExtra);
+
+    auto size = ctx.standardSize(height);
+    if (ctx.nextWidth <= 0)
+        size.x = (float)totalW;
+
+    float baseX = ctx.currentPos.x + ctx.scrollOffset.x;
+    float baseY = ctx.currentPos.y + ctx.scrollOffset.y;
+    ctx.increment(size);
+
+    Color onColor  = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)),   guiAlpha);
+    Color offColor = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_DISABLED)), guiAlpha);
+
+    int base = hexMode ? 16 : 10;
+    uint64_t uval = (uint64_t)(value < 0 ? -value : value);
+
+    // Collect digit values right-to-left (index 0 = rightmost digit).
+    std::vector<int> digitVals(numDigits, 0);
+    uint64_t tmp = uval;
+    for (int i = 0; i < numDigits; ++i, tmp /= base)
+        digitVals[i] = (int)(tmp % base);
+
+    // Draw left-to-right; dfr = digits from right for column j.
+    float x = baseX;
+    for (int j = 0; j < numDigits; ++j) {
+        int dfr = numDigits - 1 - j;
+        drawOneSegDigit(x, baseY, height, kSegEncoding[digitVals[dfr] & 0xF], onColor, offColor);
+        x += W;
+
+        // Dp dot: always occupies its slot; lit only for the selected position.
+        bool dotLit = decimalPos > 0 && dfr == decimalPos;
+        DrawRectangleRec({x + 1, baseY + height - dpDot, (float)dpDot, (float)dpDot},
+                         dotLit ? onColor : offColor);
+        x += dpExtra;
+    }
 }
 
 Color ColorFromHsv(Vector3 hsv)
