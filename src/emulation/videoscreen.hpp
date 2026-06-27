@@ -29,7 +29,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <emulation/properties.hpp>
+#include <emulation/palette.hpp>
 #include <ghc/bit.hpp>
 #include <emulation/logger.hpp>
 #include <ghc/span2d.hpp>

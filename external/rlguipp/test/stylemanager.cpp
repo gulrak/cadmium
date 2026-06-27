@@ -43,17 +43,21 @@ static const uint32_t cadmiumPalette[7] = {
     0xeff8ffff  //C = 6!
 };
 #else
+// Modern dark-mode palette: cool-gray ramp with a barely-there blue directional
+// hint (H=218°, S 18%→4% dark-to-light).  The absolute R/G/B spread at the
+// darkest slot is only ~6 counts — the eye reads it as "cool gray", not "blue".
+// Brightness steps mirror the old teal palette.
 static const uint32_t cadmiumPalette[7] = {
-    0x00222bff, //E = 0!
-    0x134b5aff, //D = 1!
-    0x2f7486ff, //F = 2!
-    0x3299b4ff, //B = 3!
-    0x51bfd3ff, //G = 4!
-    0x85d2e6ff, //A = 5!
-    0xeff8ffff  //C = 6!
+    0x191b1fff, //E = 0, near-black cool gray  — background        (S=18%, V=12%)
+    0x2e3036ff, //D = 1, dark gray             — surfaces/disabled (S=15%, V=21%)
+    0x53575eff, //F = 2, medium-dark gray      — borders           (S=12%, V=37%)
+    0x858a94ff, //B = 3, medium gray           — focused/pressed   (S=10%, V=58%)
+    0xabb1baff, //G = 4, medium-light gray     — normal text       (S=8%,  V=73%)
+    0xc5c9d1ff, //A = 5, light gray            — lines             (S=6%,  V=82%)
+    0xebeef5ff  //C = 6, near-white            — focused text      (S=4%,  V=96%)
 };
 #endif
-static float cadmiumAverageHue = 200.0f;
+static float cadmiumAverageHue = 218.0f;
 
 
 #define CHIP8_STYLE_PROPS_COUNT 17

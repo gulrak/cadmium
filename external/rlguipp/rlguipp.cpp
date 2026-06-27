@@ -784,7 +784,13 @@ bool BeginTab(const char* text, Vector2 padding)
     auto labelSize = MeasureTextEx(GuiGetFont(), text, 8, 0);
     bool isActive = *tvc.activeTab == tvc.currentTab;
     bool hoversOverTab = CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
-    auto textcol = Fade(GetColor(gui::GetStyle(TEXTBOX, isActive || hoversOverTab ? TEXT + (guiState * 3) : TEXT_COLOR_DISABLED)), guiAlpha);
+    // Inactive tab text is derived from the normal text colour at half opacity
+    // rather than TEXT_COLOR_DISABLED: raygui propagates DEFAULT base-property
+    // writes to all controls, so any per-TEXTBOX override is unreliable.
+    Color textcolBase = GetColor(gui::GetStyle(TEXTBOX, TEXT + (guiState * 3)));
+    auto textcol = (isActive || hoversOverTab)
+        ? Fade(textcolBase, guiAlpha)
+        : Fade(textcolBase, guiAlpha * 0.45f);
     auto linecol = Fade(GetColor(gui::GetStyle(DEFAULT, BORDER_COLOR_NORMAL)), guiAlpha);
     if(!isActive && IsMouseButtonPressed(0) && hoversOverTab) {
         *tvc.activeTab = tvc.currentTab;
@@ -2400,6 +2406,104 @@ void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimal
         bool dotLit = decimalPos > 0 && dfr == decimalPos;
         DrawRectangleRec({x + 1, baseY + height - dpDot, (float)dpDot, (float)dpDot},
                          dotLit ? onColor : offColor);
+        x += dpExtra;
+    }
+}
+
+// TIL311-style 4×7 dot-matrix display.
+//
+// 20 dot positions per character, stored as bits 0-19 in kTil311Font[].
+// Layout (position label → row,col):
+//   Row 0 (top):    0,1,2,3           (all 4 cols)
+//   Row 1:          4,  ,  ,5         (outer cols only)
+//   Row 2:          6,  ,  ,7
+//   Row 3 (mid):    8,9,A,B           (all 4 cols)
+//   Row 4:          C,  ,  ,D
+//   Row 5:          E,  ,  ,F
+//   Row 6 (bot):    G,H,I,J           (all 4 cols)
+// Bit n of the font word = 1 if dot position n is lit.
+static const uint32_t kTil311Font[16] = {
+    0x6F9F6,  // 0
+    0x8A8A8,  // 1
+    0xF56A7,  // 2
+    0x7A6A7,  // 3
+    0x8AFF1,  // 4
+    0x7A75F,  // 5
+    0x6F756,  // 6
+    0x8A8AF,  // 7
+    0x6F6F6,  // 8
+    0x7AEF6,  // 9
+    0x9FFF6,  // A
+    0x7F7F7,  // B
+    0xE515E,  // C
+    0x7F9F7,  // D
+    0xF575F,  // E
+    0x1575F,  // F
+};
+
+// [row, col] for each of the 20 dot positions (0=top-left)
+static const int8_t kTil311Pos[20][2] = {
+    {0,0},{0,1},{0,2},{0,3},  // 0-3
+    {1,0},{1,3},               // 4-5
+    {2,0},{2,3},               // 6-7
+    {3,0},{3,1},{3,2},{3,3},  // 8-11
+    {4,0},{4,3},               // 12-13
+    {5,0},{5,3},               // 14-15
+    {6,0},{6,1},{6,2},{6,3},  // 16-19
+};
+
+void Til311Display(int dotSize, int64_t value, int numDigits, int decimalPos, bool hexMode)
+{
+    if (numDigits <= 0 || dotSize < 1) return;
+    auto& ctx = detail::context();
+
+    // Uniform integer grid: pitch = 2*dotSize (dot + equal-sized gap), no floats.
+    // Cell: 4 cols × 7 rows → width = 7*dotSize, height = 13*dotSize.
+    // dp sits one dotSize below the cell bottom (like the real TIL311 chip).
+    // dpExtra: gap(ds) + dp(ds) + inter-digit gap(ds) = 3*dotSize, so digits
+    // are never glued to the adjacent dp dot.
+    const int P       = 2 * dotSize;
+    const int cellW   = 3 * P + dotSize;       // = 7 * dotSize
+    const int cellH   = 6 * P + dotSize;       // = 13 * dotSize
+    const int dpExtra = 3 * dotSize;           // gap + dp + trailing gap
+    const int totalH  = cellH + 2 * dotSize;   // cell + gap + dp below
+    const int totalW  = numDigits * (cellW + dpExtra);
+
+    auto size = ctx.standardSize((float)totalH);
+    if (ctx.nextWidth <= 0)
+        size.x = (float)totalW;
+
+    int baseX = (int)(ctx.currentPos.x + ctx.scrollOffset.x);
+    int baseY = (int)(ctx.currentPos.y + ctx.scrollOffset.y);
+    ctx.increment(size);
+
+    Color onColor  = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)),   guiAlpha);
+    Color offColor = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_DISABLED)), guiAlpha);
+
+    int base = hexMode ? 16 : 10;
+    uint64_t uval = (uint64_t)(value < 0 ? -value : value);
+
+    std::vector<int> digitVals(numDigits, 0);
+    uint64_t tmp = uval;
+    for (int i = 0; i < numDigits; ++i, tmp /= base)
+        digitVals[i] = (int)(tmp % base);
+
+    int x = baseX;
+    for (int j = 0; j < numDigits; ++j) {
+        int dfr  = numDigits - 1 - j;
+        uint32_t bits = kTil311Font[digitVals[dfr] & 0xF];
+
+        for (int k = 0; k < 20; ++k) {
+            bool lit = (bits >> k) & 1u;
+            int dotX = x + kTil311Pos[k][1] * P;
+            int dotY = baseY + kTil311Pos[k][0] * P;
+            DrawRectangle(dotX, dotY, dotSize, dotSize, lit ? onColor : offColor);
+        }
+        x += cellW;
+
+        bool dpLit = decimalPos > 0 && dfr == decimalPos;
+        DrawRectangle(x + dotSize - 1, baseY + cellH + dotSize, dotSize, dotSize,
+                      dpLit ? onColor : offColor);
         x += dpExtra;
     }
 }

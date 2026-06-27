@@ -28,6 +28,7 @@
 #include <emulation/config.hpp>
 #include <emulation/hardware/genericcpu.hpp>
 #include <emulation/palette.hpp>
+#include <emulation/properties.hpp>
 #include <emulation/videoscreen.hpp>
 
 #include <ghc/span2d.hpp>

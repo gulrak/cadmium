@@ -249,6 +249,15 @@ RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER)
 // Colors:    - lit segments/dot use TEXT_COLOR_NORMAL, dark use TEXT_COLOR_DISABLED.
 RLGUIPP_API void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimalPos = 0, bool hexMode = false);
 
+// Til311Display — TIL311-style 4*7 dot-matrix hex display.
+// dotSize  - side length of each dot in pixels (integer); pitch = 2*dotSize so the
+//            gap between adjacent dots equals one dot.  Natural cell height = 13*dotSize.
+// decimalPos > 0  — dp slot to the right of that digit position (1=LSDigit) is lit;
+//                   every digit always has its dp slot drawn so the total width is
+//                   constant regardless of decimalPos.
+// hexMode         — false: decimal (mod 10 per digit), true: hex 0-F per digit.
+RLGUIPP_API void Til311Display(int dotSize, int64_t value, int numDigits, int decimalPos = 0, bool hexMode = false);
+
 namespace PopupMenu {
 
 // ============================================================================

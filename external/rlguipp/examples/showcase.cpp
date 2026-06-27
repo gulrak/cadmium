@@ -46,7 +46,7 @@ using namespace gui;
 
 class ShowcaseApp : public gui::Application {
 public:
-    ShowcaseApp() : gui::Application("rlGuipp Showcase", {640, 480, 2})
+    ShowcaseApp() : gui::Application("rlGuipp Showcase", {800, 600, 2})
     {
         _styleManager.addTheme("Warm",  30.0f, 90, false);
         _styleManager.addTheme("Dark", 200.0f, 90, true);
@@ -511,7 +511,6 @@ private:
 
     void drawWidgetsTab()
     {
-        // Auto-increment counter to animate the display.
         _segTimer += GetFrameTime();
         if (_segTimer >= 0.25f) {
             _segTimer = 0.0f;
@@ -519,30 +518,82 @@ private:
         }
 
         SetSpacing(6);
+        BeginColumns();
+        SetNextWidth(0.5f);
+        Begin();
+        Label("SevenSegmentDisplay  (auto-incrementing)");
+        Space(2);
 
-        Label("SevenSegmentDisplay  (4 digits, decimal, auto-incrementing):");
-        SevenSegmentDisplay(20, _segValue, 4);
+        Label("Green LED \xe2\x80\x94 decimal:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0x22, 0xff, 0x22, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x04, 0x22, 0x04, 0xff});
+            SevenSegmentDisplay(20, _segValue, 4);
+        }
 
-        Label("Same value in hex:");
-        SevenSegmentDisplay(20, _segValue, 4, 0, true);
+        Label("Amber LED \xe2\x80\x94 hex:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x88, 0x00, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x22, 0x10, 0x00, 0xff});
+            SevenSegmentDisplay(20, _segValue, 4, 0, true);
+        }
 
-        Label("Decimal point at position 2 lit  (\"XX.XX\") — all dp slots always present:");
-        SevenSegmentDisplay(20, _segValue, 4, 2);
+        Label("Red LED \xe2\x80\x94 decimal, dp at position 2 (\"XX.XX\"):");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x22, 0x00, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            SevenSegmentDisplay(20, _segValue, 4, 2);
+        }
 
-        Label("No dp lit (decimalPos=0)  — identical width, digits don't shift:");
-        SevenSegmentDisplay(20, _segValue, 4, 0);
+        Label("Red LED \xe2\x80\x94 height 30, 6 hex digits:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x22, 0x00, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            SevenSegmentDisplay(30, _segValue, 6, 0, true);
+        }
+        End();
 
-        Label("Hex, decimal point at position 3 lit  (\"X.XXX\"):");
-        SevenSegmentDisplay(20, _segValue, 4, 3, true);
+        Begin();
+        Label("Til311Display  (only ever made in red, auto-incrementing)");
+        Space(2);
 
-        Label("Taller display — height 30, 6 digits:");
-        SevenSegmentDisplay(30, _segValue, 6);
+        Label("dotSize=2, hex:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x42, 0x20, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            Til311Display(1, _segValue, 4, 0, true);
+        }
 
-        Space(6);
-        Separator();
-        Space(4);
-        Label("Segment encoding: gfedcba bits (bit 0 = a top, bit 6 = g middle).");
-        Label("Lit = TEXT_COLOR_NORMAL, dark = TEXT_COLOR_DISABLED.");
+        Label("dotSize=2, decimal:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x42, 0x20, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            Til311Display(2, _segValue, 4);
+        }
+
+        Label("dotSize=2, dp at position 2 (\"XX.XX\"):");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x42, 0x20, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            Til311Display(2, _segValue, 4, 2, true);
+        }
+
+        Label("dotSize=3, 6 hex digits:");
+        {
+            StyleManager::Scope led;
+            led.setStyle(Style::TEXT_COLOR_NORMAL,   Color{0xff, 0x42, 0x20, 0xff});
+            led.setStyle(Style::TEXT_COLOR_DISABLED, Color{0x28, 0x04, 0x00, 0xff});
+            Til311Display(3, _segValue, 6, 0, true);
+        }
+        End();
+        EndColumns();
     }
 
     // -----------------------------------------------------------------------
