@@ -35,6 +35,8 @@ set(CHIP8_EMU_SOURCE
     utility.cpp
     expressionist.cpp
     expressionist.hpp
+    videorenderer.cpp
+    videorenderer.hpp
     #video/framedescriptor.hpp
     #video/iframeeffect.hpp
     #video/frameprocessor.hpp

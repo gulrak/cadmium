@@ -86,7 +86,7 @@ include(FetchContent)
 find_package(Threads REQUIRED)
 
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(RAYLIB_BRANCH_NAME "5.5")
+set(RAYLIB_BRANCH_NAME "6.0")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
@@ -94,7 +94,7 @@ set(raylib_patch git apply ${PROJECT_SOURCE_DIR}/cmake/raylib.patch)
 FetchContent_Declare(
     raylib
     #URL https://github.com/gulrak/raylib/archive/refs/heads/master.zip
-    GIT_REPOSITORY https://github.com/gulrak/raylib.git
+    #GIT_REPOSITORY https://github.com/gulrak/raylib.git
     GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
