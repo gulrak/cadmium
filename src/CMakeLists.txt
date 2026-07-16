@@ -70,37 +70,29 @@ endif()
 target_compile_definitions(cadmium PUBLIC
         CADMIUM_VERSION="${PROJECT_VERSION}"
         CADMIUM_VERSION_DECIMAL=${PROJECT_VERSION_DECIMAL}
-        CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}"
-        CADMIUM_WITH_BACKGROUND_EMULATION)
+        CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
+if(NOT EMSCRIPTEN)
+    target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_BACKGROUND_EMULATION)
+endif()
 if(CADMIUM_WITH_DATABASE)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_DATABASE)
     target_link_libraries(cadmium PUBLIC ghc::sqlite ssl httplib::httplib)
-endif()
-if(WEB_WITH_CLIPBOARD)
-    target_compile_definitions(cadmium PUBLIC WEB_WITH_CLIPBOARD)
 endif()
 if(WEB_WITH_FETCHING)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_FETCHING)
 endif()
 set_source_files_properties(src/editor.cpp PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
-target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata jsct ghc_filesystem Threads::Threads)
+target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata ghc_filesystem Threads::Threads)
 target_code_coverage(cadmium)
 if (${PLATFORM} MATCHES "Web")
-    if(WEB_WITH_CLIPBOARD)
-        if(USE_WEBGL)
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -sUSE_GLFW=3 -sASSERTIONS -sUSE_PTHREADS=1 -sUSE_WEBGL2=1 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html -sASYNCIFY -sASYNCIFY_IMPORTS=[copyClip,pasteClip]")
-        else()
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -sASSERTIONS=1 -sUSE_GLFW=3 -sUSE_PTHREADS=1 -sUSE_WEBGL2=0 -sWASM=1 -sALLOW_MEMORY_GROWTH=1 -sFETCH -sEXPORTED_RUNTIME_METHODS=[ccall,stackAlloc,stackSave,stackRestore] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html -sASYNCIFY -sASYNCIFY_IMPORTS=[copyClip,pasteClip]")
-        endif()
-    else()
-        if(USE_WEBGL)
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -s USE_GLFW=3 -s USE_WEBGL2=1 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html")
-        else()
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -s USE_GLFW=3 -s USE_WEBGL2=0 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html")
-        endif()
-    endif()
-    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index")
-    set_target_properties(cadmium PROPERTIES SUFFIX ".html")
+    target_link_options(cadmium PRIVATE
+        -sUSE_GLFW=3
+        -sUSE_WEBGL2=0
+        -sALLOW_MEMORY_GROWTH=1
+        -sFETCH
+        -sEXPORTED_RUNTIME_METHODS=['HEAPF32']
+        --shell-file=${PROJECT_SOURCE_DIR}/resources/minshell.html)
+    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
 endif ()
 
 if(APPLE)

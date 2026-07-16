@@ -72,13 +72,120 @@
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
-extern "C" void openFileCallbackC(const char* str) __attribute__((used));
-static std::function<void(const std::string&)> openFileCallback;
-void openFileCallbackC(const char* str)
+extern "C" EMSCRIPTEN_KEEPALIVE void openFileCallbackC(const char* name, const uint8_t* data, size_t size);
+extern "C" EMSCRIPTEN_KEEPALIVE void webPasteCallbackC(const char* text, size_t size);
+static std::function<void(std::string_view, ghc::span<const uint8_t>)> openFileCallback;
+static std::string webClip;
+static bool webPastePending = false;
+
+void openFileCallbackC(const char* name, const uint8_t* data, size_t size)
 {
     if (openFileCallback)
-        openFileCallback(str);
+        openFileCallback(name, {data, size});
 }
+
+void webPasteCallbackC(const char* text, size_t size)
+{
+    webClip.assign(text, size);
+    webPastePending = true;
+}
+
+EM_JS(void, webInitClipboard, (), {
+    if (Module.cadmiumClipboardInitialized) return;
+    Module.cadmiumClipboardInitialized = true;
+    document.addEventListener('paste', function(event) {
+        if (document.activeElement !== Module.canvas) return;
+        const text = event.clipboardData.getData('text/plain');
+        const size = lengthBytesUTF8(text);
+        const data = _malloc(size + 1);
+        stringToUTF8(text, data, size + 1);
+        Module._webPasteCallbackC(data, size);
+        _free(data);
+        event.preventDefault();
+    });
+});
+
+EM_JS(void, webWriteClipboard, (const char* text), {
+    const value = UTF8ToString(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).catch(function(error) {
+            console.warn('Cadmium could not write to the clipboard:', error);
+        });
+        return;
+    }
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+    Module.canvas.focus();
+});
+
+EM_JS(void, webRequestOpenFile, (const char* accept), {
+    if (Module.cadmiumFileInput) {
+        Module.cadmiumFileInput.value = "";
+        Module.cadmiumFileInput.accept = UTF8ToString(accept);
+        Module.cadmiumFileInput.click();
+    }
+});
+
+EM_JS(void, webInitFilePicker, (const char* accept, int logicalWidth, int logicalHeight), {
+    const acceptedTypes = UTF8ToString(accept);
+    if (!Module.cadmiumFilePickerInitialized) {
+        Module.cadmiumFilePickerInitialized = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.hidden = true;
+        input.addEventListener('change', async function() {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const nameSize = lengthBytesUTF8(file.name);
+                const name = _malloc(nameSize + 1);
+                const data = _malloc(bytes.length || 1);
+                stringToUTF8(file.name, name, nameSize + 1);
+                HEAPU8.set(bytes, data);
+                Module._openFileCallbackC(name, data, bytes.length);
+                _free(data);
+                _free(name);
+            } catch (error) {
+                console.error('Cadmium could not open the selected file:', error);
+            } finally {
+                Module.canvas.focus();
+            }
+        });
+        document.body.appendChild(input);
+        Module.cadmiumFileInput = input;
+        Module.canvas.addEventListener('pointerdown', function(event) {
+            const bounds = Module.canvas.getBoundingClientRect();
+            const x = (event.clientX - bounds.left) * logicalWidth / bounds.width;
+            const y = (event.clientY - bounds.top) * logicalHeight / bounds.height;
+            if (x >= 20 && x < 40 && y >= 0 && y < 20) {
+                Module.cadmiumFileInput.value = "";
+                Module.cadmiumFileInput.accept = acceptedTypes;
+                Module.cadmiumFileInput.click();
+            }
+        });
+    }
+});
+
+EM_JS(void, webDownloadFile, (const char* name, const uint8_t* data, size_t size, const char* mimeType), {
+    const bytes = HEAPU8.slice(data, data + size);
+    const blob = new Blob([bytes], {type: UTF8ToString(mimeType)});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = UTF8ToString(name);
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+});
 #ifdef WEB_WITH_FETCHING
 #include <emscripten/fetch.h>
 extern "C" void loadBinaryCallbackC(emscripten_fetch_t *fetch) __attribute__((used));
@@ -156,39 +263,11 @@ static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
 };
 
 
-#ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-#include <jsct/JsClipboardTricks.h>
-#if 0
-EM_ASYNC_JS(void, copyClip, (const char* str), {
-    document.getElementById("clipping").focus();
-    const rtn = await navigator.clipboard.writeText(UTF8ToString(str));
-    document.getElementById("canvas").focus();
-});
-
-EM_ASYNC_JS(char*, pasteClip, (), {
-    document.getElementById("clipping").focus();
-    const str = await navigator.clipboard.readText();
-    document.getElementById("canvas").focus();
-    const size = lengthBytesUTF8(str) + 1;
-    const rtn = _malloc(size);
-    stringToUTF8(str, rtn, size);
-    return rtn;
-});
-#endif
-#else
-static std::string webClip;
-#endif
-#endif
-
 std::string GetClipboardTextX()
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    return JsClipboard_getClipText();//pasteClip();
-#else
+    webPastePending = false;
     return webClip;
-#endif
 #else
     return GetClipboardText();
 #endif
@@ -197,12 +276,8 @@ std::string GetClipboardTextX()
 void SetClipboardTextX(const std::string& text)
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    //copyClip(text.c_str());
-    JsClipboard_SetClipboardText(text.c_str());
-#else
     webClip = text;
-#endif
+    webWriteClipboard(text.c_str());
 #else
     SetClipboardText(text.c_str());
 #endif
@@ -211,11 +286,7 @@ void SetClipboardTextX(const std::string& text)
 bool isClipboardPaste()
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    return JsClipboard_hasClipText();
-#else
-    return false;
-#endif
+    return webPastePending;
 #else
     return false;
 #endif
@@ -636,12 +707,17 @@ void main()
             0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
         });
 */
-#ifdef PLATFORM_WEB
-        JsClipboard_AddJsHook();
-#else
+#ifndef PLATFORM_WEB
         _cfgPath = (fs::path(dataPath())/"config.json").string();
         _volume = _volumeSlider = _cfg.volume;
         _styleManager.updateStyle(_cfg.guiHue, _cfg.guiSat, false);
+#else
+        webInitClipboard();
+        openFileCallback = [this](std::string_view filename, ghc::span<const uint8_t> data) {
+            loadBinary(filename, data, LoadOptions::None);
+        };
+        constexpr const char* acceptedFiles = ".ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
+        webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
 #endif
         if(_volume > 1.0f)
             _volume = _volumeSlider = 1.0f;
@@ -1756,10 +1832,10 @@ void main()
                 int buttonsRight = 8;
                 ++buttonsRight;
                 int avail = _screenWidth - GetCurrentPos().x;
-//#ifdef RESIZABLE_GUI
-//                --buttonsRight;
-//                avail += 10;
-//#endif
+#ifdef PLATFORM_WEB
+                --buttonsRight;
+                avail += 10;
+#endif
                 auto spacePos = GetCurrentPos();
                 auto spaceWidth = avail - buttonsRight * 20;
                 Space(spaceWidth);
@@ -1798,10 +1874,12 @@ void main()
                 static const char* titleString = "v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH;
                 static Vector2 versionSize = MeasureTextEx(GuiGetFont(), titleString, 8, 0);
                 DrawTextEx(GuiGetFont(), titleString, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
+#ifndef PLATFORM_WEB
                 Space(10);
                 if (iconButton(ICON_HIDPI, _scaleMode != 1))
                     _scaleMode = _scaleMode >= 3 ? 1 : _scaleMode + 1;
                 SetTooltip("TOGGLE ZOOM");
+#endif
             }
             EndColumns();
 
@@ -2628,20 +2706,22 @@ void main()
                         else
                             _currentFileName += ".8o";
                     }
-#ifdef PLATFORM_WEB
-                    auto targetFile = _currentFileName;
-#else
+#ifndef PLATFORM_WEB
                     auto targetFile = _librarian.fullPath(_currentFileName);
-#endif
                     if(activeType == 0) {
                         writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
                     }
                     else {
                         writeFile(targetFile, _editor.getText().data(), _editor.getText().size());
                     }
-#ifdef PLATFORM_WEB
-                    // can only use path-less filenames
-                    emscripten_run_script(TextFormat("saveFileFromMEMFSToDisk('%s','%s')", targetFile.c_str(), targetFile.c_str()));
+#else
+                    if(activeType == 0) {
+                        webDownloadFile(_currentFileName.c_str(), _romImage.data(), _romImage.size(), "application/octet-stream");
+                    }
+                    else {
+                        const auto& source = _editor.getText();
+                        webDownloadFile(_currentFileName.c_str(), reinterpret_cast<const uint8_t*>(source.data()), source.size(), "text/plain;charset=utf-8");
+                    }
 #endif
                     _mainView = _lastView;
                 }
@@ -2658,63 +2738,7 @@ void main()
 #ifdef PLATFORM_WEB
     void loadFileWeb()
     {
-        //-------------------------------------------------------------------------------
-        // This file upload dialog is heavily inspired by MIT licensed code from
-        // https://github.com/daid/SeriousProton2 - specifically:
-        //
-        // https://github.com/daid/SeriousProton2/blob/f13f32336360230788054822183049a0153c0c07/src/io/fileSelectionDialog.cpp#L67-L102
-        //
-        // All Rights Reserved.
-        //
-        // Permission is hereby granted, free of charge, to any person obtaining a copy
-        // of this software and associated documentation files (the "Software"), to deal
-        // in the Software without restriction, including without limitation the rights
-        // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        // copies of the Software, and to permit persons to whom the Software is
-        // furnished to do so, subject to the following conditions:
-        //
-        // The above copyright notice and this permission notice shall be included in
-        // all copies or substantial portions of the Software.
-        //
-        // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-        // THE SOFTWARE.
-        //-------------------------------------------------------------------------------
-        openFileCallback = [&](const std::string& filename)
-        {
-            loadRom(filename.c_str(), LoadOptions::None);
-        };
-        EM_ASM({
-            if (typeof(open_file_element) == "undefined")
-            {
-                open_file_element = document.createElement('input');
-                open_file_element.type = "file";
-                open_file_element.style.display = "none";
-                document.body.appendChild(open_file_element);
-                open_file_element.addEventListener("change", function() {
-                    var filename = "/upload/" + this.files[0].name;
-                    var name = this.files[0].name;
-                    this.files[0].arrayBuffer().then(function(buffer) {
-                         try { FS.unlink(filename); } catch (exception) { }
-                         FS.createDataFile("/upload/", name, new Uint8Array(buffer), true, true, true);
-                         var stack = Module.stackSave();
-                         var name_ptr = Module.stackAlloc(filename.length * 4 + 1);
-                         stringToUTF8(filename, name_ptr, filename.length * 4 + 1);
-                         Module._openFileCallbackC(name_ptr);
-                         stackRestore(stack);
-                        });
-                    }, false
-                );
-                FS.mkdir("/upload");
-            }
-            open_file_element.value = "";
-            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram';
-            open_file_element.click();
-        });
+        webRequestOpenFile(".ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8");
     }
 #endif
 
@@ -3555,6 +3579,11 @@ int main(int argc, char* argv[])
         std::cout << "(c) Copyright 2022 by Steffen 'Gulrak' Schümann" << std::endl;
         exit(0);
     }
+#ifdef PLATFORM_WEB
+    if (!coreProperties) {
+        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
+    }
+#endif
 #ifndef PLATFORM_WEB
     if(convertRomList) {
         convertKnownRomList();
@@ -3603,40 +3632,10 @@ int main(int argc, char* argv[])
         std::cerr << "ERROR: random generator must be 'rand-lgc' or 'counting' and trace must be used." << std::endl;
         exit(1);
     }
-#ifndef PLATFORM_WEB
     //if(execSpeed >= 0) {
     //    options.instructionsPerFrame = execSpeed;
     //}
     if(traceLines < 0 && !compareRun && !benchmark) {
-#else
-    ghc::CLI cli(argc, argv);
-    std::string presetName = "schipc";
-    int64_t execSpeed = -1;
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
-    cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
-    try {
-        cli.parse();
-    }
-    catch(std::exception& ex)
-    {
-        std::cerr << "ERROR: " << ex.what() << std::endl;
-        exit(1);
-    }
-    if(!presetName.empty()) {
-        try {
-            preset = emu::Chip8EmulatorOptions::presetForName(presetName);
-        }
-        catch(std::runtime_error e) {
-            std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-            exit(1);
-        }
-    }
-    auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-    if(execSpeed >= 0) {
-        chip8options.instructionsPerFrame = execSpeed;
-    }
-    {
-#endif
 
 #ifndef PLATFORM_WEB
         Cadmium cadmium(config, coreProperties);
@@ -3654,18 +3653,9 @@ int main(int argc, char* argv[])
         }
 #else
         try {
-            Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
+            Cadmium cadmium(config, coreProperties);
 #ifdef WEB_WITH_FETCHING
             if(!urlLoad.empty()) {
-                auto ri = Librarian::findKnownRom(urlLoad);
-                if(ri && ri->url) {
-                    if(startsWith(ri->url, "@GH")) {
-                        urlLoad = "https://raw.githubusercontent.com" + std::string(ri->url + 3);
-                    }
-                    else {
-                        urlLoad = ri->url;
-                    }
-                }
                 emscripten_fetch_attr_t attr;
                 emscripten_fetch_attr_init(&attr);
                 strcpy(attr.requestMethod, "GET");
@@ -3675,7 +3665,9 @@ int main(int argc, char* argv[])
                 Cadmium::LoadOptions loadOpt = Cadmium::LoadOptions::None;
                 if(!presetName.empty())
                     loadOpt |= Cadmium::LoadOptions::DontChangeOptions;
-                loadBinaryCallback = [&](std::string filename, const uint8_t* data, size_t size) { cadmium.loadBinary(filename, data, size, loadOpt); };
+                loadBinaryCallback = [&](std::string filename, const uint8_t* data, size_t size) {
+                    cadmium.loadBinary(filename, {data, size}, loadOpt);
+                };
                 emscripten_fetch(&attr, urlLoad.c_str());
             }
 #endif

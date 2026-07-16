@@ -127,11 +127,9 @@ public:
 
 private:
     static inline Logger* _logger{nullptr};
-#ifndef PLATFORM_WEB
     static inline std::ofstream _logFile;
     static inline std::ofstream _traceFile;
     static inline TraceFormat _traceFormat{eCADMIUM2};
-#endif
 };
 
 }

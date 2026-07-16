@@ -9,7 +9,7 @@
   <meta name="title" content="Chip8rl">
   <meta name="description" content="A CHIP-8 Emulator Environment with Debugging, (C) 2022 by Steffen 'Gulrak' Schümann">
   <meta name="keywords" content="chip8, chip-8, superchip, xo-chip, megachip8, html5, programming, emulator, raylib">
-  <meta name="viewport" content="width=device-width">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- Open Graph metatags for sharing -->
   <meta property="og:title" content="Cadmium">
@@ -27,55 +27,41 @@
   <meta name="twitter:url" content="https://games.gulrak.net/cadmium">
   <meta name="twitter:description" content="A CHIP-8 Emulator Environment with Debugging, (C) 2022 by Steffen 'Gulrak' Schümann">
 
-  <!-- Favicon -->
-  <link rel="shortcut icon" href="https://gulrak.net/favicon.ico">
-  <script src="cash.min.js"></script>
   <style>
     * {
       margin: 0;
       padding: 0;
-      border:0 none;
+      border: 0 none;
     }
     body {
       background-color: #000;
       width: 100vw;
       height: 100vh;
-      overflow:hidden;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body > div {
+      display: contents;
     }
     canvas.emscripten {
-      border: 0 none; background-color: black;
+      border: 0 none;
+      background-color: black;
       display: block;
-      object-fit: contain;
-      width: 100vw;
-      height: 100vh;
+      width: min(100vw, 133.333333vh);
+      height: min(100vh, 75vw);
+      aspect-ratio: 4 / 3;
       image-rendering: pixelated;
       z-index: 1000;
     }
   </style>
-  <script type='text/javascript' src="FileSaver.min.js"> </script>
-  <script type='text/javascript'>
-    function saveFileFromMEMFSToDisk(memoryFSname, localFSname)     // This can be called by C/C++ code
-    {
-      let isSafari = false; // Not supported, navigator.userAgent access is being restricted
-      //var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      let data = FS.readFile(memoryFSname);
-      let blob;
-      if (isSafari) blob = new Blob([data.buffer], { type: "application/octet-stream" });
-      else blob = new Blob([data.buffer], { type: "application/octet-binary" });
-      // NOTE: SaveAsDialog is a browser setting. For example, in Google Chrome,
-      // in Settings/Advanced/Downloads section you have a setting:
-      // 'Ask where to save each file before downloading' - which you can set true/false.
-      // If you enable this setting it would always ask you and bring the SaveAsDialog
-      saveAs(blob, localFSname);
-    }
-  </script>
 </head>
 <body>
 <div style="text-align: center">
-  <canvas class=emscripten id=canvas oncontextmenu=event.preventDefault() tabindex=-1 style="display: inline-block; width:900px;"></canvas>
-  <textarea id="clipping" style="position: absolute;left:1px;top:1px;width:0;height:0;border:0" aria-hidden="true"></textarea>
+  <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="0"></canvas>
 </div>
-<p id="output" />
+<p id="output"></p>
 <script>
   var Module = {
     arguments: (function(){
@@ -110,15 +96,20 @@
       return canvas;
     })()
   };
-  function disableFunctionKeys(e) {
-    const functionKeys = [112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 123];
-    if (functionKeys.indexOf(e.keyCode) > -1 || functionKeys.indexOf(e.which) > -1) {
-      e.preventDefault();
+  function disableBrowserShortcuts(event) {
+    if (event.key.startsWith('F') && Number(event.key.substring(1)) >= 1 && Number(event.key.substring(1)) <= 12) {
+      event.preventDefault();
     }
   }
 
-  $(document).ready(function() {
-    $(document).on('keydown', disableFunctionKeys);
+  const canvas = document.getElementById('canvas');
+  canvas.addEventListener('pointerdown', function() {
+    canvas.focus();
+  });
+  document.addEventListener('keydown', function(event) {
+    if (document.activeElement === canvas) {
+      disableBrowserShortcuts(event);
+    }
   });
 </script>
 {{{ SCRIPT }}}

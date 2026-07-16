@@ -224,7 +224,9 @@ std::string dataPath()
         return g_dataPath;
     }
     std::string dir;
-#ifdef HOST_OS_WINDOWS
+#ifdef HOST_OS_EMSCRIPTEN
+    dir = "/cadmium";
+#elif defined(HOST_OS_WINDOWS)
     auto localAppData = getSysEnv("LOCALAPPDATA");
     if (!localAppData.empty()) {
         dir = (fs::path(localAppData) / appName()).string();
@@ -239,8 +241,6 @@ std::string dataPath()
         dir = fs::path(home) / "Library/Application Support" / appName();
 #elif defined(HOST_OS_LINUX)
         dir = fs::path(home) / ".local/share" / appName();
-#elif defined(HOST_OS_EMSCRIPTEN)
-        throw std::runtime_error("Web client does not have an application directory!");
 #else
 #error "Unsupported OS!"
 #endif

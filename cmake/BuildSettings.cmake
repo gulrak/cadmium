@@ -56,7 +56,7 @@ if(EMSCRIPTEN)
     message(STATUS "Using emscripten, building for web...")
     set(PLATFORM "Web")
     set(USE_WEBGL2 "no" CACHE STRING "Ensure compatibility with older systems" FORCE)
-    set(GRAPHICS GRAPHICS_API_OPENGL_21 CACHE BOOL "" FORCE)
+    set(GRAPHICS GRAPHICS_API_OPENGL_ES2 CACHE STRING "WebGL 1 uses the OpenGL ES 2 shader model" FORCE)
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g3 -gsource-map")
     #set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -g3 -gsource-map")
     add_compile_options(-fexceptions)
@@ -78,8 +78,6 @@ check_include_file(bcm_host.h HAS_BCMHOST)
 if(HAS_BCMHOST AND NOT GRAPHICS)
     set(GRAPHICS GRAPHICS_API_OPENGL_21 CACHE BOOL "" FORCE)
 endif()
-
-option(WEB_WITH_CLIPBOARD "Build emscripten version supporting real clipboard (experimental)" OFF)
 
 include(FetchContent)
 

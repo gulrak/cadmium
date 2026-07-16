@@ -345,7 +345,7 @@ void Editor::update()
             auto [selStart, selEnd] = selection();
             SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
         }
-#if defined(PLATFORM_WEB) && defined(WEB_WITH_CLIPBOARD)
+#if defined(PLATFORM_WEB)
         else if (isClipboardPaste()) {
             insert(GetClipboardTextX());
         }
