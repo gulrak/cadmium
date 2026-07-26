@@ -1188,7 +1188,9 @@ void main()
                 );
             if(!rgbaSpan.empty()) {
                 auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
-                std::ranges::copy(rgbaSpan, std::begin(textureSpan));
+                for (size_t y = 0; y < rgbaSpan.height(); ++y) {
+                    std::memmove(textureSpan.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
+                }
                 UpdateTexture(_screenTexture, _screen.data);
                 _screenRatio = 1;
                 _screenSize = {static_cast<float>(rgbaSpan.width()), static_cast<float>(rgbaSpan.height())};
@@ -2848,9 +2850,9 @@ void main()
             updateScreen();
             auto loadAddress = _chipEmu->defaultLoadAddress();
             if(Librarian::isPrefixedTPDRom(_romImage))
-                std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
+                _chipEmu->loadData(_romImage, 512);
             else
-                std::memcpy(_chipEmu->memory() + loadAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - loadAddress)));
+                _chipEmu->loadData(_romImage, loadAddress);
         }
         _debugger.captureStates();
     }

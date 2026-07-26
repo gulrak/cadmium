@@ -119,6 +119,12 @@ The Supported presets are (possible specific file extensions in parentheses):
   * `vip-chip-8x-tpd` - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (`.c8xtpd`)
   * `vip-chip-8x-fpd` - A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug (`.c8xfpd`)
   * `vip-chip-8e` - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (`.c8e`)
+* Hardware emulation of an HP-48SX:
+  * `hp48-none` - Raw HP-48SX (`.hp`;`.hp48`)
+  * `hp48-chip-48` - Original CHIP-48 on HP-48SX (`.ch48`;`.c48`)
+  * `hp48-schip-1-0` - SUPER-CHIP 1.0 on HP-48SX (`.sc10`)
+  * `hp48-schip-1-1` - SUPER-CHIP 1.1 on HP-48SX (`.sc8`;`.sc11`)
+  * `hp48-schpc` - SUPER-CHIP compatibility interpreter on HP-48SX (`.sc8`;`.scc`)
 
 **NOTE:** Be aware that are no established standard file extension beyond `.ch8` in the CHIP-8 world. Different emulators come with files
 with different conventions, so this project used existing ones where they seemed fitting and invented their own where

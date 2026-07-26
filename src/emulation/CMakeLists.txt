@@ -55,12 +55,21 @@ set(CHIP8_EMU_SOURCE
     hp48/stack.cpp
     hp48/stack.hpp
 )
+if(CADMIUM_WITH_HP48)
+    list(APPEND CHIP8_EMU_SOURCE hp48sx.cpp hp48sx.hpp)
+endif()
 
 add_library(emulation OBJECT ${CHIP8_EMU_SOURCE})
 set_source_files_properties(src/emulation/chip8compiler.cpp PROPERTIES COMPILE_FLAGS "-fpermissive -Wno-write-strings")
 #target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU GEN_OPCODE_STATS)
 target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU)
 target_link_libraries(emulation PUBLIC c_octo chiplet-lib raylib_static)
+if(CADMIUM_WITH_HP48)
+    target_link_libraries(emulation PUBLIC hp48::core hp48::asacpp)
+    target_compile_definitions(emulation PRIVATE
+        CADMIUM_WITH_HP48=1
+        HP48SX_SOURCE_DIR="${hp48sx_SOURCE_DIR}")
+endif()
 if(CODE_COVERAGE)
     target_code_coverage(emulation)
 endif()

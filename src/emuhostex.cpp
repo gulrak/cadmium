@@ -645,10 +645,11 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
             _romWellKnownOptions = knownOptions;
         _chipEmu->reset();
-        if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
-            std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
-        else
-            std::memcpy(_chipEmu->memory() + _options.startAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - _options.startAddress)));
+        const auto loadAddress = Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size())
+            ? 512U
+            : _chipEmu->defaultLoadAddress();
+        if(!_chipEmu->loadData(_romImage, loadAddress))
+            return false;
         _chipEmu->removeAllBreakpoints();
         if(!_options.hasColors()) {
             setPalette({0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff, 0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff, 0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff, 0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff});

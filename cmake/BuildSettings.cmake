@@ -72,6 +72,10 @@ else()
 endif()
 
 option(CADMIUM_WITH_DATABASE "Compile Cadmium with a database functionality, this links sqlite into Cadmium" ${DATABASE_DEFAULT})
+option(CADMIUM_WITH_HP48 "Compile Cadmium with HP-48SX emulation support" OFF)
+if(FETCHCONTENT_SOURCE_DIR_HP48SX)
+    set(CADMIUM_WITH_HP48 ON CACHE BOOL "Compile Cadmium with HP-48SX emulation support" FORCE)
+endif()
 
 include(CheckIncludeFile)
 check_include_file(bcm_host.h HAS_BCMHOST)
@@ -152,6 +156,27 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Chiplet)
 include_directories(${chiplet_SOURCE_DIR}/external)
 include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
+
+if(CADMIUM_WITH_HP48)
+    if(NOT TARGET nlohmann_json::nlohmann_json)
+        add_library(cadmium_nlohmann_json INTERFACE)
+        add_library(nlohmann_json::nlohmann_json ALIAS cadmium_nlohmann_json)
+        target_include_directories(cadmium_nlohmann_json INTERFACE
+            "${PROJECT_SOURCE_DIR}/external")
+    endif()
+    set(HP48_LIBRARY_ONLY ON CACHE BOOL "" FORCE)
+    set(HP48_EXTERNAL_EMULATION_API ON CACHE BOOL "" FORCE)
+    set(HP48_CORE_TARGET hp48_core CACHE STRING "" FORCE)
+    set(HP48_ENABLE_INSTRUCTION_CACHE ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        Hp48sx
+        GIT_REPOSITORY "https://github.com/gulrak/hp48sx.git"
+        GIT_TAG "main"
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(Hp48sx)
+endif()
 
 FetchContent_Declare(
     Chip8TestSuite
