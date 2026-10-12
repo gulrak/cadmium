@@ -6,6 +6,11 @@ set(CHIP8_EMU_SOURCE
     chip8genericbase.hpp
     chip8opcodedisass.cpp
     chip8opcodedisass.hpp
+    chip8rsm8k1.cpp
+    chip8rsm8k1.hpp
+    chip8rsm8k1detail.cpp
+    chip8rsm8k1detail.hpp
+    chip8rsm8k1tables.cpp
     chip8strict.cpp
     chip8strict.hpp
     coreregistry.cpp

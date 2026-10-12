@@ -117,3 +117,33 @@ endif ()
 #add_executable(frame-time-test frame_time_test.cpp)
 #target_link_libraries(frame-time-test PUBLIC emulation fmt::fmt)
 #target_code_coverage(frame-time-test AUTO ALL)
+
+# Optional independent reference, used only for cross-project behavioral tests.
+set(CADMIUM_RSM8K1_REFERENCE_DIR "" CACHE PATH "Path to the standalone RSM8k1 source directory")
+if(CADMIUM_RSM8K1_REFERENCE_DIR)
+    add_executable(chip8rsm8k1_comparison
+        chip8rsm8k1_comparison.cpp
+        "${CADMIUM_RSM8K1_REFERENCE_DIR}/src/Chip8Core.cpp"
+        "${CADMIUM_RSM8K1_REFERENCE_DIR}/src/Chip8Tables.cpp"
+        "${CADMIUM_RSM8K1_REFERENCE_DIR}/src/Platform.cpp")
+    target_include_directories(chip8rsm8k1_comparison PRIVATE "${CADMIUM_RSM8K1_REFERENCE_DIR}/include")
+    target_link_libraries(chip8rsm8k1_comparison PRIVATE emulation)
+    add_test(NAME rs-m8k1-reference COMMAND chip8rsm8k1_comparison)
+    set_tests_properties(rs-m8k1-reference PROPERTIES TIMEOUT 60)
+endif()
+
+
+
+# Core-specific tests do not depend on the external reconstruction.
+add_executable(chip8rsm8k1_tests chip8rsm8k1_tests.cpp)
+target_compile_definitions(chip8rsm8k1_tests PRIVATE DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN)
+target_link_libraries(chip8rsm8k1_tests PRIVATE doctest emulation)
+doctest_discover_tests(chip8rsm8k1_tests)
+
+if(TARGET chip8rsm8k1_comparison)
+    file(GLOB rsmDemoRoms "${CADMIUM_RSM8K1_REFERENCE_DIR}/../res/MegaChip8 Demos/*.ch8")
+    if(rsmDemoRoms)
+        add_test(NAME rs-m8k1-reference-demos COMMAND chip8rsm8k1_comparison ${rsmDemoRoms})
+        set_tests_properties(rs-m8k1-reference-demos PROPERTIES TIMEOUT 60)
+    endif()
+endif()
