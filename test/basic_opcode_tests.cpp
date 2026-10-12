@@ -27,6 +27,28 @@
 #include <doctest/doctest.h>
 
 #include "chip8testhelper.hpp"
+#include <emulation/chip8generic.hpp>
+
+TEST_CASE("Generic core uses preset and updated frame rates")
+{
+    for (const auto& [preset, expectedRate] : {
+             std::pair{"CHIP-8", 60}, {"CHIP-48", 64}, {"SCHIP-1.0", 64},
+             {"SCHIP-1.1", 64}, {"MEGACHIP", 50}}) {
+        INFO(std::string(preset));
+        auto props = emu::CoreRegistry::propertiesForPreset(preset);
+        REQUIRE(props);
+        HeadlessTestHost host(props);
+        auto [name, core] = emu::CoreRegistry::create(host, props, nullptr);
+        REQUIRE(core);
+        REQUIRE(dynamic_cast<emu::Chip8GenericEmulator*>(core.get()));
+        CHECK(core->frameRate() == expectedRate);
+
+        auto& frameRate = props["Frame rate"];
+        frameRate.setInt(72);
+        CHECK_FALSE(core->updateProperties(props, frameRate));
+        CHECK(core->frameRate() == 72);
+    }
+}
 
 #define TIMER_DEFAULT 0
 

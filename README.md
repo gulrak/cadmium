@@ -608,7 +608,9 @@ I still want to give out some explicit thanks to:
   gave CHIP-8 a new live and the idea of a yearly [OctoJam](https://itch.io/jam/octojam-9)
   sure helped, pushing it. Thank you for that!\
   His [C-Octo implementation](https://github.com/JohnEarnest/c-octo) of the assembler
-  also is embedded in Cadmium and drives its assembling capabilities:
+  also was the starting point of the assembler in Cadmium and drived
+  its assembling capabilities, and its spirit still lives on in the
+  now heavily changed and ported to C++ version that is currently used.
 
 * _Tim Franssen (@Timendus)_ - for his
   [CHIP-8 Test Suite](https://github.com/Timendus/chip8-test-suite)
