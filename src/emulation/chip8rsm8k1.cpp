@@ -74,7 +74,7 @@ const Setup PRESETS[] = {
         "RS-MEGACHIP",
         "2007 RS-M8001 implementation (original bugs, checked bounds)",
         ".ch8;.mc8", chip8::Variant::CHIP_8 | chip8::Variant::SCHIP_1_1 | chip8::Variant::MEGA_CHIP,
-        {.palette = {{"#001020", "#A0C0F0"}}}
+        {.palette = {std::string("#001020"), std::string("#A0C0F0")}}
     }
 };
 // clang-format oon

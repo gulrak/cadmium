@@ -29,6 +29,16 @@
 #include "chip8testhelper.hpp"
 #include <emulation/chip8generic.hpp>
 
+TEST_CASE("RS-MegaChip preset has two default palette colors")
+{
+    auto props = emu::CoreRegistry::propertiesForPreset("RS-MEGACHIP");
+    REQUIRE(props);
+    const auto& palette = props.palette();
+    REQUIRE(palette.size() == 2);
+    CHECK(palette.colors[0].toRGBInt() == 0x001020);
+    CHECK(palette.colors[1].toRGBInt() == 0xA0C0F0);
+}
+
 TEST_CASE("Generic core uses preset and updated frame rates")
 {
     for (const auto& [preset, expectedRate] : {
