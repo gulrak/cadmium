@@ -143,6 +143,8 @@ public:
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
     unsigned stackSize() const override { return 16; }
     StackContent stack() const override;
+    bool restoreState(const Chip8State& state) override;
+    bool restoreDisplay(std::span<const uint8_t> data, uint16_t width, uint16_t height);
 
     uint8_t getNextMCSample();
 

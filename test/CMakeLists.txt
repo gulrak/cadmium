@@ -17,6 +17,19 @@ else()
 endif()
 target_link_libraries(chip8_emulation_tests PUBLIC doctest emulation)
 target_code_coverage(chip8_emulation_tests AUTO ALL)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND AND TARGET cadmium AND NOT EMSCRIPTEN)
+    add_test(NAME headless-cli
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/headless_cli_test.py
+            $<TARGET_FILE:cadmium>)
+    set_tests_properties(headless-cli PROPERTIES TIMEOUT 60)
+endif()
+if(Python3_Interpreter_FOUND AND TARGET c8sst-gen)
+    add_test(NAME c8sst-generator
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/c8sst_gen_test.py
+            $<TARGET_FILE:c8sst-gen> $<TARGET_FILE:c8sst-run>)
+    set_tests_properties(c8sst-generator PROPERTIES TIMEOUT 360)
+endif()
 target_include_directories(chip8_emulation_tests PUBLIC ${PROJECT_SOURCE_DIR}/external)
 doctest_discover_tests(chip8_emulation_tests)
 #if (OR NOT DEFINED ENV{CI})

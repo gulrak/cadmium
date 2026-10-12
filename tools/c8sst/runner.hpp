@@ -1,0 +1,51 @@
+//---------------------------------------------------------------------------------------
+// tools/c8sst/runner.hpp
+//---------------------------------------------------------------------------------------
+//
+// Copyright (c) 2026, Steffen Schümann <s.schuemann@pobox.com>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+//---------------------------------------------------------------------------------------
+#pragma once
+#include "model.hpp"
+#include <filesystem>
+
+namespace c8sst {
+struct LoadedCase
+{
+    std::string id;
+    std::string family;
+    uint16_t opcode;
+    Snapshot initial;
+    Snapshot final;
+    uint16_t keys;
+};
+
+struct Corpus
+{
+    std::string profile;
+    std::vector<MemoryRange> memoryRanges;
+    std::vector<LoadedCase> cases;
+};
+
+Corpus loadCorpus(const std::filesystem::path& path);
+Json runCase(const LoadedCase& test, const Corpus& corpus, const std::string& preset);
+bool isRunnerPreset(const std::string& preset);
+} // namespace c8sst

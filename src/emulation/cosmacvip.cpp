@@ -1061,6 +1061,15 @@ void CosmacVIP::forceState()
     }
 }
 
+bool CosmacVIP::restoreState(const Chip8State& state)
+{
+    if (!state.isValid(stackSize()) || !_isHybridChipMode || _impl->_cpu.PC() != _impl->_fetchEntry)
+        return false;
+    _state = state;
+    forceState();
+    return true;
+}
+
 int64_t CosmacVIP::machineCycles() const
 {
     return _impl->_cpu.cycles() >> 3;

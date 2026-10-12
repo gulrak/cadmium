@@ -107,6 +107,7 @@ public:
     uint8_t readByteDMA(uint16_t addr) const override;
     uint8_t readMemoryByte(uint32_t addr) const override;
     void writeByte(uint16_t addr, uint8_t val) override;
+    bool restoreState(const Chip8State& state) override;
 
     GenericCpu& getBackendCpu() override;
 

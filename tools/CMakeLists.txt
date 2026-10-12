@@ -20,6 +20,15 @@ target_link_libraries(imageconv PUBLIC raylib fmt::fmt)
 add_executable(rpgt rpgt.cpp)
 target_link_libraries(rpgt PUBLIC emulation ghc_filesystem)
 
+if(NOT EMSCRIPTEN)
+    add_executable(c8sst-gen c8sst-gen.cpp c8sst/cases.cpp c8sst/oracle.cpp c8sst/execution.cpp)
+    target_link_libraries(c8sst-gen PRIVATE emulation)
+    target_compile_definitions(c8sst-gen PRIVATE
+        C8SST_VERSION="${PROJECT_VERSION}" C8SST_GIT_REVISION="${GIT_COMMIT_HASH}")
+    add_executable(c8sst-run c8sst-run.cpp c8sst/codec.cpp c8sst/runner.cpp c8sst/execution.cpp)
+    target_link_libraries(c8sst-run PRIVATE emulation)
+endif()
+
 #add_executable(c8db c8db.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/emuhostex.cpp ../src/systemtools.cpp)
 #target_compile_definitions(c8db PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}")
 #target_link_libraries(c8db PUBLIC emulation ghc_filesystem raylib)

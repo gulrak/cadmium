@@ -407,6 +407,26 @@ GenericCpu::StackContent Chip8GenericEmulator::stack() const
     return {2, eNATIVE, eUPWARDS, std::span(reinterpret_cast<const uint8_t*>(_stack.data()), reinterpret_cast<const uint8_t*>(_stack.data() + _stack.size()))};
 }
 
+bool Chip8GenericEmulator::restoreState(const Chip8State& state)
+{
+    if (!state.isValid(stackSize())) return false;
+    restoreRegisters(state);
+    std::copy_n(state.s.begin(), state.sp, _stack.begin());
+    return true;
+}
+
+bool Chip8GenericEmulator::restoreDisplay(std::span<const uint8_t> data, uint16_t width, uint16_t height)
+{
+    if (_isMegaChipMode || width != getCurrentScreenWidth() || height != getCurrentScreenHeight() ||
+        width % 8 || data.size() != static_cast<size_t>(width) * height / 8)
+        return false;
+    for (uint16_t y = 0; y < height; ++y)
+        for (uint16_t x = 0; x < width; ++x)
+            _screen.setPixel(x, y, (data[y * (width / 8) + x / 8] >> (7 - x % 8)) & 1);
+    _screenNeedsUpdate = true;
+    return true;
+}
+
 static Chip8GenericBase::Chip8Font getSmallFontId(Chip8GenericOptions::SupportedPreset behavior)
 {
     switch (behavior) {
@@ -821,9 +841,6 @@ void Chip8GenericEmulator::executeFrame()
         if(instructionsLeft == _options.instructionsPerFrame) {
             handleTimer();
         }
-        for (int i = 0; i < instructionsLeft; i++) {
-
-        }
         executeInstructions(instructionsLeft);
     }
 }
@@ -1147,12 +1164,15 @@ void Chip8GenericEmulator::op00E0(uint16_t opcode)
 
 void Chip8GenericEmulator::op00E0_megachip(uint16_t opcode)
 {
+    static uint64_t clearCycles = 0;
+    auto cyclesPerEmittedFrame = _cycleCounter - clearCycles;
+    printf("Cycles per emitted frame: %llu\n", cyclesPerEmittedFrame);
     _host.preClear();
     swapMegaSchreens();
     _host.updateScreen();
     clearScreen();
     ++_clearCounter;
-    _cycleCounter = calcNextFrame() - 1;
+    _cycleCounter = clearCycles = calcNextFrame() - 1;
 }
 
 void Chip8GenericEmulator::op00ED_c8e(uint16_t opcode)

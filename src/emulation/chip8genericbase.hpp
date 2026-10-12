@@ -28,6 +28,7 @@
 #include <emulation/chip8opcodedisass.hpp>
 #include <emulation/ichip8.hpp>
 #include <emulation/iemulationcore.hpp>
+#include <algorithm>
 
 namespace emu {
 
@@ -74,6 +75,16 @@ public:
     static std::pair<const uint8_t*, size_t> bigFontData(Chip8BigFont font);
 
 protected:
+    void restoreRegisters(const Chip8State& state)
+    {
+        std::copy(state.v.begin(), state.v.end(), _rV);
+        _rI = state.i;
+        _rPC = state.pc;
+        _rSP = state.sp;
+        _rDT = state.dt;
+        _rST = state.st;
+    }
+
     void initExpressionist() override;
     Chip8OpcodeDisassembler _disassembler;
     std::vector<uint8_t> _memory{};
@@ -94,4 +105,3 @@ protected:
 enum Chip8Quirks { HiresSupport = 1, MultiColor = 2, WrapSprite = 4, SChip11Collisions = 8, SChip1xLoresDraw = 16 };
 
 } // emu
-

@@ -49,6 +49,7 @@
 #include <emulation/timecontrol.hpp>
 #include <ghc/cli.hpp>
 #include <ghc/utf8.hpp>
+#include <headlessrun.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
 #include <resourcemanager.hpp>
@@ -3434,6 +3435,9 @@ int main(int argc, char* argv[])
     bool startRom = false;
     bool screenDump = false;
     bool drawDump = false;
+    bool headless = false;
+    bool headlessLimitSpecified = false;
+    HeadlessRunOptions headlessOptions;
     std::string dumpInterpreter;
     int64_t execSpeed = -1;
     std::string randomGen;
@@ -3449,6 +3453,12 @@ int main(int argc, char* argv[])
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
+    cli.optionEnable({"--headless"}, headless, "Run a binary ROM deterministically without a window (generic CHIP-8 core)");
+    cli.option({"--until-presentations"}, headlessOptions.untilPresentations, "Stop after this many display updates; requires --headless").range(1, INT64_MAX);
+    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps (default 3000000)",
+               [&headlessLimitSpecified](std::string) { headlessLimitSpecified = true; }).range(1, INT64_MAX);
+    cli.option({"--dump-screen"}, headlessOptions.dumpScreen, "Export the last headless presentation as an image");
+    cli.option({"--dump-state"}, headlessOptions.dumpState, "Export headless machine state as JSON");
     cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
     cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
@@ -3491,11 +3501,11 @@ int main(int argc, char* argv[])
                    [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const bool& value) {
                        coreProperties.at(paramName).setBool(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
-                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const std::string& value) {
-                       coreProperties.at(paramName).setString(value);
-                   }, prop.getDescription()).dependsOn(dependencyCheck).range(prop.getIntMin(), prop.getIntMax()); },
-                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const int& value) {
+                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const int& value) {
                        coreProperties.at(paramName).setInt(value);
+                   }, prop.getDescription()).dependsOn(dependencyCheck).range(prop.getIntMin(), prop.getIntMax()); },
+                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const std::string& value) {
+                       coreProperties.at(paramName).setString(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
                    [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
                        const emu::Property::Combo& combo = std::get<emu::Property::Combo>(prop.getValue());
@@ -3637,6 +3647,26 @@ int main(int argc, char* argv[])
     //if(execSpeed >= 0) {
     //    options.instructionsPerFrame = execSpeed;
     //}
+#ifndef PLATFORM_WEB
+    if (headless) {
+        if (romFile.empty() || traceLines >= 0 || compareRun || benchmark) {
+            std::cerr << "ERROR: --headless requires one ROM and cannot be combined with --trace, --compare, or --benchmark" << std::endl;
+            return 1;
+        }
+        try {
+            return runHeadless(romFile.front(), coreProperties, headlessOptions);
+        }
+        catch (const std::exception& ex) {
+            std::cerr << "ERROR: " << ex.what() << std::endl;
+            return 1;
+        }
+    }
+    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified ||
+        !headlessOptions.dumpScreen.empty() || !headlessOptions.dumpState.empty()) {
+        std::cerr << "ERROR: headless run options require --headless" << std::endl;
+        return 1;
+    }
+#endif
     if(traceLines < 0 && !compareRun && !benchmark) {
 
 #ifndef PLATFORM_WEB

@@ -99,6 +99,16 @@ public:
     unsigned stackSize() const override { return 24; }
 
     StackContent stack() const override;
+    bool restoreState(const Chip8State& state) override
+    {
+        if (!state.isValid(stackSize())) return false;
+        restoreRegisters(state);
+        for (int n = 0; n < state.sp; ++n) {
+            _memory[_options.ramSize - 0x131 - n * 2 - 2] = state.s[n] >> 8;
+            _memory[_options.ramSize - 0x131 - n * 2 - 1] = state.s[n] & 0xFF;
+        }
+        return true;
+    }
 
     uint32_t defaultLoadAddress() const override
     {

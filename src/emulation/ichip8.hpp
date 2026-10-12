@@ -51,6 +51,13 @@ struct Chip8State
     int sp{};
     int dt{};
     int st{};
+
+    bool isValid(size_t stackCapacity) const
+    {
+        return i >= 0 && i <= 0xFFFF && pc >= 0 && pc <= 0xFFFF &&
+               sp >= 0 && static_cast<size_t>(sp) <= s.size() && static_cast<size_t>(sp) <= stackCapacity &&
+               dt >= 0 && dt <= 255 && st >= 0 && st <= 255;
+    }
 };
 
 class IChip8Emulator : public GenericCpu
@@ -88,6 +95,10 @@ public:
 
     // functions with default handling to get started with tests
     virtual void handleTimer() {}
+
+    // Optional architectural-state import for debuggers and single-step tests.
+    // Call after reset, at an instruction boundary; native timing is not restored.
+    virtual bool restoreState(const Chip8State& state) { return false; }
 
     // optional interfaces for audio and/or modern CHIP-8 variant properties
     virtual const uint8_t* getXOAudioPattern() const { return nullptr; }
