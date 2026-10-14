@@ -26,6 +26,7 @@
 
 #include <nlohmann/json.hpp>
 #include <ghc/cli.hpp>
+#include <chiplet/utility.hpp>
 
 using json = nlohmann::ordered_json;
 
