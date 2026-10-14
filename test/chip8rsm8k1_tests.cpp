@@ -18,7 +18,7 @@ struct RsmTestHost final : emu::EmulatorHost {
 TEST_CASE("RS-M8K1 registry and bounded guest memory")
 {
     RsmTestHost host;
-    auto props = emu::CoreRegistry::propertiesForPreset("RS-M8K1");
+    auto props = emu::CoreRegistry::propertiesForPreset("RS-MEGACHIP");
     REQUIRE(props);
     CHECK(props.propertyClass() == "RS-M8K1");
     auto [name, core] = emu::CoreRegistry::create(host, props, nullptr);

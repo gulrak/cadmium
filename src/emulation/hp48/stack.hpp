@@ -3,9 +3,14 @@
 //
 #pragma once
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 

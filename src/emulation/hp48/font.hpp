@@ -2,6 +2,8 @@
 // Created by Steffen Schümann on 17.02.26.
 //
 #pragma once
+#include <array>
+#include <cstdint>
 #include <vector>
 
 namespace hp48 {

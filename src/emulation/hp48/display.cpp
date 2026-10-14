@@ -7,6 +7,8 @@
 
 #include <stdendian/stdendian.h>
 
+#include <cstring>
+
 namespace hp48 {
 
 #if 0
