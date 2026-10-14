@@ -75,6 +75,8 @@ target_compile_definitions(cadmium PUBLIC
         CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
 if(NOT EMSCRIPTEN)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_BACKGROUND_EMULATION)
+    target_include_directories(cadmium PRIVATE
+        "${raylib_SOURCE_DIR}/src/external/glfw/include")
 endif()
 if(CADMIUM_WITH_DATABASE)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_DATABASE)

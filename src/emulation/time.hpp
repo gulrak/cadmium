@@ -28,6 +28,9 @@
 #include <emulation/config.hpp>
 #include <emulation/math.hpp>
 
+#include <chrono>
+#include <ratio>
+
 namespace emu {
 
 class Time final
