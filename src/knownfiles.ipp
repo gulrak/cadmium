@@ -109,6 +109,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"2e2d9b370e08d6994fd2ded938a56b32b07ad768"_sha1, "chip-8", "Mini Lights Out (Tobias V. Langhoff, 2019)",nullptr, nullptr},
     {"2e87573b0fe9a49123bbb86d8384d00a302dc2e4"_sha1, "xo-chip", "You'Re Correct Horse ((sound)",nullptr, nullptr},
     {"2f34cace9cda8f04829b0cd0b39a3a1726fd4193"_sha1, "chip-8", "Yas (Marco Varesio, 2015)",nullptr, nullptr},
+    {"2fb4c14104b58b0df28368393b3fc0aaabe9e8ae"_sha1, "eti-chip-8", "Wipeout (ETI660 hybrid, W. F. Kreykes, 1982)",nullptr, nullptr},
     {"30c8ee7181173d7f213e8148cdc9a5157caec9f7"_sha1, "chip-8", "Mueve (Diego Royo, 2017)",nullptr, nullptr},
     {"30f27e5cee5b325fd1681ee98a14de60bfbe951f"_sha1, "generic-chip-8", "1-chip8-logo (Timendus, 2024-08-30)",nullptr, nullptr},
     {"310e523071c697503f0da385997f9c77f9ad0ea9"_sha1, "xo-chip", "Mario Demo (Dr.Stab, 2015)",nullptr, nullptr},

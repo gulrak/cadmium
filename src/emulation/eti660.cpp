@@ -42,8 +42,6 @@
 #include <fstream>
 #include <memory>
 
-#define VIDEO_FIRST_VISIBLE_LINE 80
-#define VIDEO_FIRST_INVISIBLE_LINE  208
 
 namespace emu {
 
@@ -57,12 +55,21 @@ static const std::string PROP_VIDEO = "Video";
 static const std::string PROP_AUDIO = "Audio";
 static const std::string PROP_KEYBOARD = "Keyboard";
 static const std::string PROP_ROM_NAME = "ROM Name";
-static const std::string PROP_INTERPRETER = "Interpreter";
 static const std::string PROP_START_ADDRESS = "Start Address";
 
 enum ETIVideoType { ETI_VT_CDP1864 };
 enum ETIAudioType { ETI_AT_CDP1864 };
 enum ETIKeyboard { ETIK_HEX, ETI_TWO_ROW, ETI_VIP_HEX };
+
+namespace {
+uint8_t reverseBits(uint8_t value)
+{
+    value = ((value & 0x55) << 1) | ((value >> 1) & 0x55);
+    value = ((value & 0x33) << 2) | ((value >> 2) & 0x33);
+    return (value << 4) | (value >> 4);
+}
+}
+
 
 struct Eti660Options
 {
@@ -116,7 +123,7 @@ struct Eti660Options
             prototype.registerProperty({"", nullptr, ""});
             prototype.registerProperty({PROP_ROM_NAME, "C8-MONITOR"s, "Rom image name, default c8-monitor"});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
-            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
+            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x600, 0, 4095}, "CHIP-8 entry address (0 boots the monitor)"});
         }
         return prototype;
     }
@@ -146,9 +153,16 @@ static Eti660SetupInfo etiPresets[] = {
     {
         "NONE",
         "Raw ETI660",
-        ".bin;.hex;.ram;.raw",
+        ".et660;.bin;.hex;.ram;.raw",
+        chip8::Variant::NONE,
+        { .cpuType = "CDP1802", .clockFrequency = 1773448, .ramSize = 3072, .cleanRam = false, .traceLog = false, .videoType = ETI_VT_CDP1864, .audioType = ETI_AT_CDP1864, .keyboard = ETI_VIP_HEX, .romName = "C8-MONITOR", .startAddress = 0}
+    },
+    {
+        "CHIP-8",
+        "CHIP-8 on the ETI-660 (64x48)",
+        ".c8eti",
         chip8::Variant::CHIP_8_ETI660,
-        { .cpuType = "CDP1802", .clockFrequency = 1773448, .ramSize = 3072, .cleanRam = false, .traceLog = false, .videoType = ETI_VT_CDP1864, .audioType = ETI_AT_CDP1864, .keyboard = ETIK_HEX, .romName = "C8-MONITOR", .startAddress = 0}
+        { .cpuType = "CDP1802", .clockFrequency = 1773448, .ramSize = 3072, .cleanRam = false, .traceLog = false, .videoType = ETI_VT_CDP1864, .audioType = ETI_AT_CDP1864, .keyboard = ETI_VIP_HEX, .romName = "C8-MONITOR", .startAddress = 0x600 }
     }
 };
 // clang-format on
@@ -164,8 +178,8 @@ struct Eti660FactoryInfo final : public CoreRegistry::FactoryInfo<Eti660, Eti660
     }
     VariantIndex variantIndex(const Properties& props) const override
     {
-        auto idx = 0u;
-        return {idx, etiPresets[idx].options.asProperties() == props};
+        auto idx = props[PROP_START_ADDRESS].getInt() ? 1u : 0u;
+        return {idx, etiPresets[idx].options.asProperties() != props};
     }
 };
 
@@ -173,24 +187,19 @@ static bool registeredEti660 = CoreRegistry::registerFactory(PROP_CLASS, std::ma
 
 class Eti660::Private {
 public:
-    static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
     explicit Private(EmulatorHost& host, Cdp1802Bus& bus, Properties& properties)
         : _host(host)
         , _properties(properties)
         , _options(Eti660Options::fromProperties(properties))
-        , _cpu(bus, CPU_CLOCK_FREQUENCY)
+        , _cpu(bus, _options.clockFrequency)
         , _video(Cdp186x::eCDP1864, _cpu, false)
     {
         using namespace std::string_literals;
         (void)registeredEti660;
-        if(_video.getType() == Cdp186x::eVP590) {
-            _colorRamMask = 0x3ff;
-            _colorRamMaskLores = 0x3e7;
-        }
         _properties = _options.asProperties();
         _properties[PROP_ROM_NAME].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1(_eti660_c8_monitor).to_hex().substr(0,8)));
-        _memorySize = _options.ramSize;
-        _ram.resize(_options.ramSize, 0);
+        _memorySize = sizeof(_eti660_c8_monitor) + _options.ramSize;
+        _ram.resize(_memorySize, 0);
     }
     EmulatorHost& _host;
     Properties& _properties;
@@ -198,27 +207,22 @@ public:
     uint32_t _memorySize{4096};
     Cdp1802 _cpu;
     Cdp186x _video;
-    MC682x _pia;
+    mutable MC682x _pia;
     KeyMatrix<4,4> _keyMatrix;
     //int64_t _irqStart{0};
-    int64_t _nextFrame{0};
-    uint8_t _keyLatch{0};
+    int _lastFrameCycle{0};
+    int _endlessLoops{0};
     uint8_t _frequencyLatch{0};
     uint16_t _lastOpcode{0};
     uint16_t _currentOpcode{0};
     uint16_t _initialChip8SP{0};
-    uint16_t _colorRamMask{0xff};
-    uint16_t _colorRamMaskLores{0xe7};
     uint16_t _startAddress{0};
     uint16_t _fetchEntry{0};
-    bool _mapRam{false};
     bool _powerOn{true};
     float _wavePhase{0};
     std::vector<uint8_t> _ram{};
-    std::array<uint8_t,256> _colorRam{};
+    std::array<uint8_t,192> _colorRam{};
     std::array<uint8_t,1024> _rom{};
-    std::span<uint8_t> _stackSpan{};
-    VideoType _screen{64,192,4};
 };
 
 
@@ -265,77 +269,80 @@ Eti660::Eti660(EmulatorHost& host, Properties& properties, IEmulationCore* other
             swapBreakpoints(*otherC8);
         }
     }
-    _execChip8 = false; //_impl->_options.interpreter != VC8I_NONE;
-    //if(_impl->_options.interpreter == VC8I_NONE)
-        _isHybridChipMode = false;
+    _isHybridChipMode = _impl->_options.startAddress != 0;
+    _execChip8 = _isHybridChipMode;
+    setVariant(chip8::Variant::CHIP_8_ETI660);
     std::memcpy(_impl->_rom.data(), _eti660_c8_monitor, sizeof(_eti660_c8_monitor));
-    if(_impl->_ram.size() > 4096) {
-        _impl->_rom[0x10] = (_impl->_ram.size() >> 8) - 1;
-    }
-    _impl->_cpu.setInputHandler([this](uint8_t port) {
-        if(port == 1)
-            _impl->_video.enableDisplay();
-        return 0;
-    });
-    _impl->_cpu.setOutputHandler([this](uint8_t port, uint8_t val) {
+    std::copy(_impl->_rom.begin(), _impl->_rom.end(), _impl->_ram.begin());
+
+    // The ETI PCB reverses D0..D7 at the PIA. Its register is selected
+    // by the low address bits of R(X), rather than by the I/O port number.
+    _impl->_pia.portAOutputHandler = [this](uint8_t data, uint8_t mask) {
+        _impl->_keyMatrix.setRows(reverseBits(data) & 0xF, reverseBits(mask) & 0xF);
+    };
+    _impl->_pia.portAInputHandler = [this](uint8_t mask) -> MC682x::InputWithConnection {
+        std::array<bool,16> keys{};
+        for (uint8_t key = 0; key < keys.size(); ++key)
+            keys[key] = _host.isKeyDown(key);
+        _impl->_keyMatrix.updateKeys(keys);
+        auto [value, connections] = _impl->_keyMatrix.getCols(0xF);
+        return {uint8_t(reverseBits(value << 4) & mask), uint8_t(reverseBits(connections << 4) & mask)};
+    };
+    _impl->_pia.pinCA2OutputHandler = [this](bool level) {
+        if (!level)
+            _impl->_video.enableColor();
+    };
+    _impl->_cpu.setInputHandler([this](uint8_t port) -> uint8_t {
         switch (port) {
-        case 1:
-            _impl->_video.disableDisplay();
-            break;
-        case 2:
-            _impl->_keyLatch = val & 0xf;
-            break;
-        case 3:
-            _impl->_frequencyLatch = val ? val : 0x80;
-            break;
-        case 4:
-            _impl->_mapRam = true;
-            break;
-        case 5:
-            if(_impl->_video.getType() == Cdp186x::eVP590)
+            case 1: _impl->_video.enableDisplay(); break;
+            case 2: return reverseBits(_impl->_pia.readByte(_impl->_cpu.getR(_impl->_cpu.getX()) & 3));
+            case 4: _impl->_video.disableDisplay(); break;
+        }
+        return 255;
+    });
+    _impl->_cpu.setOutputHandler([this](uint8_t port, uint8_t value) {
+        switch (port) {
+            case 1:
+                _impl->_video.enableDisplay();
                 _impl->_video.incrementBackground();
-            break;
-        default:
-            break;
+                break;
+            case 2: {
+                // OUT has already incremented R(X) when the handler runs.
+                const auto index = (_impl->_cpu.getR(_impl->_cpu.getX()) - 1) & 3;
+                const auto piaValue = reverseBits(value);
+                _impl->_pia.writeByte(index, piaValue);
+                // Driving CA2 low also enables colour when the pin was
+                // previously an input and no level-change callback ran.
+                if (index == 1 && (piaValue & MC682x::C2C2) && !_impl->_pia.pinCA2())
+                    _impl->_video.enableColor();
+                break;
+            }
+            case 3: {
+                const auto address = (_impl->_cpu.getR(_impl->_cpu.getX()) - 1) & 0xFFF;
+                if (address >= 0xC80) {
+                    const auto offset = address - 0xC80;
+                    const auto index = ((offset & 0x1F0) >> 1) | (offset & 7);
+                    if (index < _impl->_colorRam.size())
+                        _impl->_colorRam[index] = value & 7;
+                }
+                break;
+            }
+            case 4: _impl->_frequencyLatch = value; break;
         }
     });
-    _impl->_cpu.setNEFInputHandler([this](uint8_t idx) {
-       switch(idx) {
-           case 0: { // EF1 is set from four machine cycles before the video line to four before the end
-               return _impl->_video.getNEFX();
-           }
-           case 2: {
-               return _impl->_host.isKeyDown(_impl->_keyLatch);
-           }
-           default:
-               return true;
-       }
+    _impl->_cpu.setNEFInputHandler([this](uint8_t index) {
+        if (index == 0)
+            return _impl->_video.getNEFX();
+        if (index == 3)
+            // STEP pulls EF4 low; the monitor also uses it to end input.
+            return !_host.isKeyDown(EmulatorHost::KEY_ETI_STEP);
+        return false;
     });
-    //reset();
-    auto prev = dynamic_cast<IChip8Emulator*>(other);
-    if(prev && false) {
-        std::memcpy(_impl->_ram.data() + 0x200, prev->memory() + 0x200, std::min(_impl->_ram.size() - 0x200 - 0x170, static_cast<size_t>(prev->memSize())));
-        for(size_t i = 0; i < 16; ++i) {
-            _state.v[i] = prev->getV(i);
-        }
-        _state.i = prev->getI();
-        _state.pc = prev->getPC();
-        _state.sp = prev->getSP();
-        _state.dt = prev->delayTimer();
-        _state.st = prev->soundTimer();
-        std::memcpy(_state.s.data(), prev->stack().content.data(), stackSize() * sizeof(uint16_t));
-        forceState();
-    }
-#if 0 //ndef PLATFORM_WEB
-    {
-        static bool first = true;
-        if(first) {
-            std::ofstream os("chip8tpd.bin", std::ios::binary);
-            os.write((char*)_chip8tdp_cvip, sizeof(_chip8tdp_cvip));
-            first = false;
-        }
-    }
-#endif
+    _impl->_cpu.setQChangeHandler([this](bool enabled) {
+        if (!enabled)
+            _impl->_frequencyLatch = 0x35;
+    });
+
 }
 
 Eti660::~Eti660() = default;
@@ -344,65 +351,65 @@ void Eti660::handleReset(bool cold)
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
-    if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
-        std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
-    }
-    else {
-        if(_impl->_powerOn) {
-            ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
-            std::ranges::generate(_impl->_ram, rnd);
+    if (cold) {
+        if (_impl->_options.cleanRam) {
+            std::fill(_impl->_ram.begin() + _impl->_rom.size(), _impl->_ram.end(), 0);
         }
+        else if (_impl->_powerOn) {
+            ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
+            std::generate(_impl->_ram.begin() + _impl->_rom.size(), _impl->_ram.end(), rnd);
+        }
+        std::fill(_impl->_colorRam.begin(), _impl->_colorRam.end(), 0);
     }
     _impl->_powerOn = false;
-    std::memset(_impl->_colorRam.data(), 0, _impl->_colorRam.size());
-    if(_isHybridChipMode) {
-        /*
-        std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
-        _impl->_startAddress = _impl->_options.startAddress;
-        _impl->_fetchEntry = 0x1B;
-        if (_impl->_options.interpreter != VC8I_CHIP8) {
-            auto size = patchRAM(_impl->_options.interpreter, _impl->_ram.data(), _impl->_ram.size());
-            _impl->_properties[PROP_INTERPRETER].setSelectedIndex(_impl->_options.interpreter);
-            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1Hex(_impl->_ram.data(), size).substr(0, 8)));
-            //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
-        }
-        */
-    }
-    else {
-        _impl->_startAddress = 0;
-        _impl->_fetchEntry = 0;
-        //_impl->_properties[PROP_INTERPRETER].setSelectedIndex(VIPChip8Interpreter::VC8I_NONE);
-        //_impl->_properties[PROP_INTERPRETER].setAdditionalInfo("No CHIP-8 interpreter used");
-    }
-    _impl->_screen.setAll(0);
+    _isHybridChipMode = _impl->_options.startAddress != 0;
+    _execChip8 = _isHybridChipMode;
+    _impl->_startAddress = _impl->_options.startAddress;
+    _impl->_fetchEntry = 0x200;
+    _impl->_pia.reset();
+    _impl->_keyMatrix = {};
     _impl->_video.reset();
     _impl->_cpu.reset();
     _cycles = 0;
     _frames = 0;
-    _impl->_nextFrame = 0;
+    _impl->_lastFrameCycle = 0;
+    _impl->_endlessLoops = 0;
+    _state = {};
     _impl->_lastOpcode = 0;
     _impl->_currentOpcode = 0;
     _impl->_initialChip8SP = 0;
-    _impl->_frequencyLatch = 0x80;
-    _impl->_keyLatch = 0;
-    _impl->_mapRam = false;
+    _impl->_frequencyLatch = 0x35;
     _impl->_wavePhase = 0;
     _cpuState = eNORMAL;
     _errorMessage.clear();
     if (_isHybridChipMode) {
         setExecMode(eRUNNING);
-        while (_impl->_cpu.execMode() == eRUNNING && (!executeCdp1802() || getPC() != _impl->_startAddress))
-            ;  // fast-forward to fetch/decode loop
+        const auto setupLimit = _impl->_cpu.cycles() + 4 * 8 * _impl->_video.cyclesPerFrame();
+        while (_impl->_cpu.PC() != _impl->_fetchEntry && _execMode != ePAUSED && _impl->_cpu.cycles() < setupLimit)
+            executeCdp1802();
+        if (_impl->_cpu.PC() == _impl->_fetchEntry) {
+            // Run the monitor's clear-screen, display-enable and call sequence.
+            // This clears display RAM through the ROM even when Clean RAM is off,
+            // and leaves 0x438/0x439 available as PIA scratch space.
+            _impl->_cpu.setR(5, 0x42);
+            do {
+                executeCdp1802();
+            } while ((_impl->_cpu.PC() != _impl->_fetchEntry || (_impl->_cpu.getR(5) & 0xFFF) != 0x600) &&
+                     _execMode != ePAUSED && _impl->_cpu.cycles() < setupLimit);
+        }
+        if (_impl->_cpu.PC() != _impl->_fetchEntry || (_impl->_cpu.getR(5) & 0xFFF) != 0x600) {
+            _cpuState = eERROR;
+            _errorMessage = "ETI INTERPRETER DIDN'T SETUP";
+        }
+        else {
+            _impl->_initialChip8SP = _impl->_cpu.getR(2);
+            _impl->_cpu.setR(5, _impl->_startAddress);
+            _impl->_cpu.setR(8, 0);
+            fetchState();
+            _cycles = 0;
+        }
     }
-    else {
-        setExecMode(ePAUSED);
-        /*
-        while (_impl->_cpu.execMode() == eRUNNING && !executeCdp1802())
-            if(_impl->_cpu.getR(_impl->_cpu.getP()) == 0)
-                break;  // fast-forward to fetch/decode loop
-                */
-    }
-    setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
+    setExecMode(inErrorState() || !_host.isHeadless() ? ePAUSED : eRUNNING);
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.cycles(), frameCycle()).c_str());
 }
@@ -418,12 +425,12 @@ bool Eti660::updateProperties(Properties& props, Property& changed)
 
 std::string Eti660::name() const
 {
-    return "Chip-8-RVIP";
+    return "ETI660";
 }
 
 chip8::VariantSet Eti660::supportedChip8Variants() const
 {
-    return chip8::Variant::NONE;
+    return _isHybridChipMode ? chip8::Variant::CHIP_8_ETI660 : chip8::Variant::NONE;
 }
 
 unsigned Eti660::stackSize() const
@@ -433,36 +440,22 @@ unsigned Eti660::stackSize() const
 
 GenericCpu::StackContent Eti660::stack() const
 {
-    /*switch(_impl->_options.interpreter) {
-        case VC8I_CHIP8:
-        case VC8I_CHIP8RB:
-        case VC8I_CHIP8E:
-        case VC8I_CHIP8X:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x15f, 46)};
-        case VC8I_CHIP10:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x45f, 46)};
-        case VC8I_CHIP8FPD:
-        case VC8I_CHIP8XFPD:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x45f, 46)};
-        case VC8I_CHIP8TPD:
-        case VC8I_CHIP8XTPD:
-            return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x25f, 46)};
-        default:
-            return {};
-    }*/
-    return {};
+    if (!_isHybridChipMode || !_impl->_initialChip8SP)
+        return {};
+    return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_initialChip8SP - stackSize() * 2, stackSize() * 2)};
+
 }
 
 size_t Eti660::numberOfExecutionUnits() const
 {
-    return 1; //_impl->_options.interpreter == VC8I_NONE ? 1 : 2;
+    return _isHybridChipMode ? 2 : 1;
 }
 
 GenericCpu* Eti660::executionUnit(size_t index)
 {
     if(index >= numberOfExecutionUnits())
         return nullptr;
-    if(true/*_impl->_options.interpreter == VC8I_NONE*/) {
+    if(!_isHybridChipMode) {
         return &_impl->_cpu;
     }
     return index == 0 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
@@ -470,7 +463,7 @@ GenericCpu* Eti660::executionUnit(size_t index)
 
 void Eti660::setFocussedExecutionUnit(GenericCpu* unit)
 {
-    _execChip8 = false; //_impl->_options.interpreter != VC8I_NONE && dynamic_cast<IChip8Emulator*>(unit);
+    _execChip8 = _isHybridChipMode && unit == static_cast<GenericCpu*>(this);
 }
 
 GenericCpu* Eti660::focussedExecutionUnit()
@@ -480,15 +473,14 @@ GenericCpu* Eti660::focussedExecutionUnit()
 
 uint32_t Eti660::defaultLoadAddress() const
 {
-    return _impl->_options.startAddress;
+    return _impl->_options.startAddress ? _impl->_options.startAddress : 0x600;
 }
 
 bool Eti660::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
 {
-    auto offset = loadAddress ? *loadAddress : _impl->_options.startAddress;
-    if(offset < _impl->_options.ramSize) {
-        auto size = std::min(_impl->_options.ramSize - offset, data.size());
-        std::memcpy(_impl->_ram.data() + offset, data.data(), size);
+    auto offset = loadAddress.value_or(defaultLoadAddress());
+    if (offset >= _impl->_rom.size() && offset < _impl->_memorySize && data.size() <= _impl->_memorySize - offset) {
+        std::memcpy(_impl->_ram.data() + offset, data.data(), data.size());
         return true;
     }
     return false;
@@ -543,11 +535,11 @@ void Eti660::fetchState()
         _impl->_initialChip8SP = _impl->_cpu.getR(2);
     auto base = _impl->_initialChip8SP & 0xFF00;
     if(base + 0x100 <= _impl->_memorySize)
-        std::memcpy(_state.v.data(), &_impl->_ram[base + 0xF0], 16);
+        std::memcpy(_state.v.data(), &_impl->_ram[base + 0x70], 16);
     else
         _impl->_cpu.setExecMode(GenericCpu::ePAUSED), _cpuState = eERROR, _errorMessage = "BASE ADDRESS OUT OF RAM";
-    _state.i = _impl->_cpu.getR(0xA);
-    _state.pc = _impl->_cpu.getR(5);
+    _state.i = _impl->_cpu.getR(0xA) & 0xFFF;
+    _state.pc = _impl->_cpu.getR(5) & 0xFFF;
     _state.sp = ((_impl->_initialChip8SP - _impl->_cpu.getR(2)) >> 1) & 0xffff;
     _state.dt = _impl->_cpu.getR(8) >> 8;
     _state.st = _impl->_cpu.getR(8) & 0xff;
@@ -567,7 +559,7 @@ void Eti660::forceState()
     if(!_impl->_initialChip8SP)
         _impl->_initialChip8SP = _impl->_cpu.getR(2);
     auto base = _impl->_initialChip8SP & 0xFF00;
-    std::memcpy(&_impl->_ram[base + 0xF0], _state.v.data(), 16);
+    std::memcpy(&_impl->_ram[base + 0x70], _state.v.data(), 16);
     _impl->_cpu.setR(0xA, (uint16_t)_state.i);
     _impl->_cpu.setR(0x5, (uint16_t)_state.pc);
     _impl->_cpu.setR(0x8, (uint16_t)(_state.dt << 8 | _state.st));
@@ -576,6 +568,34 @@ void Eti660::forceState()
         _impl->_ram[_impl->_initialChip8SP - i*2 - 2] = _state.s[i] >> 8;
         _impl->_ram[_impl->_initialChip8SP - i*2 - 1] = _state.s[i] & 0xFF;
     }
+}
+
+bool Eti660::restoreState(const Chip8State& state)
+{
+    if (!state.isValid(stackSize()) || state.pc >= _impl->_memorySize || state.i >= _impl->_memorySize ||
+        !_isHybridChipMode || _impl->_cpu.PC() != _impl->_fetchEntry || !_impl->_initialChip8SP)
+        return false;
+    _state = state;
+    forceState();
+    return true;
+}
+
+void Eti660::setRegister(size_t index, uint32_t value)
+{
+    auto state = _state;
+    if (index < 16)
+        state.v[index] = value;
+    else {
+        switch (index) {
+            case 16: state.i = value; break;
+            case 17: state.dt = value; break;
+            case 18: state.st = value; break;
+            case 19: state.pc = value; break;
+            case 20: state.sp = value; break;
+            default: return;
+        }
+    }
+    restoreState(state);
 }
 
 int64_t Eti660::machineCycles() const
@@ -590,11 +610,12 @@ int Eti660::frameRate() const
 
 bool Eti660::executeCdp1802()
 {
-    static int lastFC = 0;
-    static int endlessLoops = 0;
     auto [fc,vsync] = _impl->_video.executeStep();
-    if(vsync)
+    if(vsync) {
+        _frames = _impl->_video.frames();
         _host.vblank();
+        _host.updateScreen();
+    }
     if(_impl->_options.traceLog  && _impl->_cpu.getCpuState() != Cdp1802::eIDLE)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, fc}, fmt::format("{:24} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpStateLine()).c_str());
     if(_isHybridChipMode && _impl->_cpu.PC() == _impl->_fetchEntry) {
@@ -637,18 +658,18 @@ bool Eti660::executeCdp1802()
             setExecMode(ePAUSED);
         }
         auto nextOp = opcode();
-        bool newFrame = lastFC > fc;
-        lastFC = fc;
+        bool newFrame = _impl->_lastFrameCycle > fc;
+        _impl->_lastFrameCycle = fc;
         if(newFrame) {
             _host.updateScreen();
             if ((nextOp & 0xF000) == 0x1000 && (opcode() & 0xFFF) == getPC()) {
-                if (++endlessLoops > 2) {
+                if (++_impl->_endlessLoops > 2) {
                     setExecMode(ePAUSED);
-                    endlessLoops = 0;
+                    _impl->_endlessLoops = 0;
                 }
             }
             else {
-                endlessLoops = 0;
+                _impl->_endlessLoops = 0;
             }
         }
         if(tryTriggerBreakpoint(getPC())) {
@@ -658,6 +679,10 @@ bool Eti660::executeCdp1802()
         return true;
     }
     else if(_impl->_cpu.execMode() == ePAUSED || _impl->_cpu.getCpuState() == Cdp1802::eERROR) {
+        if (_impl->_cpu.getCpuState() == Cdp1802::eERROR) {
+            _cpuState = eERROR;
+            _errorMessage = _impl->_cpu.errorMessage();
+        }
         setExecMode(ePAUSED);
         _backendStopped = true;
     }
@@ -734,7 +759,7 @@ int64_t Eti660::frames() const
 void Eti660::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
     if(_impl->_cpu.getQ()) {
-        auto audioFrequency = _impl->_options.audioType == ETI_AT_CDP1864 ? 27535.0f / ((unsigned)_impl->_frequencyLatch + 1) : 1400.0f;
+        auto audioFrequency = _impl->_options.audioType == ETI_AT_CDP1864 ? _impl->_options.clockFrequency / 64.0f / (unsigned(_impl->_frequencyLatch) + 1) : 1400.0f;
         const float step = audioFrequency / sampleFrequency;
         for (int i = 0; i < frames; ++i) {
             *samples++ = (_impl->_wavePhase > 0.5f) ? 16384 : -16384;
@@ -785,32 +810,37 @@ GenericCpu& Eti660::getBackendCpu()
 
 uint8_t Eti660::readByte(uint16_t addr) const
 {
-    if(addr < _impl->_rom.size()) {
-        return _impl->_rom[addr];
-    }
-    addr -= _impl->_rom.size();
-    if(addr < _impl->_memorySize) {
-        return _impl->_ram[addr];
-    }
-    return 255;
+    // The board decodes only A0..A11. The interpreter relies on these
+    // aliases when using register offsets as the high byte of a jump.
+    addr &= 0xFFF;
+    return addr < _impl->_memorySize ? _impl->_ram[addr] : 255;
 }
 
 uint8_t Eti660::readByteDMA(uint16_t addr) const
 {
-    return Eti660::readByte(addr);
+    // Like the VIP colour board, Cdp186x requests the colour separately
+    // from the bitmap byte through a DMA-only address window.
+    if ((addr & 0xF000) == 0xD000) {
+        const auto address = addr & 0xFFF;
+        if (address >= 0x480 && address < 0x600) {
+            const auto offset = address - 0x480;
+            return _impl->_colorRam[((offset & 0x1F0) >> 1) | (offset & 7)];
+        }
+        return 7;
+    }
+    return readByte(addr);
 }
 
 uint8_t Eti660::readMemoryByte(uint32_t addr) const
 {
-    return readByteDMA(addr);
+    return addr < _impl->_memorySize ? _impl->_ram[addr] : 255;
 }
 
-void Eti660::writeByte(uint16_t addr, uint8_t val)
+void Eti660::writeByte(uint16_t addr, uint8_t value)
 {
-    if(addr > _impl->_rom.size()) addr -= _impl->_rom.size();
-    if(addr < _impl->_memorySize) {
-        _impl->_ram[addr] = val;
-    }
+    addr &= 0xFFF;
+    if (addr >= _impl->_rom.size() && addr < _impl->_memorySize)
+        _impl->_ram[addr] = value;
 }
 
 } // emu

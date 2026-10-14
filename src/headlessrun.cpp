@@ -31,6 +31,7 @@
 #include <raylib.h>
 
 #include <fstream>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -102,20 +103,26 @@ int runHeadless(const std::string& romPath, const emu::Properties& properties, c
     const auto* frameRateProperty = host.getProperties().find("frameRate");
     const int frameRate = frameRateProperty ? frameRateProperty->getInt() : core.frameRate();
 
-    std::ifstream rom(romPath, std::ios::binary | std::ios::ate);
-    if (!rom)
-        throw std::runtime_error("Could not open ROM: " + romPath);
-    const auto size = rom.tellg();
     const auto loadAddress = core.defaultLoadAddress();
-    if (size <= 0 || size > core.memSize() - loadAddress)
-        throw std::runtime_error("ROM is empty or exceeds available memory: " + romPath);
-    std::vector<uint8_t> bytes(static_cast<size_t>(size));
-    rom.seekg(0);
-    if (!rom.read(reinterpret_cast<char*>(bytes.data()), bytes.size()))
-        throw std::runtime_error("Could not read ROM: " + romPath);
-    core.reset();
-    if (!core.loadData(bytes, loadAddress))
-        throw std::runtime_error("Could not load ROM: " + romPath);
+    if (std::filesystem::path(romPath).extension() == ".hex") {
+        if (!host.loadRom(romPath, emu::EmuHostEx::DontChangeOptions))
+            throw std::runtime_error("Could not load HEX ROM: " + romPath);
+    }
+    else {
+        std::ifstream rom(romPath, std::ios::binary | std::ios::ate);
+        if (!rom)
+            throw std::runtime_error("Could not open ROM: " + romPath);
+        const auto size = rom.tellg();
+        if (size <= 0 || size > core.memSize() - loadAddress)
+            throw std::runtime_error("ROM is empty or exceeds available memory: " + romPath);
+        std::vector<uint8_t> bytes(static_cast<size_t>(size));
+        rom.seekg(0);
+        if (!rom.read(reinterpret_cast<char*>(bytes.data()), bytes.size()))
+            throw std::runtime_error("Could not read ROM: " + romPath);
+        core.reset();
+        if (!core.loadData(bytes, loadAddress))
+            throw std::runtime_error("Could not load ROM: " + romPath);
+    }
     core.setExecMode(emu::GenericCpu::eRUNNING);
     // Reset may mark the initial blank display dirty. Do not count that as a
     // program presentation. Start timers just as executeFrame() would.

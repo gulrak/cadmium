@@ -162,6 +162,8 @@ bool Librarian::fetchDir(std::string directory)
                 auto variant = std::string("chip-8");
                 if(ext == ".8o")
                     type = Info::eOCTO_SOURCE;
+                else if(ext == ".hex")
+                    type = Info::eROM_FILE;
                 else {
                     auto preset = emu::CoreRegistry::presetForExtension(ext.string());
                     if(!preset.empty()) {
@@ -209,16 +211,39 @@ bool Librarian::update(const emu::Properties& properties)
                 if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 16) {
                     if (entry.variant == "chip-8") {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());
+                        uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
+                        const bool isHex = fs::path(entry.filePath).extension() == ".hex";
+                        if (isHex) {
+                            try {
+                                emu::HexFile hex(fullPath(entry.filePath), emu::HexFile::Mode::READ);
+                                if (hex.ranges().empty())
+                                    throw std::runtime_error("HEX file contains no data");
+                                entry.sha1sum = hex.sha1Digest();
+                                startAddress = hex.ranges().front().first;
+                                const auto& [lastAddress, lastData] = hex.ranges().back();
+                                file = std::vector<uint8_t>(lastAddress + lastData.size() - startAddress, 0);
+                                for (const auto& [address, data] : hex.ranges())
+                                    std::copy(data.begin(), data.end(), file->begin() + address - startAddress);
+                            }
+                            catch (const std::exception& error) {
+                                TraceLog(LOG_WARNING, "Could not analyze HEX file `%s`: %s", entry.filePath.c_str(), error.what());
+                                entry.type = Info::eUNKNOWN_FILE;
+                                entry.analyzed = true;
+                                continue;
+                            }
+                        }
                         if (!file) {
                             entry.type = Info::eUNKNOWN_FILE;
+                            entry.analyzed = true;
+                            continue;
                         }
-                        entry.isKnown = isKnownFile(*file);
-                        entry.sha1sum = calculateSha1(*file);
+                        if (!isHex)
+                            entry.sha1sum = calculateSha1(*file);
+                        entry.isKnown = isKnownFile(entry.sha1sum);
                         if(entry.isKnown) {
                             entry.variant = getPresetForFile(entry.sha1sum);
                         }
                         else {
-                            uint16_t startAddress = endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
                             emu::Chip8Decompiler dec{*file, startAddress};
                             dec.decompile(entry.filePath, startAddress, nullptr, true, true);
                             entry.possibleVariants = dec.possibleVariants();
@@ -242,7 +267,7 @@ bool Librarian::update(const emu::Properties& properties)
                                 else
                                     entry.variant = "chip-8";
                             }
-                            else {
+                            else if (!isHex) {
                                 entry.type = Info::eUNKNOWN_FILE;
                             }
                             TraceLog(LOG_DEBUG, "analyzed `%s`: %s", entry.filePath.c_str(), entry.variant.c_str());

@@ -69,6 +69,8 @@ public:
     int memSize() const override;
     unsigned stackSize() const override;
     StackContent stack() const override;
+    bool restoreState(const Chip8State& state) override;
+    void setRegister(size_t index, uint32_t value) override;
 
     int64_t frames() const override;
 
@@ -79,6 +81,7 @@ public:
     uint16_t getMaxScreenWidth() const override;
     uint16_t getMaxScreenHeight() const override;
     const VideoRGBAType* getScreenRGBA() const override;
+    int getMaxColors() const override { return 8; }
     void setPalette(const Palette& palette) override;
 
     bool isDisplayEnabled() const override;

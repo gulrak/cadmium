@@ -717,7 +717,7 @@ void main()
         openFileCallback = [this](std::string_view filename, ghc::span<const uint8_t> data) {
             loadBinary(filename, data, LoadOptions::None);
         };
-        constexpr const char* acceptedFiles = ".ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
+        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
         webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
 #endif
         if(_volume > 1.0f)
@@ -972,6 +972,10 @@ void main()
 
     bool isKeyDown(uint8_t key) override
     {
+        if (key == emu::EmulatorHost::KEY_ETI_STEP)
+            return !gui::IsSysKeyDown() && IsKeyDown(KEY_SPACE);
+        if (key >= 16)
+            return false;
         _keyScanTime[key & 0xF] = GetTime();
         return !gui::IsSysKeyDown() && IsKeyDown(_keyMapping[key & 0xF]);
     }
@@ -1254,8 +1258,10 @@ void main()
 
         if(_mainView == eEDITOR) {
             _editor.update();
-            if(!_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
+            if((!_romHexFile || _editor.editId() != _hexSourceEditId) &&
+               !_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
                 _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
+                _romHexFile.reset();
                 _romSha1 = _editor.compiler().sha1();
                 _debugger.updateOctoBreakpoints(_editor.compiler());
                 reloadRom();
@@ -2741,7 +2747,7 @@ void main()
 #ifdef PLATFORM_WEB
     void loadFileWeb()
     {
-        webRequestOpenFile(".ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8");
+        webRequestOpenFile(".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8");
     }
 #endif
 
@@ -2830,6 +2836,7 @@ void main()
         _frameBoost = 1;
         updateBehaviorSelects();
         _editor.setText(source);
+        _hexSourceEditId = _editor.editId();
         _editor.setFilename(filename);
         _recentFiles.usingFile(filename);
         updateMainMenu();
@@ -2849,11 +2856,7 @@ void main()
             _chipEmu->reset();
             _audioBuffer.reset();
             updateScreen();
-            auto loadAddress = _chipEmu->defaultLoadAddress();
-            if(Librarian::isPrefixedTPDRom(_romImage))
-                _chipEmu->loadData(_romImage, 512);
-            else
-                _chipEmu->loadData(_romImage, loadAddress);
+            loadRomImage();
         }
         _debugger.captureStates();
     }
@@ -2883,6 +2886,7 @@ private:
     Texture2D _screenShotTexture{};
     Librarian::Screenshot _screenshotData;
     Sha1::Digest _screenShotSha1;
+    uint32_t _hexSourceEditId{};
     RenderTexture _overlayTexture{};
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;

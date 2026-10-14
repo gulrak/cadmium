@@ -31,6 +31,7 @@
 #include <emulation/palette.hpp>
 #include <emulation/coreregistry.hpp>
 #include <chiplet/octocompiler.hpp>
+#include <chiplet/hexfile.hpp>
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
 #include <librarian.hpp>
@@ -49,6 +50,7 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <optional>
 #include <limits>
 #include <cmath>
 
@@ -99,6 +101,8 @@ public:
     void setPalette(const Palette& palette);
 
 protected:
+    bool loadHexFile(std::string_view filename, LoadOptions loadOpt, std::string_view sourcePath = {});
+    bool loadRomImage();
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     void resetAllBreakpoints();
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
@@ -129,6 +133,7 @@ protected:
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;
     std::vector<uint8_t> _romImage;
+    std::optional<HexFile> _romHexFile;
     Sha1::Digest _romSha1;
     bool _romIsWellKnown{false};
     bool _customPalette{false};

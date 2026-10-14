@@ -68,6 +68,7 @@ public:
     }
     void setTrace(bool traceLog);
     void incrementBackground();
+    void enableColor();
     int frames() const { return _frameCounter; }
     int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }
     const VideoRGBAType& getScreen() const;
@@ -106,6 +107,7 @@ private:
     int _backgroundColor{0};
     bool _displayEnabled{false};
     bool _displayEnabledLatch{false};
+    bool _colorEnabled{false};
     bool _traceLog{false};
 };
 

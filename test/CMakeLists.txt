@@ -32,6 +32,23 @@ if(Python3_Interpreter_FOUND AND TARGET c8sst-gen)
 endif()
 target_include_directories(chip8_emulation_tests PUBLIC ${PROJECT_SOURCE_DIR}/external)
 doctest_discover_tests(chip8_emulation_tests)
+
+add_executable(eti660-tests main.cpp eti660_tests.cpp)
+target_compile_definitions(eti660-tests PRIVATE WITHOUT_STB_IMAGE)
+if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/docs/ETI-660/Chip-8 ETI660 Programs")
+    target_compile_definitions(eti660-tests PRIVATE ETI660_EXAMPLES="${PROJECT_SOURCE_DIR}/docs/ETI-660")
+endif()
+target_link_libraries(eti660-tests PRIVATE doctest emulation)
+doctest_discover_tests(eti660-tests)
+
+add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp
+    ../src/emuhostex.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/systemtools.cpp)
+target_compile_definitions(hex-rom-tests PRIVATE WITHOUT_STB_IMAGE CADMIUM_VERSION="${PROJECT_VERSION}")
+if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/docs/ETI-660/Chip-8 ETI660 Hybrids")
+    target_compile_definitions(hex-rom-tests PRIVATE ETI660_EXAMPLES="${PROJECT_SOURCE_DIR}/docs/ETI-660")
+endif()
+target_link_libraries(hex-rom-tests PRIVATE doctest emulation Threads::Threads)
+doctest_discover_tests(hex-rom-tests)
 #if (OR NOT DEFINED ENV{CI})
 #    add_custom_command(
 #        TARGET chip8_emulation_tests

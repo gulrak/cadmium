@@ -50,8 +50,8 @@ Cdp186x::Cdp186x(Type type, Cdp1802& cpu, bool traceLog)
 
 void Cdp186x::reset()
 {
-    if(_type == eVP590) {
-        _subMode = eVP590_DEFAULT;
+    if(_type == eVP590 || _type == eCDP1864) {
+        _subMode = _type == eVP590 ? eVP590_DEFAULT : eNONE;
         _screen.setPalette(g_cdp1862Palette);
         _backgroundColor = 0;
         _screen.setBackgroundPal(_backgroundColor);
@@ -61,23 +61,30 @@ void Cdp186x::reset()
         _screen.setBackgroundRGBA(g_1861Palette.colors[0].toRGBAInt());
     }
     _frameCounter = 0;
-    _displayEnabledLatch = _displayEnabled = _type == eCDP1864;
+    _frameCycle = 0;
+    _colorEnabled = false;
+    _displayEnabledLatch = _displayEnabled = false;
+    _backgroundColor = 0;
     disableDisplay();
 }
 
 void Cdp186x::enableDisplay()
 {
-    if(_type != eCDP1864) {
-        _displayEnabled = true;
+    _displayEnabled = true;
+}
+
+void Cdp186x::enableColor()
+{
+    if (_type == eCDP1864) {
+        // CON enables colour-data fetching, not the background colour generator.
+        _colorEnabled = true;
     }
 }
 
 void Cdp186x::disableDisplay()
 {
-    if(_type != eCDP1864) {
-        _screen.setAll(0);
-        _displayEnabled = false;
-    }
+    _screen.setAll(0);
+    _displayEnabled = false;
 }
 
 bool Cdp186x::getNEFX() const
@@ -133,7 +140,9 @@ std::pair<int, bool> Cdp186x::executeStep()
                 colorBits = 7;
             for (int i = 0; i < 8; ++i) {
                 auto [data, addr] = _displayEnabledLatch ? _cpu.executeDMAOut() : std::make_pair((uint8_t)0, (uint16_t)0);
-                if (mask)
+                if (_type == eCDP1864)
+                    colorBits = _colorEnabled ? _cpu.readByteDMA(0xD000 | (addr & 0xFFF)) : 7;
+                else if (mask)
                     colorBits = _cpu.readByteDMA(0xD000 | (addr & mask));
                 lineData[i] = colorBits;
                 /*if (_traceLog) {
@@ -145,7 +154,7 @@ std::pair<int, bool> Cdp186x::executeStep()
                 // std::cout << fmt::format("{:04x}/{:04x} = {:02x}", addr, 0xD000 | (addr & mask), highBits) << std::endl;
                 auto y = (line - VIDEO_FIRST_VISIBLE_LINE);
                 auto x = 0;
-                if (_type == eVP590) {
+                if (_type == eVP590 || _type == eCDP1864) {
                     auto fg = be32(g_cdp1862Palette.colors[colorBits & 7].toRGBAInt());
                     auto bg = be32(g_cdp1862Palette.backgroundColors[_backgroundColor & 3].toRGBAInt());
                     for (int j = 0; j < 8; ++j) {

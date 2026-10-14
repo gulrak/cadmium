@@ -238,6 +238,8 @@ public:
 
     static Properties propertiesForExtension(std::string_view extension)
     {
+        if (extension == ".hex")
+            return {};
         for(const auto& [name, factory] : factoryMap()) {
             for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
                 auto extensions = split(factory->variantExtensions(i), ';');
@@ -251,6 +253,8 @@ public:
 
     static std::string presetForExtension(std::string_view extension)
     {
+        if (extension == ".hex")
+            return {};
         for(const auto& [name, factory] : factoryMap()) {
             for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
                 auto extensions = split(factory->variantExtensions(i), ';');
@@ -288,7 +292,7 @@ public:
 
 private:
     std::string coresCombo{};
-    static inline std::set<std::string> supportedExtensions{};
+    static inline std::set<std::string> supportedExtensions{".hex"};
     mutable std::vector<Iterator::value_type> orderedFactories;
     static FactoryMap& factoryMap();
 };

@@ -35,6 +35,7 @@ namespace emu {
 class EmulatorHost
 {
 public:
+    static constexpr uint8_t KEY_ETI_STEP = 16;
     virtual ~EmulatorHost() = default;
     virtual bool isHeadless() const = 0;
     virtual int getKeyPressed() = 0;

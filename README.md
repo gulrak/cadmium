@@ -93,38 +93,48 @@ those interpreter variants where published.
 
 The Supported presets are (possible specific file extensions in parentheses):
 
-* Default HLE CHIP-8 emulation:
-  * `chip-8` - The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker, 1977 (`.ch8`)
-  * `chip-10` - 128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (`.ch10`)
-  * `chip-8e` - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (`.c8e`)
-  * `chip-8x` - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (`.c8x`)
-  * `chip-48` - The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson, 1990 (`.ch48`;`.c48`)
-  * `schip-1-0` - SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991 (`.sc10`)
-  * `schip-1-1` - SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse, 1991 (`.sc8`;`.sc11`)
-  * `schipc` - SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017 (`.scc`)
-  * `schip-modern` - Modern SUPER-CHIP interpretation as done in Octo by John Earnest, 2014 (`.scm`)
-  * `megachip` - MegaChip as specified by Martijn Wanting, Revival-Studios, 2007 (`.mc8`)
-  * `xo-chip` - A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014 (`.xo8`)
-* First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP:
-  * `strict-chip-8` - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (`.ch8`;`.c8vip`)
-* Hardware emulation of a COSMAC VIP:
-  * `vip-none` - Raw COSMAC VIP without any CHIP-8 preloaded (`.cos`;`.bin`;`.hex`;`.ram`;`.raw`)
-  * `vip-chip-8` - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (`.ch8`;`.c8vip`;`.hc8`)
-  * `vip-chip-10` - 128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (`.ch10`;`.c10`)
-  * `vip-chip-8-rb` - CHIP-8 modification with relative branching (BFnn, FBnn), from #VIPER-V2-I1, by Wayne Smith, 1979 (`.c8rb`)
-  * `vip-chip-8-tpd` - CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979 (`.c8tpd`;`.c8h`)
-  * `vip-chip-8-tpd-ts` - CHIP-8 with two page display (64x64), from PIPS for VIPS, originally by Andy Modla and Jef Winsor, modified by Tom Swan, 1979 (`.c8tpdts`)
-  * `vip-chip-8-fpd` - CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980 (`.c8fpd`)
-  * `vip-chip-8x` - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (`.c8x`)
-  * `vip-chip-8x-tpd` - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (`.c8xtpd`)
-  * `vip-chip-8x-fpd` - A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug (`.c8xfpd`)
-  * `vip-chip-8e` - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (`.c8e`)
-* Hardware emulation of an HP-48SX:
-  * `hp48-none` - Raw HP-48SX (`.hp`;`.hp48`)
-  * `hp48-chip-48` - Original CHIP-48 on HP-48SX (`.ch48`;`.c48`)
-  * `hp48-schip-1-0` - SUPER-CHIP 1.0 on HP-48SX (`.sc10`)
-  * `hp48-schip-1-1` - SUPER-CHIP 1.1 on HP-48SX (`.sc8`;`.sc11`)
-  * `hp48-schpc` - SUPER-CHIP compatibility interpreter on HP-48SX (`.sc8`;`.scc`)
+| Preset | Extensions/Mode | Description | Year | Done |
+|:-------|:---------------:|:------------|:----:|:----:|
+| **Generic** | **HLE** | **Emulation based on generic non-hardware-based cores** | |
+| chip-8 | .ch8 | The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker | 1977 | ✓ |
+| chip-10 | .ch10 | 128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr. | 1979 | ✓ |
+| chip-8-e | .c8e | CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 | 1979 | ✓ |
+| chip-8-x | .c8x | An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595 | 1980 | ✓ |
+| chip-48 | .ch48; .c48 | The initial CHIP-8 port to the HP-48SX by Andreas Gustafsson | 1990 | ✓ |
+| schip-1-0-beta | .sc10b | SUPER-CHIP v1.0 beta expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse | 1991 | ✓ |
+| schip-1-0 | .sc10 | SUPER-CHIP v1.0 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse | 1991 | ✓ |
+| schip-1-1 | .sc8; .sc11 | SUPER-CHIP v1.1 expansion of CHIP-48 for the HP-48SX with 128x64 hires mode by Erik Bryntse | 1991 | ✓ |
+| schipc | .scc | SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore | 2017 | ✓ |
+| schip-modern | .scm | Modern SUPER-CHIP interpretation as done in Octo by John Earnest | 2014 | ✓ |
+| megachip | .mc8 | MegaChip as specified by Martijn Wanting, Revival-Studios | 2007 | ✓ |
+| xo-chip | .xo8 | A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest | 2014 | ✓ |
+| strict-chip-8 | .ch8; .c8vip | The classic CHIP-8 that came from Joseph Weisbecker | 1977 | ✓ |
+| rs-megachip | .ch8; .mc8 | RS-M8001 implementation (original bugs, checked bounds) | 2007 | ✓ |
+| **<nobr>COSMAC VIP</nobr>** | **LLE** | **Emulation of an RCA COSMAC VIP** | |
+| vip-none | .bin; .hex; .ram; .raw; .cos | Raw COSMAC VIP without any CHIP-8 preloaded | 1977 | ✓ |
+| vip-chip-8 | .ch8; .c8vip; .hc8 | The classic CHIP-8 that came from Joseph Weisbecker | 1977 | ✓ |
+| vip-chip-10 | .ch10; .c10 | 128x64 CHIP-8 with hardware modifications, from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr. | 1979 | ✓ |
+| vip-chip-8-rb | .c8rb | CHIP-8 modification with relative branching (BFnn, FBnn), from #VIPER-V2-I1, by Wayne Smith | 1979 | ✓ |
+| vip-chip-8-tpd | .c8tpd; .c8h | CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor | 1979 | ✓ |
+| vip-chip-8-tpd-ts | .c8tpdts | CHIP-8 with two page display (64x64), from PIPS for VIPS, originally by Andy Modla and Jef Winsor, modified by Tom Swan | 1979 | ✓ |
+| vip-chip-8-fpd | .c8fpd | CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan | 1980 | ✓ |
+| vip-chip-8-x | .c8x | An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595 | 1980 | ✓ |
+| vip-chip-8-x-tpd | .c8xtpd | A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by Andy Modle and Jef Winsor | 1982 | ✓ |
+| vip-chip-8-x-fpd | .c8xfpd | A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug | 1982 | ✓ |
+| vip-chip-8-e | .c8e | CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 | 1979 | ✓ |
+| **HP-48SX** | **LLE** | **Emulation of a HP-48SX Calculator** | |
+| hp-48-none | .hp; .hp48 | Raw HP-48SX | 1990 | - |
+| hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX | 1990 | WIP |
+| hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX | 1991 | WIP |
+| hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX | 1991 | WIP |
+| hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX | 2017 | WIP |
+| **DREAM 6800** | **LLE** | **Emulation of a DREAM6800 system** | |
+| dream-none | .bin; .hex; .ram; .raw | Raw DREAM6800 | 1979 | ✓ |
+| dream-chip-8 | .bin; .hex; .ram; .raw | CHIP-8 DREAM6800 | 1979| ✓ |
+| <nobr>dream-chip-8-lop</nobr> | .bin; .hex; .ram; .raw | CHIP-8 with logical operators on DREAM6800 | 2020 | ✓ |
+| **ETI-660** | **LLE** | **Emulation of a ETI-660** | |
+| eti-none | .et660; .bin; .hex; .ram; .raw | Raw ETI660 | 1982 | ✓ |
+| eti-chip-8 | .c8eti | CHIP-8 on the ETI-660 (64x48) | 1982 | ✓ |
 
 **NOTE:** Be aware that are no established standard file extension beyond `.ch8` in the CHIP-8 world. Different emulators come with files
 with different conventions, so this project used existing ones where they seemed fitting and invented their own where
