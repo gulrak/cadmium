@@ -127,7 +127,7 @@ static Dream6800SetupInfo dreamPresets[] = {
         "NONE",
         "Raw DREAM6800",
         ".bin;.hex;.ram;.raw",
-        chip8::Variant::CHIP_8_D6800,
+        chip8::Variant::NONE,
         { .cpuType = "M6800", .clockFrequency = 1000000, .ramSize = 2048, .cleanRam = false, .traceLog = false, .videoType = DreamVideoType::TTL, .romName = "CHIPOS", .startAddress = 0 }
     },
     {
@@ -196,6 +196,8 @@ public:
     bool _lowFreq{true};
     int64_t _irqStart{0};
     int64_t _nextFrame{0};
+    int _lastVideoFrameCycle{19968};
+    int _lastChipFrameCycle{0};
     std::atomic<float> _wavePhase{0};
     std::vector<uint8_t> _ram{};
     std::array<uint8_t,1024> _rom{};
@@ -289,6 +291,8 @@ Dream6800::Dream6800(EmulatorHost& host, Properties& props, IEmulationCore* othe
     : Chip8RealCoreBase(host)
     , _impl(new Private(host, *this, props))
 {
+    _execChip8 = _impl->_options.startAddress != 0;
+    _isHybridChipMode = _execChip8;
     if (other) {
         if (auto otherVIP = dynamic_cast<Dream6800*>(other)) {
             _impl->_cpu.swapBreakpoints(otherVIP->_impl->_cpu);
@@ -373,6 +377,13 @@ void Dream6800::handleReset(bool cold)
         ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
         std::ranges::generate(_impl->_ram, rnd);
     }
+    _cpuState = eNORMAL;
+    _impl->_pia.reset();
+    _impl->_keyMatrix = {};
+    _impl->_soundEnabled = false;
+    _impl->_wavePhase = 0;
+    _impl->_lastVideoFrameCycle = 19968;
+    _impl->_lastChipFrameCycle = 0;
     _impl->_screen.setAll(0);
     _impl->_cpu.reset();
     _impl->_ram[0x006] = 0xC0;
@@ -392,7 +403,18 @@ void Dream6800::handleReset(bool cold)
     _frames = 0;
     _impl->_nextFrame = 0;
     _cpuState = eNORMAL;
-    while(!executeM6800() || getPC() != 0x200); // fast-forward to fetch/decode loop
+    if (_impl->_options.startAddress) {
+        while(!executeM6800() || getPC() != 0x200); // fast-forward to fetch/decode loop
+        _impl->_ram[0x22] = _impl->_options.startAddress >> 8;
+        _impl->_ram[0x23] = _impl->_options.startAddress & 0xFF;
+        fetchState();
+    }
+    else {
+        // CHIPOS has initialized the PIA and IRQ vector. Native programs use
+        // those services too, but must start on the M6800 rather than CHIP-8.
+        state.pc = defaultLoadAddress();
+        _impl->_cpu.setState(state);
+    }
     setExecMode(_impl->_host.isHeadless() ? eRUNNING : ePAUSED);
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("End of reset: {}/{}", _impl->_cpu.cycles(), frameCycle()).c_str());
@@ -405,6 +427,8 @@ std::string Dream6800::name() const
 
 chip8::VariantSet Dream6800::supportedChip8Variants() const
 {
+    if (!_impl->_options.startAddress)
+        return chip8::Variant::NONE;
     return _impl->_options.romName == "CHIPOS" ? chip8::Variant::CHIP_8_D6800 : chip8::Variant::CHIP_8_D6800_LOP;
 }
 
@@ -439,14 +463,14 @@ GenericCpu::StackContent Dream6800::stack() const
 
 size_t Dream6800::numberOfExecutionUnits() const
 {
-    return _impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096 ? 1 : 2;
+    return _impl->_options.startAddress ? 2 : 1;
 }
 
 GenericCpu* Dream6800::executionUnit(size_t index)
 {
     if(index >= numberOfExecutionUnits())
         return nullptr;
-    if(_impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096) {
+    if(!_impl->_options.startAddress) {
         return &_impl->_cpu;
     }
     return index == 0 ? static_cast<GenericCpu*>(this) : static_cast<GenericCpu*>(&_impl->_cpu);
@@ -454,7 +478,7 @@ GenericCpu* Dream6800::executionUnit(size_t index)
 
 void Dream6800::setFocussedExecutionUnit(GenericCpu* unit)
 {
-    _execChip8 = !(_impl->_options.romName == "CHIPOS" && _impl->_options.ramSize != 4096) && dynamic_cast<IChip8Emulator*>(unit);
+    _execChip8 = _impl->_options.startAddress && dynamic_cast<IChip8Emulator*>(unit);
 }
 
 GenericCpu* Dream6800::focussedExecutionUnit()
@@ -464,15 +488,21 @@ GenericCpu* Dream6800::focussedExecutionUnit()
 
 uint32_t Dream6800::defaultLoadAddress() const
 {
-    return _impl->_options.startAddress;
+    return _impl->_options.startAddress ? _impl->_options.startAddress : 0x200;
+}
+
+IChip8Emulator* Dream6800::chip8Core()
+{
+    return _impl->_options.startAddress ? this : nullptr;
 }
 
 bool Dream6800::loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress)
 {
-    auto offset = loadAddress ? *loadAddress : 0x200; //_impl->_options.startAddress;
-    if(offset < _impl->_options.ramSize) {
-        auto size = std::min(_impl->_options.ramSize - offset, data.size());
-        std::memcpy(_impl->_ram.data() + offset, data.data(), size);
+    auto offset = loadAddress.value_or(defaultLoadAddress());
+    if(offset < _impl->_ram.size() && data.size() <= _impl->_ram.size() - offset) {
+        std::memcpy(_impl->_ram.data() + offset, data.data(), data.size());
+        if (!_impl->_options.startAddress && !data.empty())
+            _impl->_cpu.setRegister(4, offset);
         return true;
     }
     return false;
@@ -553,9 +583,8 @@ int64_t Dream6800::machineCycles() const
 
 int Dream6800::executeVDG()
 {
-    static int lastFC = 312*64 + 1;
     auto fc = frameCycle();
-    if(fc < lastFC) {
+    if(fc < _impl->_lastVideoFrameCycle) {
         flushScreen();
         // CPU is halted for 128*64 Cycles while video frame is generated
         _impl->_cpu.addCycles(128*64);
@@ -566,7 +595,7 @@ int Dream6800::executeVDG()
         _impl->_keyMatrix.updateKeys(_host.getKeyStates());
         _host.vblank();
     }
-    lastFC = fc;
+    _impl->_lastVideoFrameCycle = frameCycle();
     return fc;
 }
 
@@ -580,22 +609,20 @@ void Dream6800::flushScreen()
             }
         }
     }
-    ++_frames;
 }
 
 bool Dream6800::executeM6800()
 {
-    static int lastFC = 0;
     auto fc = executeVDG();
     if(_impl->_options.traceLog  && _impl->_cpu.getCpuState() == CadmiumM6800::eNORMAL)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, fc}, fmt::format("{:28} ; {}", _impl->_cpu.disassembleInstructionWithBytes(-1, nullptr), _impl->_cpu.dumpRegisterState()).c_str());
-    if(_impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
+    if(_impl->_options.startAddress && _impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
         if(_impl->_options.traceLog)
             Logger::log(Logger::eCHIP8, _cycles, {_frames, fc}, fmt::format("CHIP8: {:30} ; {}", disassembleInstructionWithBytes(-1, nullptr), dumpStateLine()).c_str());
     }
     _impl->_cpu.executeInstruction();
 
-    if(_impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
+    if(_impl->_options.startAddress && _impl->_cpu.getPC() == Private::FETCH_LOOP_ENTRY) {
         fetchState();
         _cycles++;
         if(_impl->_cpu.execMode() == ePAUSED) {
@@ -606,8 +633,8 @@ bool Dream6800::executeM6800()
             setExecMode(ePAUSED);
         }
         auto nextOp = opcode();
-        bool newFrame = lastFC > fc;
-        lastFC = fc;
+        bool newFrame = _impl->_lastChipFrameCycle > fc;
+        _impl->_lastChipFrameCycle = fc;
         if(newFrame && (nextOp & 0xF000) == 0x1000 && (opcode() & 0xFFF) == getPC()) {
             flushScreen();
             _host.updateScreen();
@@ -634,7 +661,10 @@ int Dream6800::executeInstruction()
     }
     //std::clog << "CHIP8: " << dumpStateLine() << std::endl;
     auto start = _impl->_cpu.cycles();
-    while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < 19968*0x30);
+    if (!_execChip8)
+        executeM6800();
+    else
+        while(!executeM6800() && _execMode != ePAUSED && _impl->_cpu.cycles() - start < 19968*0x30);
     return static_cast<int>(_impl->_cpu.cycles() - start);
 }
 

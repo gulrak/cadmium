@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0...3.24)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum MacOS deployment version" FORCE)
-project(cadmium VERSION 1.9.96 LANGUAGES C CXX)
+project(cadmium VERSION 1.9.97 LANGUAGES C CXX)
 option(CADMIUM_BUILD_TESTS "Build Cadmium test targets" ON)
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
     cmake_policy(VERSION 3.21)

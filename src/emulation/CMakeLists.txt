@@ -23,6 +23,8 @@ set(CHIP8_EMU_SOURCE
     datavariants.hpp
     dream6800.cpp
     dream6800.hpp
+    dreamtape.cpp
+    dreamtape.hpp
     emulatorhost.hpp
     hardware/cdp186x.cpp
     hardware/cdp186x.hpp
@@ -71,9 +73,14 @@ target_compile_definitions(emulation PUBLIC CADMIUM_WITH_GENERIC_CPU)
 target_link_libraries(emulation PUBLIC c_octo chiplet-lib raylib_static)
 if(CADMIUM_WITH_HP48)
     target_link_libraries(emulation PUBLIC hp48::core hp48::asacpp)
+    if(EMSCRIPTEN)
+        set(HP48SX_ASSET_ROOT "/hp48")
+    else()
+        set(HP48SX_ASSET_ROOT "${hp48sx_SOURCE_DIR}")
+    endif()
     target_compile_definitions(emulation PRIVATE
         CADMIUM_WITH_HP48=1
-        HP48SX_SOURCE_DIR="${hp48sx_SOURCE_DIR}")
+        HP48SX_SOURCE_DIR="${HP48SX_ASSET_ROOT}")
 endif()
 if(CODE_COVERAGE)
     target_code_coverage(emulation)

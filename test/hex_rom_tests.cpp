@@ -73,6 +73,28 @@ TEST_CASE("Headless host construction is independent of prior storage contents")
     CHECK(host->emuCore().chip8Core()->getV(0) == 0x2A);
 }
 
+TEST_CASE("DREAM binary loader and reload preserve the 0200 load address")
+{
+    for (const auto preset : {"dream-none", "dream-chip-8"}) {
+        INFO(std::string(preset));
+        HexTestHost host(emu::CoreRegistry::propertiesForPreset(preset));
+        const bool native = std::string_view(preset) == "dream-none";
+        const std::vector<uint8_t> code = native ? std::vector<uint8_t>{0x86, 0x2A, 0x20, 0xFE}
+                                                 : std::vector<uint8_t>{0x60, 0x2A, 0x12, 0x02};
+        REQUIRE(host.loadBinary("dream-test.bin", code, emu::EmuHostEx::DontChangeOptions));
+        CHECK(host.emuCore().memory()[0x200] == code[0]);
+        auto* cpu = host.emuCore().executionUnit(0);
+        REQUIRE(cpu);
+        CHECK(cpu->getPC() == 0x200);
+        cpu->setExecMode(emu::GenericCpu::eRUNNING);
+        cpu->executeInstruction();
+        CHECK(cpu->registerbyIndex(0).value == 0x2A);
+        host.emuCore().memory()[0x200] = 0;
+        REQUIRE(host.reload());
+        CHECK(host.emuCore().memory()[0x200] == code[0]);
+    }
+}
+
 TEST_CASE("HEX sparse ranges preserve addresses and gaps across loading and reload")
 {
     HexFixture fixture;

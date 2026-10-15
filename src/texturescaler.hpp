@@ -52,6 +52,8 @@ public:
         if (!_intermediateTexture.id || _mode != POINT_LINEAR)
             return;
         BeginTextureMode(_intermediateTexture);
+        // Transparent video cutouts must replace the previous frame too.
+        ClearBackground(BLANK);
         DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_intermediateTexture.texture.width, (float)_intermediateTexture.texture.height},
                        (Vector2){0, 0}, 0.0f, WHITE);
         EndTextureMode();

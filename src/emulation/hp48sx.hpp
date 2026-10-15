@@ -68,6 +68,8 @@ private:
     bool executeSaturnInstruction();
     bool prepareInterpreter(std::span<const uint8_t> program);
     bool prepareRawObject(std::span<const uint8_t> object);
+    void captureStartState();
+    void restoreStartState();
     void fetchState();
     void refreshMemory();
     void flushMemory();

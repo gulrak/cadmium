@@ -51,6 +51,7 @@ public:
     GenericCpu* executionUnit(size_t index) override;
     void setFocussedExecutionUnit(GenericCpu* unit) override;
     GenericCpu* focussedExecutionUnit() override;
+    IChip8Emulator* chip8Core() override;
 
     void executeFrame() override;
     int frameRate() const override { return 50; }

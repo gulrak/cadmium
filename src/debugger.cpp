@@ -299,6 +299,10 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     bool mouseInPanel = false;
     auto& instructionOffset = _instructionOffset[_visibleExecUnit];
     auto pc = cpu.getPC();
+    // Some hardware backends (notably Saturn) have PCs wider than 16 bits.
+    // Preserve the existing range for 16-bit cores and include the current
+    // 64K address page for wider cores.
+    const uint32_t maxAddress = pc | 0xffffU;
     if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
         auto wheel = GetMouseWheelMoveV();
         mouseInPanel = true;
@@ -311,7 +315,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
                 step = 2;
             else if (wheel.y <= 0.5f)
                 step = -2;
-            instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? 0xFFFF : 4096 - 9 * 2);
+            instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? static_cast<int>(maxAddress) : 4096 - 9 * 2);
         }
     }
     auto dialect = Dialect::eCHIP8OCTO;
@@ -351,7 +355,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     }
     inIf = !prefix.empty() && prefix.back().second.find(" if ") != std::string::npos;
     uint32_t addr = insOff;
-    for (int i = 0; i <= extraLines && addr < /*cpu.memSize()*/ 0x10000; ++i) {
+    for (int i = 0; i <= extraLines && addr <= maxAddress; ++i) {
         if (mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC + i * lineSpacing, area.width, 8}))
             toggleBreakpoint(cpu, addr);
         int bytes = 0;

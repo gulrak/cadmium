@@ -73,6 +73,8 @@
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
+
 extern "C" EMSCRIPTEN_KEEPALIVE void openFileCallbackC(const char* name, const uint8_t* data, size_t size);
 extern "C" EMSCRIPTEN_KEEPALIVE void webPasteCallbackC(const char* text, size_t size);
 static std::function<void(std::string_view, ghc::span<const uint8_t>)> openFileCallback;
@@ -652,6 +654,7 @@ void main()
         _titleImage = LoadImage("cadmium-title.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
         _chipEmu->reset();
+        updateScreen();
         std::string versionStr(CADMIUM_VERSION);
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91u - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
         if(!versionStr.empty() && (versionStr.back() & 1))
@@ -777,7 +780,23 @@ void main()
             _scaleMode = 1;
         }
 
-#ifdef RESIZABLE_GUI
+#if defined(PLATFORM_WEB) && !defined(RESIZABLE_GUI)
+        // CSS controls the displayed size, not the WebGL backing resolution.
+        // Keep the GUI logical size fixed, but let the video overlay use all
+        // available device pixels instead of enlarging a 640x480 canvas.
+        double cssWidth = 0.0, cssHeight = 0.0;
+        if (emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS &&
+            cssWidth > 0.0 && cssHeight > 0.0) {
+            const double pixelRatio = emscripten_get_device_pixel_ratio();
+            const int width = std::max(1, static_cast<int>(std::round(cssWidth * pixelRatio)));
+            const int height = std::max(1, static_cast<int>(std::round(cssHeight * pixelRatio)));
+            if (GetScreenWidth() != width || GetScreenHeight() != height) {
+                SetWindowSize(width, height);
+                SetMouseScale(static_cast<float>(_screenWidth) / width, static_cast<float>(_screenHeight) / height);
+                _textureScaler->setOutputSize(width, height);
+            }
+        }
+#elif defined(RESIZABLE_GUI)
         static int resizeCount = 0;
         if (IsWindowResized()) {
             int width{0}, height{0};
@@ -1191,6 +1210,10 @@ void main()
             auto rgbaSpan = _chipEmu->getRGBASpan(
                 {static_cast<uint32_t*>(_screen.data), static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)}
                 );
+            // The pre-rendered HP LCD (including the generic core's HP display
+            // option) contains a fine grid, not bare CHIP-8 pixels.
+            _screenIsPreRendered = !rgbaSpan.empty();
+            SetTextureFilter(_screenTexture, _screenIsPreRendered ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT);
             if(!rgbaSpan.empty()) {
                 auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
                 for (size_t y = 0; y < rgbaSpan.height(); ++y) {
@@ -1338,7 +1361,13 @@ void main()
             //               (Vector2){0, 0}, 0.0f, WHITE);
 #else
             if (_videoRenderMode == eHIRES && _screenOverlay.width > 0 && _screenOverlay.height > 0) {
+#ifdef PLATFORM_WEB
+                const float scaleX = static_cast<float>(GetScreenWidth()) / _screenWidth;
+                const float scaleY = static_cast<float>(GetScreenHeight()) / _screenHeight;
+                drawScreen({_screenOverlay.x * scaleX, _screenOverlay.y * scaleY, _screenOverlay.width * scaleX, _screenOverlay.height * scaleY}, _screenScale);
+#else
                 drawScreen({_screenOverlay.x * _scaleMode, _screenOverlay.y * _scaleMode, _screenOverlay.width * _scaleMode, _screenOverlay.height * _scaleMode}, _screenScale);
+#endif
             }
             _textureScaler->draw(0, 0);
             //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * _scaleMode / scale2d.x, (float)_renderTexture.texture.height * _scaleMode / scale2d.y},
@@ -1384,10 +1413,13 @@ void main()
         const float contentW = static_cast<float>(scrWidth);
         const float contentH = static_cast<float>(scrHeight / ratio);
 
-        // Integer scale that fits the stretched content into dest.
+        // Bare CHIP-8 pixels retain integer scaling. Pre-rendered LCDs use
+        // filtered fractional scaling to avoid aliasing their fine pixel grid.
         const float maxScaleX = dest.width / contentW;
         const float maxScaleY = dest.height / contentH;
-        const int scale = std::max(1, static_cast<int>(std::floor(std::min(maxScaleX, maxScaleY))));
+        const float fitScale = std::min(maxScaleX, maxScaleY);
+        const float scale = _screenIsPreRendered ? fitScale :
+            (fitScale >= 1.0f ? std::floor(fitScale) : 1.0f / std::ceil(1.0f / fitScale));
 
         const float dstW = contentW * static_cast<float>(scale);
         const float dstH = contentH * static_cast<float>(scale);
@@ -1402,7 +1434,7 @@ void main()
         DrawTexturePro(_screenTexture, srcRect, dstRect, {0.0f, 0.0f}, 0.0f, WHITE);
 
         if(_showKeyMap) {
-            auto s = scale / _screenScale;
+            auto s = scale / std::max(1, _screenScale);
             DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * scale - 40.0f*s, videoY + scrHeight * scale - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
         }
         if(GetTime() < 5 && _romImage.empty()) {
@@ -1611,6 +1643,9 @@ void main()
             mouseOffset.y = 0;
         BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
 //        BeginGui({}, &_renderTexture, {0, 0}, {_scaleBy2 ? 2.0f : 1.0f, _scaleBy2 ? 2.0f : 1.0f});
+#elif defined(PLATFORM_WEB)
+        BeginGui({}, &_textureScaler->getRenderTexture(), {0, 0},
+                 {static_cast<float>(GetScreenWidth()) / _screenWidth, static_cast<float>(GetScreenHeight()) / _screenHeight});
 #else
         BeginGui({}, &_textureScaler->getRenderTexture(), {0, 0}, {static_cast<float>(_scaleMode), static_cast<float>(_scaleMode)});
 #endif
@@ -1828,6 +1863,8 @@ void main()
                     if (button == MOUSE_BUTTON_RIGHT) {
                         auto oldMode = _chipEmu->execMode();
                         _chipEmu->reset(false);
+                        _audioBuffer.reset();
+                        updateScreen();
                         if (oldMode == ExecMode::eRUNNING) {
                             _debugger.setExecMode(ExecMode::eRUNNING);
                         }
@@ -2855,8 +2892,8 @@ void main()
         if(!_romImage.empty() || force) {
             _chipEmu->reset();
             _audioBuffer.reset();
-            updateScreen();
             loadRomImage();
+            updateScreen();
         }
         _debugger.captureStates();
     }
@@ -2925,6 +2962,7 @@ private:
     int _currentMonitor{0};
     int _screenScale{1};
     int _screenRatio{1};
+    bool _screenIsPreRendered{false};
     Vector2 _screenSize{0,0};
     Color _screenBorderColor{0,0,0,255};
     emu::Properties _propsMemento{};

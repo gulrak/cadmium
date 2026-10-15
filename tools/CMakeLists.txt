@@ -21,6 +21,9 @@ add_executable(rpgt rpgt.cpp)
 target_link_libraries(rpgt PUBLIC emulation ghc_filesystem)
 
 if(NOT EMSCRIPTEN)
+    add_executable(dreamtape dreamtape.cpp ../src/emulation/dreamtape.cpp)
+    target_include_directories(dreamtape PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(dreamtape PRIVATE chiplet-lib)
     add_executable(c8sst-gen c8sst-gen.cpp c8sst/cases.cpp c8sst/oracle.cpp c8sst/execution.cpp)
     target_link_libraries(c8sst-gen PRIVATE emulation)
     target_compile_definitions(c8sst-gen PRIVATE

@@ -194,7 +194,9 @@ struct Hp48sxEmulationCore::Private
     {
         (void)REGISTERED;
         auto rom = readFile(options.rom);
-        machine = std::make_unique<hp48::G48sxMachine>(hp48::G48SX_COLD_START_KEY_HOLD_INSTRUCTIONS, std::move(rom), "Cadmium HP-48SX", hp48::G48sxTimingProfile::COMPARE);
+        machine = std::make_unique<hp48::G48sxMachine>(hp48::G48SX_RECOVERY_RESET_KEY_HOLD_INSTRUCTIONS, std::move(rom), "Cadmium HP-48SX", hp48::G48sxTimingProfile::COMPARE);
+        powerOnState = machine->saveStateBytes(false);
+        idleStack.push(std::string("No program loaded"));
     }
 
     Properties& properties;
@@ -202,6 +204,11 @@ struct Hp48sxEmulationCore::Private
     std::unique_ptr<hp48::G48sxMachine> machine;
     std::vector<uint8_t> memory;
     std::vector<uint8_t> syncedMemory;
+    std::vector<uint8_t> startState;
+    std::vector<uint8_t> powerOnState;
+    std::vector<uint8_t> loadedData;
+    std::array<uint32_t, 8> startReturnStack{};
+    uint16_t startCrc{};
     std::array<uint8_t, 32> stackBytes{};
     std::array<bool, 16> keyStates{};
     uint32_t fetchAddress{};
@@ -212,6 +219,10 @@ struct Hp48sxEmulationCore::Private
     uint32_t stackOffset{};
     uint32_t backendStepOverSP{};
     bool loaded{};
+    std::array<uint8_t, 64 * 17> idleFrameBuffer{};
+    hp48::ObjectStack idleStack;
+    std::vector<std::string> idleMenu{"EDIT", "VIEW", "RCL", "STO", "PURGE", "CLEAR"};
+    hp48::Hp48Display idleDisplay{{idleFrameBuffer.data(), idleFrameBuffer.size()}, idleStack, idleMenu};
 };
 
 Hp48sxEmulationCore::Hp48sxEmulationCore(EmulatorHost& host, Properties& properties, IEmulationCore* other)
@@ -278,7 +289,33 @@ bool Hp48sxEmulationCore::loadData(std::span<const uint8_t> data, std::optional<
 {
     _errorMessage.clear();
     try {
-        return _impl->options.interpreter == Interpreter::NONE ? prepareRawObject(data) : prepareInterpreter(data);
+        if (data.empty() && _impl->options.interpreter != Interpreter::NONE) {
+            _impl->startState.clear();
+            _impl->loadedData.clear();
+            restoreStartState();
+            return true;
+        }
+        // The toolbar reloads the same image after reset. Reuse its prepared
+        // machine state instead of assembling and bootstrapping it again.
+        if (!_impl->startState.empty() && std::ranges::equal(data, _impl->loadedData)) {
+            restoreStartState();
+            return true;
+        }
+        _impl->startState.clear();
+        _impl->loadedData.clear();
+        _impl->loaded = false;
+        _impl->keyStates.fill(false);
+        _impl->machine->loadState(_impl->powerOnState);
+        _impl->machine->setTimingProfile(hp48::G48sxTimingProfile::COMPARE);
+        const bool prepared = _impl->options.interpreter == Interpreter::NONE
+            ? prepareRawObject(data)
+            : prepareInterpreter(data);
+        if (prepared) {
+            captureStartState();
+            _impl->loadedData.assign(data.begin(), data.end());
+            restoreStartState();
+        }
+        return prepared;
     }
     catch (const std::exception& error) {
         _cpuState = eERROR;
@@ -319,6 +356,9 @@ bool Hp48sxEmulationCore::prepareInterpreter(std::span<const uint8_t> program)
     };
     const uint32_t fetchOffset = required(_impl->options.fetchSymbol);
     const uint32_t keyTableOffset = required(_impl->options.keyTableSymbol);
+    const bool isChip48 = _impl->options.interpreter == Interpreter::CHIP_48;
+    const uint32_t restartOffset = isChip48 ? required("restart") : 0;
+    const uint32_t controlKeysOffset = isChip48 ? required("ofs_ckeys") : 0;
     _impl->timerOffset = required(_impl->options.timerSymbol);
     _impl->soundOffset = required(_impl->options.soundSymbol);
     _impl->stackPointerOffset = required(_impl->options.stackPointerSymbol);
@@ -332,13 +372,15 @@ bool Hp48sxEmulationCore::prepareInterpreter(std::span<const uint8_t> program)
     };
     const auto addresses = _impl->machine->prepareRecoveredStackForEvalWithAddresses(objects);
     _impl->machine->setTimingProfile(hp48::G48sxTimingProfile::REAL);
+    uint32_t restartAddress{};
     const auto setInterpreterAddress = [&](uint32_t address) {
         const int64_t base = static_cast<int64_t>(address) + _impl->options.symbolAddressBias;
-        if (base < 0 || base + fetchOffset > 0xfffff || base + keyTableOffset > 0xfffff) {
+        if (base < 0 || base + fetchOffset > 0xfffff || base + keyTableOffset > 0xfffff || (isChip48 && base + restartOffset > 0xfffff)) {
             throw std::runtime_error("HP-48 interpreter symbols resolve outside the Saturn address space");
         }
         _impl->fetchAddress = static_cast<uint32_t>(base + fetchOffset);
         _impl->keyTableAddress = static_cast<uint32_t>(base + keyTableOffset);
+        restartAddress = static_cast<uint32_t>(base + restartOffset);
     };
     setInterpreterAddress(addresses[1]);
     constexpr uint64_t ON_DELAY_INSTRUCTIONS = 1'000;
@@ -351,6 +393,13 @@ bool Hp48sxEmulationCore::prepareInterpreter(std::span<const uint8_t> program)
         _impl->machine->scheduleKeyPress("EVAL", startupBase + EVAL_DELAY_INSTRUCTIONS, KEY_HOLD_INSTRUCTIONS);
         const uint64_t deadline = startupBase + STARTUP_INSTRUCTION_LIMIT;
         while (_impl->machine->running() && _impl->machine->instructionIndex() < deadline && _impl->machine->cpu().getPC() != _impl->fetchAddress) {
+            if (isChip48 && _impl->machine->cpu().getPC() == restartAddress) {
+                // CHIP-48 does not initialize its key-release mask. Stale
+                // calculator RAM here can abort before the first dispatch.
+                const auto variables = static_cast<uint32_t>(_impl->machine->cpu().getState().r4 & 0xfffffU);
+                for (uint32_t nibble = 0; nibble < 4; ++nibble)
+                    _impl->machine->writeNibble(variables + controlKeysOffset + nibble, 0);
+            }
             _impl->machine->stepInstruction();
         }
         return _impl->machine->cpu().getPC() == _impl->fetchAddress;
@@ -377,13 +426,69 @@ bool Hp48sxEmulationCore::prepareInterpreter(std::span<const uint8_t> program)
 
 void Hp48sxEmulationCore::handleReset(bool)
 {
-    _impl->machine->resetColdStart();
-    _impl->loaded = false;
+    try {
+        if (_impl->startState.empty() && _impl->options.interpreter == Interpreter::NONE) {
+            _impl->machine->setTimingProfile(hp48::G48sxTimingProfile::COMPARE);
+            _impl->machine->resetColdStart();
+            _impl->machine->scheduleKeyPress("A", hp48::G48SX_RECOVERY_KEY_INSTRUCTION,
+                                            hp48::G48SX_RECOVERY_KEY_HOLD_INSTRUCTIONS);
+            _impl->machine->stepTo(hp48::G48SX_RECOVERY_STACK_INSTRUCTIONS);
+            if (!_impl->machine->running())
+                throw std::runtime_error("Unable to initialize HP-48 calculator");
+            _impl->machine->setTimingProfile(hp48::G48sxTimingProfile::REAL);
+            captureStartState();
+        }
+        restoreStartState();
+    }
+    catch (const std::exception& error) {
+        _impl->loaded = false;
+        _cpuState = eERROR;
+        _errorMessage = error.what();
+        setExecMode(ePAUSED);
+    }
+}
+
+void Hp48sxEmulationCore::captureStartState()
+{
+    // Startup can reach dispatch before the scheduled EVAL release. Do not
+    // capture a held calculator key whose release has already run after reset.
+    _impl->machine->release("ON");
+    _impl->machine->release("EVAL");
+    const auto cpuState = _impl->machine->cpu().getState();
+    _impl->startReturnStack = cpuState.rstk;
+    _impl->startCrc = cpuState.crc;
+    _impl->startState = _impl->machine->saveStateBytes(false);
+}
+
+void Hp48sxEmulationCore::restoreStartState()
+{
+    _impl->loaded = !_impl->startState.empty();
+    _impl->machine->loadState(_impl->loaded ? _impl->startState : _impl->powerOnState);
+    if (_impl->loaded) {
+        // The library's state loader does not restore the complete Saturn return
+        // stack or CRC. Refill the circular stack in its saved logical order.
+        for (auto it = _impl->startReturnStack.rbegin(); it != _impl->startReturnStack.rend(); ++it)
+            _impl->machine->cpu().pushRSTK(*it);
+        *_impl->machine->cpu().crcRegister() = _impl->startCrc;
+    }
+    _impl->machine->setTimingProfile(hp48::G48sxTimingProfile::REAL);
+    _impl->keyStates.fill(false);
+    _impl->backendStepOverSP = 0;
     _cycles = 0;
     _frames = 0;
+    _state = {};
+    _backendStopped = false;
+    _breakpointTriggered = false;
     _cpuState = eNORMAL;
     _errorMessage.clear();
-    setExecMode(ePAUSED);
+    if (_impl->loaded && _isHybridChipMode)
+        fetchState();
+    else if (_isHybridChipMode) {
+        _state.pc = defaultLoadAddress();
+        std::ranges::fill(_impl->memory, 0);
+        _impl->syncedMemory = _impl->memory;
+    }
+    setExecMode(_host.isHeadless() ? eRUNNING : ePAUSED);
 }
 
 GenericCpu::ExecMode Hp48sxEmulationCore::execMode() const
@@ -393,6 +498,8 @@ GenericCpu::ExecMode Hp48sxEmulationCore::execMode() const
 
 void Hp48sxEmulationCore::setExecMode(ExecMode mode)
 {
+    if (!_impl->loaded)
+        mode = ePAUSED;
     GenericCpu::setExecMode(mode);
     _impl->machine->setPaused(mode == ePAUSED);
     if (!_execChip8 && mode == eSTEPOVER) {
@@ -615,7 +722,10 @@ ghc::span2d<const uint32_t> Hp48sxEmulationCore::getRGBASpan(ghc::span2d<uint32_
     if (target.width() < getCurrentScreenWidth() || target.height() < getCurrentScreenHeight())
         return {};
     auto result = target.subspan(0, 0, getCurrentScreenWidth(), getCurrentScreenHeight());
-    _impl->machine->render(result);
+    if (!_impl->loaded && _impl->options.interpreter != Interpreter::NONE)
+        _impl->idleDisplay.render(result, hp48::Hp48Display::Mode::Stack);
+    else
+        _impl->machine->render(result);
     std::ranges::transform(result, result.begin(), argb8888ToRaylibRgba);
     return result.as_const();
 }

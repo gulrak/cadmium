@@ -123,15 +123,15 @@ The Supported presets are (possible specific file extensions in parentheses):
 | vip-chip-8-x-fpd | .c8xfpd | A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug | 1982 | ✓ |
 | vip-chip-8-e | .c8e | CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 | 1979 | ✓ |
 | **HP-48SX** | **LLE** | **Emulation of a HP-48SX Calculator** | |
-| hp-48-none | .hp; .hp48 | Raw HP-48SX | 1990 | - |
-| hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX | 1990 | WIP |
-| hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX | 1991 | WIP |
-| hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX | 1991 | WIP |
-| hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX | 2017 | WIP |
+| hp-48-none | .hp; .hp48 | Raw HP-48SX, debugger still wip | 1990 | - |
+| hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX, debugger still wip | 1990 | WIP |
+| hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX, debugger still wip | 1991 | WIP |
+| hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX, debugger still wip | 1991 | WIP |
+| hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX, debugger still wip | 2017 | WIP |
 | **DREAM 6800** | **LLE** | **Emulation of a DREAM6800 system** | |
-| dream-none | .bin; .hex; .ram; .raw | Raw DREAM6800 | 1979 | ✓ |
-| dream-chip-8 | .bin; .hex; .ram; .raw | CHIP-8 DREAM6800 | 1979| ✓ |
-| <nobr>dream-chip-8-lop</nobr> | .bin; .hex; .ram; .raw | CHIP-8 with logical operators on DREAM6800 | 2020 | ✓ |
+| dream-none | .bin; .hex; .ram; .raw | Raw DREAM6800 (loading to 0x200, unless .hex, and running it there) | 1979 | ✓ |
+| dream-chip-8 | .bin; .hex; .ram; .raw | CHIP-8 DREAM6800 (loading to 0x200, unless .hex, and running 0xC000) | 1979| ✓ |
+| <nobr>dream-chip-8-lop</nobr> | .bin; .hex; .ram; .raw | CHIP-8 with logical operators on DREAM6800 (loading to 0x200, unless .hex, and running 0xC000) | 2020 | ✓ |
 | **ETI-660** | **LLE** | **Emulation of a ETI-660** | |
 | eti-none | .et660; .bin; .hex; .ram; .raw | Raw ETI660 | 1982 | ✓ |
 | eti-chip-8 | .c8eti | CHIP-8 on the ETI-660 (64x48) | 1982 | ✓ |
@@ -540,6 +540,12 @@ I expect it to work on Linux the same way.
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<path-to-emsdk>/emsdk/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake
 cmake --build build
 ```
+
+HP-48SX support is optional. Add `-DCADMIUM_WITH_HP48=ON` when configuring,
+or `-DFETCHCONTENT_SOURCE_DIR_HP48SX=/path/to/hp48sx` to use a local checkout
+and enable it automatically. Web builds embed the default Rev E ROM and all
+four interpreter sources in the Wasm binary. Deploy `index.html`, `index.js`,
+and `index.wasm` as usual; no separate HP-48 asset files are needed.
 
 ## Used Resources
 
