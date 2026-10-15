@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <configuration.hpp>
 //#include <emulation/chip8options.hpp>
 #include <emulation/emulatorhost.hpp>
 #include <emulation/iemulationcore.hpp>
@@ -150,11 +151,18 @@ protected:
 
 GHC_ENUM_ENABLE_BIT_OPERATIONS(EmuHostEx::LoadOptions)
 
-class HeadlessHost : public EmuHostEx
+class HeadlessHostConfiguration
+{
+protected:
+    CadmiumConfiguration _headlessConfig;
+};
+
+// Keep the configuration alive throughout EmuHostEx construction and destruction.
+class HeadlessHost : private HeadlessHostConfiguration, public EmuHostEx
 {
 public:
-    HeadlessHost() : EmuHostEx(_cfg) {}
-    explicit HeadlessHost(const Properties& options) : EmuHostEx(_cfg) { updateEmulatorOptions(options); }
+    HeadlessHost() : EmuHostEx(_headlessConfig) {}
+    explicit HeadlessHost(const Properties& options) : EmuHostEx(_headlessConfig) { updateEmulatorOptions(options); }
     ~HeadlessHost() override = default;
     Properties& getProperties() { return *_properties; }
     IEmulationCore& emuCore() { return *_chipEmu; }
@@ -166,8 +174,6 @@ public:
     void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
-private:
-    CadmiumConfiguration _cfg;
 };
 
 #ifdef CADMIUM_WITH_BACKGROUND_EMULATION

@@ -4,9 +4,12 @@
 #include <emulation/eti660.hpp>
 #include <chiplet/utility.hpp>
 
+#include <array>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 
 namespace {
 class HexTestHost : public emu::HeadlessHost
@@ -44,6 +47,30 @@ Librarian::Info analyze(const std::filesystem::path& path)
     FAIL("HEX file was not listed");
     return {};
 }
+}
+
+TEST_CASE("Headless host construction is independent of prior storage contents")
+{
+    alignas(emu::HeadlessHost) std::array<std::byte, sizeof(emu::HeadlessHost)> storage;
+    storage.fill(std::byte{0xA5});
+    auto* address = reinterpret_cast<emu::HeadlessHost*>(storage.data());
+    auto destroyHost = [](emu::HeadlessHost* host) { std::destroy_at(host); };
+    std::unique_ptr<emu::HeadlessHost, decltype(destroyHost)> host(nullptr, destroyHost);
+    const auto props = emu::CoreRegistry::propertiesForPreset("chip-8");
+
+    SUBCASE("default constructor") {
+        REQUIRE_NOTHROW(host.reset(std::construct_at(address)));
+        host->updateEmulatorOptions(props);
+    }
+    SUBCASE("preset constructor") {
+        REQUIRE_NOTHROW(host.reset(std::construct_at(address, props)));
+    }
+
+    const std::array<uint8_t, 2> code{0x60, 0x2A};
+    REQUIRE(host->loadBinary("construction.ch8", code, emu::EmuHostEx::DontChangeOptions));
+    REQUIRE(host->emuCore().chip8Core());
+    host->emuCore().chip8Core()->executeInstruction();
+    CHECK(host->emuCore().chip8Core()->getV(0) == 0x2A);
 }
 
 TEST_CASE("HEX sparse ranges preserve addresses and gaps across loading and reload")
