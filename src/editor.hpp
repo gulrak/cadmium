@@ -183,6 +183,7 @@ protected:
     std::string _filename;
     std::string _text;
     std::vector<uint32_t> _lines;
+    std::vector<LineState> _lineStates;
     std::stack<EditInfo> _undoStack;
     std::stack<EditInfo> _redoStack;
     std::vector<char> _alphabetKeys{};

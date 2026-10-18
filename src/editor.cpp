@@ -214,13 +214,18 @@ void Editor::updateLineInfo(uint32_t fromLine)
         _longestLineSize = 0;
     const char* str = _text.data() + (fromLine ? _lines[fromLine] : 0);
     const char* end = _text.data() + _text.size();
+    auto state = fromLine < _lineStates.size() ? _lineStates[fromLine] : LineState{};
     _lines.erase(_lines.begin() + fromLine, _lines.end());
+    _lineStates.resize(fromLine);
     auto length = str - _text.data();
     auto lastOffset = length;
     _lines.push_back(length);
+    _lineStates.push_back(state);
     while (str < end) {
         if (*str++ == '\n') {
+            state = scanLineState(_text.data() + lastOffset, str, state);
             _lines.push_back(str - _text.data());
+            _lineStates.push_back(state);
             length = _lines.back() - lastOffset;
             if(length > _longestLineSize)
                 _longestLineSize = length;
@@ -471,7 +476,7 @@ void Editor::draw(Font& font, Rectangle rect)
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
             DrawTextClipped(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, textColor);
-            drawHighlightedTextLine(font, _text.data(), lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol, LINE_SIZE);
+            drawHighlightedTextLine(font, _text.data(), lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol, LINE_SIZE, _lineStates[lineNumber]);
         }
         ++lineNumber;
         ypos += LINE_SIZE;

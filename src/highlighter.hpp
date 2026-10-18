@@ -39,13 +39,24 @@ public:
 
 protected:
     enum Dialect { eNONE, eCHIP8OCTO, eCHIP8CHIPPER, eCDP1802, eM6800 };
+    // Progress of an Octo `:asm <cpu> { ... }` block, carried from line to line
+    enum AsmPhase : uint8_t { ASM_NONE, ASM_EXPECT_CPU, ASM_EXPECT_BRACE, ASM_BODY };
+    struct LineState { // value-initialized state is ASM_NONE / eNONE
+        AsmPhase asmPhase;
+        Dialect asmDialect;
+        bool operator==(const LineState&) const = default;
+    };
     Highlighter();
-    void highlightLine(const char* text, const char* end);
-    void highlightLineOcto(const char* text, const char* end);
-    void highlightLineChipper(const char* text, const char* end);
-    void highlightLine1802(const char* text, const char* end);
-    void highlightLine6800(const char* text, const char* end);
-    void drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight);
+    LineState highlightLine(const char* text, const char* end, LineState state = {});
+    size_t highlightSegment(Dialect dialect, const char* text, const char* end, size_t index);
+    size_t highlightLineOcto(const char* text, const char* end, size_t index);
+    size_t highlightLineChipper(const char* text, const char* end, size_t index);
+    size_t highlightLine1802(const char* text, const char* end, size_t index);
+    size_t highlightLine6800(const char* text, const char* end, size_t index);
+    size_t highlightPlain(const char* text, const char* end, size_t index);
+    const char* nextModeChange(const char* text, const char* end, LineState& state) const;
+    LineState scanLineState(const char* text, const char* end, LineState state) const;
+    void drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight, LineState state = {});
     void setDialect(Dialect dialect);
     enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
     struct ColorPair {
