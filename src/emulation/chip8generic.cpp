@@ -473,6 +473,7 @@ void Chip8GenericEmulator::handleReset(bool cold)
     static const uint8_t defaultPalette[16] = {0, 255, 182, 109, 224, 28, 3, 252, 160, 20, 2, 204, 227, 31, 162, 22};
     //static const uint8_t defaultPalette[16] = {172, 248, 236, 100, 205, 153, 42, 213, 169, 85, 37, 114, 87, 159, 69, 9};
     _cycleCounter = 0;
+    _instructionCounter = 0;
     _frameCounter = 0;
     _clearCounter = 0;
     _waitCycles = 0;
@@ -882,6 +883,7 @@ inline void Chip8GenericEmulator::executeInstructionNoBreakpoints()
 {
     uint16_t opcode = (_memory[_rPC] << 8) | _memory[_rPC + 1];
     ++_cycleCounter;
+    ++_instructionCounter;
     _rPC = (_rPC + 2) & ADDRESS_MASK;
     (this->*_opcodeHandler[opcode])(opcode);
 }
@@ -953,6 +955,7 @@ void Chip8GenericEmulator::executeInstructions(int numInstructions)
                 }
 #endif
                 (this->*_opcodeHandler[opcode])(opcode);
+                ++_instructionCounter;
                 if(_cpuState == eWAIT) {
                     _cycleCounter += numInstructions - i;
                     break;
@@ -1002,6 +1005,7 @@ int Chip8GenericEmulator::executeInstruction()
 #endif
         (this->*_opcodeHandler[opcode])(opcode);
         ++_cycleCounter;
+        ++_instructionCounter;
     }
     else {
         if (_execMode == ePAUSED || _cpuState == eERROR)
@@ -1012,6 +1016,7 @@ int Chip8GenericEmulator::executeInstruction()
         _rPC = (_rPC + 2) & ADDRESS_MASK;
         (this->*_opcodeHandler[opcode])(opcode);
         ++_cycleCounter;
+        ++_instructionCounter;
         if (_cpuState != eWAIT && (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP <= _stepOverSP))) {
             _execMode = ePAUSED;
         }
@@ -1164,15 +1169,12 @@ void Chip8GenericEmulator::op00E0(uint16_t opcode)
 
 void Chip8GenericEmulator::op00E0_megachip(uint16_t opcode)
 {
-    static uint64_t clearCycles = 0;
-    auto cyclesPerEmittedFrame = _cycleCounter - clearCycles;
-    printf("Cycles per emitted frame: %llu\n", cyclesPerEmittedFrame);
     _host.preClear();
     swapMegaSchreens();
     _host.updateScreen();
     clearScreen();
     ++_clearCounter;
-    _cycleCounter = clearCycles = calcNextFrame() - 1;
+    _cycleCounter = calcNextFrame() - 1;
 }
 
 void Chip8GenericEmulator::op00ED_c8e(uint16_t opcode)

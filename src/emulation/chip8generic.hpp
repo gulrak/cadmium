@@ -121,7 +121,8 @@ public:
     uint32_t cpuID() const override { return 0xC8; }
     int frameRate() const override { return _options.frameRate; }
     bool updateProperties(Properties& props, Property& changed) override;
-    int64_t machineCycles() const override { return 0; }
+    int64_t machineCycles() const override { return cycles(); }
+    int64_t executedInstructions() const override { return _instructionCounter; }
     int executeInstruction() override;
     void executeInstructionNoBreakpoints();
     void executeInstructions(int numInstructions) override;

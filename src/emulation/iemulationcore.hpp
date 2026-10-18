@@ -98,6 +98,7 @@ public:
     virtual void traceNextFrame() {}
     virtual void executeFrame() = 0;
     virtual int64_t cycles() const = 0;
+    virtual int64_t executedInstructions() const { return cycles(); }
     virtual int64_t machineCycles() const = 0;
     virtual int64_t frames() const = 0;
     virtual int frameRate() const = 0;

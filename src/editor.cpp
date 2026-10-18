@@ -307,9 +307,7 @@ void Editor::update()
         _findUpdateRevision = ~0u;
     }
     else if (sysKeyPressed && isAlphaPressed('S')) {
-        if(!_filename.empty()) {
-            writeFile(_filename, _text.data(), _text.size());
-        }
+        // Saving is done by the host, it knows where the source belongs.
     }
     else if (IsKeyPressed(KEY_ESCAPE)) {
         _selectionStart = _selectionEnd = 0;
@@ -391,12 +389,14 @@ void Editor::update()
             insert("\n");
         }
         else {
-            auto codepoint = GetCharPressed();
-            if (codepoint >= 32 && codepoint < 255) {
-                std::string s;
-                utf8::append(s, codepoint);
-                insert(s);
+            // raylib drops characters that are not fetched in this frame, so take all of them
+            std::string s;
+            while (auto codepoint = GetCharPressed()) {
+                if (codepoint >= 32 && codepoint < 255)
+                    utf8::append(s, codepoint);
             }
+            if (!s.empty())
+                insert(s);
         }
     }
     if(_cursorChanged) {

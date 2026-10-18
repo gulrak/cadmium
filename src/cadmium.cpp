@@ -1586,6 +1586,7 @@ void main()
                 _editor.setText(": main\n    jump main");
                 _romName = "unnamed.8o";
                 _editor.setFilename("");
+                _sourcePath.clear();
                 for(auto& unit : *_chipEmu) {
                   unit.removeAllBreakpoints();
                 }
@@ -1604,10 +1605,7 @@ void main()
         }
         _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Action("Save...", [this]() {
-                _mainView = eROM_EXPORT;
-#ifndef PLATFORM_WEB
-                _librarian.fetchDir(_currentDirectory);
-#endif
+                openSavePage(false);
             }, "⌘S"),
             PopupMenu::Separator(),
             PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
@@ -1654,7 +1652,7 @@ void main()
 
             SetRowHeight(16);
             SetSpacing(0);
-            auto instructionsThisUpdate = _chipEmu->cycles() - lastInstructionCount;
+            auto instructionsThisUpdate = _chipEmu->executedInstructions() - lastInstructionCount;
             auto framesThisUpdate = _chipEmu->frames() - lastFrameCount;
             if (_chipEmu->execMode() == emu::GenericCpu::eRUNNING) {
                 _ipfAverage.add(instructionsThisUpdate);
@@ -1691,7 +1689,7 @@ void main()
                                {0.15f, _variantName.c_str()}});
                 }
             }
-            lastInstructionCount = _chipEmu->cycles();
+            lastInstructionCount = _chipEmu->executedInstructions();
             lastFrameCount = _chipEmu->frames();
             BeginColumns();
             {
@@ -1708,6 +1706,7 @@ void main()
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
+                        _sourcePath.clear();
                         for(auto& unit : *_chipEmu) {
                             unit.removeAllBreakpoints();
                         }
@@ -1723,10 +1722,7 @@ void main()
                     }
                     if (IsKeyPressed(KEY_S)) {
                         PopupMenu::close();
-                        _mainView = eROM_EXPORT;
-#ifndef PLATFORM_WEB
-                        _librarian.fetchDir(_currentDirectory);
-#endif
+                        saveShortcut();
                     }
                     if (IsKeyPressed(KEY_K)) {
                         PopupMenu::close();
@@ -1794,10 +1790,7 @@ void main()
                 SetTooltip("OPEN LIBRARY");
 #endif
                 if (iconButton(ICON_FILE_SAVE_CLASSIC)) {
-                    _mainView = eROM_EXPORT;
-#ifndef PLATFORM_WEB
-                    _librarian.fetchDir(_currentDirectory);
-#endif
+                    openSavePage(false);
                 }
                 SetTooltip("SAVE PROGRAM");
                 //SetNextWidth(130);
@@ -2727,26 +2720,23 @@ void main()
                 BeginColumns();
                 SetNextWidth(110);
                 Label("Select file type:");
-                static int activeType = 0;
                 SetNextWidth(70);
-                activeType = ToggleGroup("ROM File;Source Code", activeType);
+                _saveFileType = ToggleGroup("ROM File;Source Code", _saveFileType);
                 EndColumns();
                 Space(3);
                 SetNextWidth(80);
                 SetIndent(32);
-                if(_currentFileName.empty() && ((activeType == 0 && _romImage.empty()) || (activeType == 1 && _editor.getText().empty()))) GuiDisable();
+                if(_currentFileName.empty() && ((_saveFileType == 0 && _romImage.empty()) || (_saveFileType == 1 && _editor.getText().empty()))) GuiDisable();
                 if(Button("Save") && !_currentFileName.empty()) {
-                    if (activeType == 1)
-                        updateEditorDisassembly(true);
                     // TODO: Fix this
                     std::string romExtension = ".ch8";
-                    if (activeType == 0 && fs::path(_currentFileName).extension() != romExtension) {
+                    if (_saveFileType == 0 && fs::path(_currentFileName).extension() != romExtension) {
                         if (fs::path(_currentFileName).has_extension())
                             _currentFileName = fs::path(_currentFileName).replace_extension(romExtension).string();
                         else
                             _currentFileName += romExtension;
                     }
-                    else if (activeType == 1 && fs::path(_currentFileName).extension() != ".8o") {
+                    else if (_saveFileType == 1 && fs::path(_currentFileName).extension() != ".8o") {
                         if (fs::path(_currentFileName).has_extension())
                             _currentFileName = fs::path(_currentFileName).replace_extension(".8o").string();
                         else
@@ -2754,24 +2744,31 @@ void main()
                     }
 #ifndef PLATFORM_WEB
                     auto targetFile = _librarian.fullPath(_currentFileName);
-                    if(activeType == 0) {
-                        writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
+                    std::error_code ec;
+                    if (fs::exists(targetFile, ec) && !(_saveFileType == 1 && targetFile == _sourcePath) && _confirmOverwrite != targetFile) {
+                        _confirmOverwrite = targetFile;
                     }
                     else {
-                        writeFile(targetFile, _editor.getText().data(), _editor.getText().size());
+                        _confirmOverwrite.clear();
+                        if(_saveFileType == 0)
+                            writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
+                        else
+                            saveSource(targetFile);
+                        _mainView = _lastView;
                     }
 #else
-                    if(activeType == 0) {
+                    if(_saveFileType == 0)
                         webDownloadFile(_currentFileName.c_str(), _romImage.data(), _romImage.size(), "application/octet-stream");
-                    }
-                    else {
-                        const auto& source = _editor.getText();
-                        webDownloadFile(_currentFileName.c_str(), reinterpret_cast<const uint8_t*>(source.data()), source.size(), "text/plain;charset=utf-8");
-                    }
-#endif
+                    else
+                        saveSource(_currentFileName);
                     _mainView = _lastView;
+#endif
                 }
                 GuiEnable();
+                if (!_confirmOverwrite.empty()) {
+                    SetIndent(32);
+                    Label(fmt::format("'{}' exists, press Save again to replace it.", fs::path(_confirmOverwrite).filename().string()).c_str());
+                }
                 break;
             }
         }
@@ -2856,6 +2853,7 @@ void main()
         _editorDisassemblyKey.reset();
         _loadedSourceRevision = _editor.contentRevision();
         _editor.setFilename(filename);
+        _sourcePath = compiler && fs::path(filename).extension() == ".8o" ? filename : std::string{};
         if (_romOrigin != ProgramOrigin::DATABASE)
             _recentFiles.usingFile(filename);
         updateMainMenu();
@@ -2874,6 +2872,48 @@ void main()
         _audioBuffer.reset();
         updateScreen();
         _debugger.captureStates();
+    }
+
+    void saveShortcut()
+    {
+        if (_mainView == eEDITOR && !_sourcePath.empty())
+            saveSource(_sourcePath);
+        else
+            openSavePage(_mainView == eEDITOR);
+    }
+
+    void openSavePage(bool sourceCode)
+    {
+        if (sourceCode) {
+            // Suggest a source file next to the loaded program.
+            _saveFileType = 1;
+            const auto romPath = fs::path(_romName);
+#ifndef PLATFORM_WEB
+            std::error_code ec;
+            if (romPath.has_parent_path() && fs::is_directory(romPath.parent_path(), ec))
+                _currentDirectory = romPath.parent_path().string();
+#endif
+            if (!romPath.empty())
+                _currentFileName = fs::path(romPath.filename()).replace_extension(".8o").string();
+        }
+        _confirmOverwrite.clear();
+        _mainView = eROM_EXPORT;
+#ifndef PLATFORM_WEB
+        _librarian.fetchDir(_currentDirectory);
+#endif
+    }
+
+    void saveSource(const std::string& path)
+    {
+        updateEditorDisassembly(true);
+        const auto& source = _editor.getText();
+#ifndef PLATFORM_WEB
+        writeFile(path, source.data(), source.size());
+#else
+        webDownloadFile(fs::path(path).filename().string().c_str(), reinterpret_cast<const uint8_t*>(source.data()), source.size(), "text/plain;charset=utf-8");
+#endif
+        TraceLog(LOG_INFO, "Saved source to %s", path.c_str());
+        _sourcePath = path;
     }
 
     struct EditorDisassembly
@@ -2941,6 +2981,9 @@ private:
     Librarian::Screenshot _screenshotData;
     Sha1::Digest _screenShotSha1;
     uint32_t _loadedSourceRevision{};
+    std::string _sourcePath;      // the file the editor's source is saved to, empty if there is none yet
+    int _saveFileType{0};         // save page: 0 = ROM file, 1 = source code
+    std::string _confirmOverwrite;
     static constexpr const char* DISASSEMBLY_PLACEHOLDER = "# Disassembling, please wait...\n";
 #ifndef PLATFORM_WEB
     BackgroundJob<EditorDisassembly> _disassemblyJob{_threadPool};

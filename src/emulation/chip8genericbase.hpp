@@ -95,6 +95,7 @@ protected:
     uint32_t _rI{};
     uint32_t _rPC{};
     int64_t _cycleCounter{};
+    int64_t _instructionCounter{};
     int _frameCounter{};
     ClockedTime _systemTime;
 };

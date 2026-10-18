@@ -2568,24 +2568,32 @@ int GuiTextBox(Rectangle bounds, char *text, int textSize, bool editMode)
             if (multiline && IsKeyPressed(KEY_ENTER)) codepoint = (int)'\n';
 
             // Encode codepoint as UTF-8
+            // NOTE: Also without a typed character this sets codepointSize to 1, the delete code below relies on that
             int codepointSize = 0;
             const char *charEncoded = CodepointToUTF8(codepoint, &codepointSize);
 
-            // Add codepoint to text, at current cursor position
-            // NOTE: Make sure we do not overflow buffer size
-            if (((multiline && (codepoint == (int)'\n')) || (codepoint >= 32)) && ((textLength + codepointSize) < textSize))
+            // NOTE: rlguipp change, raylib drops characters that are not fetched in this frame, so take all of them
+            while (codepoint > 0)
             {
-                // Move forward data from cursor position
-                for (int i = (textLength + codepointSize); i > textBoxCursorIndex; i--) text[i] = text[i - codepointSize];
+                // Add codepoint to text, at current cursor position
+                // NOTE: Make sure we do not overflow buffer size
+                if (((multiline && (codepoint == (int)'\n')) || (codepoint >= 32)) && ((textLength + codepointSize) < textSize))
+                {
+                    // Move forward data from cursor position
+                    for (int i = (textLength + codepointSize); i > textBoxCursorIndex; i--) text[i] = text[i - codepointSize];
 
-                // Add new codepoint in current cursor position
-                for (int i = 0; i < codepointSize; i++) text[textBoxCursorIndex + i] = charEncoded[i];
+                    // Add new codepoint in current cursor position
+                    for (int i = 0; i < codepointSize; i++) text[textBoxCursorIndex + i] = charEncoded[i];
 
-                textBoxCursorIndex += codepointSize;
-                textLength += codepointSize;
+                    textBoxCursorIndex += codepointSize;
+                    textLength += codepointSize;
 
-                // Make sure text last character is EOL
-                text[textLength] = '\0';
+                    // Make sure text last character is EOL
+                    text[textLength] = '\0';
+                }
+
+                codepoint = GetCharPressed();
+                if (codepoint > 0) charEncoded = CodepointToUTF8(codepoint, &codepointSize);
             }
 
             // Move cursor to start
