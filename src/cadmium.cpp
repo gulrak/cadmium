@@ -63,6 +63,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -3464,6 +3465,7 @@ void convertKnownRomList()
 int main(int argc, char* argv[])
 {
     static emu::Properties coreProperties;
+    static std::list<ghc::CLI::Combo> coreComboOptions; // stable storage, the CLI keeps pointers into it
     ghc::CLI cli(argc, argv);
     int64_t traceLines = -1;
     bool compareRun = false;
@@ -3550,17 +3552,18 @@ int main(int argc, char* argv[])
                        coreProperties.at(paramName).setString(value);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
                    [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
-                       const emu::Property::Combo& combo = std::get<emu::Property::Combo>(prop.getValue());
                        std::ostringstream optionList;
-                       for (auto i = combo.options.begin(); i != combo.options.end(); ++i) {
-                           if (i != combo.options.begin()) {
+                       for (auto i = val.options.begin(); i != val.options.end(); ++i) {
+                           if (i != val.options.begin()) {
                                optionList << ", ";
                            }
                            optionList << toOptionName(*i);
                        }
-                       cli.option<ghc::CLI::Combo>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const ghc::CLI::Combo& value) {
-                            coreProperties.at(paramName).setSelectedIndex(value.index);
-                       }, prop.getDescription() + " (" + optionList.str() +")").dependsOn(dependencyCheck);
+                       // The CLI matches the argument against Combo::combinations, so they must be filled in
+                       auto& cliCombo = coreComboOptions.emplace_back(ghc::CLI::Combo{val.index, val.options});
+                       cli.option({fmt::format("--{}", prop.getOptionName())}, cliCombo, prop.getDescription() + " (" + optionList.str() +")", [&cliCombo](const std::string& paramName) {
+                            coreProperties.at(paramName).setSelectedIndex(cliCombo.index);
+                       }).dependsOn(dependencyCheck);
                    }
                }, prop.getValue());
             }
