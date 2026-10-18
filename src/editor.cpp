@@ -300,9 +300,11 @@ void Editor::update()
         _mouseDownInText = false;
     if (sysKeyPressed && isAlphaPressed('F')) {
         _findOrReplace = _findOrReplace == eFIND ? eNONE : eFIND;
+        _findUpdateRevision = ~0u; // select the current match again when the bar opens
     }
     else if (sysKeyPressed && isAlphaPressed('R')) {
         _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
+        _findUpdateRevision = ~0u;
     }
     else if (sysKeyPressed && isAlphaPressed('S')) {
         if(!_filename.empty()) {
@@ -404,24 +406,23 @@ void Editor::update()
             _selectionStart = _selectionEnd = 0;
     }
 
-    if(_undoStack.empty() || _undoStack.top().id == _editId) {
+    if(_undoStack.empty() || _contentRevision != _lastSeenRevision) {
+        // text changed in this frame (or nothing to undo yet), restart the inactivity delay
+        _lastSeenRevision = _contentRevision;
         _blinkTimer = BLINK_RATE;
         _inactiveEditTimer = 0;
-        _lastEditId = _editId;
     }
-    else {
+    else if(_contentRevision != _checkedRevision) {
+        // text changed earlier, check it once after the inactivity delay
         _inactiveEditTimer += GetFrameTime();
         if(_inactiveEditTimer > INACTIVITY_DELAY) {
             _inactiveEditTimer = 0;
-            _editedTextSha1 = calculateSha1(_text);
-            if(_editedTextSha1 != _compiledSourceSha1) {
-                _compiledSourceSha1 = _editedTextSha1;
-                recompile();
-                if(true) {
-                    //if(_compiler.sha1Hex() != romSha1Hex) {
-
-                    //}
-                }
+            _checkedRevision = _contentRevision;
+            if(_compiledRevision != _contentRevision) {
+                if(calculateSha1(_text) == _compiledSourceSha1)
+                    _compiledRevision = _contentRevision; // e.g. edits undone, compile result still matches
+                else
+                    recompile();
             }
         }
     }
@@ -431,6 +432,8 @@ void Editor::update()
 
 void Editor::recompile()
 {
+    _compiledRevision = _contentRevision;
+    _compiledSourceSha1 = calculateSha1(_text);
     try {
         auto start = std::chrono::steady_clock::now();
         _compiler.reset();
@@ -450,8 +453,24 @@ void Editor::recompile()
 
 void Editor::updateCompilerOptions(int startAddress)
 {
-    if(_compiler.setStartAddress(startAddress))
-        recompile();
+    if(_compiler.setStartAddress(startAddress) && isCompiledUpToDate()) {
+        // Compile again at the next check instead of right now, the text might be big
+        // and the editor might not even be visible.
+        _compiledRevision = _contentRevision - 1;
+        _checkedRevision = _contentRevision - 1;
+        _compiledSourceSha1 = {};
+    }
+}
+
+void Editor::setGeneratedText(std::string text)
+{
+    setText(std::move(text));
+    _undoStack = std::stack<EditInfo>();
+    _redoStack = std::stack<EditInfo>();
+    _compiler.reset();
+    _compiledSourceSha1 = {};
+    _compiledRevision = _contentRevision - 1;
+    _checkedRevision = _lastSeenRevision = _contentRevision;
 }
 
 void Editor::draw(Font& font, Rectangle rect)
@@ -606,6 +625,7 @@ void Editor::safeInsert(uint32_t offset, const std::string& text)
     }
     else {
         _text.insert(offset, text);
+        ++_contentRevision;
     }
 }
 
@@ -620,6 +640,7 @@ void Editor::safeErase(uint32_t offset, uint32_t length)
         TraceLog(LOG_WARNING, "Trying to erase until after end at offset: %d, length: %d, (size: %d)", offset, length, (uint32_t)_text.size());
     }
     _text.erase(offset, length);
+    ++_contentRevision;
 }
 
 void Editor::deleteSelectedText()
@@ -773,7 +794,7 @@ Rectangle Editor::drawToolArea()
         }
         GuiEnable();
         EndColumns();
-        if(_findUpdateId != _editId)
+        if(_findUpdateRevision != _contentRevision)
             updateFindResults();
     }
     if(_findOrReplace == eFIND_REPLACE) {
@@ -889,7 +910,7 @@ void Editor::updateFindResults()
     _findCurrentLength = 0;
     _findCurrentOffset = 0;
     _selectionStart = _selectionEnd = 0;
-    _findUpdateId = _editId;
+    _findUpdateRevision = _contentRevision;
     if(_findString.empty())
         return;
     if(_findRegex) {
@@ -898,9 +919,9 @@ void Editor::updateFindResults()
             caseSense = _findCaseSensitive;
             try {
                 if (_findCaseSensitive)
-                    regEx = std::regex(_findString, std::regex::icase);
-                else
                     regEx = std::regex(_findString);
+                else
+                    regEx = std::regex(_findString, std::regex::icase);
                 _findRegexValid = true;
             }
             catch (...)

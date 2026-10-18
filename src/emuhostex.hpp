@@ -98,16 +98,79 @@ public:
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown);
     virtual void updateEmulatorOptions(const Properties& properties);
+    void reloadProgram();
     void setPalette(const std::vector<uint32_t>& colors, size_t offset = 0, bool setAsDefault = false);
     void setPalette(const Palette& palette);
 
+    struct LifecycleCounters
+    {
+        int coreCreations{0};
+        int resets{0};
+        int programLoads{0};
+    };
+    const LifecycleCounters& lifecycleCounters() const { return _lifecycleCounters; }
+
+    struct DisassemblyKey
+    {
+        Sha1::Digest sha1{};
+        chip8::VariantSet variants{};
+        uint32_t address{0};
+        bool operator==(const DisassemblyKey& other) const { return sha1 == other.sha1 && variants == other.variants && address == other.address; }
+    };
+
+    struct DisassemblyRequest
+    {
+        DisassemblyKey key;
+        std::string name;
+        std::vector<uint8_t> image;
+    };
+
+    std::optional<DisassemblyKey> disassemblyKey() const;
+    std::optional<DisassemblyRequest> disassemblyRequest() const;
+    static std::string disassemble(const DisassemblyRequest& request);
+
 protected:
+    enum class ProgramOrigin { FILE, EDITOR, DATABASE };
+    struct Program
+    {
+        std::string name;
+        std::vector<uint8_t> image;
+        std::optional<HexFile> hexFile;  // HEX files keep their ranges, image is only a canonical copy then
+        Sha1::Digest sha1;
+        std::optional<uint32_t> loadAddress;  // default load address of the core if not set
+        bool isKnown{false};
+        ProgramOrigin origin{ProgramOrigin::FILE};
+        bool autoRun{false};
+        std::string source;  // set if the program was compiled from source, otherwise a disassembly is generated
+        std::shared_ptr<emu::OctoCompiler> compiler;
+    };
+
+    class RequestScope
+    {
+    public:
+        explicit RequestScope(EmuHostEx& host) : _host(host) { ++_host._requestDepth; }
+        ~RequestScope();
+        RequestScope(const RequestScope&) = delete;
+        RequestScope& operator=(const RequestScope&) = delete;
+        bool finish();
+    private:
+        EmuHostEx& _host;
+        bool _finished{false};
+    };
+    void requestConfig(const Properties& properties);
+    void requestProgram(Program program);
+    void requestReload();
+    void applyPendingConfig();
+    virtual bool applyRequests();
+    bool replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1);
+
     bool loadHexFile(std::string_view filename, LoadOptions loadOpt, std::string_view sourcePath = {});
     bool loadRomImage();
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     void resetAllBreakpoints();
     virtual void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) {}
     virtual void whenEmuChanged(emu::IEmulationCore& emu) {}
+    virtual void whenMachineReset() {}
     static int saturatedCast(double value) {
         if (value > static_cast<double>(std::numeric_limits<int>::max()))
             return std::numeric_limits<int>::max();
@@ -135,18 +198,30 @@ protected:
     std::string _romName;
     std::vector<uint8_t> _romImage;
     std::optional<HexFile> _romHexFile;
+    std::optional<uint32_t> _romLoadAddress;
     Sha1::Digest _romSha1;
     bool _romIsWellKnown{false};
+    ProgramOrigin _romOrigin{ProgramOrigin::FILE};
+    bool _romHasSource{false};
     bool _customPalette{false};
     Palette _colorPalette;
     Palette _defaultPalette;
-    //std::array<uint32_t, 256> _colorPalette{};
-    //std::array<uint32_t, 256> _defaultPalette{};
     emu::Properties* _properties{nullptr};
     std::map<std::string, Properties> _propertiesByClass;
     std::string _variantName;
     emu::Properties _romWellKnownProperties;
     emu::Properties _previousProperties;
+    LifecycleCounters _lifecycleCounters;
+
+private:
+    void syncPalette();
+    bool programFits(const Program& program) const;
+    void adoptProgram(Program& program);
+    int _requestDepth{0};
+    std::optional<Properties> _pendingConfig;
+    std::optional<Program> _pendingProgram;
+    bool _pendingReload{false};
+    bool _coreChanged{false};
 };
 
 GHC_ENUM_ENABLE_BIT_OPERATIONS(EmuHostEx::LoadOptions)
@@ -157,7 +232,6 @@ protected:
     CadmiumConfiguration _headlessConfig;
 };
 
-// Keep the configuration alive throughout EmuHostEx construction and destruction.
 class HeadlessHost : private HeadlessHostConfiguration, public EmuHostEx
 {
 public:
@@ -203,9 +277,9 @@ public:
     bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown) override;
 
 private:
+    bool applyRequests() override;
     void worker();
     void tick();
-    //CadmiumConfiguration _cfg;
     Image* _screen{nullptr};
     Image _screen1{};
     Image _screen2{};

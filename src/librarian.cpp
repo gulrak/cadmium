@@ -201,10 +201,19 @@ bool Librarian::parentDir()
     return fetchDir(fs::path(_currentPath).parent_path().string());
 }
 
+std::mutex& Librarian::decompilerMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
+
 bool Librarian::update(const emu::Properties& properties)
 {
     bool foundOne = false;
     if(_analyzing) {
+        std::unique_lock decompilerLock(decompilerMutex(), std::try_to_lock);
+        if (!decompilerLock)
+            return true;
         for (auto& entry : _directoryEntries) {
             if (!entry.analyzed) {
                 foundOne = true;
@@ -340,6 +349,7 @@ std::string Librarian::getEstimatedPresetForFile(std::string_view filename, std:
         result = emu::CoreRegistry::presetForExtension(fs::path(filename).extension().string());
     if(result.empty()) {
         uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
+        std::scoped_lock decompilerLock(decompilerMutex());
         emu::Chip8Decompiler dec{data, startAddress};
         dec.decompile("", startAddress, nullptr, true, true);
         //auto possibleVariants = dec.possibleVariants();

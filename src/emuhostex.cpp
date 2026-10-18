@@ -40,6 +40,9 @@
 
 #include <raylib.h>
 #include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <sstream>
 #include <ghc/span.hpp>
 
 namespace emu {
@@ -110,7 +113,6 @@ std::unique_ptr<IEmulationCore> EmuHostEx::create(Properties& properties, IEmula
 {
     auto [variantName, emuCore] = CoreRegistry::create(*this, properties, iother);
     if (emuCore) {
-        emuCore->reset();
         _variantName = variantName;
         return std::move(emuCore);
     }
@@ -212,26 +214,227 @@ void EmuHostEx::resetAllBreakpoints()
 
 void EmuHostEx::updateEmulatorOptions(const Properties& properties)
 {
-    // TODO: Fix this
-    if(_previousProperties != properties || !_chipEmu) {
-        if(&properties != _properties) {
-            if(!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
-                auto pIter = _propertiesByClass.find(properties.propertyClass());
-                if(pIter == _propertiesByClass.end()) {
-                    pIter = _propertiesByClass.emplace(properties.propertyClass(), properties).first;
-                }
-                _properties = &pIter->second;
-            }
-            *_properties = properties;
+    RequestScope scope(*this);
+    requestConfig(properties);
+    scope.finish();
+}
+
+void EmuHostEx::reloadProgram()
+{
+    RequestScope scope(*this);
+    requestReload();
+    scope.finish();
+}
+
+EmuHostEx::RequestScope::~RequestScope()
+{
+    if (!_finished && --_host._requestDepth == 0) {
+        // The operation was aborted
+        _host._pendingConfig.reset();
+        _host._pendingProgram.reset();
+        _host._pendingReload = false;
+    }
+}
+
+bool EmuHostEx::RequestScope::finish()
+{
+    _finished = true;
+    if (--_host._requestDepth == 0)
+        return _host.applyRequests();
+    return true;
+}
+
+void EmuHostEx::requestConfig(const Properties& properties)
+{
+    if (properties)
+        _pendingConfig = properties;
+}
+
+void EmuHostEx::requestProgram(Program program)
+{
+    _pendingProgram = std::move(program);
+}
+
+void EmuHostEx::requestReload()
+{
+    _pendingReload = true;
+}
+
+void EmuHostEx::applyPendingConfig()
+{
+    if (!_pendingConfig)
+        return;
+    auto properties = std::move(*_pendingConfig);
+    _pendingConfig.reset();
+    if (_previousProperties == properties && _chipEmu)
+        return;
+    if (!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
+        auto pIter = _propertiesByClass.find(properties.propertyClass());
+        if (pIter == _propertiesByClass.end()) {
+            pIter = _propertiesByClass.emplace(properties.propertyClass(), properties).first;
         }
-        _previousProperties = properties;
-        _chipEmu = create(*_properties, _chipEmu.get());
-        if (_chipEmu) {
-            if(_chipEmu->getScreen())
-                (void)_chipEmu->getScreen();
-            whenEmuChanged(*_chipEmu);
+        _properties = &pIter->second;
+    }
+    *_properties = properties;
+    _previousProperties = properties;
+    if (auto core = create(*_properties, _chipEmu.get())) {
+        _chipEmu = std::move(core);
+        _coreChanged = true;
+        ++_lifecycleCounters.coreCreations;
+    }
+}
+
+bool EmuHostEx::applyRequests()
+{
+    applyPendingConfig();
+    if (!_chipEmu) {
+        // Without a usable configuration (e.g. first start without config) fall back to a default core,
+        // so a host always has a core after applying the requests.
+        _pendingConfig = CoreRegistry::propertiesForPreset("chip-8");
+        applyPendingConfig();
+        if (!_chipEmu)
+            throw std::runtime_error("Could not create the default emulation core");
+    }
+    // Take the requests out first, so requests made by the hooks below start a new round.
+    auto program = std::exchange(_pendingProgram, std::nullopt);
+    bool programOk = true;
+    bool programChanged = false;
+    if (program) {
+        if (programFits(*program)) {
+            adoptProgram(*program);
+            programChanged = true;
+        }
+        else {
+            TraceLog(LOG_WARNING, "Program `%s` does not fit into the selected core", program->name.c_str());
+            programOk = false;
         }
     }
+    const bool coreChanged = std::exchange(_coreChanged, false);
+    const bool reload = std::exchange(_pendingReload, false);
+    if (coreChanged || programChanged || reload) {
+        _chipEmu->reset();
+        ++_lifecycleCounters.resets;
+        if (!_romImage.empty()) {
+            if (loadRomImage())
+                ++_lifecycleCounters.programLoads;
+            else
+                programOk = false;
+        }
+    }
+    if (coreChanged || programChanged)
+        syncPalette();
+    if (coreChanged)
+        whenEmuChanged(*_chipEmu);
+    if (coreChanged || programChanged || reload)
+        whenMachineReset();
+    if (programChanged && _romOrigin != ProgramOrigin::EDITOR)
+        whenRomLoaded(_romName, program->autoRun, program->compiler.get(), program->source);
+    return programOk;
+}
+
+bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1)
+{
+    RequestScope scope(*this);
+    Program program;
+    program.name = _romName;
+    program.image = std::move(image);
+    program.sha1 = sha1;
+    program.isKnown = _romIsWellKnown;
+    program.origin = ProgramOrigin::EDITOR;
+    requestProgram(std::move(program));
+    return scope.finish();
+}
+
+bool EmuHostEx::programFits(const Program& program) const
+{
+    const auto memSize = static_cast<uint64_t>(_chipEmu->memSize());
+    if (program.hexFile) {
+        return std::ranges::all_of(program.hexFile->ranges(), [memSize](const auto& range) {
+            return range.first < memSize && range.second.size() <= memSize - range.first;
+        });
+    }
+    if (program.image.empty())
+        return false;
+    const uint64_t address = program.loadAddress ? *program.loadAddress : Librarian::isPrefixedTPDRom(program.image) ? 0x200 : _chipEmu->defaultLoadAddress();
+    return address < memSize && program.image.size() <= memSize - address;
+}
+
+void EmuHostEx::adoptProgram(Program& program)
+{
+    // Only the description of the program moves into the host, source and compiler stay
+    // with the pending request until whenRomLoaded was notified.
+    _romName = program.name;
+    _romImage = std::move(program.image);
+    _romHexFile = std::move(program.hexFile);
+    _romLoadAddress = program.loadAddress;
+    _romSha1 = program.sha1 == Sha1::Digest{} ? calculateSha1(_romImage) : program.sha1;
+    _romIsWellKnown = program.isKnown;
+    _romOrigin = program.origin;
+    _romHasSource = !program.source.empty();
+}
+
+std::optional<EmuHostEx::DisassemblyKey> EmuHostEx::disassemblyKey() const
+{
+    if (_romImage.empty() || _romHasSource || _romOrigin == ProgramOrigin::EDITOR || !_chipEmu)
+        return {};
+    DisassemblyKey key;
+    if (_romHexFile) {
+        auto* chip8 = _chipEmu->chip8Core();
+        if (!chip8)
+            return {};
+        key.variants = chip8->supportedChip8Variants();
+        key.address = _romHexFile->ranges().front().first;
+    }
+    else {
+        if (_romImage.size() >= 8192 * 1024)
+            return {};
+        auto startAddress = _properties->get<Property::Integer>("startAddress");
+        auto chip8Emu = dynamic_cast<emu::IChip8Emulator*>(_chipEmu->executionUnit(0));
+        key.variants = chip8Emu ? chip8Emu->supportedChip8Variants() : chip8::Variant::NONE;
+        key.address = startAddress ? startAddress->intValue : 0;
+    }
+    key.sha1 = _romSha1;
+    return key;
+}
+
+std::optional<EmuHostEx::DisassemblyRequest> EmuHostEx::disassemblyRequest() const
+{
+    auto key = disassemblyKey();
+    if (!key)
+        return {};
+    return DisassemblyRequest{*key, _romName, _romImage};
+}
+
+std::string EmuHostEx::disassemble(const DisassemblyRequest& request)
+{
+    std::scoped_lock decompilerLock(Librarian::decompilerMutex());
+    std::stringstream os;
+    Chip8Decompiler decomp{request.image, request.key.address};
+    decomp.setVariants(request.key.variants, true);
+    TraceLog(LOG_INFO, "About to decompile...");
+    decomp.decompile(request.name, request.key.address, &os, false, true);
+    return os.str();
+}
+
+void EmuHostEx::syncPalette()
+{
+    // The palette always has exactly as many colors as the core supports, missing ones come from the default palette.
+    auto palette = _properties->palette();
+    const auto targetSize = static_cast<size_t>(_chipEmu->getMaxColors());
+    const auto currentSize = palette.colors.size();
+    if (currentSize < targetSize) {
+        palette.colors.reserve(targetSize);
+        for (size_t i = currentSize; i < targetSize; ++i) {
+            palette.colors.push_back(i < _defaultPalette.colors.size() ? _defaultPalette.colors[i] : Palette::Color{0, 0, 0});
+        }
+    }
+    else if (currentSize > targetSize) {
+        palette.colors.resize(targetSize);
+    }
+    _properties->palette() = palette;
+    _colorPalette = palette;
+    _chipEmu->setPalette(_colorPalette);
+}
 #if 0
     if(_previousOptions != options || !_chipEmu) {
         if(&options != &_options)
@@ -260,7 +463,6 @@ void EmuHostEx::updateEmulatorOptions(const Properties& properties)
         //_debugger.updateCore(_chipEmu.get());
     }
 #endif
-}
 
 bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
 {
@@ -268,39 +470,36 @@ bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
     if (filename.size() < 4095 && fs::exists(filename, ec)) {
         if (fs::path(filename).extension() == ".hex")
             return loadHexFile(filename, loadOpt);
-        unsigned int size = 0;
         _customPalette = false;
-        _colorPalette = _defaultPalette;
         // TODO: Refactor this
         if (filename.ends_with(".gif")) {
             auto cart = emu::OctoCartridge(std::string(filename));
             if (cart.loadCartridge()) {
-                auto options = cart.getOptions();
-                auto properties = CoreRegistry::propertiesFromOctoOptions(options);
+                RequestScope scope(*this);
+                requestConfig(CoreRegistry::propertiesFromOctoOptions(cart.getOptions()));
+                applyPendingConfig();
                 auto source = cart.getSource();
-                updateEmulatorOptions(properties);
-                auto c8c = std::make_unique<emu::OctoCompiler>();
+                auto c8c = std::make_shared<emu::OctoCompiler>();
                 if (c8c->compile(filename, source).resultType == emu::CompileResult::eOK) {
-                    auto loadAddress = _chipEmu->defaultLoadAddress();
-                    if (c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
-                        _chipEmu->reset();
-                        auto binary = std::span<const uint8_t>(c8c->code(), c8c->code() + c8c->codeSize());
-                        if (_chipEmu->loadData(binary, loadAddress)) {
-                            _romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
-                            _romHexFile.reset();
-                            _romSha1 = c8c->sha1();
-                            _romName = filename;
-                            _romIsWellKnown = false;
-                        }
-                    }
-                    whenRomLoaded(_romName, loadOpt & LoadOptions::SetToRun, c8c.get(), source);
-                    return true;
+                    Program program;
+                    program.name = filename;
+                    program.image.assign(c8c->code(), c8c->code() + c8c->codeSize());
+                    program.sha1 = c8c->sha1();
+                    program.loadAddress = _chipEmu->defaultLoadAddress();
+                    program.autoRun = loadOpt & LoadOptions::SetToRun;
+                    program.source = source;
+                    program.compiler = c8c;
+                    requestProgram(std::move(program));
+                    if (scope.finish())
+                        return true;
                 }
                 else {
-                    _romName = filename;
-                    whenRomLoaded(_romName, false, c8c.get(), source);
-                    return true;
+                    scope.finish();
                 }
+                _romName = filename;
+                _romOrigin = ProgramOrigin::FILE;
+                whenRomLoaded(_romName, false, c8c.get(), source);
+                return true;
             }
         }
         auto fileData = loadFile(filename, Librarian::MAX_ROM_SIZE);
@@ -320,42 +519,28 @@ bool EmuHostEx::loadHexFile(std::string_view filename, LoadOptions loadOpt, std:
             return false;
         const auto digest = hex.sha1Digest();
         const bool isKnown = _librarian.isKnownFile(digest);
+        RequestScope scope(*this);
         if (!(loadOpt & DontChangeOptions) && isKnown && !_librarian.isGenericChip8(digest))
-            updateEmulatorOptions(_librarian.getPropertiesForFile(digest));
-        else if (!_chipEmu)
-            updateEmulatorOptions(CoreRegistry::propertiesForPreset("chip-8"));
-
-        for (const auto& [address, data] : hex.ranges()) {
-            if (address >= _chipEmu->memSize() || data.size() > _chipEmu->memSize() - address)
-                throw std::runtime_error("HEX data exceeds the selected core's memory");
-        }
-        _chipEmu->reset();
-        for (const auto& [address, data] : hex.ranges()) {
-            if (!_chipEmu->loadData(data, address))
-                throw std::runtime_error("HEX data range cannot be loaded by the selected core");
-        }
+            requestConfig(_librarian.getPropertiesForFile(digest));
 
         // Keep a canonical image for the editor and binary export. Only the
         // actual HEX ranges are written to memory, including on reload.
+        Program program;
         const auto firstAddress = hex.ranges().front().first;
         const auto& [lastAddress, lastData] = hex.ranges().back();
-        _romImage.assign(lastAddress + lastData.size() - firstAddress, 0);
+        program.image.assign(lastAddress + lastData.size() - firstAddress, 0);
         for (const auto& [address, data] : hex.ranges())
-            std::copy(data.begin(), data.end(), _romImage.begin() + address - firstAddress);
-        _romHexFile.emplace(std::move(hex));
-        _romSha1 = digest;
-        _romName = filename;
-        _romIsWellKnown = isKnown;
+            std::copy(data.begin(), data.end(), program.image.begin() + address - firstAddress);
+        program.hexFile.emplace(std::move(hex));
+        program.name = filename;
+        program.sha1 = digest;
+        program.isKnown = isKnown;
+        program.autoRun = loadOpt & SetToRun;
         _customPalette = false;
-        _colorPalette = _defaultPalette;
         resetAllBreakpoints();
-        std::stringstream source;
-        if (auto* chip8 = _chipEmu->chip8Core()) {
-            Chip8Decompiler decomp{_romImage, firstAddress};
-            decomp.setVariants(chip8->supportedChip8Variants(), true);
-            decomp.decompile(filename, firstAddress, &source, false, true);
-        }
-        whenRomLoaded(_romName, loadOpt & SetToRun, nullptr, source.str());
+        requestProgram(std::move(program));
+        if (!scope.finish())
+            throw std::runtime_error("HEX data exceeds the selected core's memory");
         return true;
     }
     catch (const std::exception& error) {
@@ -377,6 +562,8 @@ bool EmuHostEx::loadRomImage()
         }
         return true;
     }
+    if (_romLoadAddress)
+        return _chipEmu->loadData(_romImage, *_romLoadAddress);
     return _chipEmu->loadData(_romImage, Librarian::isPrefixedTPDRom(_romImage)
                                               ? 0x200 : _chipEmu->defaultLoadAddress());
 }
@@ -424,100 +611,51 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         fs::remove(path, error);
         return loaded;
     }
-    bool valid = false;
-    bool wasFromSource = false;
-    std::unique_ptr<emu::OctoCompiler> c8c;
-    Sha1::Digest romSha1;
-    std::vector<uint8_t> romImage;
-    std::string source;
-    // Properties knownProperties;
     auto fileData = std::vector(binary.data(), binary.data() + binary.size());
     auto isKnown = _librarian.isKnownFile(fileData);
     auto isGenericChip8 = _librarian.isGenericChip8(fileData);
     TraceLog(LOG_INFO, "Loading %s file with sha1: %s", isKnown ? "known" : "unknown", calculateSha1(fileData).to_hex().c_str());
-    auto knownProperties = _librarian.getPropertiesForFile(fileData);
+    RequestScope scope(*this);
+    Program program;
+    program.name = filename;
+    program.autoRun = loadOpt & LoadOptions::SetToRun;
     if (endsWith(filename, ".8o")) {
-        source.assign((const char*)fileData.data(), fileData.size());
-        c8c = std::make_unique<emu::OctoCompiler>();
-        if (c8c->compile(filename).resultType == emu::CompileResult::eOK) {
-            auto loadAddress = _chipEmu->defaultLoadAddress();
-            if (c8c->codeSize() < _chipEmu->memSize() - loadAddress) {
-                romImage.assign(c8c->code(), c8c->code() + c8c->codeSize());
-                romSha1 = c8c->sha1();
-                valid = true;
-                wasFromSource = true;
-                if ((loadOpt & DontChangeOptions) == 0) {
-                    isKnown = _librarian.isKnownFile(romImage);
-                    //knownOptions = _librarian.getOptionsForFile(romImage.data(), romImage.size());
-                    // if(knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
-                    //     updateEmulatorOptions(knownOptions);
-                }
-            }
-        }
-        else {
+        program.source.assign((const char*)fileData.data(), fileData.size());
+        auto c8c = std::make_shared<emu::OctoCompiler>();
+        if (c8c->compile(filename).resultType != emu::CompileResult::eOK) {
             _romName = filename;
-            whenRomLoaded(_romName, false, c8c.get(), source);
+            _romOrigin = ProgramOrigin::FILE;
+            whenRomLoaded(_romName, false, c8c.get(), program.source);
             return true;
+        }
+        program.image.assign(c8c->code(), c8c->code() + c8c->codeSize());
+        program.sha1 = c8c->sha1();
+        program.loadAddress = _chipEmu->defaultLoadAddress();
+        program.compiler = c8c;
+        if ((loadOpt & DontChangeOptions) == 0) {
+            isKnown = _librarian.isKnownFile(program.image);
         }
     }
     else {
-        std::optional<uint32_t> loadAddress;
         if (Librarian::isPrefixedTPDRom(binary))
-            loadAddress = 0x200;
-        if (loadOpt & DontChangeOptions) {
-            _chipEmu->reset();
-            if (_chipEmu->loadData(binary, loadAddress)) {
-                romImage.assign(binary.data(), binary.data() + binary.size());
-                valid = true;
-            }
-        }
-        else {
+            program.loadAddress = 0x200;
+        if ((loadOpt & DontChangeOptions) == 0) {
             if (isKnown) {
                 if (!isGenericChip8)
-                    updateEmulatorOptions(knownProperties);
-                _chipEmu->reset();
-                if (_chipEmu->loadData(binary, loadAddress)) {
-                    romImage.assign(binary.data(), binary.data() + binary.size());
-                    valid = true;
-                }
+                    requestConfig(_librarian.getPropertiesForFile(fileData));
             }
             else if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
-                updateEmulatorOptions(extensionProps);
-                _chipEmu->reset();
-                if (_chipEmu->loadData(binary, loadAddress)) {
-                    romImage.assign(binary.data(), binary.data() + binary.size());
-                    valid = true;
-                }
+                requestConfig(extensionProps);
+            }
+            else {
+                return false; // unknown file type
             }
         }
+        program.image = std::move(fileData);
     }
-    if (valid) {
-        // TraceLog(LOG_INFO, "Found a valid rom.");
-        _romImage = std::move(romImage);
-        _romHexFile.reset();
-        _romSha1 = romSha1 == Sha1::Digest{} ? calculateSha1(_romImage) : romSha1;
-        _romName = filename;
-        _romIsWellKnown = isKnown;
-        // if(isKnown && knownOptions.behaviorBase != Chip8EmulatorOptions::ePORTABLE)
-        //     _romWellKnownProperties = knownProperties;
-        //_chipEmu->reset();
-        if (!wasFromSource && _romImage.size() < 8192 * 1024) {
-            // TraceLog(LOG_INFO, "Setting up decompiler.");
-            std::stringstream os;
-            // TraceLog(LOG_INFO, "Setting instance.");
-            auto startAddress = _properties->get<Property::Integer>("startAddress");
-            auto loadAddress = startAddress ? startAddress->intValue : 0;
-            emu::Chip8Decompiler decomp{_romImage, static_cast<uint32_t>(loadAddress)};
-            auto chip8Emu = dynamic_cast<emu::IChip8Emulator*>(_chipEmu->executionUnit(0));
-            TraceLog(LOG_INFO, "Setting variant.");
-            decomp.setVariants(chip8Emu ? chip8Emu->supportedChip8Variants() : chip8::Variant::NONE, true);
-            TraceLog(LOG_INFO, "About to decompile...");
-            decomp.decompile(filename, loadAddress, &os, false, true);
-            source = os.str();
-        }
-       //whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
-        whenRomLoaded(fs::path(_romName).string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
-    }
+    program.isKnown = isKnown;
+    requestProgram(std::move(program));
+    return scope.finish();
     // TODO: Fix this
 #if 0
     std::unique_ptr<emu::OctoCompiler> c8c;
@@ -769,34 +907,31 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         whenRomLoaded(fs::path(_romName).replace_extension(".8o").string(), loadOpt & LoadOptions::SetToRun, c8c.get(), source);
     }
 #endif
-    return valid;
 }
 
 bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, const bool isKnown)
 {
+    RequestScope scope(*this);
+    if (props)
+        requestConfig(props);
     if (fs::path(filename).extension() == ".hex") {
-        if (props)
-            updateEmulatorOptions(props);
-        return loadBinary(filename, binary, DontChangeOptions);
+        if (!loadBinary(filename, binary, DontChangeOptions))
+            return false;
+        return scope.finish();
     }
     _customPalette = false;
-    _colorPalette = _defaultPalette;
-    if (props) {
-        updateEmulatorOptions(props);
-    }
-    _romImage = std::vector(binary.data(), binary.data() + binary.size());
-    _romHexFile.reset();
-    _romSha1 = calculateSha1(_romImage);
-    _romName = filename;
-    _romIsWellKnown = isKnown;
+    Program program;
+    program.name = filename;
+    program.image.assign(binary.data(), binary.data() + binary.size());
+    program.isKnown = isKnown;
+    program.origin = ProgramOrigin::DATABASE;
+    if (auto startAddress = props.get<Property::Integer>("startAddress"))
+        program.loadAddress = startAddress->intValue;
     if (isKnown) {
         _romWellKnownProperties = props;
     }
-    _chipEmu->reset();
-    auto startAddress = props.get<Property::Integer>("startAddress");
-    auto loadAddress = startAddress ? startAddress->intValue : 0;
-    _chipEmu->loadData(binary, loadAddress);
-    return true;
+    requestProgram(std::move(program));
+    return scope.finish();
 }
 
 #ifdef CADMIUM_WITH_BACKGROUND_EMULATION
@@ -880,6 +1015,12 @@ void ThreadedBackgroundHost::updateEmulatorOptions(const Properties& properties)
     EmuHostEx::updateEmulatorOptions(properties);
 }
 
+bool ThreadedBackgroundHost::applyRequests()
+{
+    std::unique_lock guard(_mutex);
+    return EmuHostEx::applyRequests();
+}
+
 void ThreadedBackgroundHost::tick()
 {
     std::unique_lock guard(_mutex);
@@ -942,6 +1083,7 @@ void ThreadedBackgroundHost::vblank()
 
 bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, const bool isKnown)
 {
+    std::unique_lock guard(_mutex);
     auto rc = EmuHostEx::loadBinary(filename, binary, props, isKnown);
     auto frameRate = props.get<Property::Integer>("frameRate");
     setFrameRate(frameRate ? frameRate->intValue : 60);

@@ -32,6 +32,7 @@
 #include <configuration.hpp>
 
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -115,6 +116,7 @@ public:
 #endif
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
     static bool isPrefixedTPDRom(std::span<const uint8_t> data);
+    static std::mutex& decompilerMutex();
     static bool isPrefixedRSTDPRom(std::span<const uint8_t> dat);
     static size_t numKnownRoms();
     static const KnownRomInfo& getRomInfo(size_t index);

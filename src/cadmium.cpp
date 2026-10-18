@@ -234,6 +234,7 @@ extern "C" {
 #endif
 
 #include <editor.hpp>
+#include <backgroundjob.hpp>
 
 inline Color toRaylibColor(const emu::Palette::Color& col)
 {
@@ -641,8 +642,6 @@ void main()
         else
             _mainView = eSETTINGS;
         EmuHostEx::updateEmulatorOptions(props);
-        Cadmium::whenEmuChanged(*_chipEmu);
-        _debugger.updateCore(_chipEmu.get());
         _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
         _overlayTexture = LoadRenderTexture(emu::SUPPORTED_SCREEN_WIDTH,emu::SUPPORTED_SCREEN_HEIGHT);
         _screenTexture = LoadTextureFromImage(_screen);
@@ -654,7 +653,6 @@ void main()
         SetTextureFilter(_screenShotTexture, TEXTURE_FILTER_POINT);
         _titleImage = LoadImage("cadmium-title.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
-        _chipEmu->reset();
         updateScreen();
         std::string versionStr(CADMIUM_VERSION);
         drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91u - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
@@ -1280,15 +1278,13 @@ void main()
             UnloadDroppedFiles(files);
         }
 
+        updateEditorDisassembly();
         if(_mainView == eEDITOR) {
             _editor.update();
-            if((!_romHexFile || _editor.editId() != _hexSourceEditId) &&
+            if(_editor.contentRevision() != _loadedSourceRevision && _editor.isCompiledUpToDate() &&
                !_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
-                _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
-                _romHexFile.reset();
-                _romSha1 = _editor.compiler().sha1();
                 _debugger.updateOctoBreakpoints(_editor.compiler());
-                reloadRom();
+                replaceProgramFromEditor({_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize()}, _editor.compiler().sha1());
             }
         }
 
@@ -1855,7 +1851,7 @@ void main()
                 SetTooltip("STEP OUT [Shift+F7]");
                 if (const auto button = iconButtonDual(ICON_RESTART); button.has_value()) {
                     if (button == MOUSE_BUTTON_LEFT) {
-                        reloadRom(true);
+                        reloadProgram();
                         resetStats();
                         if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                             _mainView = _lastRunView;
@@ -2135,7 +2131,6 @@ void main()
                         auto program = _database->getSelectedProgram();
                         if (program) {
                             loadBinary(program->name, program->data, program->properties, true);
-                            reloadRom(true);
                             _lastRunView = _mainView = eDEBUGGER;
                         }
                     }
@@ -2297,9 +2292,7 @@ void main()
     void renderEmulationSettings()
     {
         using namespace gui;
-        auto oldProps = *_properties;
         bool forceUpdate = false;
-        auto& props = *_properties;
         BeginColumns();
         SetNextWidth(0.42f);
         BeginGroupBox("CHIP-8 variant / Core");
@@ -2310,13 +2303,11 @@ void main()
             auto preset = _cores[_behaviorSel].variantProperties(0);
             _frameBoost = 1;
             updateEmulatorOptions(preset);
-            props = *_properties;
         }
         if(DropdownBox(_cores[_behaviorSel].variantsCombo.c_str(), &_subBehaviorSel)) {
             auto preset = _cores[_behaviorSel].variantProperties(_subBehaviorSel);
             _frameBoost = 1;
             updateEmulatorOptions(preset);
-            props = *_properties;
         }
         if(_properties->containsFuzzy("Trace-log")) {
             BeginColumns();
@@ -2367,6 +2358,8 @@ void main()
         SetNextWidth(colWidth1);
         Begin();
         SetSpacing(2);
+        // bind only here, a core switch above can change what _properties points to
+        auto& props = *_properties;
         for(size_t i = 0; i < props.numProperties(); ++i) {
             auto& prop = props[i];
             if(prop.getName().empty()) {
@@ -2392,6 +2385,11 @@ void main()
             if(_chipEmu->updateProperties(props, *changedProp)) {
                 // core asks for a cold start...
                 updateEmulatorOptions(props);
+            }
+            else {
+                // applied live, so the running core now matches props
+                _propsMemento = props;
+                _previousProperties = props;
             }
         }
         auto used = GetCurrentPos().y - startY;
@@ -2717,7 +2715,6 @@ void main()
                 }
                 SetNextWidth(110);
                 if(Button("Load w/o Config") && selectedInfo.analyzed) {
-                    _chipEmu->reset();
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::DontChangeOptions);
                     _mainView = _lastView;
                 }
@@ -2739,6 +2736,8 @@ void main()
                 SetIndent(32);
                 if(_currentFileName.empty() && ((activeType == 0 && _romImage.empty()) || (activeType == 1 && _editor.getText().empty()))) GuiDisable();
                 if(Button("Save") && !_currentFileName.empty()) {
+                    if (activeType == 1)
+                        updateEditorDisassembly(true);
                     // TODO: Fix this
                     std::string romExtension = ".ch8";
                     if (activeType == 0 && fs::path(_currentFileName).extension() != romExtension) {
@@ -2829,34 +2828,8 @@ void main()
         _propsMemento = *_properties;
         auto startAddress = _chipEmu->defaultLoadAddress();
         _editor.updateCompilerOptions(startAddress);
-        reloadRom();
         updateBehaviorSelects();
         resetStats();
-        // ensure palette has enough colors, else fill up
-        if (_properties->palette().empty() || _properties->palette().size() != _chipEmu->getMaxColors()) {
-            _colorPalette = _properties->palette();
-            size_t currentSize = _colorPalette.colors.size();
-            size_t targetSize = _chipEmu->getMaxColors();
-            if (currentSize < targetSize) {
-                _colorPalette.colors.reserve(targetSize);
-                for (size_t i = currentSize; i < targetSize; ++i) {
-                    if (i < _defaultPalette.colors.size()) {
-                        _colorPalette.colors.push_back(_defaultPalette.colors[i]);
-                    }
-                    else {
-                        _colorPalette.colors.push_back(emu::Palette::Color{0,0,0});
-                    }
-                }
-            }
-            else if (currentSize > targetSize) {
-                _colorPalette.colors.resize(targetSize);
-            }
-            _properties->palette() = _colorPalette;
-            _chipEmu->setPalette(_colorPalette);
-        }
-        else {
-            _colorPalette = _properties->palette();
-        }
     }
 
     void resetStats()
@@ -2873,10 +2846,18 @@ void main()
         _audioBuffer.reset();
         _frameBoost = 1;
         updateBehaviorSelects();
-        _editor.setText(source);
-        _hexSourceEditId = _editor.editId();
+        if (source.empty() && !compiler) {
+            // A binary program, its disassembly is created when the editor needs it.
+            _editor.setGeneratedText(DISASSEMBLY_PLACEHOLDER);
+        }
+        else {
+            _editor.setText(source);
+        }
+        _editorDisassemblyKey.reset();
+        _loadedSourceRevision = _editor.contentRevision();
         _editor.setFilename(filename);
-        _recentFiles.usingFile(filename);
+        if (_romOrigin != ProgramOrigin::DATABASE)
+            _recentFiles.usingFile(filename);
         updateMainMenu();
         resetStats();
         if(compiler)
@@ -2888,15 +2869,50 @@ void main()
             _mainView = eEDITOR;
     }
 
-    void reloadRom(bool force = false)
+    void whenMachineReset() override
     {
-        if(!_romImage.empty() || force) {
-            _chipEmu->reset();
-            _audioBuffer.reset();
-            loadRomImage();
-            updateScreen();
-        }
+        _audioBuffer.reset();
+        updateScreen();
         _debugger.captureStates();
+    }
+
+    struct EditorDisassembly
+    {
+        DisassemblyKey key;
+        std::string source;
+    };
+
+    void updateEditorDisassembly(bool waitForResult = false)
+    {
+        if (auto result = _disassemblyJob.poll())
+            applyEditorDisassembly(std::move(*result));
+        if (_editor.contentRevision() != _loadedSourceRevision || (_mainView != eEDITOR && !waitForResult))
+            return;
+        const auto key = disassemblyKey();
+        if (!key || key == _editorDisassemblyKey)
+            return;
+        if (!_disassemblyJob.busy() || _disassemblyJobKey != key) {
+            auto request = disassemblyRequest();
+            _disassemblyJobKey = key;
+            _editor.setGeneratedText(DISASSEMBLY_PLACEHOLDER);
+            _loadedSourceRevision = _editor.contentRevision();
+            _disassemblyJob.start([request = std::move(*request)]() {
+                return EditorDisassembly{request.key, emu::EmuHostEx::disassemble(request)};
+            });
+        }
+        if (waitForResult) {
+            if (auto result = _disassemblyJob.wait())
+                applyEditorDisassembly(std::move(*result));
+        }
+    }
+
+    void applyEditorDisassembly(EditorDisassembly result)
+    {
+        if (_editor.contentRevision() != _loadedSourceRevision || result.key != disassemblyKey())
+            return;
+        _editor.setGeneratedText(std::move(result.source));
+        _loadedSourceRevision = _editor.contentRevision();
+        _editorDisassemblyKey = result.key;
     }
 
     bool windowShouldClose() const
@@ -2924,7 +2940,15 @@ private:
     Texture2D _screenShotTexture{};
     Librarian::Screenshot _screenshotData;
     Sha1::Digest _screenShotSha1;
-    uint32_t _hexSourceEditId{};
+    uint32_t _loadedSourceRevision{};
+    static constexpr const char* DISASSEMBLY_PLACEHOLDER = "# Disassembling, please wait...\n";
+#ifndef PLATFORM_WEB
+    BackgroundJob<EditorDisassembly> _disassemblyJob{_threadPool};
+#else
+    BackgroundJob<EditorDisassembly> _disassemblyJob;
+#endif
+    std::optional<DisassemblyKey> _disassemblyJobKey;
+    std::optional<DisassemblyKey> _editorDisassemblyKey;
     RenderTexture _overlayTexture{};
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
@@ -3636,11 +3660,10 @@ int main(int argc, char* argv[])
         std::cout << "(c) Copyright 2022 by Steffen 'Gulrak' Schümann" << std::endl;
         exit(0);
     }
-#ifdef PLATFORM_WEB
+    // No preset given and no configuration yet (e.g. first start), use a default.
     if (!coreProperties) {
         coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
     }
-#endif
 #ifndef PLATFORM_WEB
     if(convertRomList) {
         convertKnownRomList();

@@ -77,12 +77,19 @@ public:
         _losCol = _tosLine = _cursorX = _cursorY = 0;
         _cursorChanged = true;
     }
+    // Sets text that was generated from the loaded program (a disassembly). It is not compiled
+    // until the user edits it, and it can't be undone into the previous program's text.
+    void setGeneratedText(std::string text);
 
     uint32_t topOfScreen() const { return _tosLine; }
     uint32_t totalLines() const { return _lines.size(); }
     uint32_t line() const { return _cursorY + 1; }
     uint32_t column() const { return _cursorX + 1; }
     uint32_t editId() const { return _editId; }
+    // Changes only when the text itself changes (edits, undo/redo, setText), unlike editId() which counts frames
+    uint32_t contentRevision() const { return _contentRevision; }
+    // True if compiler() holds the result for the current text
+    bool isCompiledUpToDate() const { return _compiledRevision == _contentRevision; }
 
     void updateLineInfo(uint32_t fromLine = 0);
     void update();
@@ -209,7 +216,7 @@ protected:
     bool _findRegexValid{false};
     std::string _findString;
     std::string _replaceString;
-    uint32_t _findUpdateId{0xFFFFFFFF};
+    uint32_t _findUpdateRevision{0xFFFFFFFF};
     int _findResults{0};
     int _findCurrentResult{-1};
     uint32_t _findCurrentOffset{0};
@@ -223,8 +230,10 @@ protected:
     bool _messageWindowVisible{true};
     bool _isInvertedTheme{};
     emu::OctoCompiler _compiler;
-    uint32_t _lastEditId{~0u};
-    Sha1::Digest _editedTextSha1;
+    uint32_t _contentRevision{0};
+    uint32_t _lastSeenRevision{0};
+    uint32_t _checkedRevision{0};
+    uint32_t _compiledRevision{0};
     Sha1::Digest _compiledSourceSha1;
     float _inactiveEditTimer{0};
 };
