@@ -1,0 +1,150 @@
+# DREAM 6800 / CHIPOS / CHIPOSLO keyboard skip test.
+#
+# The two grids have the physical DREAM / CHIP-8 keypad layout:
+#     1 2 3 C       1 2 3 C
+#     4 5 6 D       4 5 6 D
+#     7 8 9 E       7 8 9 E
+#     A 0 B F       A 0 B F
+#
+# Each small square means that the instruction SKIPPED:
+#   Left,  9E: square ON when the adjacent key is held.
+#   Right, A1: square ON when the adjacent key is released.
+# With no keys held, all left squares are off and all right squares are on.
+# Hold one key, check its two squares, release it, then try another key.
+# Test one key at a time: the DREAM matrix does not guarantee rollover.
+
+: main
+    clear
+
+    # Reset both sets of cached squares, including on a warm restart.
+    v0 := 0
+    v1 := 0
+    loop
+        i := previous-9e
+        i += v1
+        save v0
+        v1 += 1
+        while v1 != 32
+    again
+
+    # Five-pixel-high banner: "9E PRESS KEY A1".
+    v2 := 0
+    v3 := 0
+    v5 := 5
+    i := banner
+    loop
+        sprite v2 v3 5
+        i += v5
+        v2 += 8
+        while v2 != 64
+    again
+
+    # Draw the permanent key labels in both grids.
+    v2 := 0
+    v3 := 8
+    v4 := 0
+    v8 := 0
+    loop
+        read-key-label
+        i := hex v1
+        sprite v2 v3 5
+        v2 += 36
+        sprite v2 v3 5
+        v2 -= 36
+        next-cell
+        while v4 != 16
+    again
+
+    loop
+        v2 := 4
+        v3 := 8
+        v4 := 0
+        v8 := 0
+        loop
+            read-key-label
+
+            # Ex9E: skip the assignment when this key is pressed.
+            v5 := 1
+            if v1 -key then v5 := 0
+
+            # ExA1: skip the assignment when this key is released.
+            v6 := 1
+            if v1 key then v6 := 0
+
+            i := previous-9e
+            i += v1
+            load v0
+            if v5 != v0 begin
+                i := previous-9e
+                i += v1
+                v0 := v5
+                save v0
+                draw-square
+            end
+
+            v2 += 36
+            i := previous-a1
+            i += v1
+            load v0
+            if v6 != v0 begin
+                i := previous-a1
+                i += v1
+                v0 := v6
+                save v0
+                draw-square
+            end
+            v2 -= 36
+
+            next-cell
+            while v4 != 16
+        again
+    again
+
+: read-key-label
+    i := keypad
+    i += v4
+    load v0
+    v1 := v0
+    return
+
+: next-cell
+    v4 += 1
+    v2 += 7
+    v8 += 1
+    if v8 == 4 begin
+        v2 -= 28
+        v3 += 6
+        v8 := 0
+    end
+    return
+
+: draw-square
+    v3 += 1
+    i := square
+    sprite v2 v3 3
+    v3 -= 1
+    return
+
+: square
+    0xC0 0xC0 0xC0
+
+: keypad
+    0x1 0x2 0x3 0xC
+    0x4 0x5 0x6 0xD
+    0x7 0x8 0x9 0xE
+    0xA 0x0 0xB 0xF
+
+: previous-9e
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+: previous-a1
+    0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+: banner
+    0xEE 0xA8 0xEC 0x28 0xEE
+    0x03 0x02 0x03 0x02 0x02
+    0x33 0xAA 0x33 0x2A 0x2B
+    0xBB 0x22 0x3B 0x08 0xBB
+    0x82 0x02 0x83 0x82 0x82
+    0xBA 0xA2 0x31 0xA1 0xB9
+    0x80 0x80 0x00 0x00 0x00
+    0x44 0xAC 0xE4 0xA4 0xAE
