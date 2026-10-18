@@ -115,7 +115,7 @@ struct Eti660Options
             prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
             prototype.registerProperty({PROP_CLOCK, Property::Integer{1773448, 100000, 500'000'000}, "Clock frequency, default is 1773448", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"3072"s}, "Size of ram in bytes", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_RAM, Property::Combo{"3072"s}, "Size of ram in bytes"});
             prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
             prototype.registerProperty({PROP_AUDIO, Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});

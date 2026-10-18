@@ -39,10 +39,15 @@ void CoreRegistry::IFactoryInfo::cacheVariantMappings() const
 {
     if(presetMappings.empty()) {
         for (size_t i = 0; i < numberOfVariants(); ++i) {
-            if(prefix().empty())
+            if(prefix().empty()) {
                 presetMappings.emplace(toOptionName(variantName(i)), i);
-            else
+            }
+            else {
                 presetMappings.emplace(toOptionName(prefix() + '-' + variantName(i)), i);
+                // the bare prefix is an alias for the NONE variant of a hardware core
+                if(variantName(i) == "NONE")
+                    presetMappings.emplace(toOptionName(prefix()), i);
+            }
         }
     }
 }
