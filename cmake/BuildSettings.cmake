@@ -105,6 +105,8 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(raylib)
+# Chiplet also provides stb_image; keep Raylib's decoder symbols private.
+target_compile_definitions(raylib PRIVATE STB_IMAGE_STATIC)
 
 if(PLATFORM STREQUAL "Desktop")
     set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
