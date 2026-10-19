@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -54,12 +55,21 @@ const std::vector<uint8_t> CODE{0x60, 0x2A, 0x12, 0x02};
 
 } // namespace
 
+TEST_CASE("Shared file extensions prefer the generic core")
+{
+    for (const auto& [extension, preset] : {std::pair{".ch8", "CHIP-8"}, std::pair{".c8x", "CHIP-8X"}}) {
+        INFO(extension);
+        CHECK(emu::CoreRegistry::propertiesForExtension(extension) == emu::CoreRegistry::propertiesForPreset(preset));
+        CHECK(emu::CoreRegistry::presetForExtension(extension) == preset);
+    }
+}
+
 TEST_CASE("Loading a binary that needs another core creates, resets and loads exactly once")
 {
     LifecycleHost host;
     host.updateEmulatorOptions(emu::CoreRegistry::propertiesForPreset("chip-8"));
     host.emuChanged = host.machineResets = host.romLoaded = 0;
-    const auto delta = countDuring(host, [&] { REQUIRE(host.loadBinary("test.c8x", CODE, emu::EmuHostEx::None)); });
+    const auto delta = countDuring(host, [&] { REQUIRE(host.loadBinary("test.c8xtpd", CODE, emu::EmuHostEx::None)); });
     CHECK(host.getProperties().propertyClass() == "COSMAC-VIP");
     CHECK(delta.coreCreations == 1);
     CHECK(delta.resets == 1);

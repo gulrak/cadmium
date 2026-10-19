@@ -252,7 +252,8 @@ public:
     {
         if (extension == ".hex")
             return {};
-        for(const auto& [name, factory] : factoryMap()) {
+        const CoreRegistry registry;
+        for(const auto& [name, factory] : registry) {
             for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
                 auto extensions = split(factory->variantExtensions(i), ';');
                 if(auto iter = std::ranges::find(extensions, extension); iter != extensions.end()) {
@@ -267,7 +268,8 @@ public:
     {
         if (extension == ".hex")
             return {};
-        for(const auto& [name, factory] : factoryMap()) {
+        const CoreRegistry registry;
+        for(const auto& [name, factory] : registry) {
             for(size_t i = 0; i < factory->numberOfVariants(); ++i) {
                 auto extensions = split(factory->variantExtensions(i), ';');
                 if(auto iter = std::ranges::find(extensions, extension); iter != extensions.end()) {

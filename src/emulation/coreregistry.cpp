@@ -106,7 +106,11 @@ CoreRegistry::CoreRegistry()
     for(auto& [key, info] : factoryMap()) {
         orderedFactories.emplace_back(key, info.get());
     }
-    std::sort(orderedFactories.begin(), orderedFactories.end(), [](const auto& lhs, const auto& rhs) { return lhs.second->score < rhs.second->score; });
+    std::sort(orderedFactories.begin(), orderedFactories.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second->score != rhs.second->score)
+            return lhs.second->score < rhs.second->score;
+        return lhs.first < rhs.first;
+    });
     for(auto& [key, info] : orderedFactories) {
         if(!coresCombo.empty())
             coresCombo += ";";
