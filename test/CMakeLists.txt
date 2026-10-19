@@ -42,7 +42,6 @@ endif()
 target_link_libraries(eti660-tests PRIVATE doctest emulation)
 doctest_discover_tests(eti660-tests)
 
-add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp
 add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp host_lifecycle_tests.cpp
     ../src/emuhostex.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/systemtools.cpp)
 target_compile_definitions(hex-rom-tests PRIVATE WITHOUT_STB_IMAGE CADMIUM_VERSION="${PROJECT_VERSION}")
