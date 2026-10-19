@@ -2,6 +2,8 @@
 #include <emuhostex.hpp>
 #include <configuration.hpp>
 
+#include <algorithm>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -10,6 +12,8 @@ namespace {
 class LifecycleHost : public emu::HeadlessHost
 {
 public:
+    std::optional<uint8_t> keyDown;
+    bool isKeyDown(uint8_t key) override { return keyDown == key; }
     int emuChanged{0};
     int machineResets{0};
     int romLoaded{0};
@@ -191,4 +195,27 @@ TEST_CASE("The palette always matches the number of colors of the core")
     host.updateEmulatorOptions(emu::CoreRegistry::propertiesForPreset("chip-8"));
     CHECK(host.palette().size() == 2);
     CHECK(host.palette() == host.propertiesPalette());
+}
+
+TEST_CASE("A VIP reset with C held boots the monitor without changing the configuration")
+{
+    LifecycleHost host;
+    host.updateEmulatorOptions(emu::CoreRegistry::propertiesForPreset("vip-chip-8"));
+    REQUIRE(host.loadBinary("test.ch8", CODE, emu::EmuHostEx::DontChangeOptions));
+    const auto configured = host.getProperties();
+    const auto* memory = host.emuCore().memory();
+    auto interpreterLoaded = [&] { return std::any_of(memory, memory + 0x10, [](uint8_t b) { return b != 0; }); };
+    REQUIRE(interpreterLoaded());
+    // Holding C on the VIP keypad during reset boots the VIP monitor instead of the CHIP-8 interpreter, for this reset only.
+    host.keyDown = 12;
+    auto delta = countDuring(host, [&] { host.reloadProgram(); });
+    host.keyDown.reset();
+    CHECK(delta.coreCreations == 0);
+    CHECK(host.getProperties() == configured);
+    CHECK_FALSE(interpreterLoaded());
+    CHECK(memory[0x200] == CODE[0]);
+    // The next reset starts the configured interpreter again.
+    host.reloadProgram();
+    CHECK(interpreterLoaded());
+    CHECK(host.getProperties() == configured);
 }

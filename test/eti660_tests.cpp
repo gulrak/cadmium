@@ -46,7 +46,7 @@ struct EtiFixture
     explicit EtiFixture(const char* preset = "eti-chip-8", bool cleanRam = true)
         : props(emu::CoreRegistry::propertiesForPreset(preset)), host(props)
     {
-        props["Clean RAM"].setBool(cleanRam);
+        props["cleanRam"].setBool(cleanRam);
         auto [name, instance] = emu::CoreRegistry::create(host, props, nullptr);
         core = std::move(instance);
         REQUIRE(core);

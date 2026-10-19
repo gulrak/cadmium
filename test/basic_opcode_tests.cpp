@@ -53,7 +53,7 @@ TEST_CASE("Generic core uses preset and updated frame rates")
         REQUIRE(dynamic_cast<emu::Chip8GenericEmulator*>(core.get()));
         CHECK(core->frameRate() == expectedRate);
 
-        auto& frameRate = props["Frame rate"];
+        auto& frameRate = props["frameRate"];
         frameRate.setInt(72);
         CHECK_FALSE(core->updateProperties(props, frameRate));
         CHECK(core->frameRate() == 72);

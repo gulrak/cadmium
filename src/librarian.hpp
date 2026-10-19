@@ -36,9 +36,6 @@
 #include <string>
 #include <vector>
 
-#define NEW_ROMLIST_FORMAT
-
-#ifdef NEW_ROMLIST_FORMAT
 struct KnownRomInfo {
     Sha1::Digest sha1;
     const char* preset;
@@ -46,15 +43,6 @@ struct KnownRomInfo {
     const char* options;
     const char* url;
 };
-#else
-struct KnownRomInfo {
-    const char* sha1;
-    emu::chip8::Variant variant;
-    const char* name;
-    const char* options;
-    const char* url;
-};
-#endif
 
 class Librarian
 {
@@ -99,21 +87,12 @@ public:
     bool isKnownFile(const Sha1::Digest& sha1) const;
     bool isGenericChip8(std::span<const uint8_t> data) const;
     bool isGenericChip8(const Sha1::Digest& sha1) const;
-#ifdef NEW_ROMLIST_FORMAT
     std::string getPresetForFile(const Sha1::Digest& sha1) const;
     std::string getPresetForFile(std::span<const uint8_t> data) const;
     std::string getEstimatedPresetForFile(std::string_view filename, std::string_view currentPreset, std::span<const uint8_t> data) const;
     emu::Properties getPropertiesForFile(std::span<const uint8_t> data) const;
     emu::Properties getPropertiesForFile(const Sha1::Digest& sha1) const;
     static emu::Properties getPropertiesForSha1(const Sha1::Digest& sha1);
-#else
-    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum) const;
-    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions::SupportedPreset getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions getOptionsForFile(const std::string& sha1sum) const;
-    static emu::Chip8EmulatorOptions getOptionsForSha1(const std::string_view& sha1);
-#endif
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
     static bool isPrefixedTPDRom(std::span<const uint8_t> data);
     static std::mutex& decompilerMutex();

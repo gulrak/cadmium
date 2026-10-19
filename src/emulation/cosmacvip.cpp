@@ -44,22 +44,24 @@
 namespace emu {
 
 static const std::string PROP_CLASS = "COSMAC-VIP";
-static const std::string PROP_TRACE_LOG = "Trace Log";
-static const std::string PROP_CPU = "CPU";
-static const std::string PROP_CLOCK = "Clock Rate";
-static const std::string PROP_RAM = "Memory";
-static const std::string PROP_CLEAN_RAM = "Clean RAM";
-static const std::string PROP_VIDEO = "Video";
-static const std::string PROP_TRACE_VIDEO = "Trace Video";
-static const std::string PROP_AUDIO = "Audio";
-static const std::string PROP_KEYBOARD = "Keyboard";
-static const std::string PROP_ROM_NAME = "ROM Name";
-static const std::string PROP_INTERPRETER = "Interpreter";
-static const std::string PROP_START_ADDRESS = "Start Address";
+static const std::string PROP_TRACE_LOG = "traceLog";
+static const std::string PROP_CPU = "cpu";
+static const std::string PROP_CLOCK = "clockRate";
+static const std::string PROP_RAM = "memory";
+static const std::string PROP_CLEAN_RAM = "cleanRam";
+static const std::string PROP_VIDEO = "video";
+static const std::string PROP_TRACE_VIDEO = "traceVideo";
+static const std::string PROP_AUDIO = "audio";
+static const std::string PROP_KEYBOARD = "keyboard";
+static const std::string PROP_ROM_NAME = "romName";
+static const std::string PROP_INTERPRETER = "interpreter";
+static const std::string PROP_START_ADDRESS = "startAddress";
 
-enum VIPVideoType { VVT_CDP1861, VVT_CDP1861_C10_HIRES, VVT_VP_590, VVT_VP_590_MPD };
+// The enums must list the combo options of the matching property in the same order, the selected index is cast to them.
+// VVT_CDP1864 is not emulated yet and behaves like VP-590, the ASCII keyboards are not emulated yet either.
+enum VIPVideoType { VVT_CDP1861, VVT_CDP1861_C10_HIRES, VVT_VP_590, VVT_VP_590_MPD, VVT_CDP1864 };
 enum VIPAudioType { VAT_CA555_BUZZER, VAT_VP_595_SIMPLE_SB, VAT_VP_551_2_SUPER_SB };
-enum VIPKeyboard { VIPK_HEX, VIPK_VP_580_2_HEX };
+enum VIPKeyboard { VIPK_HEX, VIPK_VP_580_2_HEX, VIPK_VP_601_ASCII, VIPK_VP_611_ASCII_NP };
 
 
 struct CosmacVIPOptions
@@ -105,19 +107,19 @@ struct CosmacVIPOptions
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "VP-590-MPD", "CDP1864"}, "Video hardware, default cdp1861"});
-            prototype.registerProperty({PROP_TRACE_VIDEO, false, "Insert video events into trace log", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
-            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
-            prototype.registerProperty({"", nullptr, ""});
-            prototype.registerProperty({PROP_ROM_NAME, "COSMAC-VIP"s, "Rom image name, default cosmac-vip"});
-            prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8TDPTS", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
-            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
+            prototype.registerProperty({PROP_TRACE_LOG, "Trace Log", false, "Enable trace log", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CPU, "CPU", "CDP1802"s, "CPU type (currently only cdp1802)"});
+            prototype.registerProperty({PROP_CLOCK, "Clock Rate", Property::Integer{1760640, 100000, 500'000'000}, "Clock frequency, default is 1760640", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s, "8192"s, "12288"s, "16384"s, "32768"s}, "Size of ram in bytes", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "VP-590-MPD", "CDP1864"}, "Video hardware, default cdp1861"});
+            prototype.registerProperty({PROP_TRACE_VIDEO, "Trace Video", false, "Insert video events into trace log", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_AUDIO, "Audio", Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
+            prototype.registerProperty({PROP_KEYBOARD, "Keyboard", Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
+            prototype.registerProperty(Property::separator());
+            prototype.registerProperty({PROP_ROM_NAME, "ROM Name", "COSMAC-VIP"s, "Rom image name, default cosmac-vip"});
+            prototype.registerProperty({PROP_INTERPRETER, "Interpreter", Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8TDPTS", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
+            prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
         }
         return prototype;
     }
@@ -781,14 +783,14 @@ void CosmacVIP::handleReset(bool cold)
 {
     if(_impl->_options.traceLog)
         Logger::log(Logger::eBACKEND_EMU, _impl->_cpu.cycles(), {_frames, frameCycle()}, fmt::format("--- RESET ---", _impl->_cpu.cycles(), frameCycle()).c_str());
-    _impl->_powerOn = false;
+    const bool powerOn = std::exchange(_impl->_powerOn, false);
     _isHybridChipMode = (_impl->_options.interpreter != VC8I_NONE && !_impl->_host.isKeyDown(12));
     if (cold) {
         if(_impl->_properties[PROP_CLEAN_RAM].getBool()) {
             std::fill(_impl->_ram.begin(), _impl->_ram.end(), 0);
         }
         else {
-            if(_impl->_powerOn) {
+            if(powerOn) {
                 ghc::RandomLCG rnd(ghc::RandomLCG::Type::eNormal, 42);
                 std::ranges::generate(_impl->_ram, rnd);
             }
@@ -798,17 +800,17 @@ void CosmacVIP::handleReset(bool cold)
             std::memcpy(_impl->_ram.data(), _chip8_cvip, sizeof(_chip8_cvip));
             _impl->_startAddress = _impl->_options.startAddress;
             _impl->_fetchEntry = 0x1B;
+            size_t size = sizeof(_chip8_cvip);
             if (_impl->_options.interpreter != VC8I_CHIP8) {
-                auto size = patchRAM(_impl->_options.interpreter, _impl->_ram.data(), _impl->_ram.size());
-                _impl->_properties[PROP_INTERPRETER].setSelectedIndex(_impl->_options.interpreter);
-                _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1({_impl->_ram.data(), size}).to_hex().substr(0, 8)));
+                size = patchRAM(_impl->_options.interpreter, _impl->_ram.data(), _impl->_ram.size());
                 //_impl->_properties[PROP_INTERPRETER_SHA1] = calculateSha1Hex(_impl->_ram.data(), size).substr(0,8);
             }
+            _impl->_properties[PROP_INTERPRETER].setAdditionalInfo(fmt::format("(sha1: {})", calculateSha1({_impl->_ram.data(), size}).to_hex().substr(0, 8)));
         }
         else {
+            // Holding C boots the monitor for this reset only, the configured interpreter stays as it is.
             _impl->_startAddress = 0;
             _impl->_fetchEntry = 0;
-            _impl->_properties[PROP_INTERPRETER].setSelectedIndex(VIPChip8Interpreter::VC8I_NONE);
             _impl->_properties[PROP_INTERPRETER].setAdditionalInfo("No CHIP-8 interpreter used");
         }
     }
@@ -851,9 +853,10 @@ void CosmacVIP::handleReset(bool cold)
 
 bool CosmacVIP::updateProperties(Properties& props, Property& changed)
 {
-    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "Trace Video", "Clock Rate", "FrameRate"})) {
+    // Clock rate is not live, the CPU and the audio sample rate only take it on construction.
+    if(changed.getId() == PROP_TRACE_LOG || changed.getId() == PROP_TRACE_VIDEO) {
         _impl->_options = CosmacVIPOptions::fromProperties(props);
-        _impl->_video.setTrace(_impl->_options.traceLog);
+        _impl->_video.setTrace(_impl->_options.traceVideo);
         return false;
     }
     return true;

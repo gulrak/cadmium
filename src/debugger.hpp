@@ -56,6 +56,8 @@ private:
     void showBreakpoints(Font& font, const int lineSpacing);
     void selectBreakpoint(int idx);
     void showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const;
+    int showCpuRegisters(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos, const int maxChars) const;
+    void showCpuPanels(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
     void refreshBreakpoints();
     void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
     static const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);

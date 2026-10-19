@@ -45,12 +45,6 @@ inline std::chrono::system_clock::time_point convertClock(TP tp)
     using namespace std::chrono;
     return time_point_cast<system_clock::duration>(tp - TP::clock::now() + system_clock::now());
 }
-/*
-static KnownRomInfo2 g_knownRoms2[] = {
-    {"004fa49c91fbd387484bda62f843e8c5bd2c53d2"_sha1, "chip-8", "Lainchain (Ashton Harding, 2018)", nullptr, nullptr},
-    {"0068ff5421f5d62a1ae1c814c68716ddb65cec5b"_sha1, "xo-chip", "Master B8 (Andrew James, 2021)", nullptr, nullptr},
-};
-*/
 #include "knownfiles.ipp"
 
 static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]);
@@ -72,19 +66,11 @@ const KnownRomInfo* Librarian::getKnownRoms()
 
 const KnownRomInfo* Librarian::findKnownRom(const Sha1::Digest& sha1)
 {
-#ifdef NEW_ROMLIST_FORMAT
     for(auto & g_knownRom : g_knownRoms) {
         if(sha1 == g_knownRom.sha1) {
             return &g_knownRom;
         }
     }
-#else
-    for(int i = 0; i < g_knownRomNum; ++i) {
-        if(sha1.to_hex() == g_knownRoms[i].sha1) {
-            return &g_knownRoms[i];
-        }
-    }
-#endif
     return nullptr;
 }
 
@@ -323,7 +309,6 @@ bool Librarian::isGenericChip8(const Sha1::Digest& sha1) const
     return romInfo && std::string(romInfo->preset) == "generic-chip-8";
 }
 
-#ifdef NEW_ROMLIST_FORMAT
 
 std::string Librarian::getPresetForFile(const Sha1::Digest& sha1) const
 {
@@ -402,110 +387,6 @@ emu::Properties Librarian::getPropertiesForSha1(const Sha1::Digest& sha1)
     return emu::CoreRegistry::propertiesForPreset("chip-8");
 }
 
-#else
-
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum) const
-{
-    auto cfgIter = _cfg.romConfigs.find(sha1sum);
-    // TODO: Fix this
-    //if(cfgIter != _cfg.romConfigs.end())
-    //    return cfgIter->second.behaviorBase;
-    const auto* romInfo = findKnownRom(sha1sum);
-    return romInfo ? emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant) : emu::Chip8EmulatorOptions::eCHIP8;
-}
-
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uint8_t* data, size_t size) const
-{
-    auto sha1sum = calculateSha1Hex(data, size);
-    return getPresetForFile(sha1sum);
-}
-
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(std::string sha1sum) const
-{
-    auto cfgIter = _cfg.romConfigs.find(sha1sum);
-    // TODO: Fix this
-    //if(cfgIter != _cfg.romConfigs.end())
-    //    return cfgIter->second.behaviorBase;
-    const auto* romInfo = findKnownRom(sha1sum);
-    return romInfo ? emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant) : emu::Chip8EmulatorOptions::eCHIP8;
-}
-
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getPresetForFile(const uint8_t* data, size_t size) const
-{
-    auto sha1sum = calculateSha1Hex(data, size);
-    return getPresetForFile(sha1sum);
-}
-
-emu::Chip8EmulatorOptions::SupportedPreset Librarian::getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const
-{
-    emu::Chip8Decompiler dec;
-    uint16_t startAddress = 0x200;  // TODO: endsWith(entry.filePath, ".c8x") ? 0x300 : 0x200;
-    dec.decompile("", data, startAddress, size, startAddress, nullptr, true, true);
-    auto possibleVariants = dec.possibleVariants();
-    if ((uint64_t)dec.possibleVariants()) {
-        if (dec.supportsVariant(emu::Chip8EmulatorOptions::variantForPreset(currentPreset))) {
-            return currentPreset;
-        }
-        else if (dec.supportsVariant(emu::Chip8Variant::XO_CHIP))
-            return emu::Chip8EmulatorOptions::eXOCHIP;
-        else if (dec.supportsVariant(emu::Chip8Variant::MEGA_CHIP))
-            return emu::Chip8EmulatorOptions::eMEGACHIP;
-        else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_1))
-            return emu::Chip8EmulatorOptions::eSCHIP11;
-        else if (dec.supportsVariant(emu::Chip8Variant::SCHIP_1_0))
-            return emu::Chip8EmulatorOptions::eSCHIP10;
-        else if (dec.supportsVariant(emu::Chip8Variant::CHIP_48))
-            return emu::Chip8EmulatorOptions::eCHIP48;
-        else if (dec.supportsVariant(emu::Chip8Variant::CHIP_10))
-            return emu::Chip8EmulatorOptions::eSCHIP10;
-    }
-    return emu::Chip8EmulatorOptions::eCHIP8;
-}
-
-emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const uint8_t* data, size_t size) const
-{
-    auto sha1sum = calculateSha1Hex(data, size);
-    return getOptionsForFile(sha1sum);
-}
-
-emu::Chip8EmulatorOptions Librarian::getOptionsForFile(const std::string& sha1sum) const
-{
-    // TODO: Fix this
-    /*
-    auto cfgIter = _cfg.romConfigs.find(sha1sum);
-    if(cfgIter != _cfg.romConfigs.end()) {
-        return cfgIter->second;
-    }
-    */
-    const auto* romInfo = findKnownRom(sha1sum);
-    if (romInfo) {
-        auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
-        auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-        if(romInfo->options) {
-            emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
-        }
-        options.behaviorBase = preset;
-        return options;
-    }
-    return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
-}
-
-emu::Chip8EmulatorOptions Librarian::getOptionsForSha1(const std::string_view& sha1)
-{
-    const auto* romInfo = findKnownRom(std::string(sha1));
-    if (romInfo) {
-        auto preset = emu::Chip8EmulatorOptions::presetForVariant(romInfo->variant);
-        auto options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-        if(romInfo->options) {
-            emu::from_json(nlohmann::json::parse(std::string(romInfo->options)), options);
-            options.behaviorBase = preset;
-        }
-        return options;
-    }
-    return emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
-}
-
-#endif
 
 Librarian::Screenshot Librarian::genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const
 {

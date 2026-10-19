@@ -266,6 +266,8 @@ void EmuHostEx::applyPendingConfig()
         return;
     auto properties = std::move(*_pendingConfig);
     _pendingConfig.reset();
+    // before the comparison, the running configuration has the rules applied too
+    CoreRegistry::applyRules(properties);
     if (_previousProperties == properties && _chipEmu)
         return;
     if (!_properties || _properties->propertyClass().empty() || _properties->propertyClass() != properties.propertyClass()) {
@@ -388,7 +390,7 @@ std::optional<EmuHostEx::DisassemblyKey> EmuHostEx::disassemblyKey() const
     else {
         if (_romImage.size() >= 8192 * 1024)
             return {};
-        auto startAddress = _properties->get<Property::Integer>("startAddress");
+        auto startAddress = _properties->get<Property::Integer>(propid::START_ADDRESS);
         auto chip8Emu = dynamic_cast<emu::IChip8Emulator*>(_chipEmu->executionUnit(0));
         key.variants = chip8Emu ? chip8Emu->supportedChip8Variants() : chip8::Variant::NONE;
         key.address = startAddress ? startAddress->intValue : 0;
@@ -416,10 +418,8 @@ std::string EmuHostEx::disassemble(const DisassemblyRequest& request)
     return os.str();
 }
 
-void EmuHostEx::syncPalette()
+Palette EmuHostEx::completedPalette(Palette palette) const
 {
-    // The palette always has exactly as many colors as the core supports, missing ones come from the default palette.
-    auto palette = _properties->palette();
     const auto targetSize = static_cast<size_t>(_chipEmu->getMaxColors());
     const auto currentSize = palette.colors.size();
     if (currentSize < targetSize) {
@@ -431,6 +431,13 @@ void EmuHostEx::syncPalette()
     else if (currentSize > targetSize) {
         palette.colors.resize(targetSize);
     }
+    return palette;
+}
+
+void EmuHostEx::syncPalette()
+{
+    // The palette always has exactly as many colors as the core supports, missing ones come from the default palette.
+    auto palette = completedPalette(_properties->palette());
     _properties->palette() = palette;
     _colorPalette = palette;
     _chipEmu->setPalette(_colorPalette);
@@ -925,7 +932,7 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     program.image.assign(binary.data(), binary.data() + binary.size());
     program.isKnown = isKnown;
     program.origin = ProgramOrigin::DATABASE;
-    if (auto startAddress = props.get<Property::Integer>("startAddress"))
+    if (auto startAddress = props.get<Property::Integer>(propid::START_ADDRESS))
         program.loadAddress = startAddress->intValue;
     if (isKnown) {
         _romWellKnownProperties = props;
@@ -1085,7 +1092,7 @@ bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<con
 {
     std::unique_lock guard(_mutex);
     auto rc = EmuHostEx::loadBinary(filename, binary, props, isKnown);
-    auto frameRate = props.get<Property::Integer>("frameRate");
+    auto frameRate = props.get<Property::Integer>(propid::FRAME_RATE);
     setFrameRate(frameRate ? frameRate->intValue : 60);
     return rc;
 }

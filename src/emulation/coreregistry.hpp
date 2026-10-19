@@ -78,6 +78,8 @@ public:
         virtual Properties variantProperties(size_t index) const = 0;
         virtual VariantIndex variantIndex(const Properties& props) const = 0;
         virtual chip8::VariantSet variantSupportedChip8(size_t index) const = 0;
+        // Updates which properties matter (PropertyState) and resolves conflicts between them.
+        virtual void applyRules(Properties& props, std::string_view changedId) const {}
         void cacheVariantMappings() const;
         bool hasVariant(const std::string& variant) const;
         Properties variantProperties(const std::string& variant) const;
@@ -133,12 +135,14 @@ public:
             if(propSel == PropertiesFromVariant) {
                 props = defaultProps ? defaultProps : presets[0].options.asProperties();
             }
+            applyRules(props, {});
             auto options = OptionsType::fromProperties(props);
             return {newVariant, std::make_unique<CoreType>(host, props, other)};
         }
         std::pair<std::string, EmulatorInstance> createCore(EmulatorHost& host, Properties& props, IEmulationCore* other) const override
         {
             std::string variant;
+            applyRules(props, {});
             auto idx = variantIndex(props);
             const auto& info = presets[idx.index];
             if(prefix().empty())
@@ -202,6 +206,14 @@ public:
             return iter->second->createCore(host, properties, other);
         }
         return {};
+    }
+
+    // Applies the rules of the core the properties belong to, see IFactoryInfo::applyRules.
+    static void applyRules(Properties& props, std::string_view changedId = {})
+    {
+        if (auto iter = factoryMap().find(props.propertyClass()); iter != factoryMap().end()) {
+            iter->second->applyRules(props, changedId);
+        }
     }
 
     static Properties propertiesForPreset(std::string_view name)

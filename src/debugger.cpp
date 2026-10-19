@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include <rlguipp/rlguipp.hpp>
+#include <fmt/format.h>
 #include <ghc/bit.hpp>
 #include <stylemanager.hpp>
 #include "debugger.hpp"
@@ -97,35 +98,41 @@ T readStackEntry(const uint8_t* address, emu::GenericCpu::Endianness endianness)
     return 0;
 }
 
-static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::StackContent& stack, size_t index, const uint8_t* backup)
+static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::StackContent& stack, size_t index, const std::vector<uint8_t>& backupData)
 {
     static char buffer[64];
-    if(stack.content.empty() || !stack.entrySize || index * stack.entrySize > stack.content.size()) {
+    if(stack.content.empty() || stack.entrySize <= 0 || (index + 1) * stack.entrySize > stack.content.size()) {
         buffer[0] = 0;
         return {buffer, false};
     }
     auto offset = stack.stackDirection == emu::GenericCpu::eUPWARDS ? index * stack.entrySize : stack.content.size() - (index + 1) * stack.entrySize;
     const uint8_t* entry = &stack.content[offset];
-    backup += offset;
-    bool changed = false;
+    // the backup can be from a time with a different stack size, then nothing counts as changed
+    const uint8_t* backup = offset + stack.entrySize <= backupData.size() ? backupData.data() + offset : entry;
+    uint32_t value = 0, oldValue = 0;
+    int digits = 0;
     switch(stack.entrySize) {
-        case 1: {
-            auto val = readStackEntry<uint8_t>(entry, stack.endianness);
-            changed = val != readStackEntry<uint8_t>(backup, stack.endianness);
-            fmt::format_to_n(buffer, 64, "{:02X}\0", val); break;
-        }
-        case 2: {
-            auto val = readStackEntry<uint16_t>(entry, stack.endianness);
-            changed = val != readStackEntry<uint16_t>(backup, stack.endianness);
-            fmt::format_to_n(buffer, 64, "{:04X}\0", val); break;
-        }
-        case 4: {
-            auto val = readStackEntry<uint32_t>(entry, stack.endianness);
-            changed = val != readStackEntry<uint32_t>(backup, stack.endianness);
-            fmt::format_to_n(buffer, 64, "{:06X}\0", val); break;
-        }
-        default: buffer[0] = 0;
+        case 1:
+            value = readStackEntry<uint8_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint8_t>(backup, stack.endianness);
+            digits = 2;
+            break;
+        case 2:
+            value = readStackEntry<uint16_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint16_t>(backup, stack.endianness);
+            digits = 4;
+            break;
+        case 4:
+            value = readStackEntry<uint32_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint32_t>(backup, stack.endianness);
+            digits = 6;
+            break;
+        default:
+            buffer[0] = 0;
+            return {buffer, false};
     }
+    *fmt::format_to_n(buffer, sizeof(buffer) - 1, "{:0{}X}", value, digits).out = 0;
+    const bool changed = value != oldValue;
     return {buffer, changed};
 }
 
@@ -190,47 +197,37 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
     }
     EndTabView();
     End();
-    SetNextWidth(44);
-    BeginPanel("Regs");
-    {
-        auto pos = GetCurrentPos();
-        auto area = GetContentAvailable();
-        pos.x += 0;
-        Space(area.height);
-        showGenericRegs(*_core->focussedExecutionUnit(), _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos);
-    }
-    EndPanel();
-    SetNextWidth(44);
-    if(!_realCore || _realCore->hybridChipMode()) {
+    // Select CHIP-8 side-by-side or backend-CPU top/bottom display
+    auto* visibleUnit = _core->executionUnit(_visibleExecUnit);
+    if(!visibleUnit || dynamic_cast<emu::IChip8Emulator*>(visibleUnit)) {
+        auto& unit = visibleUnit ? *visibleUnit : *_core->focussedExecutionUnit();
+        SetNextWidth(44);
+        BeginPanel("Regs");
+        {
+            auto pos = GetCurrentPos();
+            auto area = GetContentAvailable();
+            Space(area.height);
+            showGenericRegs(unit, _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos);
+        }
+        EndPanel();
+        SetNextWidth(44);
         BeginPanel("Stack");
         {
             auto pos = GetCurrentPos();
             auto area = GetContentAvailable();
-            pos.x += 0;
             Space(area.height);
-            auto stack = _core->executionUnit(_visibleExecUnit)->stack();
-            for (int i = 0; i < _core->executionUnit(_visibleExecUnit)->stackSize(); ++i) {
-                auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit].data());
+            auto stack = unit.stack();
+            for (unsigned i = 0; i < unit.stackSize(); ++i) {
+                auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit]);
                 DrawTextEx(font, TextFormat("%X %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
             }
         }
+        EndPanel();
     }
     else {
-        BeginPanel("X Data");
-        {
-            auto pos = GetCurrentPos();
-            auto area = GetContentAvailable();
-            pos.x += 3;
-            Space(area.height);
-            auto x = _backend->registerByName("X").value;
-            auto rx = _backend->registerbyIndex(x).value;
-            auto col = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
-            for(uint16_t offset = 0; offset < 36; ++offset) {
-                DrawTextEx(font, TextFormat("%02X: %02X", offset, _backend->readMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, col);
-            }
-        }
+        SetNextWidth(44 + 44 - 1);
+        showCpuPanels(*visibleUnit, font, lineSpacing);
     }
-    EndPanel();
     static Vector2 memScroll{0,0};
     static uint8_t memPage{0};
     BeginPanel(memPage ? TextFormat("Memory [%02X....]", memPage) : "Memory", {0,0});
@@ -504,28 +501,28 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
         switch (reg.size) {
             case 1:
             case 4:
-                DrawTextEx(font, TextFormat("%2s  %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 8:
-                DrawTextEx(font, TextFormat("%2s  %02X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %02X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 12:
-                DrawTextEx(font, TextFormat("%2s  %03X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %03X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 16:
                 if (cpu.registerNames()[i].size() == 1)
-                    DrawTextEx(font, TextFormat("%s %04X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                    DrawTextEx(font, TextFormat("%s %04X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 else {
                     DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
-                    DrawTextEx(font, TextFormat("  %04X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                    DrawTextEx(font, TextFormat("  %04X", static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 }
                 break;
             case 24:
                 DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
-                DrawTextEx(font, TextFormat("%06X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%06X", static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             default:
-                DrawTextEx(font, TextFormat("%2s %X", cpu.registerNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
+                DrawTextEx(font, TextFormat("%2s %X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
                 break;
         }
         lastSize = reg.size;
@@ -533,6 +530,101 @@ void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const 
     ++line;
     // DrawTextEx(font, TextFormat("Scr: %s", rcb->isDisplayEnabled() ? "ON" : "OFF"), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
 }
+
+// Layout of the registers of a backend CPU in blocks of registers that are either narrow (two or more share
+// a line) or wide (one per line, values that are wider than the panel get split into chunks of 8 or 4
+// digits). Returns the number of lines used.
+int Debugger::showCpuRegisters(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos, const int maxChars) const
+{
+    using namespace gui;
+    const auto normalCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
+    const auto changedCol = StyleManager::mappedColor(YELLOW);
+    const auto charWidth = MeasureTextEx(font, "0", 8, 0).x;
+    const auto& names = cpu.registerNames();
+    const auto count = std::min({cpu.numRegisters(), names.size(), regs.size()});
+    auto digitsOf = [&regs](size_t i) { return std::max(1, (static_cast<int>(regs[i].size) + 3) / 4); };
+    auto isNarrow = [&](size_t i) { return 2 * (static_cast<int>(names[i].size()) + 1 + digitsOf(i)) + 1 <= maxChars; };
+    int line = 0;
+    for (size_t first = 0; first < count;) {
+        const bool narrow = isNarrow(first);
+        size_t end = first;
+        int nameWidth = 0, valueWidth = 0;
+        for (; end < count && isNarrow(end) == narrow; ++end) {
+            nameWidth = std::max(nameWidth, static_cast<int>(names[end].size()));
+            valueWidth = std::max(valueWidth, digitsOf(end));
+        }
+        if (first)
+            ++line;
+        const int cellWidth = nameWidth + 1 + valueWidth;
+        const int columns = narrow ? std::max(1, (maxChars + 1) / (cellWidth + 1)) : 1;
+        for (size_t i = first; i < end; ++i) {
+            const auto column = static_cast<int>(i - first) % columns;
+            if (column == 0 && i != first)
+                ++line;
+            const auto col = i < oldRegs.size() && regs[i].value == oldRegs[i].value ? normalCol : changedCol;
+            const auto value = fmt::format("{:0{}X}", regs[i].value, digitsOf(i));
+            const int available = std::max(1, maxChars - nameWidth - 1);
+            const int chunk = static_cast<int>(value.size()) <= available ? static_cast<int>(value.size()) : (available >= 8 ? 8 : (available >= 4 ? 4 : available));
+            const float x = pos.x + static_cast<float>(column * (cellWidth + 1)) * charWidth;
+            for (size_t offset = 0; offset < value.size(); offset += chunk) {
+                if (offset)
+                    ++line;
+                auto text = fmt::format("{:<{}} {}", offset ? "" : names[i], nameWidth, value.substr(offset, chunk));
+                DrawTextEx(font, text.c_str(), {x, pos.y + static_cast<float>(line * lineSpacing)}, 8, 0, col);
+            }
+        }
+        ++line;
+        first = end;
+    }
+    return line;
+}
+
+void Debugger::showCpuPanels(emu::GenericCpu& cpu, Font& font, const int lineSpacing)
+{
+    using namespace gui;
+    const auto normalCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
+    const auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
+    const auto yellowCol = StyleManager::mappedColor(YELLOW);
+    const auto charWidth = MeasureTextEx(font, "0", 8, 0).x;
+    // the 1802 has no stack, but its X register points to the data its instructions work on
+    enum class Detail { NONE, STACK, X_DATA };
+    const auto detail = cpu.cpuID() == 1802 ? Detail::X_DATA : (cpu.stackSize() > 0 ? Detail::STACK : Detail::NONE);
+    Begin();
+    SetSpacing(0);
+    BeginPanel(cpu.name().c_str(), {3, 4});
+    {
+        auto pos = GetCurrentPos();
+        auto area = GetContentAvailable();
+        const int maxChars = static_cast<int>(area.width / charWidth);
+        const int lines = showCpuRegisters(cpu, _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos, maxChars);
+        Space(detail == Detail::NONE ? static_cast<int>(area.height) : lines * lineSpacing);
+    }
+    EndPanel();
+    if (detail != Detail::NONE) {
+        BeginPanel(detail == Detail::STACK ? "Stack" : "X Data", {3, 4});
+        auto pos = GetCurrentPos();
+        auto area = GetContentAvailable();
+        Space(area.height);
+        const int maxLines = std::max(0, static_cast<int>(area.height) / lineSpacing);
+        if (detail == Detail::STACK) {
+            auto stack = cpu.stack();
+            const int entries = std::min(static_cast<int>(cpu.stackSize()), maxLines);
+            for (int i = 0; i < entries; ++i) {
+                auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit]);
+                DrawTextEx(font, TextFormat("%X %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
+            }
+        }
+        else {
+            const auto rx = static_cast<uint32_t>(cpu.registerbyIndex(cpu.registerByName("X").value).value);
+            for (int offset = 0; offset < maxLines; ++offset) {
+                DrawTextEx(font, TextFormat("%02X: %02X", offset, cpu.readMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, normalCol);
+            }
+        }
+        EndPanel();
+    }
+    End();
+}
+
 void Debugger::refreshBreakpoints()
 {
     _breakpointCache.clear();

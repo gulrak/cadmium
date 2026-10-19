@@ -29,6 +29,7 @@
 #include <emulation/logger.hpp>
 #include <ghc/random.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
@@ -40,42 +41,42 @@ namespace emu
 extern const uint8_t _chip8_cvip[0x200];
 
 static const std::string PROP_CLASS = "CHIP-8 GENERIC";
-static const std::string PROP_INSTRUCTIONS_PER_FRAME = "Instructions per frame";
-static const std::string PROP_FRAME_RATE = "Frame rate";
-static const std::string PROP_TRACE_LOG = "Trace Log";
-static const std::string PROP_TRACE_FILE = "Trace File";
-static const std::string PROP_RAM = "Memory";
-static const std::string PROP_CLEAN_RAM = "Clean RAM";
-static const std::string PROP_BEHAVIOR_BASE = "Behavior Base";
-static const std::string PROP_START_ADDRESS = "Start Address";
-static const std::string PROP_Q_JUST_SHIFT_VX = "8xy6/8xyE just shift Vx";
-static const std::string PROP_Q_DONT_RESET_VF = "8xy1/8xy2/8xy3 don't reset VF";
-static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE = "Fx55/Fx65 increment I by x + 1";
-static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X = "Fx55/Fx65 increment I by x";
-static const std::string PROP_Q_WRAP_SPRITES = "Wrap sprite pixels";
-static const std::string PROP_Q_INSTANT_DXYN = "Dxyn doesn't wait for vsync";
-static const std::string PROP_Q_LORES_DXY0_IS_8X16 = "Lores Dxy0 draws 8 pixel width";
-static const std::string PROP_Q_LORES_DXY0_IS_16X16 = "Lores Dxy0 draws 16 pixel width";
-static const std::string PROP_Q_SC11_COLLISION = "Dxyn uses SCHIP1.1 collision";
-static const std::string PROP_Q_HP48_DISPLAY = "HP-48SX display emulation";
-static const std::string PROP_Q_SC_LORES_DRAWING = "HP SuperChip lores drawing";
-static const std::string PROP_Q_SC_PREVIEW_FX29 = "HP SuperChip 1.0 'preview' Fx29";
-static const std::string PROP_Q_HALF_PIXEL_SCROLL = "Half pixel scrolling";
-static const std::string PROP_Q_MODE_CHANGE_CLEAR = "Mode change clear";
-static const std::string PROP_Q_JUMP0_BXNN = "Bxnn/jump0 uses Vx";
-static const std::string PROP_Q_ALLOW_HIRES = "128x64 hires support";
-static const std::string PROP_Q_ONLY_HIRES = "Only 128x64 mode";
-static const std::string PROP_Q_ALLOW_COLORS = "Multicolor support";
-static const std::string PROP_Q_CYCLIC_STACK = "Cyclic stack";
-static const std::string PROP_Q_HAS_16BIT_ADDR = "Has 16 bit addresses";
-static const std::string PROP_Q_XO_CHIP_SOUND = "XO-CHIP sound engine";
-static const std::string PROP_Q_EXTENDED_VBLANK = "Extended CHIP-8 wait emulation";
-static const std::string PROP_Q_PAL_VIDEO = "PAL video format";
-static const std::string PROP_SCREEN_ROTATION = "Screen rotation";
-static const std::string PROP_TOUCH_INPUT_MODE = "Touch input mode";
-static const std::string PROP_FONT_5PX = "Font 5px";
-static const std::string PROP_FONT_10PX = "Font 10px";
-static const std::string PROP_CUBECHIP_TONE = "CubeChip contextual tone";
+static const std::string PROP_INSTRUCTIONS_PER_FRAME = "instructionsPerFrame";
+static const std::string PROP_FRAME_RATE = "frameRate";
+static const std::string PROP_TRACE_LOG = "traceLog";
+static const std::string PROP_TRACE_FILE = "traceFile";
+static const std::string PROP_RAM = "memory";
+static const std::string PROP_CLEAN_RAM = "cleanRam";
+static const std::string PROP_BEHAVIOR_BASE = "behaviorBase";
+static const std::string PROP_START_ADDRESS = "startAddress";
+static const std::string PROP_Q_JUST_SHIFT_VX = "justShiftVx";
+static const std::string PROP_Q_DONT_RESET_VF = "dontResetVf";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE = "loadStoreIncIByXPlus1";
+static const std::string PROP_Q_LOAD_STORE_INC_I_BY_X = "loadStoreIncIByx";
+static const std::string PROP_Q_WRAP_SPRITES = "wrapSprites";
+static const std::string PROP_Q_INSTANT_DXYN = "instantDxyn";
+static const std::string PROP_Q_LORES_DXY0_IS_8X16 = "loresDxy0Is8x16";
+static const std::string PROP_Q_LORES_DXY0_IS_16X16 = "loresDxy0Is16x16";
+static const std::string PROP_Q_SC11_COLLISION = "schip11Collision";
+static const std::string PROP_Q_HP48_DISPLAY = "hp48Display";
+static const std::string PROP_Q_SC_LORES_DRAWING = "schipLoresDrawing";
+static const std::string PROP_Q_SC_PREVIEW_FX29 = "schipPreviewFx29";
+static const std::string PROP_Q_HALF_PIXEL_SCROLL = "halfPixelScroll";
+static const std::string PROP_Q_MODE_CHANGE_CLEAR = "modeChangeClear";
+static const std::string PROP_Q_JUMP0_BXNN = "jump0Bxnn";
+static const std::string PROP_Q_ALLOW_HIRES = "allowHires";
+static const std::string PROP_Q_ONLY_HIRES = "onlyHires";
+static const std::string PROP_Q_ALLOW_COLORS = "allowColors";
+static const std::string PROP_Q_CYCLIC_STACK = "cyclicStack";
+static const std::string PROP_Q_HAS_16BIT_ADDR = "has16bitAddr";
+static const std::string PROP_Q_XO_CHIP_SOUND = "xoChipSound";
+static const std::string PROP_Q_EXTENDED_VBLANK = "extendedVblank";
+static const std::string PROP_Q_PAL_VIDEO = "palVideo";
+static const std::string PROP_SCREEN_ROTATION = "screenRotation";
+static const std::string PROP_TOUCH_INPUT_MODE = "touchMode";
+static const std::string PROP_FONT_5PX = "font5px";
+static const std::string PROP_FONT_10PX = "font10px";
+static const std::string PROP_CUBECHIP_TONE = "cubechipTone";
 
 Properties Chip8GenericOptions::asProperties() const
 {
@@ -168,43 +169,43 @@ Properties& Chip8GenericOptions::registeredPrototype()
     using namespace std::string_literals;
     auto& prototype = Properties::getProperties(PROP_CLASS);
     if(!prototype) {
-        prototype.registerProperty({PROP_BEHAVIOR_BASE, Property::Combo{"CHIP-8"s, "CHIP-10"s, "CHIP-8E"s, "CHIP-8X"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHIPC"s, "SCHIP-MODERN"s, "MEGACHIP"s, "XO-CHIP"s}, "CHIP-8 variant", PropertyFlags::eInvisible});
-        prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
-        prototype.registerProperty({PROP_TRACE_FILE, std::string{}, "Trace log file", PropertyFlags::eWritable});
-        prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", PropertyFlags::eWritable});
-        prototype.registerProperty({PROP_FRAME_RATE, Property::Integer{60, 50, 100}, "Number of frames per second, default 60", PropertyFlags::eWritable});
-        prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s, "8192"s, "16384"s, "32768"s, "65536"s, "16777216"s}, "Size of ram in bytes", PropertyFlags::eWritable});
-        prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x200, 0, 0x7f0}, "Number of instructions per frame, default depends on variant"});
-        prototype.registerProperty({{PROP_CLEAN_RAM, "clean-ram"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_JUST_SHIFT_VX, "just-Shift-Vx"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_DONT_RESET_VF, "dont-Reset-Vf"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE, "load-Store-Inc-I-By-X-Plus-1"}, true, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_LOAD_STORE_INC_I_BY_X, "load-Store-Inc-I-ByX"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_WRAP_SPRITES, "wrap-sprites"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_INSTANT_DXYN, "instant-dxyn"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_EXTENDED_VBLANK, "extended-Vblank"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({"", nullptr, ""});
-        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_8X16, "lores-Dxy0-Is-8x16"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_LORES_DXY0_IS_16X16, "lores-Dxy0-Is-16x16"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_SC11_COLLISION, "schip-11-Collision"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_HP48_DISPLAY, "hp48-Display"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_SC_LORES_DRAWING, "schip-Lores-Drawing"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_SC_PREVIEW_FX29, "schip-Preview-Fx29"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_HALF_PIXEL_SCROLL, "half-Pixel-Scroll"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_MODE_CHANGE_CLEAR, "mode-Change-Clear"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_JUMP0_BXNN, "jump0-Bxnn"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_ALLOW_HIRES, "allow-Hires"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_Q_ONLY_HIRES, "only-Hires"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_Q_ALLOW_COLORS, "allow-Colors"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_Q_CYCLIC_STACK, "cyclic-Stack"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_HAS_16BIT_ADDR, "has-16Bit-Addr"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_Q_XO_CHIP_SOUND, "xo-Chip-Sound"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_CUBECHIP_TONE, "cubechip-Tone"}, false, PropertyFlags::eWritable});
-        prototype.registerProperty({{PROP_Q_PAL_VIDEO, "pal-Video"}, false, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_SCREEN_ROTATION, "screen-rotation"}, Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_TOUCH_INPUT_MODE, "touch-mode"}, Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_FONT_5PX, "font-5px"}, Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, PropertyFlags::eInvisible});
-        prototype.registerProperty({{PROP_FONT_10PX, "font-10px"}, Property::Combo{"DEFAULT"s, "SCHIP10"s, "SCHIP11"s, "FISH"s, "MEGACHIP"s, "OCTO"s, "AUCHIP"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_BEHAVIOR_BASE, "Behavior Base", Property::Combo{"CHIP-8"s, "CHIP-10"s, "CHIP-8E"s, "CHIP-8X"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHIPC"s, "SCHIP-MODERN"s, "MEGACHIP"s, "XO-CHIP"s}, "CHIP-8 variant", PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_TRACE_LOG, "Trace Log", false, "Enable trace log", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_TRACE_FILE, "Trace File", std::string{}, "Trace log file", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, "Instructions per frame", Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_FRAME_RATE, "Frame rate", Property::Integer{60, 50, 100}, "Number of frames per second, default 60", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s, "8192"s, "16384"s, "32768"s, "65536"s, "16777216"s}, "Size of ram in bytes", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{0x200, 0, 0x7f0}, "Load and start address of the program, default depends on variant"});
+        prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_JUST_SHIFT_VX, "8xy6/8xyE just shift Vx", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_DONT_RESET_VF, "8xy1/8xy2/8xy3 don't reset VF", false, PropertyFlags::eWritable});
+        prototype.registerProperty(Property(PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE, "Fx55/Fx65 increment I by x + 1", true, PropertyFlags::eWritable).setOptionName("load-store-inc-i-by-x-plus-1"));
+        prototype.registerProperty(Property(PROP_Q_LOAD_STORE_INC_I_BY_X, "Fx55/Fx65 increment I by x", false, PropertyFlags::eWritable).setOptionName("load-store-inc-i-by-x"));
+        prototype.registerProperty({PROP_Q_WRAP_SPRITES, "Wrap sprite pixels", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_INSTANT_DXYN, "Dxyn doesn't wait for vsync", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_EXTENDED_VBLANK, "Extended CHIP-8 wait emulation", false, PropertyFlags::eWritable});
+        prototype.registerProperty(Property::separator());
+        prototype.registerProperty({PROP_Q_LORES_DXY0_IS_8X16, "Lores Dxy0 draws 8 pixel width", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_LORES_DXY0_IS_16X16, "Lores Dxy0 draws 16 pixel width", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_SC11_COLLISION, "Dxyn uses SCHIP1.1 collision", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_HP48_DISPLAY, "HP-48SX display emulation", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_SC_LORES_DRAWING, "HP SuperChip lores drawing", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_SC_PREVIEW_FX29, "HP SuperChip 1.0 'preview' Fx29", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_HALF_PIXEL_SCROLL, "Half pixel scrolling", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_MODE_CHANGE_CLEAR, "Mode change clear", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_JUMP0_BXNN, "Bxnn/jump0 uses Vx", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_ALLOW_HIRES, "128x64 hires support", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_Q_ONLY_HIRES, "Only 128x64 mode", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_Q_ALLOW_COLORS, "Multicolor support", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_Q_CYCLIC_STACK, "Cyclic stack", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_HAS_16BIT_ADDR, "Has 16 bit addresses", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_Q_XO_CHIP_SOUND, "XO-CHIP sound engine", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_CUBECHIP_TONE, "CubeChip contextual tone", false, PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_Q_PAL_VIDEO, "PAL video format", false, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_SCREEN_ROTATION, "Screen rotation", Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_TOUCH_INPUT_MODE, "Touch input mode", Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_FONT_5PX, "Font 5px", Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_FONT_10PX, "Font 10px", Property::Combo{"DEFAULT"s, "SCHIP10"s, "SCHIP11"s, "FISH"s, "MEGACHIP"s, "OCTO"s, "AUCHIP"s}, PropertyFlags::eInvisible});
     }
     return prototype;
 }
@@ -342,6 +343,76 @@ Chip8GenericSetupInfo genericPresets[] = {
 };
 // clang-format on
 
+namespace {
+
+using GenericOpts = Chip8GenericOptions;
+
+bool isOneOf(const GenericOpts& opts, std::initializer_list<GenericOpts::SupportedPreset> bases)
+{
+    return std::ranges::find(bases, opts.behaviorBase) != bases.end();
+}
+
+bool isHp48Variant(const GenericOpts& opts)
+{
+    return opts.behaviorBase >= GenericOpts::eCHIP48 && opts.behaviorBase <= GenericOpts::eSCHPC;
+}
+
+bool usesSchipDrawing(const GenericOpts& opts)
+{
+    return opts.optAllowHires && !opts.optAllowColors && !isOneOf(opts, {GenericOpts::eCHIP8X, GenericOpts::eMEGACHIP});
+}
+
+// Rules for properties that don't matter for every variant (applies), or only with certain values of other
+// properties (effective). They mirror the decisions the core makes when it sets up its opcode handlers
+struct PropertyRule
+{
+    std::string_view id;
+    bool (*applies)(const GenericOpts&) = nullptr;
+    bool (*effective)(const GenericOpts&) = nullptr;
+};
+
+const PropertyRule propertyRules[] = {
+    {PROP_Q_HP48_DISPLAY, isHp48Variant},
+    {PROP_Q_SC_LORES_DRAWING, usesSchipDrawing, [](const GenericOpts& opts) { return !opts.optWrapSprites; }},
+    {PROP_Q_SC11_COLLISION, usesSchipDrawing, [](const GenericOpts& opts) { return !opts.optWrapSprites; }},
+    {PROP_Q_SC_PREVIEW_FX29, [](const GenericOpts& opts) { return isOneOf(opts, {GenericOpts::eSCHIP09, GenericOpts::eSCHIP10}); }},
+    {PROP_Q_MODE_CHANGE_CLEAR, [](const GenericOpts& opts) { return isOneOf(opts, {GenericOpts::eSCHIP09, GenericOpts::eSCHIP10, GenericOpts::eSCHIP11, GenericOpts::eSCHPC, GenericOpts::eSCHIP_MODERN}); }},
+    {PROP_Q_HALF_PIXEL_SCROLL, [](const GenericOpts& opts) { return !opts.optOnlyHires && isOneOf(opts, {GenericOpts::eSCHIP11, GenericOpts::eSCHPC, GenericOpts::eSCHIP_MODERN, GenericOpts::eMEGACHIP}); }},
+    {PROP_Q_LORES_DXY0_IS_8X16, [](const GenericOpts& opts) { return opts.optAllowHires; }},
+    {PROP_Q_LORES_DXY0_IS_16X16, [](const GenericOpts& opts) { return opts.optAllowHires; }},
+    {PROP_Q_JUMP0_BXNN, [](const GenericOpts& opts) { return opts.behaviorBase != GenericOpts::eCHIP8X; }},
+    {PROP_Q_WRAP_SPRITES, [](const GenericOpts& opts) { return opts.behaviorBase != GenericOpts::eCHIP8X; }},
+    {PROP_CUBECHIP_TONE, [](const GenericOpts& opts) { return !opts.optXOChipSound && opts.behaviorBase != GenericOpts::eCHIP8X; }},
+    {PROP_Q_EXTENDED_VBLANK, nullptr, [](const GenericOpts& opts) { return !opts.optInstantDxyn; }},
+};
+
+// Of each group only one can be set. When a configuration sets more, the first one wins, as that is the one
+// the core uses (see the Fx55/Fx65 selection and drawSprite()).
+const std::vector<std::string_view> exclusiveProperties[] = {
+    {PROP_Q_LOAD_STORE_INC_I_BY_X, PROP_Q_LOAD_STORE_INC_I_BY_X_PLUS_ONE},
+    {PROP_Q_LORES_DXY0_IS_16X16, PROP_Q_LORES_DXY0_IS_8X16},
+};
+
+void applyExclusions(Properties& props, std::string_view changedId)
+{
+    for (const auto& group : exclusiveProperties) {
+        std::string_view keep;
+        if (std::ranges::find(group, changedId) != group.end() && props.at(changedId).getBool()) {
+            keep = changedId;
+        }
+        else if (auto iter = std::ranges::find_if(group, [&props](std::string_view id) { return props.at(id).getBool(); }); iter != group.end()) {
+            keep = *iter;
+        }
+        for (const auto id : group) {
+            if (id != keep) {
+                props.at(id).setBool(false);
+            }
+        }
+    }
+}
+
+} // namespace
+
 struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8GenericEmulator, Chip8GenericSetupInfo, Chip8GenericOptions>
 {
     explicit C8GenericFactoryInfo(const char* description)
@@ -355,6 +426,32 @@ struct C8GenericFactoryInfo final : public CoreRegistry::FactoryInfo<Chip8Generi
     {
         auto idx = props[PROP_BEHAVIOR_BASE].getSelectedIndex();
         return {idx, genericPresets[idx].options.asProperties() == props};
+    }
+    void applyRules(Properties& props, std::string_view changedId) const override
+    {
+        applyExclusions(props, changedId);
+        auto opts = Chip8GenericOptions::fromProperties(props);
+        const auto presetIndex = std::min(static_cast<size_t>(opts.behaviorBase), std::size(genericPresets) - 1);
+        const auto presetProps = genericPresets[presetIndex].options.asProperties();
+        // Values of properties that make no sense for the variant go back to the preset default, so a stale value
+        // (e.g. from an old configuration) has no effect and doesn't show up as a change.
+        for (const auto& rule : propertyRules) {
+            auto& prop = props.at(rule.id);
+            if (rule.applies && !rule.applies(opts)) {
+                prop.getValue() = presetProps.at(rule.id).getValue();
+                prop.setState(PropertyState::NOT_APPLICABLE);
+            }
+            else {
+                prop.setState(PropertyState::ACTIVE);
+            }
+        }
+        opts = Chip8GenericOptions::fromProperties(props);
+        for (const auto& rule : propertyRules) {
+            auto& prop = props.at(rule.id);
+            if (prop.isApplicable() && rule.effective && !rule.effective(opts)) {
+                prop.setState(PropertyState::INACTIVE);
+            }
+        }
     }
 };
 
@@ -546,7 +643,7 @@ void Chip8GenericEmulator::handleReset(bool cold)
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)
 {
-    if (fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+    if (const auto& id = changed.getId(); id == PROP_TRACE_LOG || id == PROP_INSTRUCTIONS_PER_FRAME || id == PROP_FRAME_RATE) {
         _options = Chip8GenericOptions::fromProperties(props);
         return false;
     }

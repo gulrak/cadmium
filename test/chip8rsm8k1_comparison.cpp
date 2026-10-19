@@ -77,7 +77,7 @@ struct Pair {
 void arithmetic(Pair& p) {
     constexpr uint8_t values[] = {0,1,2,3,0x7f,0x80,0xfe,0xff};
     for(int mode : {0,1}) {
-        p.props["VIP Mode"].setBool(mode); p.core->updateProperties(p.props,p.props["VIP Mode"]);
+        p.props["vipMode"].setBool(mode); p.core->updateProperties(p.props,p.props["vipMode"]);
         p.reference->state().emulationMode = mode;
         for(int x : {0,1,15}) for(int y : {0,1,15}) for(auto a : values) for(auto b : values) for(int op : {0,1,2,3,4,5,6,7,14}) {
             for(int n = 0; n < 16; ++n) { p.core->setRegister(n,0xa5); p.reference->state().vreg[n] = 0xa5; }
@@ -85,7 +85,7 @@ void arithmetic(Pair& p) {
             p.opcode(0x8000 | x << 8 | y << 4 | op);
         }
     }
-    p.props["VIP Mode"].setBool(false); p.core->updateProperties(p.props,p.props["VIP Mode"]);
+    p.props["vipMode"].setBool(false); p.core->updateProperties(p.props,p.props["vipMode"]);
     p.reference->state().emulationMode=0;
 }
 void quirks(Pair& p) {

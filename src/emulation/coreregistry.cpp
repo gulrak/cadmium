@@ -80,7 +80,7 @@ Properties CoreRegistry::propertiesFromOctoOptions(const OctoOptions& options)
     j["instructionsPerFrame"] = options.tickrate;
     j["justShiftVx"] = options.qShift;
     j["loadStoreIncIByXPlus1"] = !options.qLoadStore;
-    j["loadStoreIncIByX"] = false;
+    j["loadStoreIncIByx"] = false;  // the id really is spelled with a lower case x
     j["jump0Bxnn"] = options.qJump0;
     j["dontResetVf"] = !options.qLogic;
     j["wrapSprites"] = !options.qClip;

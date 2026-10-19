@@ -109,7 +109,7 @@ TEST_CASE("HEX sparse ranges preserve addresses and gaps across loading and relo
     emu::HexFile parsed(path.string(), emu::HexFile::Mode::READ);
     REQUIRE(parsed.ranges().size() == 2);
     auto props = emu::CoreRegistry::propertiesForPreset("eti-chip-8");
-    props["Clean RAM"].setBool(false);
+    props["cleanRam"].setBool(false);
     HexTestHost host(props);
     auto* memory = host.emuCore().memory();
     memory[0x700] = 0xA5;

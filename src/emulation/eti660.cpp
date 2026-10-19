@@ -46,16 +46,16 @@
 namespace emu {
 
 static const std::string PROP_CLASS = "ETI660";
-static const std::string PROP_TRACE_LOG = "Trace Log";
-static const std::string PROP_CPU = "CPU";
-static const std::string PROP_CLOCK = "Clock Rate";
-static const std::string PROP_RAM = "Memory";
-static const std::string PROP_CLEAN_RAM = "Clean RAM";
-static const std::string PROP_VIDEO = "Video";
-static const std::string PROP_AUDIO = "Audio";
-static const std::string PROP_KEYBOARD = "Keyboard";
-static const std::string PROP_ROM_NAME = "ROM Name";
-static const std::string PROP_START_ADDRESS = "Start Address";
+static const std::string PROP_TRACE_LOG = "traceLog";
+static const std::string PROP_CPU = "cpu";
+static const std::string PROP_CLOCK = "clockRate";
+static const std::string PROP_RAM = "memory";
+static const std::string PROP_CLEAN_RAM = "cleanRam";
+static const std::string PROP_VIDEO = "video";
+static const std::string PROP_AUDIO = "audio";
+static const std::string PROP_KEYBOARD = "keyboard";
+static const std::string PROP_ROM_NAME = "romName";
+static const std::string PROP_START_ADDRESS = "startAddress";
 
 enum ETIVideoType { ETI_VT_CDP1864 };
 enum ETIAudioType { ETI_AT_CDP1864 };
@@ -112,18 +112,18 @@ struct Eti660Options
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_CPU, "CDP1802"s, "CPU type (currently only cdp1802)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1773448, 100000, 500'000'000}, "Clock frequency, default is 1773448", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"3072"s}, "Size of ram in bytes"});
-            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_VIDEO, Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
-            prototype.registerProperty({PROP_AUDIO, Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});
-            prototype.registerProperty({PROP_KEYBOARD, Property::Combo{"ETI660 Hex", "ETI660 2-ROW", "VIP Hex"}, "Keyboard type, default is ETI660 hex"});
-            prototype.registerProperty({"", nullptr, ""});
-            prototype.registerProperty({PROP_ROM_NAME, "C8-MONITOR"s, "Rom image name, default c8-monitor"});
+            prototype.registerProperty({PROP_TRACE_LOG, "Trace Log", false, "Enable trace log", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CPU, "CPU", "CDP1802"s, "CPU type (currently only cdp1802)"});
+            prototype.registerProperty({PROP_CLOCK, "Clock Rate", Property::Integer{1773448, 100000, 500'000'000}, "Clock frequency, default is 1773448", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"3072"s}, "Size of ram in bytes"});
+            prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
+            prototype.registerProperty({PROP_AUDIO, "Audio", Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});
+            prototype.registerProperty({PROP_KEYBOARD, "Keyboard", Property::Combo{"ETI660 Hex", "ETI660 2-ROW", "VIP Hex"}, "Keyboard type, default is ETI660 hex"});
+            prototype.registerProperty(Property::separator());
+            prototype.registerProperty({PROP_ROM_NAME, "ROM Name", "C8-MONITOR"s, "Rom image name, default c8-monitor"});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
-            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{0x600, 0, 4095}, "CHIP-8 entry address (0 boots the monitor)"});
+            prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{0x600, 0, 4095}, "CHIP-8 entry address (0 boots the monitor)"});
         }
         return prototype;
     }
@@ -416,7 +416,7 @@ void Eti660::handleReset(bool cold)
 
 bool Eti660::updateProperties(Properties& props, Property& changed)
 {
-    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+    if(changed.getId() == PROP_TRACE_LOG) {
         _impl->_options = Eti660Options::fromProperties(props);
         return false;
     }

@@ -2211,16 +2211,18 @@ void main()
             gui::SetSpacing(4);
             gui::SetNextWidth(90);
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
-            gui::Label(fmt::format("{}", prop.getName()).c_str());
+            gui::Label(fmt::format("{}", prop.getLabel()).c_str());
             gui::SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
         }
         //gui::SetNextWidth(150);
-        if (!prop.hasFlags(emu::PropertyFlags::eWritable))
+        // inactive properties keep their value, but changing it has no effect
+        const bool disabled = !prop.hasFlags(emu::PropertyFlags::eWritable) || !prop.isActive();
+        if (disabled)
             GuiDisable();
         const auto rc = std::visit(emu::visitor{
                                 [](std::nullptr_t) -> int { gui::Label(""); return 0; },
-                                [pa, &prop](bool& val) -> int { val = gui::CheckBox(pa == PA_RIGHT ? "" : prop.getName().c_str(), val); return val ? 1 : 0; },
-                                [pa, &prop](emu::Property::Integer& val) -> int { gui::Spinner(pa == PA_RIGHT ? "" : prop.getName().c_str(), &val.intValue, val.minValue, val.maxValue); return val.intValue; },
+                                [pa, &prop](bool& val) -> int { val = gui::CheckBox(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), val); return val ? 1 : 0; },
+                                [pa, &prop](emu::Property::Integer& val) -> int { gui::Spinner(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), &val.intValue, val.minValue, val.maxValue); return val.intValue; },
                                 [](std::string& val) -> int {
                                     auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
                                     gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
@@ -2234,7 +2236,7 @@ void main()
                                     return val.index;
                                 }},
                    prop.getValue());
-        if (!prop.hasFlags(emu::PropertyFlags::eWritable))
+        if (disabled)
             GuiEnable();
         if(pa == PA_RIGHT) {
             gui::EndColumns();
@@ -2242,27 +2244,15 @@ void main()
         return rc;
     }
 
-    void editPropertyCheckBox(std::string_view key, bool forceUpdate)
+    // Shows a disabled placeholder with the given label if the core has no such property.
+    int editPropertySpinner(std::string_view id, const char* label, bool forceUpdate, int defaultValue = 0)
     {
-        if(_properties->containsFuzzy(key)) {
-            editProperty(_properties->at(key), forceUpdate);
-        }
-        else {
-            static bool dummyBool = false;
-            GuiDisable();
-            gui::CheckBox(key.data(), dummyBool);
-            GuiEnable();
-        }
-    }
-
-    int editPropertySpinner(std::string_view key, bool forceUpdate, int defaultValue = 0)
-    {
-        if(_properties->containsFuzzy(key)) {
-            return editProperty(_properties->at(key), forceUpdate, PA_LEFT);
+        if(auto* prop = _properties->find(id)) {
+            return editProperty(*prop, forceUpdate, PA_LEFT);
         }
         static int dummyInt = defaultValue;
         GuiDisable();
-        gui::Spinner(key.data(), &dummyInt, defaultValue, defaultValue);
+        gui::Spinner(label, &dummyInt, defaultValue, defaultValue);
         GuiEnable();
         return -1;
     }
@@ -2302,11 +2292,11 @@ void main()
             _frameBoost = 1;
             updateEmulatorOptions(preset);
         }
-        if(_properties->containsFuzzy("Trace-log")) {
+        if(auto* traceLog = _properties->find(emu::propid::TRACE_LOG)) {
             BeginColumns();
             SetSpacing(4);
             SetNextWidth(90);
-            editProperty(_properties->at("Trace-log"), forceUpdate, PA_LEFT);
+            editProperty(*traceLog, forceUpdate, PA_LEFT);
             Button("File ...");
             EndColumns();
         }
@@ -2323,8 +2313,8 @@ void main()
         SetIndent(150);
         //SetRowHeight(20);
         SetSpacing(2);
-        auto ipf = editPropertySpinner("Instructions per frame", forceUpdate);
-        editPropertySpinner("Frame rate", forceUpdate, _chipEmu->frameRate());
+        auto ipf = editPropertySpinner(emu::propid::INSTRUCTIONS_PER_FRAME, "Instructions per frame", forceUpdate);
+        editPropertySpinner(emu::propid::FRAME_RATE, "Frame rate", forceUpdate, _chipEmu->frameRate());
         if(ipf != 0) {
             Spinner("Frame boost", &_frameBoost, 1, 1000);
         }
@@ -2355,14 +2345,14 @@ void main()
         auto& props = *_properties;
         for(size_t i = 0; i < props.numProperties(); ++i) {
             auto& prop = props[i];
-            if(prop.getName().empty()) {
+            if(prop.getId().empty()) {
                 auto used = GetCurrentPos().y - startY;
                 Space(quirksHeight - used - 4);
                 End();
                 Begin();
                 SetSpacing(2);
             }
-            else if(!prop.hasFlags(emu::PropertyFlags::eInvisible) && !fuzzyAnyOf(prop.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+            else if(!prop.hasFlags(emu::PropertyFlags::eInvisible) && prop.isApplicable() && prop.getId() != emu::propid::TRACE_LOG && prop.getId() != emu::propid::INSTRUCTIONS_PER_FRAME && prop.getId() != emu::propid::FRAME_RATE) {
                 if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
                     editProperty(prop, forceUpdate, PA_LEFT);
                 }
@@ -2374,6 +2364,7 @@ void main()
         }
         auto* changedProp = props.changedProperty(_propsMemento);
         if(changedProp) {
+            emu::CoreRegistry::applyRules(props, changedProp->getId());
             // on change...
             if(_chipEmu->updateProperties(props, *changedProp)) {
                 // core asks for a cold start...
@@ -2553,7 +2544,7 @@ void main()
         Space(150);
         SetNextWidth(0.21f);
         bool romRemembered = _cfg.romConfigs.contains(_romSha1);
-        if((romRemembered && *_properties == _cfg.romConfigs[_romSha1]) || (_romIsWellKnown && *_properties == _romWellKnownProperties)) {
+        if((romRemembered && matchesSettings(_cfg.romConfigs[_romSha1])) || (_romIsWellKnown && matchesSettings(_romWellKnownProperties))) {
             GuiDisable();
         }
         if (Button(!romRemembered ? "Remember for ROM" : "Update for ROM")) {
@@ -2865,6 +2856,13 @@ void main()
             _mainView = eVIDEO;
         else if(compiler && compiler->isError())
             _mainView = eEDITOR;
+    }
+
+    bool matchesSettings(const emu::Properties& reference) const
+    {
+        auto ruled = reference;
+        emu::CoreRegistry::applyRules(ruled);
+        return *_properties == ruled && _properties->palette() == completedPalette(ruled.palette());
     }
 
     void whenMachineReset() override
@@ -3375,164 +3373,16 @@ void dumpLibraryNickel()
 #endif
 }
 
-void convertKnownRomList()
-{
-#ifndef NEW_ROMLIST_FORMAT
-    std::map<std::string, KnownRomInfo2> knownRoms;
-    std::set<std::string> optionsStrings;
-    std::set<std::string> keys;
-    std::set<std::string> advancedKeys;
-    c8db::Database db("/Users/schuemann/Development/c8/chip-8-database/database");
-
-    for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
-        auto info = Librarian::getRomInfo(i);
-        const char* preset = nullptr;
-        bool unsure = false;
-        switch(info.variant) {
-            case emu::chip8::Variant::CHIP_8: preset = "!chip-8"; break;
-            case emu::chip8::Variant::CHIP_10: preset = "!chip-10"; break;
-            case emu::chip8::Variant::CHIP_8E: preset = "!chip-8e"; break;
-            case emu::chip8::Variant::CHIP_8X: preset = "!chip-8x"; break;
-            case emu::chip8::Variant::SCHIP_1_0: preset = "!schip-1.0"; break;
-            case emu::chip8::Variant::SCHIP_1_1: preset = "!schip-1.1"; break;
-            case emu::chip8::Variant::SCHIPC: preset = "!schipc"; break;
-            case emu::chip8::Variant::SCHIP_MODERN: preset = "!schip-modern"; break;
-            case emu::chip8::Variant::MEGA_CHIP: preset = "!megachip"; break;
-            case emu::chip8::Variant::XO_CHIP: preset = "!xo-chip"; break;
-            case emu::chip8::Variant::COSMAC_VIP: preset = "!vip"; break;
-            case emu::chip8::Variant::CHIP_8_COSMAC_VIP: preset = "!vip-chip-8"; break;
-            case emu::chip8::Variant::CHIP_8_TPD: preset = "!vip-chip-8-tpd"; break;
-            case emu::chip8::Variant::CHIP_8X_TPD: preset = "!vip-chip-8x-tpd"; break;
-            case emu::chip8::Variant::HI_RES_CHIP_8: preset = "!vip-chip-8-fpd"; break;
-            case emu::chip8::Variant::HI_RES_CHIP_8X: preset = "!vip-chip-8x-fpd"; break;
-            case emu::chip8::Variant::GENERIC_CHIP_8: preset = "!generic-chip-8"; break;
-            default: preset = "?chip-8"; unsure = true; break;
-        }
-        const char* optionsString = nullptr;
-        if(info.options) {
-            auto options = nlohmann::json::parse(info.options);
-            if(!options.contains("optAllowHires")) {
-                for(const auto& [key, val] : options.items()) {
-                    keys.insert(key);
-                }
-                auto presetProperties = emu::CoreRegistry::propertiesForPreset(preset);
-                auto romProperties = presetProperties;
-                if(preset) {
-                    if(options.contains("instructionsPerFrame")) {
-                        romProperties.at("instructionsPerFrame").setInt(options.at("instructionsPerFrame"));
-                    }
-                    if(options.contains("optDontResetVf")) {
-                        romProperties.at("8xy1/8xy2/8xy3 don't reset VF").setBool(options.at("optDontResetVf"));
-                    }
-                    if(options.contains("optInstantDxyn")) {
-                        romProperties.at("Dxyn doesn't wait for vsync").setBool(options.at("optInstantDxyn"));
-                    }
-                    if(options.contains("optJustShiftVx")) {
-                        romProperties.at("8xy6/8xyE just shift VX").setBool(options.at("optJustShiftVx"));
-                    }
-                    if(options.contains("optLoadStoreDontIncI")) {
-                        romProperties.at("Fx55/Fx65 increment I by X + 1").setBool(!options.at("optLoadStoreDontIncI").get<bool>());
-                        romProperties.at("Fx55/Fx65 increment I by X").setBool(false);
-                    }
-                    if(options.contains("optWrapSprites")) {
-                        romProperties.at("wrap Sprite pixels").setBool(options.at("optWrapSprites"));
-                    }
-                    if(options.contains("advanced")) {
-                        for(const auto& [akey, avalue] : options.at("advanced").items()) {
-                            advancedKeys.insert(akey);
-                            auto& palette = romProperties.palette();
-                            if(akey == "col0") {
-                                if(palette.colors.size() < 2)
-                                    romProperties.palette().colors.resize(2, emu::Palette::Color{0});
-                                palette.colors[0] = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "col1") {
-                                if(palette.colors.size() < 2)
-                                    romProperties.palette().colors.resize(2, emu::Palette::Color{0});
-                                palette.colors[1] = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "col2") {
-                                if(palette.colors.size() < 4)
-                                    romProperties.palette().colors.resize(4, emu::Palette::Color{0});
-                                palette.colors[2] = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "col3") {
-                                if(palette.colors.size() < 4)
-                                    romProperties.palette().colors.resize(4, emu::Palette::Color{0});
-                                palette.colors[3] = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "buzzColor") {
-                                palette.signalColor = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "quietColor") {
-                                palette.borderColor = emu::Palette::Color(avalue.get<std::string>());
-                            }
-                            else if(akey == "palette") {
-                                palette.colors.clear();
-                                for(const std::string col : avalue) {
-                                    palette.colors.emplace_back(col);
-                                }
-                            }
-                            else if (akey == "screenRotation") {
-                                romProperties.at("screenRotation").setSelectedText(std::to_string(int(avalue)));
-                            }
-                            else if (akey == "fontStyle") {
-                                romProperties.at("fontStyle").setSelectedText(avalue);
-                            }
-                        }
-                    }
-                }
-                auto diff = presetProperties.createDiff(romProperties);
-                optionsString = optionsStrings.insert("R\"(" + diff.dump() + ")\"").first->c_str();
-            }
-        }
-        auto info2 = KnownRomInfo2{Sha1::Digest(info.sha1), preset, info.name, optionsString, nullptr};
-        knownRoms.emplace(info.sha1, info2);
-    }
-    std::cout << "static KnownRomInfo g_knownRoms[] = {" << std::endl;
-    for(const auto& [key, info] : knownRoms) {
-        std::cout << "    {\"" << key << "\"_sha1";
-        std::cout << ", \"" << info.preset+1 << "\"";
-        std::cout << ", \"" << info.name << "\"";
-        std::cout << "," << (info.options ? info.options : "nullptr") << ", " << (info.url ? info.url : "nullptr");
-        std::cout << "},";
-        if(*info.preset == '?') {
-            std::cout << " // ???";
-        }
-        std::cout << std::endl;
-    }
-    std::cout << "};" << std::endl;
-    for(const auto& key : keys) {
-        std::cout << "Option: " << key << std::endl;
-    }
-    for(const auto& akey : advancedKeys) {
-        std::cout << "Advanced Option: " << akey << std::endl;
-    }
-    std::cout << "Found " << db.numRoms() << " rom files in programs.json" << std::endl;
-    size_t dbNew = 0;
-    for(const auto& [key, info] : db.romTable()) {
-        if(!knownRoms.contains(key)) {
-            std::cout << "Unknown rom in db: " << key << ", " << info->title << std::endl;
-            dbNew++;
-        }
-    }
-    size_t cadNew = 0;
-    for(const auto& [key, info] : knownRoms) {
-        if(!db.romTable().contains(key)) {
-            //std::cout << "Rom missing in db: " << key << ", " << info.name << std::endl;
-            cadNew++;
-        }
-    }
-    std::cout << "Chip-8 Program database contains " << dbNew << " roms new to Cadmium," << std::endl;
-    std::cout << "Cadmium detects " << cadNew << " roms not in the database." << std::endl;
-    std::cout << "Done converting " << knownRoms.size() << " rom infos." << std::endl;
-#endif
-}
-
 int main(int argc, char* argv[])
 {
     static emu::Properties coreProperties;
     static std::list<ghc::CLI::Combo> coreComboOptions; // stable storage, the CLI keeps pointers into it
+    static std::vector<std::string> cliChangedProperties; // for the warning about options without effect
+    static auto cliPropertyChanged = [](const std::string& id) {
+        // the last option of an exclusive group given wins
+        emu::CoreRegistry::applyRules(coreProperties, id);
+        cliChangedProperties.push_back(id);
+    };
     ghc::CLI cli(argc, argv);
     int64_t traceLines = -1;
     bool compareRun = false;
@@ -3542,7 +3392,6 @@ int main(int argc, char* argv[])
     bool opcodeTable = false;
     bool opcodeJSON = false;
     bool dumpLibNickel = false;
-    bool convertRomList = false;
     bool startRom = false;
     bool screenDump = false;
     bool drawDump = false;
@@ -3577,7 +3426,6 @@ int main(int argc, char* argv[])
 #ifndef NDEBUG
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
     cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
-    cli.optionEnable({"--convert-rom-list"}, convertRomList, "Convert list of known roms (just temporary available)");
 #endif
 #else
 #ifdef WEB_WITH_FETCHING
@@ -3604,19 +3452,23 @@ int main(int argc, char* argv[])
         for(size_t i = 0; i < proto.numProperties(); ++i) {
             auto& prop = proto[i];
             if(prop.hasFlags(emu::PropertyFlags::eWritable)) {
-                auto dependencyCheck = [&presetName, info]() {
-                    return info->hasVariant(presetName);
+                auto dependencyCheck = [&presetName, info, id = prop.getId()]() {
+                    const auto* current = coreProperties.find(id);
+                    return info->hasVariant(presetName) && current && current->isApplicable();
                 };
                 std::visit(emu::visitor{
                    [](std::nullptr_t) -> void {  },
-                   [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const bool& value) {
-                       coreProperties.at(paramName).setBool(value);
+                   [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const bool& value) {
+                       coreProperties.at(id).setBool(value);
+                       cliPropertyChanged(id);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
-                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const int& value) {
-                       coreProperties.at(paramName).setInt(value);
+                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const int& value) {
+                       coreProperties.at(id).setInt(value);
+                       cliPropertyChanged(id);
                    }, prop.getDescription()).dependsOn(dependencyCheck).range(prop.getIntMin(), prop.getIntMax()); },
-                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [](const std::string& paramName, const std::string& value) {
-                       coreProperties.at(paramName).setString(value);
+                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const std::string& value) {
+                       coreProperties.at(id).setString(value);
+                       cliPropertyChanged(id);
                    }, prop.getDescription()).dependsOn(dependencyCheck); },
                    [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
                        std::ostringstream optionList;
@@ -3628,8 +3480,9 @@ int main(int argc, char* argv[])
                        }
                        // The CLI matches the argument against Combo::combinations, so they must be filled in
                        auto& cliCombo = coreComboOptions.emplace_back(ghc::CLI::Combo{val.index, val.options});
-                       cli.option({fmt::format("--{}", prop.getOptionName())}, cliCombo, prop.getDescription() + " (" + optionList.str() +")", [&cliCombo](const std::string& paramName) {
-                            coreProperties.at(paramName).setSelectedIndex(cliCombo.index);
+                       cli.option({fmt::format("--{}", prop.getOptionName())}, cliCombo, prop.getDescription() + " (" + optionList.str() +")", [&cliCombo, id = prop.getId()](const std::string&) {
+                            coreProperties.at(id).setSelectedIndex(cliCombo.index);
+                            cliPropertyChanged(id);
                        }).dependsOn(dependencyCheck);
                    }
                }, prop.getValue());
@@ -3643,6 +3496,7 @@ int main(int argc, char* argv[])
         if(!coreProperties) {
             throw std::runtime_error(fmt::format("Unknown preset: '{}' (use --help to see supported presets)", presetName));
         }
+        emu::CoreRegistry::applyRules(coreProperties);
     });
 #if 0
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
@@ -3698,6 +3552,11 @@ int main(int argc, char* argv[])
         cli.usage();
         exit(0);
     }
+    for (const auto& id : cliChangedProperties) {
+        if (const auto& prop = coreProperties.at(id); !prop.isActive()) {
+            std::cerr << "WARNING: --" << prop.getOptionName() << " has no effect with the other settings of this preset" << std::endl;
+        }
+    }
     if(showVersion) {
         std::cout << "Cadmium v" << CADMIUM_VERSION << "-" << CADMIUM_GIT_HASH << std::endl;
         std::cout << "(c) Copyright 2022 by Steffen 'Gulrak' Schümann" << std::endl;
@@ -3708,10 +3567,6 @@ int main(int argc, char* argv[])
         coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
     }
 #ifndef PLATFORM_WEB
-    if(convertRomList) {
-        convertKnownRomList();
-        exit(0);
-    }
     if(opcodeTable) {
         dumpOpcodeTable(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
@@ -3893,8 +3748,8 @@ int main(int argc, char* argv[])
         else if(benchmark > 0) {
             uint64_t instructions = benchmark;
             int ipf = 42;
-            if(coreProperties.contains("instructionsPerFrame")) {
-                ipf = coreProperties.at("instructionsPerFrame").getInt();
+            if(coreProperties.contains(emu::propid::INSTRUCTIONS_PER_FRAME)) {
+                ipf = coreProperties.at(emu::propid::INSTRUCTIONS_PER_FRAME).getInt();
             }
             std::cout << "Executing benchmark (" << /*chip8->options.instructionsPerFrame*/ ipf << "ipf)..." << std::endl;
             auto startChip8 = std::chrono::steady_clock::now();

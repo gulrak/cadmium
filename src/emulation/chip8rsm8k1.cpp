@@ -36,8 +36,8 @@ namespace emu {
 namespace {
 
 const std::string PROP_CLASS = "RS-M8K1";
-const std::string PROP_VIP = "VIP Mode";
-const std::string PROP_TRACE = "Trace Log";
+const std::string PROP_VIP = "vipMode";
+const std::string PROP_TRACE = "traceLog";
 
 }
 
@@ -45,8 +45,8 @@ Properties& Chip8RSM8k1Options::registeredPrototype()
 {
     auto& props = Properties::getProperties(PROP_CLASS);
     if (!props) {
-        props.registerProperty({PROP_VIP, false, "Original mode-1 behavior, including double shifts", PropertyFlags::eWritable});
-        props.registerProperty({PROP_TRACE, false, "Enable opcode trace", PropertyFlags::eWritable});
+        props.registerProperty({PROP_VIP, "VIP Mode", false, "Original mode-1 behavior, including double shifts", PropertyFlags::eWritable});
+        props.registerProperty({PROP_TRACE, "Trace Log", false, "Enable opcode trace", PropertyFlags::eWritable});
     }
     return props;
 }

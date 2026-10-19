@@ -62,7 +62,7 @@ public:
         int64_t numHits{0};
     };
     struct RegisterValue {
-        uint32_t value{};
+        uint64_t value{};
         uint32_t size{};
     };
     struct StackContent
@@ -203,7 +203,8 @@ public:
     }
     RegisterValue registerByName(const std::string& name) const
     {
-        static const auto& regNames = registerNames();
+        // not static, every CPU type has its own names
+        const auto& regNames = registerNames();
         if (const auto iter = std::ranges::find(regNames, name); iter != regNames.end()) {
             return registerbyIndex(iter - regNames.begin());
         }

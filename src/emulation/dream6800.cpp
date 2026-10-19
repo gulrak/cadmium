@@ -41,14 +41,14 @@
 namespace emu {
 
 static const std::string PROP_CLASS = "DREAM6800";
-static const std::string PROP_TRACE_LOG = "Trace Log";
-static const std::string PROP_CPU = "CPU";
-static const std::string PROP_CLOCK = "Clock Rate";
-static const std::string PROP_RAM = "Memory";
-static const std::string PROP_CLEAN_RAM = "Clean RAM";
-static const std::string PROP_VIDEO = "Video";
-static const std::string PROP_ROM_NAME = "ROM Name";
-static const std::string PROP_START_ADDRESS = "Start Address";
+static const std::string PROP_TRACE_LOG = "traceLog";
+static const std::string PROP_CPU = "cpu";
+static const std::string PROP_CLOCK = "clockRate";
+static const std::string PROP_RAM = "memory";
+static const std::string PROP_CLEAN_RAM = "cleanRam";
+static const std::string PROP_VIDEO = "video";
+static const std::string PROP_ROM_NAME = "romName";
+static const std::string PROP_START_ADDRESS = "startAddress";
 
 enum class DreamVideoType { TTL };
 
@@ -89,15 +89,15 @@ struct Dream6800Options
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROP_CLASS);
         if(!prototype) {
-            prototype.registerProperty({PROP_TRACE_LOG, false, "Enable trace log", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_CPU, "M6800"s, "CPU type (currently only M6800)"});
-            prototype.registerProperty({PROP_CLOCK, Property::Integer{1000000, 100000, 500'000'000}, "Clock frequency, default is 1000000", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_RAM, Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_CLEAN_RAM, false, "Delete ram on startup", PropertyFlags::eWritable});
-            prototype.registerProperty({PROP_VIDEO, Property::Combo{"TTL"}, "Video hardware, only TTL"});
-            prototype.registerProperty({PROP_ROM_NAME, Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_TRACE_LOG, "Trace Log", false, "Enable trace log", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CPU, "CPU", "M6800"s, "CPU type (currently only M6800)"});
+            prototype.registerProperty({PROP_CLOCK, "Clock Rate", Property::Integer{1000000, 100000, 500'000'000}, "Clock frequency, default is 1000000", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"TTL"}, "Video hardware, only TTL"});
+            prototype.registerProperty({PROP_ROM_NAME, "ROM Name", Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", PropertyFlags::eWritable});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
-            prototype.registerProperty({PROP_START_ADDRESS, Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
+            prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
         }
         return prototype;
     }
@@ -439,7 +439,7 @@ chip8::VariantSet Dream6800::supportedChip8Variants() const
 
 bool Dream6800::updateProperties(Properties& props, Property& changed)
 {
-    if(fuzzyAnyOf(changed.getName(), {"TraceLog", "InstructionsPerFrame", "FrameRate"})) {
+    if(changed.getId() == PROP_TRACE_LOG) {
         _impl->_options = Dream6800Options::fromProperties(props);
         return false;
     }

@@ -96,11 +96,11 @@ int runHeadless(const std::string& romPath, const emu::Properties& properties, c
     auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(core.executionUnit(0));
     if (!chip8 || !core.isGenericEmulation())
         throw std::runtime_error("--headless currently requires the generic CHIP-8 core");
-    const auto* ipfProperty = host.getProperties().find("instructionsPerFrame");
+    const auto* ipfProperty = host.getProperties().find(emu::propid::INSTRUCTIONS_PER_FRAME);
     if (!ipfProperty || ipfProperty->getInt() <= 0)
         throw std::runtime_error("--headless requires a positive --instructions-per-frame");
     const int64_t instructionsPerFrame = ipfProperty->getInt();
-    const auto* frameRateProperty = host.getProperties().find("frameRate");
+    const auto* frameRateProperty = host.getProperties().find(emu::propid::FRAME_RATE);
     const int frameRate = frameRateProperty ? frameRateProperty->getInt() : core.frameRate();
 
     const auto loadAddress = core.defaultLoadAddress();

@@ -53,16 +53,27 @@ template<class... Ts>
 visitor(Ts...) -> visitor<Ts...>;
 
 enum class PropertyFlags { eNone = 0, eWritable = 1, eInvisible = 2, eNeedsRelaunch = 4 };
+
+// Whether a property matters, decided by the rules of its core (see CoreRegistry::applyRules). It is derived from
+// the values, so it is neither saved nor compared.
+enum class PropertyState {
+    ACTIVE,          // has an effect
+    INACTIVE,        // has no effect with the current values of other properties, keeps its value
+    NOT_APPLICABLE   // makes no sense for the variant, is hidden and kept at the preset default
+};
+
+// Ids of properties several cores share and that the host and the UI use directly.
+namespace propid {
+inline constexpr std::string_view TRACE_LOG{"traceLog"};
+inline constexpr std::string_view INSTRUCTIONS_PER_FRAME{"instructionsPerFrame"};
+inline constexpr std::string_view FRAME_RATE{"frameRate"};
+inline constexpr std::string_view START_ADDRESS{"startAddress"};
+}
 GHC_ENUM_ENABLE_BIT_OPERATIONS(PropertyFlags)
 
 class Property
 {
 public:
-    struct NameAndKeyName
-    {
-        std::string name;
-        std::string keyName;
-    };
     struct Combo
     {
         Combo(std::initializer_list<std::string> opts)
@@ -77,12 +88,14 @@ public:
             static std::string emptyString{};
             return emptyString;
         }
+        // Selects the first option matching the text, keeps the current selection if there is none.
         void setSelectedToText(const std::string& text)
         {
-            index = 0;
-            for(int i = 0; i < options.size(); ++i) {
-                if (fuzzyCompare(options[i],text))
-                    index = i;
+            for(size_t i = 0; i < options.size(); ++i) {
+                if (fuzzyCompare(options[i], text)) {
+                    index = static_cast<int>(i);
+                    return;
+                }
             }
         }
         int index{};
@@ -101,20 +114,27 @@ public:
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyFlags flags_ = PropertyFlags::eNone);
-    Property(const std::string& name, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
-    Property(const NameAndKeyName& nameAndKey, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
-    Property(const NameAndKeyName& nameAndKey, Value val, PropertyFlags flags_ = PropertyFlags::eNone);
+    // The id is the stable technical name: key in Properties, key in JSON (configs, ROM database) and base of the
+    // CLI option. It must never change. The label is only shown to the user and can be changed at any time.
+    Property(std::string id, std::string label, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
+    Property(std::string id, std::string label, Value val, PropertyFlags flags_);  // description is the label
     Property(const Property& other);
-    const std::string& getName() const { return _name; }
-    const std::string& getJsonKey() const { return _jsonKey; }
+    // An entry without a value that separates groups of properties in the UI.
+    static Property separator() { return {"", "", nullptr, ""}; }
+    const std::string& getId() const { return _id; }
+    const std::string& getLabel() const { return _label; }
     const std::string& getOptionName() const { return _optionName; }
-    void setJsonKey(const std::string& jsonKey) { _jsonKey = jsonKey; }
+    // Only for CLI options that already existed with a name toOptionName(id) doesn't produce.
+    Property& setOptionName(std::string optionName) { _optionName = std::move(optionName); return *this; }
     const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
     PropertyFlags getFlags() const { return _flags; }
     bool hasFlags(const PropertyFlags flags) const { return (_flags & flags) == flags; }
+    PropertyState getState() const { return _state; }
+    void setState(PropertyState state) { _state = state; }
+    bool isActive() const { return _state == PropertyState::ACTIVE; }
+    bool isApplicable() const { return _state != PropertyState::NOT_APPLICABLE; }
     bool isValid() const { return !std::holds_alternative<std::nullptr_t>(_value); }
     explicit operator bool() const { return isValid(); }
     Value& getValue() { return _value; }
@@ -133,7 +153,12 @@ public:
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
     size_t getSelectedIndex() const { return std::get<Combo>(_value).index; }
     int& getSelectedIndexRef() { return std::get<Combo>(_value).index; }
-    void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = static_cast<int>(idx < std::get<Combo>(_value).options.size() ? idx : std::get<Combo>(_value).options.size() - 1); }
+    void setSelectedIndex(size_t idx)
+    {
+        auto& combo = std::get<Combo>(_value);
+        if (!combo.options.empty())
+            combo.index = static_cast<int>(std::min(idx, combo.options.size() - 1));
+    }
     void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
     bool operator==(const Property& other) const
     {
@@ -149,13 +174,14 @@ public:
     }
 
 private:
-    std::string _name;
-    std::string _jsonKey;
+    std::string _id;
+    std::string _label;
     std::string _optionName;
     Value _value;
     std::string _description;
     std::string _additionalInfo;
     PropertyFlags _flags{PropertyFlags::eNone};
+    PropertyState _state{PropertyState::ACTIVE};
 };
 
 class Properties
@@ -172,10 +198,10 @@ public:
     const std::string& propertyClass() const { return _class; }
     void registerProperty(const Property& prop)
     {
-        auto iter = _valueMap.find(prop.getName());
+        auto iter = _valueMap.find(prop.getId());
         if(iter == _valueMap.end()) {
-            _valueList.push_back(prop.getName());
-            _valueMap.emplace(prop.getName(), prop);
+            _valueList.push_back(prop.getId());
+            _valueMap.emplace(prop.getId(), prop);
         }
     }
     size_t numProperties() const { return _valueList.size(); }
@@ -209,15 +235,13 @@ public:
     {
         return _valueMap != other._valueMap;
     }
+    // The first property that differs from the memento (or doesn't exist there).
     Property* changedProperty(const Properties& memento)
     {
-        auto iterM = memento._valueMap.cbegin();
-        bool error = false;
-        for(auto iter = _valueMap.begin(); iter != _valueMap.cend(); ++iter, ++iterM) {
-            if(iter->first != iterM->first)
-                error = true;
-            if(!(iter->second == iterM->second)) {
-                return &iter->second;
+        for(auto& [key, prop] : _valueMap) {
+            auto iter = memento._valueMap.find(key);
+            if(iter == memento._valueMap.end() || !(prop == iter->second)) {
+                return &prop;
             }
         }
         return nullptr;
@@ -252,88 +276,64 @@ public:
         }
         return iter->second;
     }
-    Property* find(std::string_view key)
+    // Lookups by id are exact, code always uses ids.
+    Property* find(std::string_view id)
     {
-        for(auto& [mapKey, val] : _valueMap) {
-            if(fuzzyCompare(mapKey, key)) {
-                return &val;
-            }
-        }
-        return find_json(key);
+        auto iter = _valueMap.find(id);
+        return iter == _valueMap.end() ? nullptr : &iter->second;
     }
-    Property* find_json(std::string_view key)
+    const Property* find(std::string_view id) const
     {
-        for(auto& [mapKey, val] : _valueMap) {
-            if(fuzzyCompare(val.getJsonKey(), key)) {
-                return &val;
+        auto iter = _valueMap.find(id);
+        return iter == _valueMap.end() ? nullptr : &iter->second;
+    }
+    // Only for text typed by people (or written by hand): matches ids and labels, ignoring case and punctuation.
+    Property* findFuzzy(std::string_view text)
+    {
+        if (auto* prop = find(text))
+            return prop;
+        for(auto& [id, prop] : _valueMap) {
+            if(!id.empty() && (fuzzyCompare(id, text) || fuzzyCompare(prop.getLabel(), text))) {
+                return &prop;
             }
         }
         return nullptr;
     }
-    Property& at(std::string_view key)
+    Property& at(std::string_view id)
     {
-        auto* prop = find(key);
-        if (prop) {
+        if (auto* prop = find(id)) {
             return *prop;
         }
-        throw std::runtime_error(fmt::format("No property named {}", key));
+        throw std::runtime_error(fmt::format("No property with id '{}'", id));
     }
-    const Property& at(std::string_view key) const
+    const Property& at(std::string_view id) const
     {
-        for(auto& [mapKey, val] : _valueMap) {
-            if(fuzzyCompare(mapKey, key)) {
-                return val;
-            }
+        if (const auto* prop = find(id)) {
+            return *prop;
         }
-        throw std::runtime_error(fmt::format("No property named {}", key));
+        throw std::runtime_error(fmt::format("No property with id '{}'", id));
     }
     template<typename T>
-    std::optional<T> get(std::string_view key) const
+    std::optional<T> get(std::string_view id) const
     {
-        for(auto& [mapKey, val] : _valueMap) {
-            if(fuzzyCompare(mapKey, key)) {
-                if(std::holds_alternative<T>(val.getValue())) {
-                    return std::get<T>(val.getValue());
-                }
-                return {};
-            }
+        if (const auto* prop = find(id); prop && std::holds_alternative<T>(prop->getValue())) {
+            return std::get<T>(prop->getValue());
         }
         return {};
     }
-    bool contains(const std::string& key)
+    bool contains(std::string_view id) const
     {
-        return _valueMap.find(key) != _valueMap.end();
-    }
-    bool containsFuzzy(std::string_view key)
-    {
-        return std::any_of(_valueMap.begin(), _valueMap.end(),
-                       [&](const auto& pair) { return fuzzyCompare(pair.first, key); });
+        return find(id) != nullptr;
     }
     static Properties& getProperties(std::string_view key)
     {
         auto iter = propertyRegistry.find(key);
         if(iter == propertyRegistry.end()) {
-            iter = propertyRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple()).first;
+            iter = propertyRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(std::string(key)), std::forward_as_tuple()).first;
             iter->second._class = key;
         }
         return iter->second;
     }
-    static std::string makeJsonKey(const std::string& name)
-    {
-        std::string key;
-        bool nonChar = false;
-        for(char c : name) {
-            if(isalnum(c)) {
-                key.push_back(nonChar && key.size() ? std::toupper(int(c)) : std::tolower(int(c)));
-                nonChar = false;
-            }
-            else {
-                nonChar = true;
-            }
-        }
-        return key;
-    }
-
     Palette& palette() { return _palette; }
     const Palette& palette() const { return _palette; }
 
@@ -345,9 +345,10 @@ public:
 private:
     std::string _class;
     std::vector<std::string> _valueList;
-    std::map<std::string, Property> _valueMap;
+    std::map<std::string, Property, std::less<>> _valueMap;
     Palette _palette;
-    static std::map<std::string_view,Properties> propertyRegistry;
+    // Owns its keys, callers may pass a temporary string (e.g. a class name read from JSON).
+    static std::map<std::string,Properties,std::less<>> propertyRegistry;
     static std::unordered_map<std::string,std::string> registeredKeys;
     static std::unordered_map<std::string,std::string> registeredJsonKeys;
 };

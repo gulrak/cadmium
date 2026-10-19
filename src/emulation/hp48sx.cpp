@@ -13,16 +13,16 @@ namespace emu {
 namespace {
 
 constexpr std::string_view PROPERTY_CLASS = "HP-48SX";
-constexpr std::string_view PROP_INTERPRETER = "Interpreter";
-constexpr std::string_view PROP_ROM = "ROM";
-constexpr std::string_view PROP_SOURCE = "Interpreter Source";
-constexpr std::string_view PROP_FETCH = "Fetch Symbol";
-constexpr std::string_view PROP_SYMBOL_BIAS = "Symbol Address Bias";
-constexpr std::string_view PROP_TIMER = "Timer Symbol";
-constexpr std::string_view PROP_SOUND = "Sound Symbol";
-constexpr std::string_view PROP_STACK_POINTER = "Stack Pointer Symbol";
-constexpr std::string_view PROP_STACK = "Stack Symbol";
-constexpr std::string_view PROP_KEY_TABLE = "Key Table Symbol";
+constexpr std::string_view PROP_INTERPRETER = "interpreter";
+constexpr std::string_view PROP_ROM = "rom";
+constexpr std::string_view PROP_SOURCE = "interpreterSource";
+constexpr std::string_view PROP_FETCH = "fetchSymbol";
+constexpr std::string_view PROP_SYMBOL_BIAS = "symbolAddressBias";
+constexpr std::string_view PROP_TIMER = "timerSymbol";
+constexpr std::string_view PROP_SOUND = "soundSymbol";
+constexpr std::string_view PROP_STACK_POINTER = "stackPointerSymbol";
+constexpr std::string_view PROP_STACK = "stackSymbol";
+constexpr std::string_view PROP_KEY_TABLE = "keyTableSymbol";
 
 enum class Interpreter {
     NONE,
@@ -77,16 +77,16 @@ struct Hp48sxOptions
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROPERTY_CLASS);
         if (!prototype) {
-            prototype.registerProperty({std::string(PROP_INTERPRETER), Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
-            prototype.registerProperty({std::string(PROP_ROM), "resources/sxrom-rev-e"s, "HP-48SX ROM asset"});
-            prototype.registerProperty({std::string(PROP_SOURCE), ""s, "ASAP source asset", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_FETCH), "dispatch"s, "CHIP-8 fetch loop symbol", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_SYMBOL_BIAS), Property::Integer{-16, -65536, 65536}, "Nibble bias from ASAP symbols to the loaded HP object", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_TIMER), ""s, "Delay timer offset symbol", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_SOUND), ""s, "Sound timer offset symbol", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_STACK_POINTER), ""s, "Stack pointer offset symbol", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_STACK), ""s, "Stack offset symbol", PropertyFlags::eInvisible});
-            prototype.registerProperty({std::string(PROP_KEY_TABLE), "keytab"s, "Keyboard mapping symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_INTERPRETER), "Interpreter", Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
+            prototype.registerProperty({std::string(PROP_ROM), "ROM", "resources/sxrom-rev-e"s, "HP-48SX ROM asset"});
+            prototype.registerProperty({std::string(PROP_SOURCE), "Interpreter Source", ""s, "ASAP source asset", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_FETCH), "Fetch Symbol", "dispatch"s, "CHIP-8 fetch loop symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_SYMBOL_BIAS), "Symbol Address Bias", Property::Integer{-16, -65536, 65536}, "Nibble bias from ASAP symbols to the loaded HP object", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_TIMER), "Timer Symbol", ""s, "Delay timer offset symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_SOUND), "Sound Symbol", ""s, "Sound timer offset symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_STACK_POINTER), "Stack Pointer Symbol", ""s, "Stack pointer offset symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_STACK), "Stack Symbol", ""s, "Stack offset symbol", PropertyFlags::eInvisible});
+            prototype.registerProperty({std::string(PROP_KEY_TABLE), "Key Table Symbol", "keytab"s, "Keyboard mapping symbol", PropertyFlags::eInvisible});
         }
         return prototype;
     }

@@ -34,43 +34,24 @@
 
 namespace emu {
 
-std::map<std::string_view,Properties> Properties::propertyRegistry{};
+std::map<std::string,Properties,std::less<>> Properties::propertyRegistry{};
 
 
-Property::Property(const std::string& name, Value val, std::string description, std::string additionalInfo, PropertyFlags flags_)
-    : _name(name)
-    , _jsonKey(Properties::makeJsonKey(name))
-    , _optionName(toOptionName(name))
-    , _value(std::move(val))
-    , _description(std::move(description))
-    , _additionalInfo(std::move(additionalInfo))
-    , _flags(flags_)
-{}
-
-Property::Property(const std::string& name, Value val, std::string description, PropertyFlags flags_)
-    : _name(name)
-    , _jsonKey(Properties::makeJsonKey(name))
-    , _optionName(toOptionName(name))
+Property::Property(std::string id, std::string label, Value val, std::string description, PropertyFlags flags_)
+    : _id(std::move(id))
+    , _label(std::move(label))
+    , _optionName(toOptionName(_id))
     , _value(std::move(val))
     , _description(std::move(description))
     , _flags(flags_)
 {}
 
-Property::Property(const NameAndKeyName& nameAndKey, Value val, std::string description, PropertyFlags flags_)
-    : _name(nameAndKey.name)
-    , _jsonKey(Properties::makeJsonKey(nameAndKey.keyName))
-    , _optionName(toOptionName(nameAndKey.keyName))
+Property::Property(std::string id, std::string label, Value val, PropertyFlags flags_)
+    : _id(std::move(id))
+    , _label(std::move(label))
+    , _optionName(toOptionName(_id))
     , _value(std::move(val))
-    , _description(std::move(description))
-    , _flags(flags_)
-{}
-
-Property::Property(const NameAndKeyName& nameAndKey, Value val, PropertyFlags flags_)
-    : _name(nameAndKey.name)
-    , _jsonKey(Properties::makeJsonKey(nameAndKey.keyName))
-    , _optionName(toOptionName(nameAndKey.keyName))
-    , _value(std::move(val))
-    , _description(nameAndKey.name)
+    , _description(_label)
     , _flags(flags_)
 {}
 
@@ -91,7 +72,7 @@ nlohmann::json Properties::createDiff(const Properties& other) const
         if (auto iter = other._valueMap.find(key); iter != other._valueMap.end()) {
             if (iter->second != _valueMap.at(key)) {
                 const auto& prop = iter->second;
-                const auto& name = prop.getJsonKey();
+                const auto& name = prop.getId();
                 std::visit(emu::visitor{
                    [&](std::nullptr_t) { },
                    [&](bool val) { result[name] = val; },
@@ -110,15 +91,21 @@ nlohmann::json Properties::createDiff(const Properties& other) const
 void Properties::applyDiff(const nlohmann::json& diff)
 {
     for (const auto& [key, value] : diff.items()) {
-        if (auto* propPtr = find_json(key); propPtr != nullptr) {
+        // Ids are exact, a fuzzy fallback keeps hand written ROM database entries working.
+        if (auto* propPtr = findFuzzy(key); propPtr != nullptr) {
             auto& prop = *propPtr;
-            std::visit(visitor{
-        [&](std::nullptr_t&) { },
-        [&](bool& val) { val = value.get<bool>(); },
-        [&](Property::Integer& val) { val.intValue = value.get<int>(); },
-        [&](std::string& val) { val = value.get<std::string>(); },
-        [&](Property::Combo& val) { val.setSelectedToText(value.get<std::string>()); }
-            }, prop.getValue());
+            try {
+                std::visit(visitor{
+                    [&](std::nullptr_t&) { },
+                    [&](bool& val) { val = value.get<bool>(); },
+                    [&](Property::Integer& val) { val.intValue = std::clamp(value.get<int>(), val.minValue, val.maxValue); },
+                    [&](std::string& val) { val = value.get<std::string>(); },
+                    [&](Property::Combo& val) { val.setSelectedToText(value.get<std::string>()); }
+                }, prop.getValue());
+            }
+            catch (const nlohmann::json::exception&) {
+                WARNING_LOG("Ignoring value of '{}' with wrong type: {}", key, value.dump());
+            }
         }
     }
     if(diff.contains("palette")) {
@@ -133,7 +120,7 @@ void to_json(nlohmann::json& j, const Properties& props)
     j["class"] = props.propertyClass();
     for(size_t i = 0; i < props.numProperties(); ++i) {
         const auto& prop = props[i];
-        const auto& name = prop.getJsonKey();
+        const auto& name = prop.getId();
         std::visit(emu::visitor{
                        [&](std::nullptr_t) { },
                        [&](bool val) { j[name] = val; },
@@ -155,14 +142,20 @@ void from_json(const nlohmann::json& j, Properties& props)
         if(props) {
             for(size_t i = 0; i < props.numProperties(); ++i) {
                 auto& prop = props[i];
-                const auto& name = prop.getJsonKey();
-                std::visit(visitor{
-                    [&](std::nullptr_t&) { },
-                    [&](bool& val) { val = j.value(name, val); },
-                    [&](Property::Integer& val) { val.intValue = j.value(name, val.intValue); },
-                    [&](std::string& val) { val = j.value(name, val); },
-                    [&](Property::Combo& val) { val.setSelectedToText(j.value(name, val.selectedText())); }
-                }, prop.getValue());
+                const auto& name = prop.getId();
+                try {
+                    std::visit(visitor{
+                        [&](std::nullptr_t&) { },
+                        [&](bool& val) { val = j.value(name, val); },
+                        [&](Property::Integer& val) { val.intValue = std::clamp(j.value(name, val.intValue), val.minValue, val.maxValue); },
+                        [&](std::string& val) { val = j.value(name, val); },
+                        [&](Property::Combo& val) { val.setSelectedToText(j.value(name, val.selectedText())); }
+                    }, prop.getValue());
+                }
+                catch (const nlohmann::json::exception&) {
+                    // keep the default of a value with the wrong type instead of dropping the whole configuration
+                    WARNING_LOG("Ignoring value of '{}' with wrong type: {}", name, j.at(name).dump());
+                }
             }
         }
         if(j.contains("palette")) {
@@ -205,33 +198,37 @@ void to_json(nlohmann::json& j, const Palette& pal)
 
 void from_json(const nlohmann::json& j, Palette& pal)
 {
+    // Replace everything, nothing of a previous palette may survive.
+    pal.colors.clear();
+    pal.backgroundColors.clear();
+    pal.borderColor = {};
+    pal.signalColor = {};
     if(j.is_array()) {
-        pal.colors.clear();
         pal.colors.reserve(j.size());
         for(const std::string col : j) {
             pal.colors.emplace_back(col);
         }
-        pal.borderColor = {};
-        pal.signalColor = {};
     }
     else if(j.is_object()) {
-        pal.colors.clear();
-        pal.colors.reserve(j.size());
-        for(const std::string col : j["colors"]) {
-            pal.colors.emplace_back(col);
+        if(j.contains("colors")) {
+            for(const std::string col : j.at("colors")) {
+                pal.colors.emplace_back(col);
+            }
         }
-        if(j.count("border")) {
-            pal.borderColor = Palette::Color(j["border"].get<std::string>());
+        if(j.contains("border")) {
+            pal.borderColor = Palette::Color(j.at("border").get<std::string>());
         }
-        if(j.count("signal")) {
-            pal.signalColor = Palette::Color(j["signal"].get<std::string>());
+        if(j.contains("signal")) {
+            pal.signalColor = Palette::Color(j.at("signal").get<std::string>());
         }
-        if (j.count("background")) {
-            for (const std::string col : j["background"]) {
+        if (j.contains("background")) {
+            for (const std::string col : j.at("background")) {
                 pal.backgroundColors.emplace_back(col);
             }
         }
     }
+    pal.numColors = pal.colors.size();
+    pal.numBackgroundColors = pal.backgroundColors.size();
 }
 
 }

@@ -119,7 +119,8 @@ public:
     size_t size() const { return colors.size(); }
     bool operator==(const Palette& other) const
     {
-        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor && numColors == other.numColors && numBackgroundColors == other.numBackgroundColors;
+        // Compares the colors themselves, the counts are only capacity information.
+        return colors == other.colors && borderColor == other.borderColor && signalColor == other.signalColor && backgroundColors == other.backgroundColors;
     }
     std::vector<Color> colors;
     std::optional<Color> borderColor{};

@@ -163,6 +163,8 @@ protected:
     void applyPendingConfig();
     virtual bool applyRequests();
     bool replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1);
+    // The palette as the current core uses it: exactly as many colors as it supports, missing ones from the default palette.
+    Palette completedPalette(Palette palette) const;
 
     bool loadHexFile(std::string_view filename, LoadOptions loadOpt, std::string_view sourcePath = {});
     bool loadRomImage();
