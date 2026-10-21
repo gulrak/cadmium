@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -85,11 +86,12 @@ struct PopupContext
     PopupContext(PopupContext&& other) noexcept
         : _level(other._level)
         , _position(other._position)
-        , _content(other._content)
+        , _content(std::exchange(other._content, RenderTexture{0}))
         , _lastUpdate(other._lastUpdate)
+        , _flags(other._flags)
         , _isOpen(other._isOpen)
+        , _inDrag(other._inDrag)
     {
-        other._content = RenderTexture{0};
     }
     ~PopupContext() { UnloadRenderTexture(_content); }
     int level() const { return _level; }
@@ -107,11 +109,16 @@ struct PopupContext
     PopupContext& operator=(const PopupContext&) = delete;
     PopupContext& operator=(PopupContext&& other) noexcept
     {
-        _level = other._level;
-        _content = other._content;
-        other._content = RenderTexture{0};
-        _lastUpdate = other._lastUpdate;
-        _isOpen = other._isOpen;
+        if (this != &other) {
+            UnloadRenderTexture(_content);
+            _level = other._level;
+            _position = other._position;
+            _content = std::exchange(other._content, RenderTexture{0});
+            _lastUpdate = other._lastUpdate;
+            _flags = other._flags;
+            _isOpen = other._isOpen;
+            _inDrag = other._inDrag;
+        }
         return *this;
     }
 
@@ -125,6 +132,7 @@ struct PopupContext
     int64_t _lastUpdate{0};
     WindowBoxFlags _flags{WBF_NONE};
     bool* _isOpen;
+    bool _inDrag{false};
 };
 
 struct TabViewContext
@@ -429,19 +437,18 @@ PopupContext::PopupContext(Rectangle rect, bool* isOpen)
 
 void PopupContext::renderPopups()
 {
-    for (auto iter = g_popupMap.begin(), last = g_popupMap.end(); iter != last;) {
-        if (iter->second._lastUpdate < GuiContext::frameId) {
-            // iter = g_popupMap.erase(iter);
-            ++iter;
+    // Popups are now drawn ordered by level (map order within a level)
+    std::vector<PopupContext*> visible;
+    for (auto& [isOpen, popup] : g_popupMap) {
+        if (popup._lastUpdate >= GuiContext::frameId && *isOpen) {
+            visible.push_back(&popup);
         }
-        else {
-            if (*iter->first) {
-                if((iter->second._flags & WBF_MODAL) && GuiContext::rootContext)
-                    DrawRectangle(GuiContext::rootContext->area.x, GuiContext::rootContext->area.y, GuiContext::rootContext->area.width, GuiContext::rootContext->area.height, {0,0,0,128});
-                iter->second.render();
-            }
-            ++iter;
-        }
+    }
+    std::ranges::stable_sort(visible, {}, &PopupContext::level);
+    for (auto* popup : visible) {
+        if((popup->_flags & WBF_MODAL) && GuiContext::rootContext)
+            DrawRectangle(GuiContext::rootContext->area.x, GuiContext::rootContext->area.y, GuiContext::rootContext->area.width, GuiContext::rootContext->area.height, {0,0,0,128});
+        popup->render();
     }
 }
 
@@ -514,7 +521,7 @@ void updatePopupUnderMouse()
         for (auto& [isOpen, popup] : g_popupMap) {
             if (*isOpen) {
                 if ((popup._flags & WBF_MODAL) || CheckCollisionPointRec(mouse, popup.bounds())) {
-                    if (!g_popupUnderMouse || g_popupUnderMouse->level() < popup.level()) {
+                    if (!g_popupUnderMouse || g_popupUnderMouse->level() <= popup.level()) {
                         g_popupUnderMouse = &popup;
                     }
                 }
@@ -624,10 +631,10 @@ void EndGui()
     if (g_contextStack.size() != 1) {
         throw std::runtime_error("Unbalanced gui::Begin*/gui::End*!");
     }
-    g_contextStack = std::stack<GuiContext>();
     GuiContext::handleDeferredDropBoxes();
     PopupContext::renderPopups();
     GuiContext::popup.render();
+    g_contextStack = std::stack<GuiContext>();
 #if !defined(PLATFORM_WEB) && !defined(NDEBUG) && defined(RLGUIPP_DEBUG_CURSOR)
     auto pos = GetMousePosition();
     GuiDrawIcon(20, pos.x - 1, pos.y, 1, ::WHITE);
@@ -783,7 +790,7 @@ bool BeginTab(const char* text, Vector2 padding)
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
     auto labelSize = MeasureTextEx(GuiGetFont(), text, 8, 0);
     bool isActive = *tvc.activeTab == tvc.currentTab;
-    bool hoversOverTab = CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
+    bool hoversOverTab = !GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
     // Inactive tab text is derived from the normal text colour at half opacity
     // rather than TEXT_COLOR_DISABLED: raygui propagates DEFAULT base-property
     // writes to all controls, so any per-TEXTBOX override is unreliable.
@@ -839,7 +846,7 @@ void EndTab()
     }
     g_contextStack.pop();
     auto& ctxParent = detail::context();
-    ctxOld.maxSize = {ctxOld.area.width, ctx.area.height};
+    ctxOld.maxSize = {ctxOld.area.width, ctxOld.area.height};
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
     if (ctxOld.horizontal) {
         // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
@@ -903,7 +910,6 @@ void EndScrollPanel()
 void BeginTableView(float height, int numColumns, Vector2 *scroll)
 {
     auto& tc = TableContext::getContext(scroll);
-    auto& ctx = detail::context();
     if(numColumns != tc.numColumns)
         tc.hasMeasured = false;
     auto contentHeight = tc.curHeight;
@@ -919,8 +925,8 @@ void BeginTableView(float height, int numColumns, Vector2 *scroll)
     tc.curWidth = 0;
     tc.curHeight = 0;
     tc.columnWidth.clear();
-    ctx.contextData = &tc;
     BeginScrollPanel(height, {0, 0, contentWidth, contentHeight+4}, scroll);
+    detail::context().contextData = &tc;
     if(!CheckCollisionPointRec(GetMousePosition(), detail::context().area) && !GuiIsLocked()) {
         GuiLock();
         tc.lockedGui = true;
@@ -1058,7 +1064,7 @@ void BeginPopup(Rectangle area, bool* isOpen)
     ctx.nextWidth = ctx.nextHeight = -1;
     ctx.padding = {0, 0};
 
-    if (std::holds_alternative<RenderTexture*>(ctxParent.contextData)) {
+    if (auto* parentTexture = std::get_if<RenderTexture*>(&ctxParent.contextData); parentTexture && *parentTexture) {
         EndTextureMode();
     }
     auto* popup = PopupContext::find(isOpen);
@@ -1086,14 +1092,13 @@ void EndPopup()
     EndTextureMode();
     g_contextStack.pop();
     SetMouseOffset((int)g_contextStack.top().mouseOffset.x, (int)g_contextStack.top().mouseOffset.y);
-    if (std::holds_alternative<RenderTexture*>(g_contextStack.top().contextData)) {
-        BeginTextureMode(*std::get<RenderTexture*>(g_contextStack.top().contextData));
+    if (auto* parentTexture = std::get_if<RenderTexture*>(&g_contextStack.top().contextData); parentTexture && *parentTexture) {
+        BeginTextureMode(**parentTexture);
     }
 }
 
 bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags)
 {
-    static bool inDrag{false};
     auto mouseParent = detail::context().mouseOffset;
     BeginPopup(area, isOpen);
     auto popup = PopupContext::find(isOpen);
@@ -1101,21 +1106,16 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
         popup->_flags = flags;
     auto& ctx = detail::context();
     auto rc = GuiWindowBox({0, 0, area.width, area.height}, title);
-    if (!rc && (flags & WBF_MOVABLE) && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
-        inDrag = true;
+    if (popup && !rc && (flags & WBF_MOVABLE) && !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
+        popup->_inDrag = true;
     }
-    else if (inDrag) {
+    else if (popup && popup->_inDrag) {
         auto delta = GetMouseDelta();
-        if (popup) {
-            popup->move(delta.x / GuiContext::guiScale.x, delta.y / GuiContext::guiScale.y);
-            ctx.mouseOffset = {mouseParent.x - popup->position().x * GuiContext::guiScale.x, mouseParent.y - popup->position().y * GuiContext::guiScale.y};
-            SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
-        }
-        else {
-            inDrag = false;
-        }
+        popup->move(delta.x / GuiContext::guiScale.x, delta.y / GuiContext::guiScale.y);
+        ctx.mouseOffset = {mouseParent.x - popup->position().x * GuiContext::guiScale.x, mouseParent.y - popup->position().y * GuiContext::guiScale.y};
+        SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
         if (IsMouseButtonReleased(0)) {
-            inDrag = false;
+            popup->_inDrag = false;
         }
     }
     ctx.content = {ctx.area.x + 5, ctx.area.y + RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 5, ctx.area.width - 10, ctx.area.height - RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT - 10};
@@ -1607,18 +1607,18 @@ int ListView(float height, const char* text, int* scrollIndex, int active)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize(height);
-    auto rc = GuiListView({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, scrollIndex, &active);
+    GuiListView({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, scrollIndex, &active);
     ctx.increment(size);
-    return rc;
+    return active;
 }
 
 int ListViewEx(float height, const char** text, int count, int* focus, int* scrollIndex, int active)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize(height);
-    auto rc = GuiListViewEx({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, count, focus, scrollIndex, &active);
+    GuiListViewEx({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, count, scrollIndex, &active, focus);
     ctx.increment(size);
-    return rc;
+    return active;
 }
 
 Color ColorPicker(Color color)
@@ -1750,11 +1750,7 @@ void StatusBar(std::initializer_list<std::pair<float, const char*>> fields)
 const char* IconText(int iconId, const char* text)
 {
     static char buffer[1024];
-#ifdef WIN32
-    ::sprintf_s(buffer, 1023, "#%03i#", iconId);
-#else
-    ::snprintf(buffer, 1023, "#%03i#%s", iconId, text);
-#endif
+    ::snprintf(buffer, sizeof(buffer), "#%03i#%s", iconId, text ? text : "");
     return buffer;
 }
 
@@ -2024,7 +2020,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
                 else if (entry.is_regular_file()) {
                     auto ext = entry.path().extension().string();
                     auto it = fdi.fileIcons.find(ext.empty() ? ext : ext.substr(1));
-                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string(), it != g_fileIconMap.end() ? it->second : ICON_FILE);
+                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string(), it != fdi.fileIcons.end() ? it->second : ICON_FILE);
                 }
             }
         }
@@ -2133,6 +2129,9 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
                     if (info.type == FileDialogInfo::SelectMultipleFiles) {
                         if (selected) {
                             info.selection.erase(std::ranges::find(info.selection, entry.name));
+                        }
+                        else {
+                            info.selection.push_back(entry.name);
                         }
                     }
                     else {
