@@ -52,16 +52,12 @@
 #pragma once
 
 // rlGuipp version in decimal (major * 10000 + minor * 100 + patch)
-#define RLGUIPP_VERSION 200L
-#define RLGUIPP_VERSION_STRING "0.2.0"
+#define RLGUIPP_VERSION 300L
+#define RLGUIPP_VERSION_STRING "0.3.0"
 
 #define RLGUIPP_API
 
 #include "icons.h"
-
-//#include <utils.h>
-
-#include <chrono>
 
 extern "C" {
 
@@ -84,26 +80,22 @@ extern "C" {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 #include "raygui4.5.h"
-#include "rlgl.h"
 #if defined(__APPLE__) && defined(__clang__)
 #pragma clang diagnostic pop
 #endif
 
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
+#endif
 }
 
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <utility>
-#include <unordered_map>
 #include <vector>
-
-#ifdef PLATFORM_WEB
-#include <emscripten/emscripten.h>
-#endif
 
 namespace gui {
 
@@ -111,6 +103,8 @@ inline const auto DEFAULT_ROW_HEIGHT = 26.0f;
 
 enum WindowBoxFlags { WBF_NONE = 0, WBF_CLOSABLE = 1, WBF_MOVABLE = 2, WBF_MODAL = 4 };
 
+// Containers
+// A Begin*() returning void must always be closed with its End*(), one returning bool only if it returned true.
 RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr, Vector2 mouseOffset = {}, Vector2 guiScale = {1.0f, 1.0f}); // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
 RLGUIPP_API void EndGui();                                                                                                // ends the GUI description
 RLGUIPP_API void UnloadGui();                                                                                             // unload any stuff cached by the gui handling
@@ -122,7 +116,7 @@ RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5}
 RLGUIPP_API void EndPanel();                                                                                              // end the description of a panel group
 RLGUIPP_API void BeginTabView(int *activeTab);                                                                            // start a tab view (a stack of groups with labeled tabs on top), must be closed with EndTabView()
 RLGUIPP_API void EndTabView();                                                                                            // end the description of a tab view
-RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                              // start a tab in a tab view (a page with the given text as label top), must be closed with EndTab()
+RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                              // start a tab in a tab view (a page with the given text as label top), returns true for the active tab, only then it must be closed with EndTab()
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
@@ -135,9 +129,9 @@ RLGUIPP_API void EndTableView();                                                
 RLGUIPP_API bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active);                        // start a simple list view, returns true the selection was changed (<0 means nothing selected)
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
-RLGUIPP_API void BeginPopup(Rectangle area, bool* isOpen);                                                                // show a popup at the given area, open as long as `*isOpen` is true
+RLGUIPP_API bool BeginPopup(Rectangle area, bool* isOpen);                                                                // show a popup at the given area (negative x/y center it), returns `*isOpen`, only if true it must be closed with EndPopup()
 RLGUIPP_API void EndPopup();                                                                                              // end of the popup description
-RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar and a close button, optionally draggable
+RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar, the close button (WBF_CLOSABLE) sets `*isOpen` to false, only if true is returned it must be closed with EndWindowBox()
 RLGUIPP_API void EndWindowBox();                                                                                          // end of the WindowBox
 RLGUIPP_API void BeginClipping(const Rectangle& clipArea);                                                                // set a new clipping area (it will be clipped to the previous one, potentially setting an area of size 0)
 RLGUIPP_API void EndClipping();                                                                                           // pop the current clipping area
@@ -147,8 +141,11 @@ RLGUIPP_API void SetStyle(int control, int property, int value);                
 RLGUIPP_API int GetStyle(int control, int property);                                                                      // Get one style property
 RLGUIPP_API void SetIndent(float width);                                                                                  // Indents all following elements in this level
 RLGUIPP_API void SetReserve(float width);                                                                                 // Sets the space reserved for right side labels of bar widgets
-RLGUIPP_API void SetNextWidth(float width);                                                                               // Set the width of the next element, default is the width of the parent
-RLGUIPP_API void SetNextHeight(float height);                                                                             // Set the height of the next element, default is the row height
+RLGUIPP_API void SetNextWidth(float width);                                                                               // Set the width of the next element in pixels, default is the remaining width of the parent
+RLGUIPP_API void SetNextRelativeWidth(float fraction);                                                                    // Set the width of the next element as fraction of the parents content width
+RLGUIPP_API void SetDefaultWidth(float width);                                                                            // Set the width in pixels for all following elements of this level, until changed again (<= 0 resets to the remaining width)
+RLGUIPP_API void SetNextHeight(float height);                                                                             // Set the height of the next element in pixels, default is the row height
+RLGUIPP_API void SetNextRelativeHeight(float fraction);                                                                   // Set the height of the next element as fraction of the parents content height
 RLGUIPP_API void SetRowHeight(float height);                                                                              // Set the height for elements that can be typically in a row, like buttons, edit fields, spinner...
 RLGUIPP_API void SetSpacing(float spacing);                                                                               // Set the spacing, depending on the parent layout it will set the horizontal or vertical spacing
 RLGUIPP_API Vector2 GetCurrentPos();                                                                                      // Get the position that will be used by the next widget
@@ -157,106 +154,53 @@ RLGUIPP_API Rectangle GetLastWidgetRect();                                      
 RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                                  // Set a tooltip for the rectangle of the previously defined widget
 RLGUIPP_API void Space(float size = -1);                                                                                  // Depending on the parent it inserts a vertical or horizontal space, defaulting to the spacing
 RLGUIPP_API void Separator(float size = -1);                                                                              // Insert a seperator line
+// Widgets
+// All widgets that edit a value take a pointer to it and return true when the user changed it in this frame.
+// Widgets with an edit mode (TextBox, Spinner, ValueBox) additionally report the end of editing via IsLastWidgetEditFinished().
 RLGUIPP_API void Label(const char* text);                                                                                 // Label control, shows text
 RLGUIPP_API bool Button(const char* text);                                                                                // Button control, returns true when clicked
-RLGUIPP_API std::optional<MouseButton> ButtonMulti(const char* text);                                                     // Button control, returns mouse button when clicked
-RLGUIPP_API bool LabelButton(const char* text);                                                                           // Label button control, show true when clicked
-RLGUIPP_API bool Toggle(const char* text, bool active);                                                                   // Toggle Button control, returns true when active
-RLGUIPP_API int ToggleGroup(const char* text, int active);                                                                // Toggle Group control, returns active toggle index
-RLGUIPP_API bool CheckBox(const char* text, bool checked);                                                                // Check Box control, returns true when active
-RLGUIPP_API int ComboBox(const char* text, int active);                                                                   // Combo Box control, returns selected item index
-RLGUIPP_API bool DropdownBox(const char* text, int* active, bool directionUp = false);                                    // Dropdown Box control, returns selected item
-RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                                       // Spinner control, returns selected value
-RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                                      // Value Box control, updates input text with numbers
+RLGUIPP_API std::optional<MouseButton> ButtonMulti(const char* text);                                                     // Button control, returns the mouse button when clicked
+RLGUIPP_API bool LabelButton(const char* text);                                                                           // Label button control, returns true when clicked
+RLGUIPP_API bool Toggle(const char* text, bool* active);                                                                  // Toggle Button control
+RLGUIPP_API bool ToggleGroup(const char* text, int* active);                                                              // Toggle Group control, items separated by ';' (columns) and '\n' (rows)
+RLGUIPP_API bool CheckBox(const char* text, bool* checked);                                                               // Check Box control
+RLGUIPP_API bool ComboBox(const char* text, int* active);                                                                 // Combo Box control, items separated by ';'
+RLGUIPP_API bool DropdownBox(const char* text, int* active, bool directionUp = false);                                    // Dropdown Box control, items separated by ';', a selection is reported in the frame after it was made
+RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                                       // Spinner control
+RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                                      // Value Box control
+RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, textSize is the size of the buffer
+RLGUIPP_API bool TextBox(std::string& text, int textSize);                                                                // Text Box control, textSize is the maximum length
+RLGUIPP_API bool IsLastWidgetEditFinished();                                                                              // True if the previous widget left its edit mode in this frame (enter or click elsewhere)
 RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
 RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
-RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, updates input text
-RLGUIPP_API bool TextBox(std::string& text, int textSize);                                                                // same for std::string
-// TextBoxMulti(float height, char* text, int textSize) — not yet implemented (GuiTextBoxMulti removed in raygui 4.5)
-RLGUIPP_API float Slider(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);       // Slider control, returns selected value
-RLGUIPP_API float Slider(const char* textLeft, float value, float minValue, float maxValue);                              // Slider control with default "%.2f" formatting, returns selected value
-RLGUIPP_API float SliderBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);    // Slider Bar control, returns selected value
-RLGUIPP_API float SliderBar(const char* textLeft, float value, float minValue, float maxValue);                           // Slider Bar control with default "%.2f" formatting, returns selected value
-RLGUIPP_API float ProgressBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);  // Progress Bar control, shows current progress value
+RLGUIPP_API bool Slider(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue);       // Slider control
+RLGUIPP_API bool Slider(const char* textLeft, float* value, float minValue, float maxValue);                              // Slider control, the value is shown right with "%.2f"
+RLGUIPP_API bool SliderBar(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue);    // Slider Bar control
+RLGUIPP_API bool SliderBar(const char* textLeft, float* value, float minValue, float maxValue);                           // Slider Bar control, the value is shown right with "%.2f"
+RLGUIPP_API void ProgressBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue);   // Progress Bar control, shows current progress value
 RLGUIPP_API void StatusBar(const char* text);                                                                             // Status Bar control, shows info text
 RLGUIPP_API void StatusBar(std::initializer_list<std::pair<float, const char*>> fields);                                  // Status Bar control, shows multiple fields
 RLGUIPP_API Vector2 Grid(float height, float spacing, int subdivs);                                                       // Grid control, returns mouse cell position
 // Advanced controls set
-RLGUIPP_API int ListView(float height, const char* text, int* scrollIndex, int active);                                                         // List View control, returns selected list item index
-RLGUIPP_API int ListViewEx(float height, const char** text, int count, int* focus, int* scrollIndex, int active);                               // List View with extended parameters
-RLGUIPP_API int MessageBox(const char* title, const char* message, const char* buttons);                                                        // Message Box control, displays a message
-RLGUIPP_API int TextInputBox(const char* title, const char* message, const char* buttons, char* text, int textMaxSize, int* secretViewActive);  // Text Input Box control, ask for text, supports secret
-RLGUIPP_API Color ColorPicker(Color color);                                                                                                     // Color Picker control (multiple color controls)
-RLGUIPP_API Color ColorPanel(const char* text, Color color);                                                                                    // Color Panel control
-RLGUIPP_API float ColorBarAlpha(const char* text, float alpha);                                                                                 // Color Bar Alpha control
-RLGUIPP_API float ColorBarHue(const char* text, float value);                                                                                   // Color Bar Hue control
+RLGUIPP_API bool ListView(float height, const char* text, int* scrollIndex, int* active);                                 // List View control, items separated by ';', *active < 0 means nothing selected
+RLGUIPP_API bool ListViewEx(float height, const char** text, int count, int* scrollIndex, int* active, int* focus = nullptr); // List View with extended parameters
+RLGUIPP_API bool ColorPicker(Color* color);                                                                               // Color Picker control (color panel with hue bar)
+RLGUIPP_API bool ColorPanel(const char* text, Color* color);                                                              // Color Panel control
+RLGUIPP_API bool ColorBarAlpha(const char* text, float* alpha);                                                           // Color Bar Alpha control
+RLGUIPP_API bool ColorBarHue(const char* text, float* value);                                                             // Color Bar Hue control
 RLGUIPP_API Color ColorFromHsv(Vector3 hsv);
 RLGUIPP_API Vector3 HsvFromColor(Color col);
 
 RLGUIPP_API const char* IconText(int icon, const char* text);
 
-RLGUIPP_API bool BeginMenuBar();
-RLGUIPP_API void EndMenuBar();
-RLGUIPP_API bool BeginMenu(const char* text);
-RLGUIPP_API void EndMenu();
-#define MENU_SHORTCUT(modifier, key) static_cast<uint32_t>(((modifier) << 16) | (key))
-RLGUIPP_API bool MenuItem(const char* text, uint32_t shortcut = 0, bool* selected = nullptr);
-RLGUIPP_API int BeginPopupMenu(Vector2 position, const char* items);  // A popup menu with the items being given in raygui way seperated
-RLGUIPP_API void EndPopupMenu();
-
-struct FileDialogInfo
-{
-    enum DialogType { OpenFile, SaveFile, SelectFolder, SelectMultipleFiles };
-    enum CloseAction { None, Okay, Cancel };
-    struct DirEntry
-    {
-        enum Type { Unknown, File, Dir };
-        std::string name;
-        size_t size{};
-        std::chrono::time_point<std::chrono::system_clock> time;
-        Type type{Unknown};
-        std::string extension;
-        int icon{ICON_FILE};
-        DirEntry(std::string  name, size_t size, std::chrono::time_point<std::chrono::system_clock> time, Type type, std::string  extension, int icon)
-            : name(std::move(name)), size(size), time(time), type(type), extension(std::move(extension)), icon(icon)
-        {}
-    };
-    DialogType type;
-    std::string title;
-    std::string path;
-    std::unordered_map<std::string_view, int> fileIcons;
-    std::vector<DirEntry> entries;
-    std::vector<std::string> filters;
-    std::vector<std::string> selection;
-    std::string filename;
-    CloseAction action;
-    bool firstFrame{true}; // don't touch
-};
-RLGUIPP_API const std::unordered_map<std::string_view, int>& GetDefaultFileIcons();
-RLGUIPP_API void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons);
-RLGUIPP_API bool ModalFileDialog(FileDialogInfo& info, bool* isOpen);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
 
-// Draw an N-digit 7-segment LED display at the current layout position.
-// height     - pixel height of the display; width is derived automatically.
-// value      - value to show; negative values are shown as absolute.
-// numDigits  - number of digit cells.
-// decimalPos - which dp dot to light, counted from the right (0 = none lit).
-//              Every digit always has a dp dot slot to its right (always drawn,
-//              dim or bright), so the total width never changes when decimalPos
-//              changes — no digit positions ever shift.
-// hexMode    - false → decimal, true → hexadecimal (0-9 A-F).
-// Colors:    - lit segments/dot use TEXT_COLOR_NORMAL, dark use TEXT_COLOR_DISABLED.
-RLGUIPP_API void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimalPos = 0, bool hexMode = false);
+// Custom widgets
+RLGUIPP_API Rectangle AllocateWidget(Vector2 naturalSize);  // Reserve space for a custom widget at the current position, advance the layout and return the screen rectangle to draw in.
+                                                            // SetNextWidth()/SetNextHeight() override the natural size, a natural size component <= 0 uses the standard size (remaining width, row height).
+RLGUIPP_API float GetAlpha();                               // The current gui alpha (set with GuiSetAlpha()), custom widgets should fade their colors with it
+RLGUIPP_API Vector2 GetTextSize(const char* text);          // Size of the text drawn with the current gui font, text size and spacing
 
-// Til311Display — TIL311-style 4*7 dot-matrix hex display.
-// dotSize  - side length of each dot in pixels (integer); pitch = 2*dotSize so the
-//            gap between adjacent dots equals one dot.  Natural cell height = 13*dotSize.
-// decimalPos > 0  — dp slot to the right of that digit position (1=LSDigit) is lit;
-//                   every digit always has its dp slot drawn so the total width is
-//                   constant regardless of decimalPos.
-// hexMode         — false: decimal (mod 10 per digit), true: hex 0-F per digit.
-RLGUIPP_API void Til311Display(int dotSize, int64_t value, int numDigits, int decimalPos = 0, bool hexMode = false);
 
 namespace PopupMenu {
 
@@ -267,7 +211,7 @@ namespace PopupMenu {
 struct Style {
     Color shadow            = {0, 0, 0, 80};
     // Dimensions
-    int itemHeight          = 11;
+    int itemHeight          = 0;    // 0: derived from fontSize
     int itemPaddingX        = 12;
     int itemPaddingRight    = 6;   // space for submenu arrow
     int menuPaddingY        = 2;
@@ -275,7 +219,7 @@ struct Style {
     int separatorHeight     = 3;
     int borderWidth         = 1;
     int shadowOffset        = 4;
-    int fontSize            = 8;
+    int fontSize            = 0;    // 0: raygui DEFAULT TEXT_SIZE
     int submenuArrowOffset  = 10;
     int iconWidth           = 12;   // reserved space for checkmarks/icons
 
@@ -381,92 +325,15 @@ inline Item Disabled(Item item) {
 }
 
 // ============================================================================
-// Internal: Open menu state
+// Popup menu functions
 // ============================================================================
 
-namespace detail {
-
-struct OpenMenu {
-    Vector2 position{0, 0};
-    Menu const* items = nullptr;
-    int hoveredIndex = -1;
-    float hoverTime = 0.0f;
-    int width = 0;                       // cached calculated width
-};
-
-} // namespace detail
-
-// ============================================================================
-// Popup Menu System
-// ============================================================================
-
-class System {
-public:
-    Style style;
-
-    // Open a popup menu at the given position
-    void open(Vector2 position, const Menu& menu);
-
-    // Close all menus
-    void close();
-
-    // Check if any menu is currently open
-    [[nodiscard]] bool isOpen() const;
-
-    [[nodiscard]] bool isMenuOpen(const Menu& menu) const;
-
-    // Update menu state - call once per frame
-    // Returns true if a menu action was triggered this frame
-    bool update(float dt);
-
-    // Draw menus - call after drawing your scene (menus draw on top)
-    void render();
-
-    // Get the last triggered action's label (for debugging/logging)
-    [[nodiscard]] std::optional<std::string> lastAction() const { return _lastTriggeredAction; }
-
-private:
-    std::vector<detail::OpenMenu> _menuChain;
-    std::optional<std::string> _lastTriggeredAction;
-    float _closeGraceTimer = 0.0f;
-    int _closeGraceLevel = -1;
-    bool _needsUnlock = false;
-
-    // Calculate bounds for a menu panel
-    [[nodiscard]] Rectangle getMenuBounds(const detail::OpenMenu& menu) const;
-
-    // Calculate the width needed for a menu
-    [[nodiscard]] int calculateMenuWidth(const Menu& items) const;
-
-    // Calculate the text width for gui font
-    [[nodiscard]] int calculateTextWidth(const std::string& text) const;
-
-    // Calculate total height of a menu
-    [[nodiscard]] int calculateMenuHeight(const Menu& items) const;
-
-    // Get item height (separators are shorter)
-    [[nodiscard]] int getItemHeight(const Item& item) const;
-
-    // Get which item index is at a Y position within a menu, or -1
-    [[nodiscard]] int getItemAtYPos(const detail::OpenMenu& menu, float y) const;
-
-    // Open a submenu for the given parent level and item index
-    void openSubmenu(int parent_level, int item_index);
-
-    // Trigger an item's action
-    void triggerItem(const Item& item);
-
-    // Draw a single menu panel
-    void drawMenu(const detail::OpenMenu& menu) const;
-
-    // Draw a single item within a menu
-    void drawItem(const Item& item, Rectangle bounds, bool hovered) const;
-};
-
-RLGUIPP_API void open(Vector2 position, const Menu& menu);
-RLGUIPP_API void close();
-RLGUIPP_API bool isOpen();
-RLGUIPP_API bool isMenuOpen(const Menu& menu);
+RLGUIPP_API void Open(Vector2 position, const Menu& menu);  // Open the menu at the given position, the menu is copied, so it can be changed or destroyed while open
+RLGUIPP_API void Close();                                   // Close all open menus
+RLGUIPP_API bool IsOpen();                                  // Check if any menu is open
+RLGUIPP_API bool IsMenuOpen(const Menu& menu);              // Check if the menu that was opened from `menu` is open
+RLGUIPP_API void SetMenuStyle(const Style& style);          // Set the style used for drawing popup menus
+RLGUIPP_API const Style& GetMenuStyle();                    // Get the style used for drawing popup menus
 
 } // namespace PopupMenu
 

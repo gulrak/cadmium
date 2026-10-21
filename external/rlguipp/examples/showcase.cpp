@@ -32,6 +32,8 @@
 
 #include <rlguipp/rlguiapp.hpp>
 #include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp_filedialog.hpp>
+#include <rlguipp/rlguipp_leds.hpp>
 #include <stylemanager.hpp>
 #include <fmt/format.h>
 #include <ghc/fs_fwd.hpp>
@@ -116,8 +118,8 @@ private:
         SetSpacing(0);
         BeginColumns();
         {
-            if (iconButton(ICON_BURGER_MENU, PopupMenu::isMenuOpen(_mainMenu)) && !PopupMenu::isOpen())
-                PopupMenu::open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
+            if (iconButton(ICON_BURGER_MENU, PopupMenu::IsMenuOpen(_mainMenu)) && !PopupMenu::IsOpen())
+                PopupMenu::Open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
             SetTooltip("Main menu  (About is in the menu)");
             SetNextWidth(GetContentAvailable().width);
             Label("rlGuipp Showcase");
@@ -161,7 +163,7 @@ private:
         BeginColumns();
         {
             SetSpacing(4);
-            SetNextWidth(0.5f);
+            SetNextRelativeWidth(0.5f);
             BeginPanel("Left Panel", {4, 4});
             SetSpacing(3);
             Label("Content inside BeginPanel");
@@ -216,7 +218,7 @@ private:
             SetSpacing(4);
 
             // Left column
-            SetNextWidth(0.5f);
+            SetNextRelativeWidth(0.5f);
             Begin();
             {
                 SetSpacing(4);
@@ -227,17 +229,17 @@ private:
 
                 Space(4);
                 Label("Toggle:");
-                _toggleState = Toggle("Toggle Me", _toggleState);
+                Toggle("Toggle Me", &_toggleState);
 
                 Space(4);
                 Label("ToggleGroup:");
                 SetNextWidth(int(GetContentAvailable().width * 0.33f));
-                _toggleGroupState = ToggleGroup("One;Two;Three", _toggleGroupState);
+                ToggleGroup("One;Two;Three", &_toggleGroupState);
 
                 Space(4);
                 Label("CheckBox:");
-                _checkbox1 = CheckBox("Option A", _checkbox1);
-                _checkbox2 = CheckBox("Option B (starts on)", _checkbox2);
+                CheckBox("Option A", &_checkbox1);
+                CheckBox("Option B (starts on)", &_checkbox2);
             }
             End();
 
@@ -261,8 +263,9 @@ private:
                 Label("GuiDisable() / GuiEnable():");
                 GuiDisable();
                 Button("Disabled Button");
-                CheckBox("Disabled CheckBox", true);
-                Toggle("Disabled Toggle", true);
+                bool alwaysOn = true;
+                CheckBox("Disabled CheckBox", &alwaysOn);
+                Toggle("Disabled Toggle", &alwaysOn);
                 GuiEnable();
 
                 Space(4);
@@ -302,7 +305,7 @@ private:
         {
             SetSpacing(4);
 
-            SetNextWidth(0.5f);
+            SetNextRelativeWidth(0.5f);
             Begin();
             {
                 SetSpacing(4);
@@ -315,7 +318,7 @@ private:
 
                 Space(4);
                 Label("ComboBox:");
-                _comboActive = ComboBox("Alpha;Beta;Gamma;Delta", _comboActive);
+                ComboBox("Alpha;Beta;Gamma;Delta", &_comboActive);
             }
             End();
 
@@ -347,17 +350,17 @@ private:
         SetReserve(50);
 
         Label("Slider (left + right label):");
-        _sliderA = Slider("Min", "Max", _sliderA, 0.0f, 1.0f);
+        Slider("Min", "Max", &_sliderA, 0.0f, 1.0f);
 
         Label("Slider (auto right label from format):");
-        _sliderB = Slider("Val", _sliderB, 0.0f, 100.0f);
+        Slider("Val", &_sliderB, 0.0f, 100.0f);
 
         Space(4);
         Label("SliderBar (left + right label):");
-        _sliderBar = SliderBar("0", "1", _sliderBar, 0.0f, 1.0f);
+        SliderBar("0", "1", &_sliderBar, 0.0f, 1.0f);
 
         Label("SliderBar (auto right label):");
-        _sliderBar2 = SliderBar("Pos", _sliderBar2, -50.0f, 50.0f);
+        SliderBar("Pos", &_sliderBar2, -50.0f, 50.0f);
 
         Space(4);
         Label("ProgressBar (animated, auto-advances each frame):");
@@ -373,12 +376,12 @@ private:
         BeginColumns();
         {
             SetSpacing(4);
-            SetNextWidth(0.5f);
+            SetNextRelativeWidth(0.5f);
             Begin();
             {
                 Label("ColorPicker:");
                 SetNextWidth(120.0f);
-                _pickedColor = ColorPicker(_pickedColor);
+                ColorPicker(&_pickedColor);
             }
             End();
             Begin();
@@ -386,10 +389,10 @@ private:
                 SetSpacing(4);
                 Label("ColorPanel:");
                 SetNextWidth(40.0f);
-                _pickedColor = ColorPanel("", _pickedColor);
+                ColorPanel("", &_pickedColor);
                 Space(4);
                 Label("ColorBarAlpha:");
-                _colorAlpha = ColorBarAlpha("", _colorAlpha);
+                ColorBarAlpha("", &_colorAlpha);
                 Label(fmt::format("Alpha: {:.2f}  →  #{:02X}{:02X}{:02X}{:02X}",
                     _colorAlpha,
                     _pickedColor.r, _pickedColor.g, _pickedColor.b,
@@ -415,14 +418,14 @@ private:
             SetSpacing(4);
 
             // Left: classic raygui-style list views
-            SetNextWidth(0.5f);
+            SetNextRelativeWidth(0.5f);
             Begin();
             {
                 SetSpacing(4);
                 Label("ListView (semicolon-separated string):");
-                _listActive = ListView(halfH,
+                ListView(halfH,
                     "Apple;Banana;Cherry;Date;Elderberry;Fig;Grape;Honeydew;Kiwi;Lemon",
-                    &_listScrollIdx, _listActive);
+                    &_listScrollIdx, &_listActive);
 
                 Space(4);
                 Label("SimpleListView (std::vector<std::string>):");
@@ -482,9 +485,8 @@ private:
         if (Button("Open Inline Popup"))
             _inlinePopupOpen = true;
 
-        if (_inlinePopupOpen) {
-            auto anchor = GetLastWidgetRect();
-            BeginPopup({anchor.x, anchor.y + anchor.height + 2, 120, 56}, &_inlinePopupOpen);
+        auto anchor = GetLastWidgetRect();
+        if (BeginPopup({anchor.x, anchor.y + anchor.height + 2, 120, 56}, &_inlinePopupOpen)) {
             SetSpacing(0);
             SetRowHeight(14);
             if (Button("Action A")) { _inlinePopupResult = "Action A"; _inlinePopupOpen = false; }
@@ -500,8 +502,6 @@ private:
         Label("Open the modal to see a scrollable content area.");
 
         Space(8);
-        Label("Note: MessageBox, TextInputBox, and TextBoxMulti are not yet");
-        Label("implemented (GuiTextBoxMulti removed in raygui 4.5).");
         Label("Use BeginWindowBox + widgets to build custom dialogs.");
     }
 
@@ -519,7 +519,7 @@ private:
 
         SetSpacing(6);
         BeginColumns();
-        SetNextWidth(0.5f);
+        SetNextRelativeWidth(0.5f);
         Begin();
         Label("SevenSegmentDisplay  (auto-incrementing)");
         Space(2);
@@ -608,19 +608,19 @@ private:
 
         BeginColumns();
         SetSpacing(2);
-        SetNextWidth(0.25f);
+        SetNextRelativeWidth(0.25f);
         if (Button("Open File")) {
             _fileDlg = {FileDialogInfo::OpenFile, "Open File", _fileDlg.path};
             _fileDlgOpen = true;
         }
         SetTooltip("fdi.selection holds the selected file path on OK");
-        SetNextWidth(0.25f);
+        SetNextRelativeWidth(0.25f);
         if (Button("Save File")) {
             _fileDlg = {FileDialogInfo::SaveFile, "Save File As...", _fileDlg.path};
             _fileDlgOpen = true;
         }
         SetTooltip("fdi.path + fdi.filename give the full target path on OK");
-        SetNextWidth(0.25f);
+        SetNextRelativeWidth(0.25f);
         if (Button("Select Folder")) {
             _fileDlg = {FileDialogInfo::SelectFolder, "Select Folder", _fileDlg.path};
             _fileDlgOpen = true;
@@ -691,10 +691,8 @@ private:
 
     void drawAboutModal()
     {
-        if (!_aboutOpen) return;
-        _aboutOpen = !BeginWindowBox(
-            {-1, -1, 420, 260}, "About rlGuipp Showcase",
-            &_aboutOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
+        if (!BeginWindowBox({-1, -1, 420, 260}, "About rlGuipp Showcase", &_aboutOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL)))
+            return;
 
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         BeginScrollPanel(-1, {0, 0, 400, 340}, &_aboutScroll);
@@ -712,7 +710,7 @@ private:
         SetIndent(8);
         Label("Layout   - BeginColumns, BeginPanel, BeginGroupBox, SetIndent");
         Label("Controls - Button, Toggle, ToggleGroup, CheckBox, ButtonMulti");
-        Label("Input    - TextBox, TextBoxMulti, Spinner, ComboBox, DropdownBox");
+        Label("Input    - TextBox, Spinner, ValueBox, ComboBox, DropdownBox");
         Label("Sliders  - Slider, SliderBar, ProgressBar, ColorPicker");
         Label("Lists    - ListView, SimpleListView, BeginTableView");
         Label("Windows  - BeginWindowBox, BeginPopup, BeginScrollPanel");
@@ -729,10 +727,8 @@ private:
 
     void drawDemoModal()
     {
-        if (!_demoModalOpen) return;
-        _demoModalOpen = !BeginWindowBox(
-            {-1, -1, 380, 280}, "Demo Modal - BeginScrollPanel inside",
-            &_demoModalOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
+        if (!BeginWindowBox({-1, -1, 380, 280}, "Demo Modal - BeginScrollPanel inside", &_demoModalOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL)))
+            return;
 
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         BeginScrollPanel(-1, {0, 0, 360, 520}, &_demoModalScroll);

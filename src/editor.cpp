@@ -757,7 +757,6 @@ Rectangle Editor::drawToolArea()
         SetNextWidth(18);
         Button(GuiIconText(ICON_LENS_BIG,""));
         SetNextWidth(toolArea.width - 18*5);
-        auto txt = _findString;
         {
             StyleManager::Scope guard;
             if (_findRegex && !_findRegexValid)
@@ -767,17 +766,11 @@ Rectangle Editor::drawToolArea()
             if (toolOpened)
                 SetKeyboardFocus((void*)&_findString);
         }
-        if(txt != _findString)
+        SetNextWidth(18);
+        if (Toggle("Aa", &_findCaseSensitive))
             updateFindResults();
         SetNextWidth(18);
-        bool oldFlag = _findCaseSensitive;
-        _findCaseSensitive = Toggle("Aa", _findCaseSensitive);
-        if(oldFlag != _findCaseSensitive)
-            updateFindResults();
-        SetNextWidth(18);
-        oldFlag = _findRegex;
-        _findRegex = Toggle(".*", _findRegex);
-        if(oldFlag != _findRegex)
+        if (Toggle(".*", &_findRegex))
             updateFindResults();
         SetNextWidth(18);
         if(!_findResults || _findCurrentResult == _findResults) GuiDisable();

@@ -24,6 +24,8 @@
 #include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
 
+#include <format>
+
 using namespace gui;
 
 struct FontCharInfo {
@@ -705,7 +707,7 @@ public:
         Vector2 mouse = GetMousePosition();
 
         // Handle right-click to open context menu
-        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !PopupMenu::isOpen()) {
+        if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !PopupMenu::IsOpen()) {
             // Check if clicking on a shape
             int clicked_shape = -1;
             // Check in reverse order (top shapes first)
@@ -723,11 +725,11 @@ public:
                 currentMenu = build_context_menu();
                 state.selected_shape = -1;
             }
-            PopupMenu::open(mouse, currentMenu);
+            PopupMenu::Open(mouse, currentMenu);
         }
 
         // Clear selection when menu closes
-        if (!PopupMenu::isOpen()) {
+        if (!PopupMenu::IsOpen()) {
             state.selected_shape = -1;
         }
 

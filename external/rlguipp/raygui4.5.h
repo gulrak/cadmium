@@ -681,6 +681,7 @@ typedef enum {
 extern "C" {            // Prevents name mangling of functions
 #endif
 
+// NOTE: rlguipp change, clipped drawing functions (implemented in rlguipp.cpp), used by GuiDrawText() and GuiDrawRectangle()
 RAYGUIAPI void DrawTextCodepointClipped(Font font, int codepoint, Vector2 position, float fontSize, Color tint);
 RAYGUIAPI void DrawTextClipped(Font font, const char *text, Vector2 position, Color tint);
 RAYGUIAPI void DrawRectangleClipped(int posX, int posY, int width, int height, Color color);
@@ -4913,6 +4914,7 @@ static float GetNextSpaceWidth(const char *text, int *nextSpaceIndex)
 }
 
 // Gui draw text using default font
+// NOTE: rlguipp change, draws with DrawTextCodepointClipped() instead of DrawTextCodepoint()
 static void GuiDrawText(const char *text, Rectangle textBounds, int alignment, Color tint)
 {
     #define TEXT_VALIGN_PIXEL_OFFSET(h)  ((int)h%2)     // Vertical alignment for pixel perfect
@@ -5132,6 +5134,7 @@ static void GuiDrawText(const char *text, Rectangle textBounds, int alignment, C
 }
 
 // Gui draw rectangle using default raygui plain style with borders
+// NOTE: rlguipp change, draws with DrawRectangleClipped() instead of DrawRectangle()
 static void GuiDrawRectangle(Rectangle rec, int borderWidth, Color borderColor, Color color)
 {
     if (color.a > 0)

@@ -445,8 +445,7 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
             SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
             SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
         }
-        auto prevCondition = bpinfo->condition;
-        if (TextBox(bpinfo->condition, 256) || prevCondition != bpinfo->condition) {
+        if (TextBox(bpinfo->condition, 256)) {
             bpinfo->conditionExpr = execUnit->parseExpression(bpinfo->condition);
             DEBUG_LOG("Parsing breakpoint condition result: {}", bpinfo->conditionExpr.first ? "Okay" : bpinfo->conditionExpr.second.c_str());
         }

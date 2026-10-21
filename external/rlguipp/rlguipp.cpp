@@ -10,7 +10,10 @@
 #include <rlguipp/rlguipp.hpp>
 #include <ghc/fs_fwd.hpp>
 #include <ghc/utf8.hpp>
-#include <fmt/format.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 #include <algorithm>
 #include <cassert>
@@ -22,8 +25,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include "syshelper.hpp"
 
 namespace gui {
 
@@ -78,6 +79,89 @@ uint64_t fnv_64a_str(const char* str, uint64_t hval, size_t cnt = 0)
 //---------------------------------------------------------------------------
 
 }
+
+namespace PopupMenu {
+
+namespace detail {
+
+struct OpenMenu {
+    Vector2 position{0, 0};
+    Menu const* items = nullptr;
+    int hoveredIndex = -1;
+    float hoverTime = 0.0f;
+    int width = 0;                       // cached calculated width
+};
+
+} // namespace detail
+
+// The popup menu system, there is one instance in GuiContext, updated in BeginGui() and drawn in EndGui()
+class System {
+public:
+    Style style;
+
+    // Open a popup menu at the given position, the menu is copied
+    void open(Vector2 position, const Menu& menu);
+
+    // Close all menus
+    void close();
+
+    // Check if any menu is currently open
+    [[nodiscard]] bool isOpen() const;
+
+    // Check if the open menu was opened from `menu`
+    [[nodiscard]] bool isMenuOpen(const Menu& menu) const;
+
+    // Update menu state - call once per frame
+    // Returns true if a menu action was triggered this frame
+    bool update(float dt);
+
+    // Draw menus - call after drawing your scene (menus draw on top)
+    void render();
+
+private:
+    Menu _menu;
+    const Menu* _openedFrom{nullptr};   // only used for comparing, never dereferenced
+    std::vector<detail::OpenMenu> _menuChain;
+    float _closeGraceTimer = 0.0f;
+    int _closeGraceLevel = -1;
+    bool _needsUnlock = false;
+
+    // Font size and item height, derived from the raygui style if not set in `style`
+    [[nodiscard]] int fontSize() const;
+    [[nodiscard]] int itemHeight() const;
+
+    // Calculate bounds for a menu panel
+    [[nodiscard]] Rectangle getMenuBounds(const detail::OpenMenu& menu) const;
+
+    // Calculate the width needed for a menu
+    [[nodiscard]] int calculateMenuWidth(const Menu& items) const;
+
+    // Calculate the text width for gui font
+    [[nodiscard]] int calculateTextWidth(const std::string& text) const;
+
+    // Calculate total height of a menu
+    [[nodiscard]] int calculateMenuHeight(const Menu& items) const;
+
+    // Get item height (separators are shorter)
+    [[nodiscard]] int getItemHeight(const Item& item) const;
+
+    // Get which item index is at a Y position within a menu, or -1
+    [[nodiscard]] int getItemAtYPos(const detail::OpenMenu& menu, float y) const;
+
+    // Open a submenu for the given parent level and item index
+    void openSubmenu(int parent_level, int item_index);
+
+    // Trigger an item's action
+    void triggerItem(const Item& item);
+
+    // Draw a single menu panel
+    void drawMenu(const detail::OpenMenu& menu) const;
+
+    // Draw a single item within a menu
+    void drawItem(const Item& item, Rectangle bounds, bool hovered) const;
+};
+
+} // namespace PopupMenu
 
 struct PopupContext
 {
@@ -145,32 +229,9 @@ struct TabViewContext
     static TabViewContext& getContext(int* activeTab);
 };
 
-struct ScrollPanelContext
-{
-    Rectangle area{};
-    Vector2* scroll{nullptr};
-};
-
-struct MenuBar
-{
-    Rectangle area;
-    std::vector<uint64_t> _leftMenus;
-    static MenuBar& getMenuBar(void* id);
-};
-
-struct MenuContext
-{
-    Rectangle area;
-    bool isOpen{false};
-    float height{0};
-    float maxWidth{0};
-    static MenuContext& getContext(const char* text);
-};
-
 struct TableContext
 {
     int numColumns{0};
-    bool hasMeasured{false};
     bool lockedGui{false};
     std::vector<float> columnWidth;
     float curX{0};
@@ -187,8 +248,8 @@ struct TableContext
 
 struct GuiContext
 {
-    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctTABVIEW, ctTAB, ctPOPUP, ctSCROLLPANEL, ctMENUBAR, ctMENU };
-    using ContextData = std::variant<ScrollPanelContext*, RenderTexture*, MenuBar*, MenuContext*, TableContext*, TabViewContext*>;
+    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctTABVIEW, ctTAB, ctPOPUP, ctSCROLLPANEL };
+    using ContextData = std::variant<std::monostate, RenderTexture*, TableContext*, TabViewContext*>;
     Type type;
     Vector2 initialPos{};
     Vector2 currentPos{};
@@ -202,6 +263,7 @@ struct GuiContext
     float rowHeight{DEFAULT_ROW_HEIGHT};
     float nextWidth{-1};
     float nextHeight{-1};
+    float defaultWidth{-1};
     float spacingH{15};
     float spacingV{4};
     float indent{0};
@@ -213,7 +275,6 @@ struct GuiContext
     ContextData contextData;
     uint64_t hash{0xbeef};
     size_t childContextCount{0};
-    // RenderTexture* texture{nullptr};
 
     GuiContext& newContext(const std::string& key) const;
 
@@ -229,46 +290,27 @@ struct GuiContext
         else {
             currentPos.y += size.y + spacingV;
         }
-        if (nextWidth > 0) nextWidth = -1;
-        if (nextHeight > 0) nextHeight = -1;
+        nextWidth = -1;
+        nextHeight = -1;
         lastWidgetRect = {x, y, size.x, size.y};
+        lastWidgetEditFinished = false;
     }
-    void wrap()
+    Vector2 standardSize(float height = -1) const
     {
-        if (horizontal) {
-            currentPos.x = area.x;
-            currentPos.y += maxSize.y;
-        }
-        else {
-            currentPos.x += maxSize.x;
-            currentPos.y = area.y;
-        }
-    }
-    Vector2 standardSize(float height = -1, float minWidth = 0) const
-    {
-        float width = 0;
-        if (static_cast<int>(nextWidth) == -1) {
-            width = content.width - currentPos.x + content.x;
-        }
-        else if (static_cast<int>(nextWidth) == 0) {
-            width = minWidth;
-        }
-        else {
-            width = std::fabs(nextWidth);
-        }
+        float width = nextWidth > 0 ? nextWidth : (defaultWidth > 0 ? defaultWidth : content.width - currentPos.x + content.x);
         return {width, height > 0 ? height : (nextHeight > 0 ? nextHeight : rowHeight)};
     }
-    inline static Rectangle lastControlRect{};
     inline static Vector2 positionLimits{};
     inline static int64_t frameId{0};  // Note: even at 1000fps this would have just overflown when started around the start of the permian (about 300Ma) ;-)
     inline static Vector2 guiScale{1.0f, 1.0f};
+    inline static bool lastWidgetEditFinished{false};
     inline static PopupMenu::System popup;
     struct DropdownInfo
     {
         Rectangle rect{};
         int* active{nullptr};
         bool directionUp{false};
-        bool clicked{false};
+        bool changed{false};
         std::string text;
         bool editMode{false};
         int64_t lastUpdate{0};
@@ -296,7 +338,7 @@ struct GuiContext
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
             iter->second.guiDisabled = GuiGetState() == STATE_DISABLED;
-            return iter->second.clicked;
+            return std::exchange(iter->second.changed, false);
         }
         else {
             iter = dropdownBoxes.emplace(key, DropdownInfo{rect, active, directionUp, false, std::string(text), false, 0, 0, GetState()}).first;
@@ -313,7 +355,6 @@ struct GuiContext
             auto iter = dropdownBoxes.find(openDropdownboxId);
             if (iter != dropdownBoxes.end()) {
                 iter->second.editMode = false;
-                iter->second.clicked = false;
                 openDropdownboxId = 0;
             }
         }
@@ -322,7 +363,7 @@ struct GuiContext
     {
         if (!guiLocked && (tooltipText != nullptr) && !guiControlExclusiveMode)
         {
-            Vector2 textSize = MeasureTextEx(GuiGetFont(), tooltipText, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+            Vector2 textSize = GetTextSize(tooltipText);
             textSize.x += 16;
 
             controlRec.x -= (textSize.x - controlRec.width) / 2;
@@ -351,21 +392,19 @@ struct GuiContext
                 SetStyle(DROPDOWNBOX, i, info.style[i]);
             }
             auto oldState = GuiGetState();
+            auto oldActive = *info.active;
             if(info.guiDisabled)
                 GuiDisable();
             if (info.directionUp ? GuiDropupBox(info.rect, info.text.c_str(), info.active, info.editMode) : GuiDropdownBox(info.rect, info.text.c_str(), info.active, info.editMode)) {
                 if (openDropdownboxId != key) {
                     closeOpenDropdownBox();
                 }
-                info.clicked = info.editMode;
                 info.editMode = !info.editMode;
                 openDropdownboxId = info.editMode ? key : 0;
             }
-            else {
-                info.clicked = false;
-            }
-            if(info.guiDisabled)
-                GuiEnable();
+            // reported by the next DropdownBox() call, as the box is drawn deferred at EndGui()
+            info.changed = info.changed || *info.active != oldActive;
+            GuiSetState(oldState);
             info.lastDraw = info.lastUpdate;
         }
     }
@@ -391,29 +430,16 @@ struct GuiContext
             }
             if(GuiContext::tooltipTimer >= 0.0f) {
                 drawTooltip(tooltipParentRect, tooltipText.c_str());
-                /*
-                auto size = MeasureTextEx(GuiGetFont(), GuiContext::tooltipText.c_str(), 8, 0);
-                Rectangle tipRect{
-                    GuiContext::tooltipParentRect.x + GuiContext::tooltipParentRect.width/2 - size.x/2 - 3,
-                    GuiContext::tooltipParentRect.y + GuiContext::tooltipParentRect.height*3/4,
-                    size.x + 6, size.y + 6
-                };
-                DrawRectangle(tipRect.x, tipRect.y, tipRect.width, tipRect.height, {0,0,0,128});
-                DrawTextEx(GuiGetFont(), GuiContext::tooltipText.c_str(), {tipRect.x + 3, tipRect.y + 3}, 8, 0, WHITE);
-                */
             }
         }
     }
 };
 
-inline static std::stack<GuiContext> g_contextStack;
-inline static std::unordered_map<bool*, PopupContext> g_popupMap;
-inline static std::unordered_map<Vector2*, ScrollPanelContext> g_scrollPanelMap;
-inline static PopupContext* g_popupUnderMouse{nullptr};
-inline static std::unordered_map<void*, MenuBar> g_menuBars;
-inline static std::unordered_map<uint64_t, MenuContext> g_menuContextMap;
-inline static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
-inline static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
+static std::stack<GuiContext> g_contextStack;
+static std::unordered_map<bool*, PopupContext> g_popupMap;
+static PopupContext* g_popupUnderMouse{nullptr};
+static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
+static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
 static std::stack<Rectangle> g_clippingStack;
 
 inline GuiContext& GuiContext::newContext(const std::string& key) const
@@ -472,25 +498,6 @@ PopupContext* PopupContext::find(bool* isOpen)
         return &iter->second;
     }
     return nullptr;
-}
-
-MenuBar& MenuBar::getMenuBar(void* id)
-{
-    auto iter = g_menuBars.find(id);
-    if (iter == g_menuBars.end()) {
-        iter = g_menuBars.emplace(std::make_pair(id, MenuBar())).first;
-    }
-    return iter->second;
-}
-
-MenuContext& MenuContext::getContext(const char* text)
-{
-    auto hash = detail::fnv_64a_str(text, 0xbeef);
-    auto iter = g_menuContextMap.find(hash);
-    if (iter == g_menuContextMap.end()) {
-        iter = g_menuContextMap.emplace(std::make_pair(hash, MenuContext())).first;
-    }
-    return iter->second;
 }
 
 TableContext& TableContext::getContext(Vector2* scroll)
@@ -559,6 +566,7 @@ typename std::invoke_result<Func, Rectangle, Args..., bool>::type editableWidget
         SetKeyboardFocus(editMode ? nullptr : key);
     }
     ctx.increment(size);
+    GuiContext::lastWidgetEditFinished = rc && editMode;
     return rc;
 }
 
@@ -614,15 +622,6 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
     ++GuiContext::frameId;
     GuiContext::guiScale = guiScale;
     GuiContext::popup.update(GetFrameTime());
-    /*
-    if (renderTexture) {
-        GuiContext::guiScale = {(float)GetScreenWidth() / renderTexture->texture.width, (float)GetScreenHeight() / renderTexture->texture.height};
-    }
-    else {
-        GuiContext::guiScale = {1.0f, 1.0f};
-    }
-     */
-    // DrawRectangleRec(area, GREEN);
     GuiContext::rootContext = &g_contextStack.top();
 }
 
@@ -648,7 +647,6 @@ void EndGui()
 
 void UnloadGui()
 {
-    g_menuContextMap.clear();
     g_popupMap.clear();
 }
 
@@ -657,13 +655,13 @@ void Begin()
     auto& ctxParent = detail::context();
     auto& ctx = ctxParent.newContext("Begin");
     ctx.type = GuiContext::ctGROUP;
-    ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, ctx.nextWidth > 0 ? ctx.nextWidth : ctxParent.content.width + ctxParent.content.x - ctxParent.currentPos.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
+    ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, ctx.standardSize().x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
     ctx.content = ctx.area;
     ctx.initialPos = ctx.currentPos;
     ctx.horizontal = false;
     ctx.bordered = false;
     ctx.level++;
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
 }
 
 static void EndImpl(Vector2 size = {})
@@ -675,11 +673,9 @@ static void EndImpl(Vector2 size = {})
         ctx.increment(size);
     }
     else if (ctxOld.horizontal) {
-        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
         ctx.increment({ctxOld.currentPos.x - ctxOld.area.x + ctxOld.padding.x - ctxOld.spacingH, ctxOld.maxSize.y + ctxOld.padding.y*2});
     }
     else {
-        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.initialPos.x + ctxOld.maxSize, ctxOld.currentPos.y, GREEN);
         ctx.increment({ctxOld.maxSize.x + ctxOld.padding.x*2, ctxOld.currentPos.y - ctxOld.area.y + ctxOld.padding.y - ctxOld.spacingV});
     }
 }
@@ -708,7 +704,6 @@ void EndColumns()
     if (!ctx.horizontal) {
         throw std::runtime_error("Unbalanced gui::BeginColumns/gui::EndColumns!");
     }
-    // detail::context().horizontal = false;
     EndImpl({ctx.currentPos.x - ctx.area.x, ctx.maxSize.y});
 }
 
@@ -733,7 +728,7 @@ void BeginPanel(const char* text, Vector2 padding)
     ctx.bordered = true;
     ctx.level++;
     ctx.groupName = text ? text : "";
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = padding;
 }
 
@@ -746,8 +741,6 @@ void EndPanel()
     else {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
-    // ctx.increment({0, ctx.currentPos.y - ctx.area.y + (ctx.groupName.empty() ? 10 : RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 10)});
-    //ctx.increment({1,2});
     EndImpl();
 }
 
@@ -767,16 +760,6 @@ void BeginTabView(int *activeTab)
 
 void EndTabView()
 {
-    auto& ctx = detail::context();
-    if (ctx.level > 1) {
-        //GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 128});
-    }
-    else {
-        //GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 128});
-    }
-    // ctx.increment({0, ctx.currentPos.y - ctx.area.y + (ctx.groupName.empty() ? 10 : RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 10)});
-    //ctx.increment({1,2});
-    // ctx.maxSize = ctx.area.width;
     auto ctxOld = g_contextStack.top();
     g_contextStack.pop();
     auto& ctxNew = detail::context();
@@ -788,7 +771,7 @@ bool BeginTab(const char* text, Vector2 padding)
 {
     auto& ctxParent = detail::context();
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
-    auto labelSize = MeasureTextEx(GuiGetFont(), text, 8, 0);
+    auto labelSize = GetTextSize(text);
     bool isActive = *tvc.activeTab == tvc.currentTab;
     bool hoversOverTab = !GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
     // Inactive tab text is derived from the normal text colour at half opacity
@@ -829,7 +812,7 @@ bool BeginTab(const char* text, Vector2 padding)
     ctx.bordered = true;
     ctx.level++;
     ctx.groupName = text ? text : "";
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = padding;
     return true;
 }
@@ -849,12 +832,10 @@ void EndTab()
     ctxOld.maxSize = {ctxOld.area.width, ctxOld.area.height};
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
     if (ctxOld.horizontal) {
-        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.currentPos.x, ctxOld.initialPos.y + ctxOld.maxSize, RED);
         tvc.incX = ctxOld.currentPos.x - ctxOld.area.x;
         tvc.incY = ctxOld.maxSize.y;
     }
     else {
-        // DrawLine(ctxOld.area.x, ctxOld.area.y, ctxOld.initialPos.x + ctxOld.maxSize, ctxOld.currentPos.y, GREEN);
         tvc.incX = ctxOld.maxSize.x;
         tvc.incY = ctxOld.currentPos.y - ctxOld.area.y;
     }
@@ -873,7 +854,7 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
     ctx.horizontal = false;
     ctx.bordered = false;
     ctx.level = 0;
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = {0, 0};
 
     Rectangle view;
@@ -886,7 +867,6 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
         ctx.area.width - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH) - (hasVerticalScrollBar ? GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH) : 0.0f),
         ctx.area.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH)
     };
-    //BeginScissorMode(view.x, view.y, view.width, view.height);
     BeginClipping(view);
     ctx.mouseOffset = ctxParent.mouseOffset;
 }
@@ -896,22 +876,14 @@ void EndScrollPanel()
     if (detail::context().type != GuiContext::ctSCROLLPANEL) {
         throw std::runtime_error("Unbalanced gui::BeginScrollPanel/gui::EndScrollPanel!");
     }
-    //EndScissorMode()
     EndClipping();
     auto& ctx = detail::context();
     EndImpl({ctx.area.width, ctx.area.height});
-    //End();
-    //auto ctxOld = g_contextStack.top();
-    //g_contextStack.pop();
-    //auto& ctx = detail::context();
-    //ctx.increment({ctx.area.width, ctxOld.area.height});
 }
 
 void BeginTableView(float height, int numColumns, Vector2 *scroll)
 {
     auto& tc = TableContext::getContext(scroll);
-    if(numColumns != tc.numColumns)
-        tc.hasMeasured = false;
     auto contentHeight = tc.curHeight;
     auto contentWidth = tc.curWidth;
     tc.scroll = scroll;
@@ -950,9 +922,6 @@ bool TableNextRow(float height, Color background)
     if(result && background.a) {
         DrawRectangleClipped(ctx.area.x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, ctx.area.width, tc.curRowHeight, background);
     }
-    else if (!result){
-        //DrawRectangleLinesEx(ctx.content, 1, RED);
-    }
     return result;
 }
 
@@ -985,8 +954,6 @@ bool TableNextColumn(float width)
         // TODO: more checks
     }
     ctx.content = {ctx.area.x + tc.curWidth - width, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, width, tc.curRowHeight};
-    //if (tc.curColumn == 2)
-    //    GuiDrawRectangle(ctx.content, 2, {static_cast<uint8_t>(tc.curRow<<6),100,static_cast<uint8_t>(tc.curColumn<<6),255}, {0,0,0,0});
     ctx.initialPos = ctx.currentPos = {ctx.content.x + 2, ctx.content.y + 2};
     return CheckCollisionRecs(ctx.area, ctx.content);
 }
@@ -1007,7 +974,6 @@ void EndTableView()
     if(!std::holds_alternative<gui::TableContext*>(ctx.contextData))
         throw std::runtime_error("EndTableView without matching BeginTableView");
     auto& tc = *std::get<TableContext*>(ctx.contextData);
-    tc.hasMeasured = true;
     EndScrollPanel();
     if(tc.lockedGui) {
         tc.lockedGui = false;
@@ -1029,7 +995,7 @@ void BeginGroupBox(const char* text)
     ctx.bordered = true;
     ctx.level++;
     ctx.groupName = text ? text : "";
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = {0, 0};
 }
 
@@ -1038,12 +1004,14 @@ void EndGroupBox()
     auto& ctx = detail::context();
     GuiGroupBox({ctx.area.x, ctx.area.y + 8, ctx.area.width, ctx.currentPos.y - ctx.area.y - 4}, ctx.groupName.c_str());
     ctx.increment({0, ctx.spacingV});
-    //DrawLineEx({ctx.currentPos.x, ctx.currentPos.y}, {ctx.currentPos.x + 4, ctx.currentPos.y}, 1.0f, RED);
     End();
 }
 
-void BeginPopup(Rectangle area, bool* isOpen)
+bool BeginPopup(Rectangle area, bool* isOpen)
 {
+    if (!*isOpen) {
+        return false;
+    }
     if(GuiContext::rootContext) {
         const auto* root = GuiContext::rootContext;
         if(area.x < 0)
@@ -1055,13 +1023,13 @@ void BeginPopup(Rectangle area, bool* isOpen)
     auto& ctx = ctxParent.newContext("BeginPopup" + std::to_string(reinterpret_cast<std::uintptr_t>(isOpen)));
     ctx.type = GuiContext::ctPOPUP;
     ctx.area = {0, 0, area.width, area.height};
-    ctx.content = ctx.area;  //{2, 2, area.width - 4, area.height - 4};
+    ctx.content = ctx.area;
     ctx.initialPos = {0, 0};
     ctx.currentPos = ctx.initialPos;
     ctx.horizontal = false;
     ctx.bordered = false;
     ctx.level = 0;
-    ctx.nextWidth = ctx.nextHeight = -1;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = {0, 0};
 
     if (auto* parentTexture = std::get_if<RenderTexture*>(&ctxParent.contextData); parentTexture && *parentTexture) {
@@ -1079,6 +1047,7 @@ void BeginPopup(Rectangle area, bool* isOpen)
     if (g_popupUnderMouse == popup && GuiIsLocked()) {
         GuiUnlock();
     }
+    return true;
 }
 
 void EndPopup()
@@ -1100,13 +1069,26 @@ void EndPopup()
 bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags)
 {
     auto mouseParent = detail::context().mouseOffset;
-    BeginPopup(area, isOpen);
+    if (!BeginPopup(area, isOpen)) {
+        return false;
+    }
     auto popup = PopupContext::find(isOpen);
     if(popup)
         popup->_flags = flags;
     auto& ctx = detail::context();
-    auto rc = GuiWindowBox({0, 0, area.width, area.height}, title);
-    if (popup && !rc && (flags & WBF_MOVABLE) && !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
+    if (flags & WBF_CLOSABLE) {
+        if (GuiWindowBox({0, 0, area.width, area.height}, title)) {
+            *isOpen = false;
+            EndPopup();
+            return false;
+        }
+    }
+    else {
+        // same frame as GuiWindowBox, just without the close button
+        GuiStatusBar({0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT}, title);
+        GuiPanel({0, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT - 1, area.width, area.height - RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 1}, nullptr);
+    }
+    if (popup && (flags & WBF_MOVABLE) && !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
         popup->_inDrag = true;
     }
     else if (popup && popup->_inDrag) {
@@ -1121,7 +1103,7 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
     ctx.content = {ctx.area.x + 5, ctx.area.y + RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 5, ctx.area.width - 10, ctx.area.height - RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT - 10};
     ctx.initialPos = {ctx.content.x, ctx.content.y};
     ctx.currentPos = ctx.initialPos;
-    return rc;
+    return true;
 }
 
 void EndWindowBox()
@@ -1173,18 +1155,29 @@ void SetReserve(float width)
 
 void SetNextWidth(float width)
 {
+    detail::context().nextWidth = width > 0 ? width : -1;
+}
+
+void SetNextRelativeWidth(float fraction)
+{
     auto& ctx = detail::context();
-    if(width > -1.0 && width <= 1.0f)
-        width = std::floor(ctx.content.width * std::fabs(width));
-    ctx.nextWidth = width;
+    ctx.nextWidth = fraction > 0 ? std::floor(ctx.content.width * fraction) : -1;
+}
+
+void SetDefaultWidth(float width)
+{
+    detail::context().defaultWidth = width > 0 ? width : -1;
 }
 
 void SetNextHeight(float height)
 {
+    detail::context().nextHeight = height > 0 ? height : -1;
+}
+
+void SetNextRelativeHeight(float fraction)
+{
     auto& ctx = detail::context();
-    if(height <= 1.0f)
-        height = std::floor(ctx.content.height * height);
-    ctx.nextHeight = height;
+    ctx.nextHeight = fraction > 0 ? std::floor(ctx.content.height * fraction) : -1;
 }
 
 void SetRowHeight(float height)
@@ -1222,9 +1215,6 @@ Rectangle GetLastWidgetRect()
 void SetTooltip(const std::string& tooltip)
 {
     auto rect = GetLastWidgetRect();
-    //if(tooltip == "PAUSE") {
-    //    TraceLog(LOG_INFO, "SetToolip: %f,%f,%f,%f", rect.x, rect.y, rect.width, rect.height);
-    //}
     if(CheckCollisionPointRec(GetMousePosition(), rect)) {
         GuiContext::tooltipText = tooltip;
         GuiContext::tooltipParentRect = rect;
@@ -1302,10 +1292,11 @@ bool LabelButton(const char* text)
     return detail::defaultWidget(GuiLabelButton, text);
 }
 
-bool Toggle(const char* text, bool active)
+bool Toggle(const char* text, bool* active)
 {
-    detail::defaultWidget(GuiToggle, text, &active);
-    return active;
+    auto oldActive = *active;
+    detail::defaultWidget(GuiToggle, text, active);
+    return *active != oldActive;
 }
 
 static void CountGuiTextItems(const char* text, short& numRows, short& numCols)
@@ -1327,32 +1318,34 @@ static void CountGuiTextItems(const char* text, short& numRows, short& numCols)
     }
 }
 
-int ToggleGroup(const char* text, int active)
+bool ToggleGroup(const char* text, int* active)
 {
     auto& ctx = detail::context();
-    bool asLines = false;
     short rows = 0;
     short cols = 0;
     CountGuiTextItems(text, rows, cols);
     auto size = ctx.standardSize();
-    auto rc = GuiToggleGroup({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, &active);
+    auto oldActive = *active;
+    GuiToggleGroup({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, active);
     ctx.increment({cols * size.x + (cols - 1) * (float)GuiGetStyle(TOGGLE, GROUP_PADDING), rows * size.y + (rows - 1) * (float)GuiGetStyle(TOGGLE, GROUP_PADDING)});
-    return active;
+    return *active != oldActive;
 }
 
-bool CheckBox(const char* text, bool checked)
+bool CheckBox(const char* text, bool* checked)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
-    auto rc = GuiCheckBox({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y + (ctx.rowHeight - 15) / 2, 15, 15}, text, &checked);
+    auto oldChecked = *checked;
+    GuiCheckBox({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y + (ctx.rowHeight - 15) / 2, 15, 15}, text, checked);
     ctx.increment(size);
-    return checked;
+    return *checked != oldChecked;
 }
 
-int ComboBox(const char* text, int active)
+bool ComboBox(const char* text, int* active)
 {
-    detail::defaultWidget(GuiComboBox, text, &active);
-    return active;
+    auto oldActive = *active;
+    detail::defaultWidget(GuiComboBox, text, active);
+    return *active != oldActive;
 }
 
 int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
@@ -1479,202 +1472,115 @@ bool DropdownBox(const char* text, int* active, bool directionUp)
 
 bool Spinner(const char* text, int* value, int minValue, int maxValue)
 {
-    auto rc = detail::editableWidget(GuiSpinner, (void*)value, text, value, minValue, maxValue);
+    auto oldValue = *value;
+    detail::editableWidget(GuiSpinner, (void*)value, text, value, minValue, maxValue);
     *value = std::clamp(*value, minValue, maxValue);
-    return rc;
+    return *value != oldValue;
 }
 
 bool ValueBox(const char* text, int* value, int minValue, int maxValue)
 {
-    return detail::editableWidget(GuiValueBox, (void*)value, text, value, minValue, maxValue);
+    auto oldValue = *value;
+    detail::editableWidget(GuiValueBox, (void*)value, text, value, minValue, maxValue);
+    return *value != oldValue;
 }
-
-namespace detail {
-
-bool TextBoxImpl(Rectangle bounds, char* text, int bufferSize, bool editMode)
-{
-    GuiState state = guiState;
-    bool pressed = false;
-    int textWidth = GetTextWidth(text);
-    auto textBounds = GetTextBounds(TEXTBOX, bounds);
-    int textAlignment = textWidth >= textBounds.width ? TEXT_ALIGN_RIGHT : GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
-
-    Rectangle cursor = {bounds.x + GuiGetStyle(TEXTBOX, TEXT_PADDING) + GetTextWidth(text) + 2, bounds.y + bounds.height / 2 - GuiGetStyle(DEFAULT, TEXT_SIZE), 4, (float)GuiGetStyle(DEFAULT, TEXT_SIZE) * 2};
-
-    // Update control
-    //--------------------------------------------------------------------
-    if ((state != STATE_DISABLED) && !guiLocked) {
-        Vector2 mousePoint = GetMousePosition();
-
-        if (editMode) {
-            state = STATE_PRESSED;
-
-            int key = GetCharPressed();  // Returns codepoint as Unicode
-            int keyCount = (int)strlen(text);
-            int byteSize = 0;
-            const char* textUTF8 = CodepointToUTF8(key, &byteSize);
-
-            // Only allow keys in range [32..125]
-            if ((keyCount + byteSize) < bufferSize) {
-                float maxWidth = (bounds.width - (GuiGetStyle(TEXTBOX, TEXT_PADDING) * 2));
-
-                if ((key >= 32)) {
-                    for (int i = 0; i < byteSize; i++) {
-                        text[keyCount] = textUTF8[i];
-                        keyCount++;
-                    }
-
-                    text[keyCount] = '\0';
-                }
-            }
-
-            // Delete text
-            if (keyCount > 0) {
-                if (IsKeyPressed(KEY_BACKSPACE)) {
-                    while ((keyCount > 0) && ((text[--keyCount] & 0xc0) == 0x80))
-                        ;
-                    text[keyCount] = '\0';
-                }
-            }
-
-            if (IsKeyPressed(KEY_ENTER) || (!CheckCollisionPointRec(mousePoint, bounds) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)))
-                pressed = true;
-
-            // Check text alignment to position cursor properly
-            if (textAlignment == TEXT_ALIGN_CENTER)
-                cursor.x = bounds.x + textWidth / 2 + bounds.width / 2 + 1;
-            else if (textAlignment == TEXT_ALIGN_RIGHT)
-                cursor.x = bounds.x + bounds.width - GuiGetStyle(TEXTBOX, TEXT_PADDING);
-        }
-        else {
-            if (CheckCollisionPointRec(mousePoint, bounds)) {
-                state = STATE_FOCUSED;
-                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-                    pressed = true;
-            }
-        }
-    }
-    //--------------------------------------------------------------------
-
-    // Draw control
-    //--------------------------------------------------------------------
-    if (state == STATE_PRESSED) {
-        GuiDrawRectangle(bounds, GuiGetStyle(TEXTBOX, BORDER_WIDTH), Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER + (state * 3))), guiAlpha), Fade(GetColor(GuiGetStyle(TEXTBOX, BASE_COLOR_PRESSED)), guiAlpha));
-    }
-    else if (state == STATE_DISABLED) {
-        GuiDrawRectangle(bounds, GuiGetStyle(TEXTBOX, BORDER_WIDTH), Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER + (state * 3))), guiAlpha), Fade(GetColor(GuiGetStyle(TEXTBOX, BASE_COLOR_DISABLED)), guiAlpha));
-    }
-    else
-        GuiDrawRectangle(bounds, 1, Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER + (state * 3))), guiAlpha), BLANK);
-
-    BeginClipping({textBounds.x, textBounds.y, textBounds.width, textBounds.height});
-    GuiDrawText(text, textBounds, textAlignment, Fade(GetColor(GuiGetStyle(TEXTBOX, TEXT + (state * 3))), guiAlpha));
-    EndClipping();
-
-    // Draw cursor
-    if (editMode) {
-        if (cursor.x >= bounds.x + bounds.width - 4)
-            cursor.x = bounds.x + bounds.width - 5;
-        if (cursor.height >= bounds.height)
-            cursor.height = bounds.height - GuiGetStyle(TEXTBOX, BORDER_WIDTH) * 2;
-        if (cursor.y < (bounds.y + GuiGetStyle(TEXTBOX, BORDER_WIDTH)))
-            cursor.y = bounds.y + GuiGetStyle(TEXTBOX, BORDER_WIDTH);
-
-        GuiDrawRectangle(cursor, 0, BLANK, Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER_COLOR_PRESSED)), guiAlpha));
-    }
-    //--------------------------------------------------------------------
-
-    return pressed;
-}
-
-}  // namespace detail
 
 bool TextBox(char* text, int textSize)
 {
-    return detail::editableWidget(GuiTextBox, (void*)text, text, textSize);
+    // raygui only changes the text in edit mode, so only then a copy is needed
+    bool editing = HasKeyboardFocus(text);
+    std::string oldText = editing ? text : "";
+    detail::editableWidget(GuiTextBox, (void*)text, text, textSize);
+    return editing && oldText != text;
 }
 
 bool TextBox(std::string& text, int textSize)
 {
+    bool editing = HasKeyboardFocus(&text);
+    std::string oldText = editing ? text : std::string();
     text.resize(textSize + 1);
-    auto rc = detail::editableWidget(GuiTextBox, (void*)&text, text.data(), textSize);
+    detail::editableWidget(GuiTextBox, (void*)&text, text.data(), textSize);
     text.resize(std::strlen(text.data()));
-    return rc;
+    return editing && oldText != text;
 }
-// TextBoxMulti is not available in raygui 4.5 (GuiTextBoxMulti was removed).
-// bool TextBoxMulti(float height, char* text, int textSize) — not implemented
-int ListView(float height, const char* text, int* scrollIndex, int active)
+
+bool IsLastWidgetEditFinished()
+{
+    return GuiContext::lastWidgetEditFinished;
+}
+bool ListView(float height, const char* text, int* scrollIndex, int* active)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize(height);
-    GuiListView({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, scrollIndex, &active);
+    auto oldActive = *active;
+    GuiListView({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, scrollIndex, active);
     ctx.increment(size);
-    return active;
+    return *active != oldActive;
 }
 
-int ListViewEx(float height, const char** text, int count, int* focus, int* scrollIndex, int active)
+bool ListViewEx(float height, const char** text, int count, int* scrollIndex, int* active, int* focus)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize(height);
-    GuiListViewEx({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, count, scrollIndex, &active, focus);
+    auto oldActive = *active;
+    GuiListViewEx({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, count, scrollIndex, active, focus);
     ctx.increment(size);
-    return active;
+    return *active != oldActive;
 }
 
-Color ColorPicker(Color color)
+static bool isSameColor(Color a, Color b)
+{
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+bool ColorPicker(Color* color)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
     size.y = size.x;
     auto barSpace = GetStyle(COLORPICKER, HUEBAR_PADDING) + GuiGetStyle(COLORPICKER, HUEBAR_WIDTH) + GetStyle(COLORPICKER, HUEBAR_SELECTOR_OVERFLOW);
-    GuiColorPicker({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - barSpace, size.y - barSpace}, nullptr, &color);
+    auto oldColor = *color;
+    GuiColorPicker({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - barSpace, size.y - barSpace}, nullptr, color);
     ctx.increment({size.x, size.y - barSpace});
-    return color;
+    return !isSameColor(*color, oldColor);
 }
 
-Color ColorPanel(const char* text, Color color)
+bool ColorPanel(const char* text, Color* color)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
     size.y = size.x;
-    GuiColorPicker({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, nullptr, &color);
+    auto oldColor = *color;
+    GuiColorPanel({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, color);
     ctx.increment({size.x, size.y});
-    return color;
+    return !isSameColor(*color, oldColor);
 }
 
-float ColorBarAlpha(const char* text, float alpha)
+bool ColorBarAlpha(const char* text, float* alpha)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
-    GuiColorBarAlpha({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, &alpha);
+    auto oldAlpha = *alpha;
+    GuiColorBarAlpha({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, alpha);
     ctx.increment(size);
-    return alpha;
+    return *alpha != oldAlpha;
 }
 
-float ColorBarHue(const char* text, float value)
-{
-    return 0;
-}
-
-float Slider(const char* textLeft, const char* textRight, float value, float minValue, float maxValue)
+bool ColorBarHue(const char* text, float* value)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
-    auto leftWidth = GetTextWidth(textLeft);
-    auto rightWidth = GetTextWidth(textRight);
-    auto leftOffset = ctx.currentPos.x - ctx.content.x >= leftWidth ? 0 : leftWidth + (leftWidth ? 4 : 0);
-    auto rightSpace = ctx.reserve >= rightWidth ? ctx.reserve : rightWidth + (rightWidth ? 4 : 0);
-    GuiSlider({ctx.currentPos.x + leftOffset + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - rightSpace - leftOffset, size.y}, textLeft, textRight, &value, minValue, maxValue);
+    auto oldValue = *value;
+    GuiColorBarHue({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, text, value);
     ctx.increment(size);
-    return value;
+    return *value != oldValue;
 }
 
-float Slider(const char* textLeft, float value, float minValue, float maxValue)
-{
-    return Slider(textLeft, TextFormat("%.2f", value), value, minValue, maxValue);
-}
+namespace detail {
 
-float SliderBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue)
+// Slider, SliderBar and ProgressBar place their left label in the indent if it fits, and their right label in the reserve
+template <typename Func>
+bool barWidget(Func fp, const char* textLeft, const char* textRight, float* value, float minValue, float maxValue)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
@@ -1682,27 +1588,37 @@ float SliderBar(const char* textLeft, const char* textRight, float value, float 
     auto rightWidth = GetTextWidth(textRight);
     auto leftOffset = ctx.currentPos.x - ctx.content.x >= leftWidth ? 0 : leftWidth + (leftWidth ? 4 : 0);
     auto rightSpace = ctx.reserve >= rightWidth ? ctx.reserve : rightWidth + (rightWidth ? 4 : 0);
-    GuiSliderBar({ctx.currentPos.x + leftOffset + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - rightSpace - leftOffset, size.y}, textLeft, textRight, &value, minValue, maxValue);
+    auto oldValue = *value;
+    fp({ctx.currentPos.x + leftOffset + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - rightSpace - leftOffset, size.y}, textLeft, textRight, value, minValue, maxValue);
     ctx.increment(size);
-    return value;
+    return *value != oldValue;
 }
 
-float SliderBar(const char* textLeft, float value, float minValue, float maxValue)
+}  // namespace detail
+
+bool Slider(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue)
 {
-    return SliderBar(textLeft, TextFormat("%.2f", value), value, minValue, maxValue);
+    return detail::barWidget(GuiSlider, textLeft, textRight, value, minValue, maxValue);
 }
 
-float ProgressBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue)
+bool Slider(const char* textLeft, float* value, float minValue, float maxValue)
 {
-    auto& ctx = detail::context();
-    auto size = ctx.standardSize();
-    auto leftWidth = GetTextWidth(textLeft);
-    auto rightWidth = GetTextWidth(textRight);
-    auto leftOffset = ctx.currentPos.x - ctx.content.x >= leftWidth ? 0 : leftWidth + (leftWidth ? 4 : 0);
-    auto rightSpace = ctx.reserve >= rightWidth ? ctx.reserve : rightWidth + (rightWidth ? 4 : 0);
-    GuiProgressBar({ctx.currentPos.x + leftOffset + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x - rightSpace - leftOffset, size.y}, textLeft, textRight, &value, minValue, maxValue);
-    ctx.increment(size);
-    return value;
+    return Slider(textLeft, TextFormat("%.2f", *value), value, minValue, maxValue);
+}
+
+bool SliderBar(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue)
+{
+    return detail::barWidget(GuiSliderBar, textLeft, textRight, value, minValue, maxValue);
+}
+
+bool SliderBar(const char* textLeft, float* value, float minValue, float maxValue)
+{
+    return SliderBar(textLeft, TextFormat("%.2f", *value), value, minValue, maxValue);
+}
+
+void ProgressBar(const char* textLeft, const char* textRight, float value, float minValue, float maxValue)
+{
+    detail::barWidget(GuiProgressBar, textLeft, textRight, &value, minValue, maxValue);
 }
 
 Vector2 Grid(float height, float spacing, int subdivs)
@@ -1754,516 +1670,6 @@ const char* IconText(int iconId, const char* text)
     return buffer;
 }
 
-bool BeginMenuBar()
-{
-    auto& ctxParent = detail::context();
-    if (ctxParent.type != GuiContext::ctROOT && ctxParent.type != GuiContext::ctPOPUP) {
-        throw std::runtime_error("BeginMenuBar is only allowed following a BeginGui or a BeginWindowBox");
-    }
-    auto id = std::holds_alternative<RenderTexture*>(ctxParent.contextData) ? (void*)std::get<RenderTexture*>(ctxParent.contextData) : nullptr;
-    auto& menuBar = MenuBar::getMenuBar(id);
-    auto& ctx = ctxParent.newContext("BeginMenuBar");
-    auto size = ctx.standardSize();
-    GuiStatusBar({ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctx.rowHeight}, nullptr);
-    ctx.type = GuiContext::ctMENUBAR;
-    ctx.initialPos = {ctx.content.x + 5, ctx.content.y};
-    ctx.currentPos = ctx.initialPos;
-    ctx.horizontal = false;
-    ctx.bordered = true;
-    ctx.level++;
-    ctx.groupName = "";
-    ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.padding = {5, 0};
-    if (GetState() == STATE_DISABLED) {
-        return false;
-    }
-    return false;
-}
-
-void EndMenuBar()
-{
-    g_contextStack.pop();
-    auto& ctx = detail::context();
-    ctx.currentPos.y += ctx.rowHeight;
-}
-
-bool BeginMenu(const char* text)
-{
-    MenuContext& mctx = MenuContext::getContext(text);
-    auto& ctxParent = detail::context();
-    auto size = ctxParent.standardSize();
-    auto textSize = GetTextWidth(text);
-    auto oldState = GetState();
-    SetState(mctx.isOpen ? STATE_FOCUSED : oldState);
-    auto oldBorder = GetStyle(BUTTON, BORDER_WIDTH);
-    SetStyle(BUTTON, BORDER_WIDTH, 0);
-    if (GuiButton({ctxParent.currentPos.x, ctxParent.currentPos.y + 1, textSize + 10.0f, size.y - 2}, text)) {
-        mctx.isOpen = !mctx.isOpen;
-    }
-    else if (IsMouseButtonPressed(0) && !CheckCollisionPointRec(GetMousePosition(), mctx.area) && !CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x, ctxParent.currentPos.y, textSize + 10.0f, size.y})) {
-        mctx.isOpen = false;
-    }
-    SetStyle(BUTTON, BORDER_WIDTH, oldBorder);
-    SetState(oldState);
-    auto leftEdge = ctxParent.currentPos.x;
-    ctxParent.currentPos.x += textSize + 12.0f;
-    if (!mctx.isOpen || GetState() == STATE_DISABLED) {
-        return false;
-    }
-    if (mctx.height > 0 && mctx.maxWidth > 0) {
-        mctx.area = {leftEdge, ctxParent.currentPos.y + ctxParent.rowHeight - 1, mctx.maxWidth + 10, mctx.height + ctxParent.spacingV * 2};
-        BeginPopup(mctx.area, &mctx.isOpen);
-        GuiStatusBar({0, 0, mctx.area.width, mctx.area.height}, nullptr);
-    }
-    auto& ctx = ctxParent.newContext("BeginMenu");
-    ctx.type = GuiContext::ctMENU;
-    ctx.content = {ctx.content.x + 5, ctx.content.y + ctx.spacingV / 2, ctx.content.width - 10, ctx.content.height - ctx.spacingV};
-    ctx.initialPos = {ctx.content.x, ctx.content.y};
-    ctx.currentPos = ctx.initialPos;
-    ctx.horizontal = false;
-    ctx.bordered = true;
-    ctx.level++;
-    ctx.groupName = "";
-    ctx.nextWidth = ctx.nextHeight = -1;
-    ctx.padding = {5, 0};
-    ctx.contextData = &mctx;
-    return true;
-}
-
-void EndMenu()
-{
-    auto& ctx = detail::context();
-    if (ctx.type != GuiContext::ctMENU) {
-        throw std::runtime_error("EndMenu without matching BeginMenu");
-    }
-    g_contextStack.pop();
-    if (g_contextStack.top().type == GuiContext::ctPOPUP) {
-        EndPopup();
-    }
-}
-
-bool MenuItem(const char* text, uint32_t shortcut, bool* selected)
-{
-    auto& ctx = detail::context();
-    if (ctx.type != GuiContext::ctMENU) {
-        throw std::runtime_error("MenuItem outside BeginMenu/EndMenu");
-    }
-    auto& mctx = *std::get<MenuContext*>(ctx.contextData);
-    if (text) {
-        auto width = GetTextWidth(text);
-        if (mctx.area.height > mctx.height) {
-            auto oldBorder = GetStyle(BUTTON, BORDER_WIDTH);
-            auto oldPadding = GetStyle(BUTTON, TEXT_PADDING);
-            auto oldAlign = GetStyle(BUTTON, TEXT_ALIGNMENT);
-            SetStyle(BUTTON, BORDER_WIDTH, 0);
-            SetStyle(BUTTON, TEXT_PADDING, ctx.spacingH / 2);
-            SetStyle(BUTTON, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
-            auto rc = Button(text);
-            SetStyle(BUTTON, BORDER_WIDTH, oldBorder);
-            SetStyle(BUTTON, TEXT_PADDING, oldPadding);
-            SetStyle(BUTTON, TEXT_ALIGNMENT, oldAlign);
-            if (rc) {
-                mctx.isOpen = false;
-            }
-            return rc;
-        }
-        else {
-            auto size = ctx.standardSize();
-            mctx.maxWidth = std::max(mctx.maxWidth, (float)width + ctx.spacingH);
-            mctx.height += size.y + (mctx.height > 0 ? ctx.spacingV : 0);
-        }
-    }
-    else {
-        // separator
-        if (mctx.area.height > mctx.height) {
-            Separator();
-        }
-        else {
-            mctx.height += -ctx.spacingV;
-        }
-    }
-    return false;
-}
-
-int BeginPopupMenu(Vector2 position, const char* items)
-{
-    return -1;
-}
-
-void EndPopupMenu() {}
-
-static std::string formatFileTimeIso8601(const std::chrono::time_point<std::chrono::system_clock>& ftime) {
-    // Convert the time_point to time_t.
-    std::time_t cftime = std::chrono::system_clock::to_time_t(ftime);
-    // Convert to UTC std::tm.
-    std::tm tm = *std::localtime(&cftime);
-    // Manually format into an ISO 8601 string.
-    return fmt::format("{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}",
-                         tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                         tm.tm_hour, tm.tm_min, tm.tm_sec);
-}
-
-static std::vector<std::string> g_lruList;
-static std::vector<const char*> g_lruPtrs;
-static ssize_t g_lruIndex = -1;
-
-static void updateLRUList()
-{
-    g_lruPtrs.clear();
-    for (const auto& p : g_lruList) {
-        g_lruPtrs.push_back(p.c_str());
-    }
-    g_lruPtrs.push_back(nullptr);
-}
-
-static void smartInsert(const std::string& str, ssize_t index, ssize_t maxSize) {
-    assert(index <= g_lruList.size());
-    if (index == g_lruList.size()) {
-        if (std::find(g_lruList.begin(), g_lruList.end(), str) != g_lruList.end()) {
-            return;
-        }
-        g_lruList.push_back(str);
-    } else {
-        if (std::find(g_lruList.begin(), g_lruList.begin() + index + 1, str) != g_lruList.begin() + index + 1) {
-            return;
-        }
-        auto removeStart = g_lruList.begin() + index;
-        g_lruList.erase(std::remove(removeStart, g_lruList.end(), str), g_lruList.end());
-        g_lruList.insert(g_lruList.begin() + index, str);
-    }
-    if (g_lruList.size() > maxSize) {
-        g_lruList.erase(g_lruList.begin() + maxSize, g_lruList.end());
-    }
-    updateLRUList();
-}
-
-static std::unordered_map<std::string_view, int> g_fileIconMap = {
-    // Text files (documents, office, markdown, pdf, etc.)
-    {"txt", ICON_FILETYPE_TEXT},
-    {"pdf", ICON_FILETYPE_TEXT},
-    {"doc", ICON_FILETYPE_TEXT},
-    {"docx", ICON_FILETYPE_TEXT},
-    {"xls", ICON_FILETYPE_TEXT},
-    {"xlsx", ICON_FILETYPE_TEXT},
-    {"ppt", ICON_FILETYPE_TEXT},
-    {"pptx", ICON_FILETYPE_TEXT},
-    {"odt", ICON_FILETYPE_TEXT},
-    {"ods", ICON_FILETYPE_TEXT},
-    {"odp", ICON_FILETYPE_TEXT},
-    {"rtf", ICON_FILETYPE_TEXT},
-    {"md", ICON_FILETYPE_TEXT},
-
-    // Audio files
-    {"wav", ICON_FILETYPE_AUDIO},
-    {"mp3", ICON_FILETYPE_AUDIO},
-    {"flac", ICON_FILETYPE_AUDIO},
-    {"ogg", ICON_FILETYPE_AUDIO},
-    {"aac", ICON_FILETYPE_AUDIO},
-
-    // Video files
-    {"mp4", ICON_FILETYPE_VIDEO},
-    {"avi", ICON_FILETYPE_VIDEO},
-    {"mkv", ICON_FILETYPE_VIDEO},
-    {"mov", ICON_FILETYPE_VIDEO},
-    {"wmv", ICON_FILETYPE_VIDEO},
-
-    // Image files
-    {"jpg", ICON_FILETYPE_IMAGE},
-    {"jpeg", ICON_FILETYPE_IMAGE},
-    {"png", ICON_FILETYPE_IMAGE},
-    {"gif", ICON_FILETYPE_IMAGE},
-    {"bmp", ICON_FILETYPE_IMAGE},
-    {"tiff", ICON_FILETYPE_IMAGE},
-
-    // Binary files (executables, raw binary dumps, etc.)
-    {"exe", ICON_FILETYPE_BINARY},
-    {"bin", ICON_FILETYPE_BINARY},
-    {"raw", ICON_FILETYPE_BINARY},
-    {"ram", ICON_FILETYPE_BINARY},
-    {"rom", ICON_FILETYPE_BINARY}};
-
-const std::unordered_map<std::string_view, int>& GetDefaultFileIcons()
-{
-    return g_fileIconMap;
-}
-void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons)
-{
-    g_fileIconMap = icons;
-}
-
-bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
-{
-    static Vector2 scroll{};
-    static std::string readPath;
-    static bool showLRU = false;
-    static bool pathBad = false;
-    static auto readDirectory = [](FileDialogInfo& fdi) {
-        if (fdi.fileIcons.empty()) {
-            fdi.fileIcons = g_fileIconMap;
-        }
-        fdi.entries.clear();
-        std::error_code ec;
-        if (!ghc::filesystem::exists(fdi.path, ec) || !ghc::filesystem::is_directory(fdi.path, ec)) {
-            scroll = {0, 0};
-            pathBad = true;
-            return;
-        }
-        pathBad = false;
-        if (ghc::filesystem::path(fdi.path).has_parent_path()) {
-            fdi.entries.emplace_back("..", 0, ghc::filesystem::file_time_type{}, FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
-        }
-        try {
-            for (const auto& entry : ghc::filesystem::directory_iterator(fdi.path, ghc::filesystem::directory_options::skip_permission_denied)) {
-                if (entry.is_directory()) {
-                    fdi.entries.emplace_back(entry.path().string(), 0, entry.last_write_time(), FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
-                }
-                else if (entry.is_regular_file()) {
-                    auto ext = entry.path().extension().string();
-                    auto it = fdi.fileIcons.find(ext.empty() ? ext : ext.substr(1));
-                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string(), it != fdi.fileIcons.end() ? it->second : ICON_FILE);
-                }
-            }
-        }
-        catch (ghc::filesystem::filesystem_error& e) {
-            // ignore for now
-        }
-        std::ranges::sort(fdi.entries, [](const FileDialogInfo::DirEntry &a, const FileDialogInfo::DirEntry &b) {
-            if (a.name == "..") return true;
-            if (b.name == "..") return false;
-            if (a.type != b.type) {
-                return a.type == FileDialogInfo::DirEntry::Dir;
-            }
-            return std::ranges::lexicographical_compare(a.name, b.name,
-                [](unsigned char a, unsigned char b) {
-                    return std::tolower(a) < std::tolower(b);
-                }
-            );
-        });
-        scroll = {0, 0};
-        readPath = fdi.path;
-    };
-    if (info.firstFrame) {
-        info.firstFrame = false;
-        scroll = {0.0f, 0.0f};
-        if (readPath != info.path) {
-            readDirectory(info);
-        }
-        return false;
-    }
-    info.action = FileDialogInfo::None;
-    const char* actionText = nullptr;
-    const char* cancelText = "Cancel";
-    bool actionEnabled = false;
-    bool editFilename = false;
-    switch (info.type) {
-        case FileDialogInfo::OpenFile:
-            actionText = "Open";
-            actionEnabled = info.selection.size() > 0;
-            break;
-        case FileDialogInfo::SaveFile:
-            actionText = "Save";
-            editFilename = true;
-            actionEnabled = !info.filename.empty() && !pathBad;
-            break;
-        case FileDialogInfo::SelectFolder:
-            actionText = "Choose";
-            actionEnabled = info.entries.size() > 0;
-            break;
-        case FileDialogInfo::SelectMultipleFiles:
-            actionText = "Select";
-            actionEnabled = info.selection.size() > 0;
-            break;
-    }
-    if (BeginWindowBox({-1, -1, 460, 300}, info.title.c_str(), isOpen, static_cast<WindowBoxFlags>(WBF_MOVABLE | WBF_MODAL))) {
-        info.action = FileDialogInfo::Cancel;
-    }
-    BeginColumns();
-    SetSpacing(0);
-    SetNextWidth(GetContentAvailable().width - 20);
-    if(TextBox(info.path, 4096)) {
-        // TODO
-    }
-    auto pathBox = GetLastWidgetRect();
-    pathBox.width += 20;
-    SetNextWidth(20);
-    bool openLRU = false;
-    if (Button(GuiIconText(ICON_ARROW_DOWN, "")) && !showLRU) {
-        openLRU = true;
-    }
-    EndColumns();
-    Space(4);
-    if (info.path != readPath) {
-        readDirectory(info);
-    }
-    Begin();
-    auto heightAvailable = GetContentAvailable().height;
-    BeginTableView(heightAvailable - 20 - (editFilename ? 20.0f : 0.0f), 3, &scroll);
-    auto font = GuiGetFont();
-    static constexpr float yo = 4;
-    float entryHeight = 15;
-    auto normalCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_NORMAL));
-    auto focusCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_FOCUSED));
-    auto pressedCol = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_PRESSED));
-    for (const auto& entry : info.entries) {
-        bool selected = editFilename ? ghc::filesystem::path(entry.name).filename().string() == info.filename : std::ranges::find(info.selection, entry.name) != info.selection.end();
-        auto textColor = normalCol;
-        if (TableNextRow(entryHeight, [&info,&entry,&textColor, selected, &pressedCol, &focusCol](Rectangle rect) {
-            if (selected) {
-                DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
-                textColor = pressedCol;
-            }
-            if (!showLRU && CheckCollisionPointRec(GetMousePosition(), rect)) {
-                if (!selected) {
-                    DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_NORMAL)));
-                    textColor = focusCol;
-                }
-                if (entry.type == FileDialogInfo::DirEntry::Dir && IsMouseButtonPressed(0)) {
-                    if (entry.name == "..") {
-                        info.path = ghc::filesystem::path(info.path).parent_path().string();
-                    }
-                    else {
-                        info.path = (ghc::filesystem::path(info.path) / entry.name).string();
-                    }
-                }
-                else if (entry.type == FileDialogInfo::DirEntry::File && IsMouseButtonPressed(0)) {
-                    if (info.type == FileDialogInfo::SelectMultipleFiles) {
-                        if (selected) {
-                            info.selection.erase(std::ranges::find(info.selection, entry.name));
-                        }
-                        else {
-                            info.selection.push_back(entry.name);
-                        }
-                    }
-                    else {
-                        info.selection.clear();
-                        info.selection.push_back(entry.name);
-                        info.filename = ghc::filesystem::path(entry.name).filename().string();
-                    }
-                }
-            }
-        })) {
-            TableNextColumn(272, [&entry,&font,&textColor](Rectangle rect) {
-                GuiDrawIcon(entry.icon, rect.x + 1, rect.y, 1, textColor);
-                DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().string().c_str(), {rect.x + 20, rect.y + yo}, textColor);
-            });
-            TableNextColumn(8*6, [&entry,&font,&textColor](Rectangle rect) {
-                if (entry.type == FileDialogInfo::DirEntry::Dir) {
-                    DrawTextClipped(GuiGetFont(), "  <DIR>", {rect.x + 4, rect.y + yo}, textColor);
-                }
-                else {
-                    if (entry.size < 16384)
-                        DrawTextClipped(font, TextFormat("%7d", entry.size), {rect.x + 4, rect.y + yo}, textColor);
-                    else if (entry.size < 1024*1024)
-                        DrawTextClipped(font, TextFormat("%6dk", entry.size/1024), {rect.x + 4, rect.y + yo}, textColor);
-                    else
-                        DrawTextClipped(font, TextFormat("%6dM", entry.size/1024/1024), {rect.x + 4, rect.y + yo}, textColor);
-                }
-            });
-            TableNextColumn(20*6, [&entry,&font,&textColor](Rectangle rect) {
-                if (entry.time != ghc::filesystem::file_time_type{})
-                    DrawTextClipped(font, formatFileTimeIso8601(entry.time).c_str(), {rect.x + 4, rect.y + yo}, textColor);
-            });
-        }
-    }
-    EndTableView();
-    if (editFilename) {
-        Space(4);
-        BeginColumns();
-        SetSpacing(0);
-        SetNextWidth(32);
-        Label("Name:");
-        TextBox(info.filename, 4096);
-        EndColumns();
-    }
-    Space(4);
-    BeginColumns();
-    SetSpacing(0);
-    auto actionWidth = MeasureTextEx(font, actionText, 8, 0).x + 10;
-    auto cancelWidth = MeasureTextEx(font, cancelText, 8, 0).x + 10;
-    auto indent = GetContentAvailable().width - actionWidth - cancelWidth - 10;
-    Space(indent);
-#ifdef WIN32
-    bool actionFirst = true;
-#else
-    bool actionFirst = false;
-#endif
-    if (actionFirst) {
-        SetNextWidth(actionWidth);
-        if (!actionEnabled) { GuiDisable(); }
-        if (Button(actionText)) {
-            info.action = FileDialogInfo::Okay;
-        }
-        GuiEnable();
-        Space(10);
-        SetNextWidth(cancelWidth);
-        if (Button(cancelText)) {
-            info.action = FileDialogInfo::Cancel;
-        }
-    }
-    else {
-        SetNextWidth(cancelWidth);
-        if (Button(cancelText)) {
-            info.action = FileDialogInfo::Cancel;
-        }
-        Space(10);
-        SetNextWidth(actionWidth);
-        if (!actionEnabled) { GuiDisable(); }
-        if (Button(actionText)) {
-            info.action = FileDialogInfo::Okay;
-        }
-        GuiEnable();
-    }
-    EndColumns();
-    End();
-    if (openLRU || showLRU) {
-        static int index = 0;
-        static int active = -1;
-        if (openLRU) {
-            showLRU = true;
-            active = -1;
-        }
-        if (g_lruIndex < 0) {
-            auto dirs = getUserDirectories();
-            g_lruList.push_back(dirs.home);
-            if (!dirs.documents.empty()) g_lruList.push_back(dirs.documents);
-            if (!dirs.downloads.empty()) g_lruList.push_back(dirs.downloads);
-            g_lruIndex = g_lruList.size();
-            updateLRUList();
-        }
-        Rectangle lruRect = {pathBox.x, pathBox.y + 16, pathBox.width, g_lruList.size() * entryHeight + 4};
-        if (!openLRU && IsMouseButtonReleased(0) && !CheckCollisionPointRec(GetMousePosition(), lruRect))
-            showLRU = false;
-        auto h = GuiGetStyle(LISTVIEW, LIST_ITEMS_HEIGHT);
-        auto s = GuiGetStyle(LISTVIEW, LIST_ITEMS_SPACING);
-        auto a = GuiGetStyle(LISTVIEW, TEXT_ALIGNMENT);
-        GuiSetStyle(LISTVIEW, LIST_ITEMS_HEIGHT, static_cast<int>(entryHeight - 1));
-        GuiSetStyle(LISTVIEW, LIST_ITEMS_SPACING, 1);
-        GuiSetStyle(LISTVIEW, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
-        DrawRectangleRec({pathBox.x + 3, pathBox.y + 19, pathBox.width, g_lruList.size() * entryHeight + 4}, {0,0,0,64});
-        GuiListViewEx(lruRect, g_lruPtrs.data(), g_lruList.size(), &index, &active, nullptr);
-        if (active >= 0) {
-            info.path = g_lruList[active];
-            showLRU = false;
-        }
-        DrawLineV({lruRect.x + 1, lruRect.y + 1 + g_lruIndex * entryHeight}, {lruRect.x + lruRect.width - 2, lruRect.y + 1 + g_lruIndex * entryHeight}, GetColor(GuiGetStyle(LISTVIEW, BORDER_COLOR_NORMAL)));
-        GuiSetStyle(LISTVIEW, LIST_ITEMS_HEIGHT, h);
-        GuiSetStyle(LISTVIEW, LIST_ITEMS_SPACING, s);
-        GuiSetStyle(LISTVIEW, TEXT_ALIGNMENT, a);
-    }
-    EndWindowBox();
-    if(IsKeyPressed(KEY_ESCAPE))
-        info.action = FileDialogInfo::Cancel;
-    if (info.action != FileDialogInfo::None) {
-        info.entries.clear();
-        info.firstFrame = true;
-        readPath.clear();
-        *isOpen = false;
-        showLRU = false;
-        return true;
-    }
-    return false;
-}
-
 bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active)
 {
     Begin();
@@ -2298,6 +1704,29 @@ bool SimpleListView(float height, const std::vector<std::string>& items, Vector2
     return *active != oldActive;
 }
 
+Rectangle AllocateWidget(Vector2 naturalSize)
+{
+    auto& ctx = detail::context();
+    auto size = ctx.standardSize();
+    if (ctx.nextWidth <= 0 && naturalSize.x > 0)
+        size.x = naturalSize.x;
+    if (ctx.nextHeight <= 0 && naturalSize.y > 0)
+        size.y = naturalSize.y;
+    Rectangle bounds{ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y};
+    ctx.increment(size);
+    return bounds;
+}
+
+float GetAlpha()
+{
+    return guiAlpha;
+}
+
+Vector2 GetTextSize(const char* text)
+{
+    return MeasureTextEx(GuiGetFont(), text, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
+}
+
 bool IsSysKeyDown()
 {
 #ifdef __APPLE__
@@ -2314,197 +1743,6 @@ bool IsSysKeyDown()
 #else
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 #endif
-}
-
-// ----------------------------------------------------------------------------
-// Seven-segment LED display
-// ----------------------------------------------------------------------------
-
-// "gfedcba" encoding (bit 0 = a, bit 6 = g) for hex digits 0-F.
-static const uint8_t kSegEncoding[16] = {
-    0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07,
-    0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
-};
-
-// Draw one digit cell at (x0, y0) with the given segment mask and colors.
-//
-// Layout (H = height, T = thickness, W = width, HH = H/2, gY = g-segment top):
-//
-//   +--a--+        rows 0 .. T-1
-//   f     b        rows T+1 .. gY-2
-//   +--g--+        rows gY .. gY+T-1
-//   e     c        rows gY+T+1 .. H-T-2
-//   +--d--+        rows H-T .. H-1
-//
-// One-pixel gap separates every pair of adjacent segment ends.
-static void drawOneSegDigit(float x0, float y0, float H, uint8_t segs, Color onColor, Color offColor)
-{
-    int T  = std::max(1, (int)(H / 8));
-    int W  = std::max(T * 4 + 2, (int)(H * 0.55f + 0.5f));
-    int gY = (int)(H / 2) - T / 2;
-    int bH = gY - T - 2;          // vertical half-height (top)
-    int cH = (int)H - gY - 2*T - 2; // vertical half-height (bottom)
-
-    auto draw = [&](bool on, float sx, float sy, float sw, float sh) {
-        if (sw >= 1.0f && sh >= 1.0f)
-            DrawRectangleRec({x0 + sx, y0 + sy, sw, sh}, on ? onColor : offColor);
-    };
-
-    float fw = (float)(W - 2*T - 2);  // horizontal segment width
-    draw(segs & 0x01, (float)(T+1),   0.0f,              fw,        (float)T);   // a top
-    draw(segs & 0x02, (float)(W-T),   (float)(T+1),      (float)T,  (float)bH);  // b top-right
-    draw(segs & 0x04, (float)(W-T),   (float)(gY+T+1),   (float)T,  (float)cH);  // c bot-right
-    draw(segs & 0x08, (float)(T+1),   (float)((int)H-T), fw,        (float)T);   // d bottom
-    draw(segs & 0x10, 0.0f,           (float)(gY+T+1),   (float)T,  (float)cH);  // e bot-left
-    draw(segs & 0x20, 0.0f,           (float)(T+1),      (float)T,  (float)bH);  // f top-left
-    draw(segs & 0x40, (float)(T+1),   (float)gY,         fw,        (float)T);   // g middle
-}
-
-void SevenSegmentDisplay(float height, int64_t value, int numDigits, int decimalPos, bool hexMode)
-{
-    if (numDigits <= 0) return;
-    auto& ctx = detail::context();
-
-    int T       = std::max(1, (int)(height / 8));
-    int W       = std::max(T * 4 + 2, (int)(height * 0.55f + 0.5f));
-    int dpDot   = T;             // decimal-point dot size (square)
-    int dpExtra = 1 + dpDot + 1; // fixed slot after every digit: gap + dot + gap
-
-    // Every digit cell is W + dpExtra wide.  The dp dot is always drawn (dim or
-    // bright), so the total width is constant regardless of decimalPos.
-    int totalW = numDigits * (W + dpExtra);
-
-    auto size = ctx.standardSize(height);
-    if (ctx.nextWidth <= 0)
-        size.x = (float)totalW;
-
-    float baseX = ctx.currentPos.x + ctx.scrollOffset.x;
-    float baseY = ctx.currentPos.y + ctx.scrollOffset.y;
-    ctx.increment(size);
-
-    Color onColor  = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)),   guiAlpha);
-    Color offColor = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_DISABLED)), guiAlpha);
-
-    int base = hexMode ? 16 : 10;
-    uint64_t uval = (uint64_t)(value < 0 ? -value : value);
-
-    // Collect digit values right-to-left (index 0 = rightmost digit).
-    std::vector<int> digitVals(numDigits, 0);
-    uint64_t tmp = uval;
-    for (int i = 0; i < numDigits; ++i, tmp /= base)
-        digitVals[i] = (int)(tmp % base);
-
-    // Draw left-to-right; dfr = digits from right for column j.
-    float x = baseX;
-    for (int j = 0; j < numDigits; ++j) {
-        int dfr = numDigits - 1 - j;
-        drawOneSegDigit(x, baseY, height, kSegEncoding[digitVals[dfr] & 0xF], onColor, offColor);
-        x += W;
-
-        // Dp dot: always occupies its slot; lit only for the selected position.
-        bool dotLit = decimalPos > 0 && dfr == decimalPos;
-        DrawRectangleRec({x + 1, baseY + height - dpDot, (float)dpDot, (float)dpDot},
-                         dotLit ? onColor : offColor);
-        x += dpExtra;
-    }
-}
-
-// TIL311-style 4×7 dot-matrix display.
-//
-// 20 dot positions per character, stored as bits 0-19 in kTil311Font[].
-// Layout (position label → row,col):
-//   Row 0 (top):    0,1,2,3           (all 4 cols)
-//   Row 1:          4,  ,  ,5         (outer cols only)
-//   Row 2:          6,  ,  ,7
-//   Row 3 (mid):    8,9,A,B           (all 4 cols)
-//   Row 4:          C,  ,  ,D
-//   Row 5:          E,  ,  ,F
-//   Row 6 (bot):    G,H,I,J           (all 4 cols)
-// Bit n of the font word = 1 if dot position n is lit.
-static const uint32_t kTil311Font[16] = {
-    0x6F9F6,  // 0
-    0x8A8A8,  // 1
-    0xF56A7,  // 2
-    0x7A6A7,  // 3
-    0x8AFF1,  // 4
-    0x7A75F,  // 5
-    0x6F756,  // 6
-    0x8A8AF,  // 7
-    0x6F6F6,  // 8
-    0x7AEF6,  // 9
-    0x9FFF6,  // A
-    0x7F7F7,  // B
-    0xE515E,  // C
-    0x7F9F7,  // D
-    0xF575F,  // E
-    0x1575F,  // F
-};
-
-// [row, col] for each of the 20 dot positions (0=top-left)
-static const int8_t kTil311Pos[20][2] = {
-    {0,0},{0,1},{0,2},{0,3},  // 0-3
-    {1,0},{1,3},               // 4-5
-    {2,0},{2,3},               // 6-7
-    {3,0},{3,1},{3,2},{3,3},  // 8-11
-    {4,0},{4,3},               // 12-13
-    {5,0},{5,3},               // 14-15
-    {6,0},{6,1},{6,2},{6,3},  // 16-19
-};
-
-void Til311Display(int dotSize, int64_t value, int numDigits, int decimalPos, bool hexMode)
-{
-    if (numDigits <= 0 || dotSize < 1) return;
-    auto& ctx = detail::context();
-
-    // Uniform integer grid: pitch = 2*dotSize (dot + equal-sized gap), no floats.
-    // Cell: 4 cols × 7 rows → width = 7*dotSize, height = 13*dotSize.
-    // dp sits one dotSize below the cell bottom (like the real TIL311 chip).
-    // dpExtra: gap(ds) + dp(ds) + inter-digit gap(ds) = 3*dotSize, so digits
-    // are never glued to the adjacent dp dot.
-    const int P       = 2 * dotSize;
-    const int cellW   = 3 * P + dotSize;       // = 7 * dotSize
-    const int cellH   = 6 * P + dotSize;       // = 13 * dotSize
-    const int dpExtra = 3 * dotSize;           // gap + dp + trailing gap
-    const int totalH  = cellH + 2 * dotSize;   // cell + gap + dp below
-    const int totalW  = numDigits * (cellW + dpExtra);
-
-    auto size = ctx.standardSize((float)totalH);
-    if (ctx.nextWidth <= 0)
-        size.x = (float)totalW;
-
-    int baseX = (int)(ctx.currentPos.x + ctx.scrollOffset.x);
-    int baseY = (int)(ctx.currentPos.y + ctx.scrollOffset.y);
-    ctx.increment(size);
-
-    Color onColor  = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)),   guiAlpha);
-    Color offColor = Fade(GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_DISABLED)), guiAlpha);
-
-    int base = hexMode ? 16 : 10;
-    uint64_t uval = (uint64_t)(value < 0 ? -value : value);
-
-    std::vector<int> digitVals(numDigits, 0);
-    uint64_t tmp = uval;
-    for (int i = 0; i < numDigits; ++i, tmp /= base)
-        digitVals[i] = (int)(tmp % base);
-
-    int x = baseX;
-    for (int j = 0; j < numDigits; ++j) {
-        int dfr  = numDigits - 1 - j;
-        uint32_t bits = kTil311Font[digitVals[dfr] & 0xF];
-
-        for (int k = 0; k < 20; ++k) {
-            bool lit = (bits >> k) & 1u;
-            int dotX = x + kTil311Pos[k][1] * P;
-            int dotY = baseY + kTil311Pos[k][0] * P;
-            DrawRectangle(dotX, dotY, dotSize, dotSize, lit ? onColor : offColor);
-        }
-        x += cellW;
-
-        bool dpLit = decimalPos > 0 && dfr == decimalPos;
-        DrawRectangle(x + dotSize - 1, baseY + cellH + dotSize, dotSize, dotSize,
-                      dpLit ? onColor : offColor);
-        x += dpExtra;
-    }
 }
 
 Color ColorFromHsv(Vector3 hsv)
@@ -2528,12 +1766,14 @@ void System::open(Vector2 position, const Menu& menu)
 
     if (menu.empty()) return;
 
+    _menu = menu;
+    _openedFrom = &menu;
     detail::OpenMenu root;
-    root.items = &menu;
-    root.width = calculateMenuWidth(menu);
+    root.items = &_menu;
+    root.width = calculateMenuWidth(_menu);
 
     // Adjust position to keep menu on screen
-    int height = calculateMenuHeight(menu);
+    int height = calculateMenuHeight(_menu);
     int guiWidth = GuiContext::positionLimits.x;
     int guiHeight = GuiContext::positionLimits.y;
 
@@ -2568,13 +1808,11 @@ bool System::isOpen() const
 
 bool System::isMenuOpen(const Menu& menu) const
 {
-    return !_menuChain.empty() && _menuChain.front().items == &menu;
+    return !_menuChain.empty() && _openedFrom == &menu;
 }
 
 bool System::update(float dt)
 {
-    _lastTriggeredAction.reset();
-
     if (_menuChain.empty())
         return false;
 
@@ -2704,9 +1942,9 @@ bool System::update(float dt)
                     *item.toggleValue = !(*item.toggleValue);
                 }
                 if (item.action) {
-                    item.action();
+                    auto action = item.action;  // the action might replace the menu
+                    action();
                 }
-                _lastTriggeredAction = item.label;
                 actionTriggered = true;
                 // Don't close menu for toggles - let user toggle multiple
             }
@@ -2787,9 +2025,19 @@ int System::calculateMenuWidth(Menu const& items) const
     return std::max(width, style.minWidth);
 }
 
+int System::fontSize() const
+{
+    return style.fontSize > 0 ? style.fontSize : GuiGetStyle(DEFAULT, TEXT_SIZE);
+}
+
+int System::itemHeight() const
+{
+    return style.itemHeight > 0 ? style.itemHeight : fontSize() + 3;
+}
+
 int System::calculateTextWidth(const std::string& text) const
 {
-    return std::round(MeasureTextEx(GuiGetFont(), text.c_str(), style.fontSize, 0).x);
+    return std::round(MeasureTextEx(GuiGetFont(), text.c_str(), fontSize(), 0).x);
 }
 
 int System::calculateMenuHeight(Menu const& items) const {
@@ -2801,7 +2049,7 @@ int System::calculateMenuHeight(Menu const& items) const {
 }
 
 int System::getItemHeight(Item const& item) const {
-    return (item.type == Item::Type::Separator) ? style.separatorHeight : style.itemHeight;
+    return (item.type == Item::Type::Separator) ? style.separatorHeight : itemHeight();
 }
 
 int System::getItemAtYPos(detail::OpenMenu const& menu, float y) const {
@@ -2864,11 +2112,10 @@ void System::openSubmenu(int parent_level, int item_index) {
 }
 
 void System::triggerItem(Item const& item) {
-    auto actionLabel = item.label;
     if (item.action) {
-        item.action();
+        auto action = item.action;  // the action might replace the menu
+        action();
     }
-    _lastTriggeredAction = actionLabel;
 }
 
 void System::drawMenu(detail::OpenMenu const& menu) const {
@@ -2963,7 +2210,7 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
         shortcutCol = textCol;
     }
 
-    int textYPos = static_cast<int>(bounds.y + (bounds.height - style.fontSize) / 2) + 1;
+    int textYPos = static_cast<int>(bounds.y + (bounds.height - fontSize()) / 2) + 1;
     auto const& font = GuiGetFont();
 
     // Checkmark for toggle items
@@ -2999,24 +2246,34 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
     }
 }
 
-void open(Vector2 position, const Menu& menu)
+void Open(Vector2 position, const Menu& menu)
 {
     GuiContext::popup.open(position, menu);
 }
 
-void close()
+void Close()
 {
     GuiContext::popup.close();
 }
 
-bool isOpen()
+bool IsOpen()
 {
     return GuiContext::popup.isOpen();
 }
 
-bool isMenuOpen(const Menu& menu)
+bool IsMenuOpen(const Menu& menu)
 {
     return GuiContext::popup.isMenuOpen(menu);
+}
+
+void SetMenuStyle(const Style& style)
+{
+    GuiContext::popup.style = style;
+}
+
+const Style& GetMenuStyle()
+{
+    return GuiContext::popup.style;
 }
 
 } // namespace PopupMenu

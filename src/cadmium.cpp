@@ -24,7 +24,9 @@
 //
 //---------------------------------------------------------------------------------------
 #include <raylib.h>
+#include <rlgl.h>
 #include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp_filedialog.hpp>
 #include <rlguipp/rlguipp_font.hpp>
 #include <stylemanager.hpp>
 #include "configuration.hpp"
@@ -1563,7 +1565,7 @@ void main()
     void updateMainMenu()
     {
         using namespace gui;
-        PopupMenu::close();
+        PopupMenu::Close();
         PopupMenu::Menu lruFiles;
         for (auto& recent : _recentFiles) {
             lruFiles.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() {
@@ -1697,11 +1699,11 @@ void main()
                 SetSpacing(0);
                 SetNextWidth(20);
                 static Vector2 aboutScroll{};
-                if (iconButton(ICON_BURGER_MENU, PopupMenu::isMenuOpen(_mainMenu)) && !PopupMenu::isOpen())
-                    PopupMenu::open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
+                if (iconButton(ICON_BURGER_MENU, PopupMenu::IsMenuOpen(_mainMenu)) && !PopupMenu::IsOpen())
+                    PopupMenu::Open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
                 if (IsSysKeyDown()) {
                     if (IsKeyPressed(KEY_N)) {
-                        PopupMenu::close();
+                        PopupMenu::Close();
                         _mainView = eEDITOR;
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
@@ -1712,7 +1714,7 @@ void main()
                         }
                     }
                     if (IsKeyPressed(KEY_O)) {
-                        PopupMenu::close();
+                        PopupMenu::Close();
 #ifdef PLATFORM_WEB
                         loadFileWeb();
 #else
@@ -1721,22 +1723,21 @@ void main()
 #endif
                     }
                     if (IsKeyPressed(KEY_S)) {
-                        PopupMenu::close();
+                        PopupMenu::Close();
                         saveShortcut();
                     }
                     if (IsKeyPressed(KEY_K)) {
-                        PopupMenu::close();
+                        PopupMenu::Close();
                         _showKeyMap = !_showKeyMap;
                     }
 #ifndef PLATFORM_WEB
                     if (IsKeyPressed(KEY_Q)) {
-                        PopupMenu::close();
+                        PopupMenu::Close();
                         _shouldClose = true;
                     }
 #endif
                 }
-                if (_aboutOpen) {
-                    _aboutOpen = !BeginWindowBox({-1, -1, 460, 300}, "About Cadmium", &_aboutOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
+                if (BeginWindowBox({-1, -1, 460, 300}, "About Cadmium", &_aboutOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL))) {
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
                     static size_t newlines = std::count_if(aboutText.begin(), aboutText.end(), [](char c) { return c ==        '\n'; });
                     BeginScrollPanel(-1, {0, 0, 445, newlines * 10.0f + 100}, &aboutScroll);
@@ -2013,7 +2014,7 @@ void main()
                             SetSpacing(0);
                             SetNextWidth(GetContentAvailable().width - 20*5);
                             Label("CHIP-8 Library Directories:");
-                            SetNextWidth(-20);
+                            SetDefaultWidth(20);
                             if (Button("+")) {
                                 selectorOpen = true;
                                 activeEntry = -1;
@@ -2136,40 +2137,46 @@ void main()
             }
 
             if (_colorSelectOpen) {
-                _colorSelectOpen = !BeginWindowBox({-1, -1, 200, 250}, "Select Color", &_colorSelectOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
-                auto prevCol = *_selectedColor;
-                *_selectedColor = toEmuColor(ColorPicker(toRaylibColor(*_selectedColor)));
-                if (*_selectedColor != prevCol) {
-                    _colorText = fmt::format("{:06x}", _selectedColor->toRGBInt());
-                }
-                Space(5);
-                BeginColumns();
-                SetNextWidth(40);
-                Label("Color:");
-                SetNextWidth(60);
-                if (TextBox(_colorText, 7)) {
-                    *_selectedColor = emu::Palette::Color("#"+_colorText);
-                }
-                EndColumns();
-                Space(5);
-                BeginColumns();
-                Space(30);
-                SetNextWidth(60);
-                if (Button("Ok")) {
-                    _defaultPalette = _colorPalette;
-                    setPalette(_defaultPalette);
-                    _chipEmu->setPalette(_defaultPalette);
-                    _selectedColor = nullptr;
-                    _colorSelectOpen = false;
-                }
-                SetNextWidth(60);
-                if (Button("Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+                if (!BeginWindowBox({-1, -1, 200, 250}, "Select Color", &_colorSelectOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL))) {
                     *_selectedColor = _previousColor;
                     _selectedColor = nullptr;
-                    _colorSelectOpen = false;
                 }
-                EndColumns();
-                EndWindowBox();
+                else {
+                    auto pickedColor = toRaylibColor(*_selectedColor);
+                    if (ColorPicker(&pickedColor)) {
+                        *_selectedColor = toEmuColor(pickedColor);
+                        _colorText = fmt::format("{:06x}", _selectedColor->toRGBInt());
+                    }
+                    Space(5);
+                    BeginColumns();
+                    SetNextWidth(40);
+                    Label("Color:");
+                    SetNextWidth(60);
+                    TextBox(_colorText, 7);
+                    if (IsLastWidgetEditFinished()) {
+                        *_selectedColor = emu::Palette::Color("#"+_colorText);
+                    }
+                    EndColumns();
+                    Space(5);
+                    BeginColumns();
+                    Space(30);
+                    SetNextWidth(60);
+                    if (Button("Ok")) {
+                        _defaultPalette = _colorPalette;
+                        setPalette(_defaultPalette);
+                        _chipEmu->setPalette(_defaultPalette);
+                        _selectedColor = nullptr;
+                        _colorSelectOpen = false;
+                    }
+                    SetNextWidth(60);
+                    if (Button("Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+                        *_selectedColor = _previousColor;
+                        _selectedColor = nullptr;
+                        _colorSelectOpen = false;
+                    }
+                    EndColumns();
+                    EndWindowBox();
+                }
             }
             if (IsKeyDown(KEY_ESCAPE))
                 volumeClick = std::chrono::steady_clock::time_point{};
@@ -2221,7 +2228,7 @@ void main()
             GuiDisable();
         const auto rc = std::visit(emu::visitor{
                                 [](std::nullptr_t) -> int { gui::Label(""); return 0; },
-                                [pa, &prop](bool& val) -> int { val = gui::CheckBox(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), val); return val ? 1 : 0; },
+                                [pa, &prop](bool& val) -> int { gui::CheckBox(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), &val); return val ? 1 : 0; },
                                 [pa, &prop](emu::Property::Integer& val) -> int { gui::Spinner(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), &val.intValue, val.minValue, val.maxValue); return val.intValue; },
                                 [](std::string& val) -> int {
                                     auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
@@ -2277,7 +2284,7 @@ void main()
         using namespace gui;
         bool forceUpdate = false;
         BeginColumns();
-        SetNextWidth(0.42f);
+        SetNextRelativeWidth(0.42f);
         BeginGroupBox("CHIP-8 variant / Core");
         Space(5);
         SetSpacing(2);
@@ -2303,7 +2310,7 @@ void main()
         else {
             static bool dummyTrace = false;
             GuiDisable();
-            CheckBox("Trace-Log", dummyTrace);
+            CheckBox("Trace-Log", &dummyTrace);
             GuiEnable();
         }
         EndGroupBox();
@@ -2542,7 +2549,7 @@ void main()
         Space(8);
         BeginColumns();
         Space(150);
-        SetNextWidth(0.21f);
+        SetNextRelativeWidth(0.21f);
         bool romRemembered = _cfg.romConfigs.contains(_romSha1);
         if((romRemembered && matchesSettings(_cfg.romConfigs[_romSha1])) || (_romIsWellKnown && matchesSettings(_romWellKnownProperties))) {
             GuiDisable();
@@ -2554,7 +2561,7 @@ void main()
         GuiEnable();
         if(!romRemembered)
             GuiDisable();
-        SetNextWidth(0.21f);
+        SetNextRelativeWidth(0.21f);
         if(Button("Forget ROM")) {
             _cfg.romConfigs.erase(_romSha1);
             saveConfig();
@@ -2578,7 +2585,8 @@ void main()
 #ifdef PLATFORM_WEB
         Space(area.height - 54);
 #else
-        if(TextBox(_currentDirectory, 4096)) {
+        TextBox(_currentDirectory, 4096);
+        if (IsLastWidgetEditFinished()) {
             _librarian.fetchDir(_currentDirectory);
             _currentDirectory = _librarian.currentDirectory();
         }
@@ -2712,7 +2720,7 @@ void main()
                 SetNextWidth(110);
                 Label("Select file type:");
                 SetNextWidth(70);
-                _saveFileType = ToggleGroup("ROM File;Source Code", _saveFileType);
+                ToggleGroup("ROM File;Source Code", &_saveFileType);
                 EndColumns();
                 Space(3);
                 SetNextWidth(80);

@@ -541,11 +541,17 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<path-to-emsdk>/emsdk/upstream/emscri
 cmake --build build
 ```
 
-HP-48SX support is optional. Add `-DCADMIUM_WITH_HP48=ON` when configuring,
-or `-DFETCHCONTENT_SOURCE_DIR_HP48SX=/path/to/hp48sx` to use a local checkout
-and enable it automatically. Web builds embed the default Rev E ROM and all
-four interpreter sources in the Wasm binary. Deploy `index.html`, `index.js`,
-and `index.wasm` as usual; no separate HP-48 asset files are needed.
+Deploy `index.html`, `index.js`, and `index.wasm` as usual.
+
+### HP-48SX Core
+
+The HP-48SX core runs the original CHIP-48 and SUPER-CHIP interpreters on an
+emulated HP-48SX. It needs HP's revision E ROM, which is not part of this
+repository. Put it as `resources/files/sxrom-rev-e` (the file is in `.gitignore`)
+and CMake builds the core and compiles the ROM into Cadmium, on all platforms
+including the web. Without the ROM, Cadmium is built without the HP-48SX core.
+To leave the core out even with the ROM present (e.g. for builds you want to
+pass on), configure with `-DCADMIUM_DISABLE_HP48=ON`.
 
 ## Used Resources
 
@@ -595,6 +601,28 @@ and `index.wasm` as usual; no separate HP-48 asset files are needed.
   of std::filesystem for C++11/14/17/20 that also works on MingW variants
   that don't have a working std::filesystem in C++17 and with better utf8
   support _(automatically fetched during configuration)_
+* [zstd](https://github.com/facebook/zstd) - fast compression, used for the
+  HP-48SX state files _(automatically fetched during configuration, only with
+  the HP-48SX core)_
+
+### HP-48SX CHIP-8 Interpreters
+
+The interpreter sources in `resources/files/hp-chip8` are not covered by
+Cadmium's MIT license, they keep their own: noncommercial distribution is
+allowed, provided that the copyright message is preserved and modified
+versions are clearly marked as such. All four are based on CHIP-48 by
+Andreas Gustafsson, their headers describe their history and changes:
+
+* `chip48.asap` - CHIP-48 2.25 by Andreas Gustafsson (1990), slightly modified
+  for Cadmium's ASAP assembler
+* `schip10.asap` - SUPER-CHIP 1.0 by Erik Bryntse (1991), slightly modified for
+  Cadmium's ASAP assembler
+* `schip11.asap` - SUPER-CHIP 1.1 by Erik Bryntse (1991), its source is lost,
+  this is a reconstruction from the binary and the 1.0 source by Steffen
+  "Gulrak" Schümann (2026)
+* `schpc.asap` - SCHPC, the SUPER-CHIP compatibility fix by Chromatophore (2018),
+  made by patching the 1.1 binary, reconstructed as source by Steffen "Gulrak"
+  Schümann (2026)
 
 
 ## Special Credits
