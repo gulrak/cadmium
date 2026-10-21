@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/coreregistry.hpp
+// src/emulation/coreregistry.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2024, Steffen Schümann <s.schuemann@pobox.com>

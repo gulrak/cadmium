@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// tests/variant_specific_opcode_tests.cpp
+// test/variant_specific_opcode_tests.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>

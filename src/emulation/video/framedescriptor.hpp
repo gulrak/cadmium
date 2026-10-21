@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/video/framedescriptor.hpp
+// src/emulation/video/framedescriptor.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2025, Steffen Schümann <s.schuemann@pobox.com>

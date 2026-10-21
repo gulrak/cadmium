@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chip8rsm8k1tables.hpp
+// src/emulation/chip8rsm8k1tables.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2026, Steffen Schümann <s.schuemann@pobox.com>
