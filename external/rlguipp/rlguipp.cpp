@@ -18,13 +18,21 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
+#include <deque>
 #include <stack>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
+
+// Called on misuse of the api, like unbalanced Begin*/End* or PushId/PopId calls. Release builds log the
+// error and repair the state instead. Define RLGUIPP_ASSERT (e.g. empty) to test that in a debug build.
+#ifndef RLGUIPP_ASSERT
+#define RLGUIPP_ASSERT(expr) assert(expr)
+#endif
 
 namespace gui {
 
@@ -55,22 +63,19 @@ namespace detail {
 //
 // Share and Enjoy!	:-)
 // (Code minimally adapted by Gulrak)
-uint64_t fnv_64a_str(const char* str, uint64_t hval, size_t cnt = 0)
+uint64_t fnv_64a_buf(const void* buf, size_t len, uint64_t hval)
 {
-    auto* s = (unsigned char*)str; /* unsigned string */
+    auto* bp = (const unsigned char*)buf; /* start of buffer */
+    auto* be = bp + len;                  /* beyond end of buffer */
 
     /*
-     * FNV-1a hash each octet of the string
+     * FNV-1a hash each octet of the buffer
      */
-    while (*s) {
+    while (bp < be) {
         /* xor the bottom with the current octet */
-        hval ^= (uint64_t)*s++;
+        hval ^= (uint64_t)*bp++;
 
         /* multiply by the 64 bit FNV magic prime mod 2^64 */
-        hval *= ((uint64_t)0x100000001b3ULL);
-    }
-    if(cnt) {
-        hval ^= (uint64_t)cnt;
         hval *= ((uint64_t)0x100000001b3ULL);
     }
     /* return our new hash value */
@@ -175,6 +180,7 @@ struct PopupContext
         , _flags(other._flags)
         , _isOpen(other._isOpen)
         , _inDrag(other._inDrag)
+        , _visible(other._visible)
     {
     }
     ~PopupContext() { UnloadRenderTexture(_content); }
@@ -185,10 +191,8 @@ struct PopupContext
     void move(float dx, float dy) { _position.x += dx, _position.y += dy; }
     void render() const
     {
-        if (*_isOpen) {
-            DrawRectangle(position().x + 4, position().y + 4, _content.texture.width, _content.texture.height, {0, 0, 0, 96});
-            DrawTextureRec(_content.texture, {0, 0, (float)_content.texture.width, -(float)_content.texture.height}, position(), ::WHITE);
-        }
+        DrawRectangle(position().x + 4, position().y + 4, _content.texture.width, _content.texture.height, {0, 0, 0, 96});
+        DrawTextureRec(_content.texture, {0, 0, (float)_content.texture.width, -(float)_content.texture.height}, position(), ::WHITE);
     }
     PopupContext& operator=(const PopupContext&) = delete;
     PopupContext& operator=(PopupContext&& other) noexcept
@@ -202,23 +206,25 @@ struct PopupContext
             _flags = other._flags;
             _isOpen = other._isOpen;
             _inDrag = other._inDrag;
+            _visible = other._visible;
         }
         return *this;
     }
 
     static void renderPopups();
-    static void cleanupPoups();
-    static PopupContext* find(bool* isOpen);
+    static PopupContext* find(Id id);
 
     int _level{0};
     Vector2 _position{0, 0};
     RenderTexture _content{};
     int64_t _lastUpdate{0};
     WindowBoxFlags _flags{WBF_NONE};
-    bool* _isOpen;
+    bool* _isOpen;          // only valid in the frame given in _lastUpdate, never dereferenced later
     bool _inDrag{false};
+    bool _visible{false};   // drawn at the end of the last frame
 };
 
+// Only used while the tab view is described, it keeps no state between frames
 struct TabViewContext
 {
     int *activeTab{nullptr};
@@ -226,29 +232,25 @@ struct TabViewContext
     float tabOffset{0.0f};
     float incX{0};
     float incY{0};
-    static TabViewContext& getContext(int* activeTab);
 };
 
 struct TableContext
 {
-    int numColumns{0};
     bool lockedGui{false};
     std::vector<float> columnWidth;
-    float curX{0};
-    float curY{0};
     float curWidth{0};
     float curHeight{0};
     float curRowHeight{0};
-    float curColumnWidth{0};
     int curRow{0};
     int curColumn{0};
     Vector2* scroll{nullptr};
-    static TableContext& getContext(Vector2* scroll);
+    int64_t lastUpdate{0};
+    static TableContext& getContext(Id id);
 };
 
 struct GuiContext
 {
-    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctTABVIEW, ctTAB, ctPOPUP, ctSCROLLPANEL };
+    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctPANEL, ctGROUPBOX, ctTABVIEW, ctTAB, ctSCROLLPANEL, ctTABLEVIEW, ctPOPUP, ctWINDOWBOX };
     using ContextData = std::variant<std::monostate, RenderTexture*, TableContext*, TabViewContext*>;
     Type type;
     Vector2 initialPos{};
@@ -273,10 +275,11 @@ struct GuiContext
     Vector2 scrollOffset{0, 0};
     std::string groupName;
     ContextData contextData;
-    uint64_t hash{0xbeef};
-    size_t childContextCount{0};
+    size_t idStackSize{0};    // size of the id stack inside this context, restored by its End*()
+    size_t clipStackSize{0};  // size of the clipping stack inside this context, restored by its End*()
 
-    GuiContext& newContext(const std::string& key) const;
+    GuiContext& newContext() const;
+    void captureStackSizes();
 
     void increment(Vector2 size)
     {
@@ -308,7 +311,7 @@ struct GuiContext
     struct DropdownInfo
     {
         Rectangle rect{};
-        int* active{nullptr};
+        int* active{nullptr};       // only valid in the frame given in lastUpdate
         bool directionUp{false};
         bool changed{false};
         std::string text;
@@ -319,16 +322,16 @@ struct GuiContext
         bool guiDisabled{false};
         unsigned int style[RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED];
     };
-    inline static std::unordered_map<uint64_t, DropdownInfo> dropdownBoxes;
-    inline static uint64_t openDropdownboxId{0};
-    inline static void* editFocusId{nullptr};
+    inline static std::unordered_map<Id, DropdownInfo> dropdownBoxes;
+    inline static Id openDropdownboxId{0};
+    inline static Id editFocusId{0};
+    inline static int64_t editFocusFrame{0};  // last frame the focused widget was shown or asked for the focus
     inline static GuiContext* rootContext{nullptr};
     inline static std::string tooltipText;
     inline static Rectangle tooltipParentRect{};
     inline static float tooltipTimer{};
-    static bool deferDropdownBox(Rectangle rect, const char* text, int* active, bool directionUp, uint64_t hash)
+    static bool deferDropdownBox(Rectangle rect, const char* text, int* active, bool directionUp, Id key)
     {
-        uint64_t key = detail::fnv_64a_str(text, hash);
         auto iter = dropdownBoxes.find(key);
         if (iter != dropdownBoxes.end()) {
             iter->second.lastUpdate = frameId;
@@ -341,7 +344,7 @@ struct GuiContext
             return std::exchange(iter->second.changed, false);
         }
         else {
-            iter = dropdownBoxes.emplace(key, DropdownInfo{rect, active, directionUp, false, std::string(text), false, 0, 0, GetState()}).first;
+            iter = dropdownBoxes.emplace(key, DropdownInfo{rect, active, directionUp, false, std::string(text), false, frameId, 0, GetState()}).first;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
@@ -435,20 +438,138 @@ struct GuiContext
     }
 };
 
-static std::stack<GuiContext> g_contextStack;
-static std::unordered_map<bool*, PopupContext> g_popupMap;
+// The state kept between frames is stored by id, an entry not used in a frame is removed in the next BeginGui()
+static std::deque<GuiContext> g_contextStack;
+static std::unordered_map<Id, PopupContext> g_popupMap;
 static PopupContext* g_popupUnderMouse{nullptr};
-static std::unordered_map<Vector2*, TableContext> g_tableContextMap;
-static std::unordered_map<int*,TabViewContext> g_tabviewContextMap;
-static std::stack<Rectangle> g_clippingStack;
+static std::unordered_map<Id, TableContext> g_tableContextMap;
 
-inline GuiContext& GuiContext::newContext(const std::string& key) const
+struct MenuBarState
 {
-    g_contextStack.push(*this);
-    auto& ctx = g_contextStack.top();
-    ctx.childContextCount = 0;
-    ctx.hash = detail::fnv_64a_str(key.c_str(), ctx.hash, ++g_contextStack.top().childContextCount);
+    int openAtFrameStart{-1};   // index of the entry whose menu was open at the end of the last frame
+    int64_t lastUpdate{0};
+};
+static std::unordered_map<Id, MenuBarState> g_menuBarMap;
+static std::deque<TabViewContext> g_tabViewStack;
+static std::vector<Id> g_idStack;
+static std::stack<Rectangle> g_clippingStack;
+static std::vector<RenderTexture*> g_renderTargets;
+
+namespace detail {
+
+static constexpr Id ROOT_ID = 0xcbf29ce484222325ULL;  // FNV-1a 64 bit offset basis
+
+Id idScope()
+{
+    return g_idStack.empty() ? ROOT_ID : g_idStack.back();
+}
+
+// 0 is never returned, it means "no id" (e.g. no keyboard focus)
+Id hashId(const void* data, size_t size, Id seed)
+{
+    auto hash = fnv_64a_buf(data, size, seed);
+    return hash ? hash : 1;
+}
+
+// The terminating zero is hashed too, so the scopes "a" + "b" don't give the same id as "ab"
+Id hashId(const char* str, Id seed)
+{
+    if (!str)
+        str = "";
+    return hashId(str, std::strlen(str) + 1, seed);
+}
+
+// Api misuse asserts in debug builds, in release builds it is logged once per message and the caller repairs the state
+void reportError(const char* message)
+{
+    static std::unordered_set<std::string> reported;
+    if (reported.insert(message).second) {
+        TraceLog(LOG_ERROR, "RLGUIPP: %s (only reported once)", message);
+    }
+    RLGUIPP_ASSERT(!"rlguipp api misuse, see the logged error");
+}
+
+// The names of the Begin*()/End*() functions of a context type, for error messages
+std::pair<const char*, const char*> functionNames(GuiContext::Type type)
+{
+    switch (type) {
+        case GuiContext::ctROOT: return {"BeginGui", "EndGui"};
+        case GuiContext::ctGROUP: return {"Begin", "End"};
+        case GuiContext::ctCOLUMNS: return {"BeginColumns", "EndColumns"};
+        case GuiContext::ctPANEL: return {"BeginPanel", "EndPanel"};
+        case GuiContext::ctGROUPBOX: return {"BeginGroupBox", "EndGroupBox"};
+        case GuiContext::ctTABVIEW: return {"BeginTabView", "EndTabView"};
+        case GuiContext::ctTAB: return {"BeginTab", "EndTab"};
+        case GuiContext::ctSCROLLPANEL: return {"BeginScrollPanel", "EndScrollPanel"};
+        case GuiContext::ctTABLEVIEW: return {"BeginTableView", "EndTableView"};
+        case GuiContext::ctPOPUP: return {"BeginPopup", "EndPopup"};
+        case GuiContext::ctWINDOWBOX: return {"BeginWindowBox", "EndWindowBox"};
+    }
+    return {"?", "?"};
+}
+
+// Closing a context restores the id and clipping stacks to their size at its start
+void repairStacks(const GuiContext& ctx)
+{
+    const auto* endName = functionNames(ctx.type).second;
+    if (g_idStack.size() != ctx.idStackSize) {
+        reportError(TextFormat("PopId() missing before %s()", endName));
+        g_idStack.resize(ctx.idStackSize);
+    }
+    if (g_clippingStack.size() != ctx.clipStackSize) {
+        reportError(TextFormat("EndClipping() missing before %s()", endName));
+        while (g_clippingStack.size() > ctx.clipStackSize) {
+            g_clippingStack.pop();
+        }
+    }
+}
+
+void closeContext();
+void endContext(GuiContext::Type type);
+
+// A label that is also an id can have a part that is not shown: "Text##id" shows "Text" and
+// uses the whole label as id, "Text###id" uses only "###id", so the text can change without changing the id
+class LabelId
+{
+public:
+    explicit LabelId(const char* label)
+    {
+        const char* separator = label ? std::strstr(label, "##") : nullptr;
+        if (separator) {
+            _storage.assign(label, separator);
+            _text = _storage.c_str();
+            _id = hashId(separator[2] == '#' ? separator : label, idScope());
+        }
+        else {
+            _text = label;
+            _id = hashId(label, idScope());
+        }
+    }
+    LabelId(const LabelId&) = delete;
+    LabelId& operator=(const LabelId&) = delete;
+    Id id() const { return _id; }
+    const char* text() const { return _text; }
+
+private:
+    std::string _storage;
+    const char* _text{nullptr};
+    Id _id{0};
+};
+
+}  // namespace detail
+
+inline void GuiContext::captureStackSizes()
+{
+    idStackSize = g_idStack.size();
+    clipStackSize = g_clippingStack.size();
+}
+
+inline GuiContext& GuiContext::newContext() const
+{
+    g_contextStack.push_back(*this);
+    auto& ctx = g_contextStack.back();
     ctx.maxSize = {};
+    ctx.captureStackSizes();
     return ctx;
 }
 
@@ -465,8 +586,10 @@ void PopupContext::renderPopups()
 {
     // Popups are now drawn ordered by level (map order within a level)
     std::vector<PopupContext*> visible;
-    for (auto& [isOpen, popup] : g_popupMap) {
-        if (popup._lastUpdate >= GuiContext::frameId && *isOpen) {
+    for (auto& [id, popup] : g_popupMap) {
+        // _isOpen may only be dereferenced in the frame it was given
+        popup._visible = popup._lastUpdate >= GuiContext::frameId && *popup._isOpen;
+        if (popup._visible) {
             visible.push_back(&popup);
         }
     }
@@ -478,21 +601,9 @@ void PopupContext::renderPopups()
     }
 }
 
-void PopupContext::cleanupPoups()
+PopupContext* PopupContext::find(Id id)
 {
-    for (auto iter = g_popupMap.begin(), last = g_popupMap.end(); iter != last;) {
-        if (!*iter->first && iter->second._lastUpdate < GuiContext::frameId) {
-            iter = g_popupMap.erase(iter);
-        }
-        else {
-            ++iter;
-        }
-    }
-}
-
-PopupContext* PopupContext::find(bool* isOpen)
-{
-    auto iter = g_popupMap.find(isOpen);
+    auto iter = g_popupMap.find(id);
     if (iter != g_popupMap.end()) {
         iter->second._lastUpdate = GuiContext::frameId;
         return &iter->second;
@@ -500,33 +611,46 @@ PopupContext* PopupContext::find(bool* isOpen)
     return nullptr;
 }
 
-TableContext& TableContext::getContext(Vector2* scroll)
+TableContext& TableContext::getContext(Id id)
 {
-    auto iter = g_tableContextMap.find(scroll);
+    auto iter = g_tableContextMap.find(id);
     if (iter == g_tableContextMap.end()) {
-        iter = g_tableContextMap.emplace(std::make_pair(scroll, TableContext())).first;
-    }
-    return iter->second;
-}
-
-TabViewContext& TabViewContext::getContext(int* activeTab)
-{
-    auto iter = g_tabviewContextMap.find(activeTab);
-    if(iter == g_tabviewContextMap.end()) {
-        iter = g_tabviewContextMap.emplace(std::make_pair(activeTab, TabViewContext())).first;
+        iter = g_tableContextMap.emplace(std::make_pair(id, TableContext())).first;
     }
     return iter->second;
 }
 
 namespace detail {
 
+// Remove the state of everything that was not used in the last frame, the render textures of popups are unloaded with it
+void pruneUnusedState(RenderTexture* renderTexture)
+{
+    const auto lastFrame = GuiContext::frameId;
+    if (!g_popupMap.empty()) {
+        if (renderTexture)
+            EndTextureMode();
+        std::erase_if(g_popupMap, [lastFrame](const auto& item) { return item.second._lastUpdate < lastFrame; });
+        if (renderTexture)
+            BeginTextureMode(*renderTexture);
+    }
+    std::erase_if(g_tableContextMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
+    std::erase_if(g_menuBarMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
+    std::erase_if(GuiContext::dropdownBoxes, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
+    if (GuiContext::openDropdownboxId && !GuiContext::dropdownBoxes.contains(GuiContext::openDropdownboxId)) {
+        GuiContext::openDropdownboxId = 0;
+    }
+    if (GuiContext::editFocusId && GuiContext::editFocusFrame < lastFrame) {
+        GuiContext::editFocusId = 0;
+    }
+}
+
 void updatePopupUnderMouse()
 {
     g_popupUnderMouse = nullptr;
     if (!g_popupMap.empty()) {
         auto mouse = GetMousePosition();
-        for (auto& [isOpen, popup] : g_popupMap) {
-            if (*isOpen) {
+        for (auto& [id, popup] : g_popupMap) {
+            if (popup._visible) {
                 if ((popup._flags & WBF_MODAL) || CheckCollisionPointRec(mouse, popup.bounds())) {
                     if (!g_popupUnderMouse || g_popupUnderMouse->level() <= popup.level()) {
                         g_popupUnderMouse = &popup;
@@ -540,9 +664,12 @@ void updatePopupUnderMouse()
 GuiContext& context()
 {
     if (g_contextStack.empty()) {
-        throw std::runtime_error("No valid gui context, only call gui functions between at least one gui::Begin() and gui::End()!");
+        reportError("gui functions must be called between BeginGui() and EndGui()");
+        static GuiContext dummy{GuiContext::ctROOT};
+        dummy = GuiContext{GuiContext::ctROOT};
+        return dummy;
     }
-    return g_contextStack.top();
+    return g_contextStack.back();
 }
 
 template <typename Func, typename... Args>
@@ -556,14 +683,14 @@ typename std::invoke_result<Func, Rectangle, Args...>::type defaultWidget(Func f
 }
 
 template <typename Func, typename... Args>
-typename std::invoke_result<Func, Rectangle, Args..., bool>::type editableWidget(Func fp, void* key, Args&&... args)
+typename std::invoke_result<Func, Rectangle, Args..., bool>::type editableWidget(Func fp, Id id, Args&&... args)
 {
     auto& ctx = detail::context();
     auto size = ctx.standardSize();
-    auto editMode = HasKeyboardFocus(key);
+    auto editMode = HasKeyboardFocus(id);
     auto rc = (*fp)({ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y}, std::forward<Args>(args)..., editMode);
     if (rc) {
-        SetKeyboardFocus(editMode ? nullptr : key);
+        SetKeyboardFocus(editMode ? 0 : id);
     }
     ctx.increment(size);
     GuiContext::lastWidgetEditFinished = rc && editMode;
@@ -572,14 +699,19 @@ typename std::invoke_result<Func, Rectangle, Args..., bool>::type editableWidget
 
 }  // namespace detail
 
-void SetKeyboardFocus(void* key)
+void SetKeyboardFocus(Id id)
 {
-    GuiContext::editFocusId = key;
+    GuiContext::editFocusId = id;
+    GuiContext::editFocusFrame = GuiContext::frameId;
 }
 
-bool HasKeyboardFocus(void* key)
+bool HasKeyboardFocus(Id id)
 {
-    return GuiContext::editFocusId == key;
+    if (id && id == GuiContext::editFocusId) {
+        GuiContext::editFocusFrame = GuiContext::frameId;
+        return true;
+    }
+    return false;
 }
 
 void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset, Vector2 guiScale)
@@ -595,20 +727,25 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
     }
 
     if (!g_contextStack.empty()) {
-        throw std::runtime_error("Nesting of gui::BeginGui/gui::EndGui not allowed!");
+        detail::reportError("BeginGui() without EndGui() of the last one");
+        while (g_contextStack.size() > 1) {
+            detail::closeContext();
+        }
+        g_contextStack.clear();
     }
-    g_contextStack.push({GuiContext::ctROOT, {area.x, area.y}, {area.x, area.y}, area, area});
-    g_contextStack.top().mouseOffset = mouseOffset;
+    if (!g_idStack.empty()) {
+        detail::reportError("PopId() missing before BeginGui()");
+        g_idStack.clear();
+    }
+    g_contextStack.push_back({GuiContext::ctROOT, {area.x, area.y}, {area.x, area.y}, area, area});
+    g_contextStack.back().mouseOffset = mouseOffset;
+    g_contextStack.back().captureStackSizes();
+    g_renderTargets.assign(1, renderTexture);
     SetMouseOffset(mouseOffset.x, mouseOffset.y);
 
+    g_tabViewStack.clear();
+    detail::pruneUnusedState(renderTexture);
     detail::updatePopupUnderMouse();
-    if (!g_popupMap.empty()) {
-        if (renderTexture)
-            EndTextureMode();
-        PopupContext::cleanupPoups();
-        if (renderTexture)
-            BeginTextureMode(*renderTexture);
-    }
     if ((GuiContext::openDropdownboxId || g_popupUnderMouse) && !GuiIsLocked()) {
         TraceLog(LOG_DEBUG, "GUI is locked!");
         GuiLock();
@@ -617,23 +754,29 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
         TraceLog(LOG_DEBUG, "GUI is unlocked!");
         GuiUnlock();
     }
-    g_contextStack.top().contextData = renderTexture;
+    g_contextStack.back().contextData = renderTexture;
     GuiContext::tooltipText.clear();
     ++GuiContext::frameId;
     GuiContext::guiScale = guiScale;
     GuiContext::popup.update(GetFrameTime());
-    GuiContext::rootContext = &g_contextStack.top();
+    GuiContext::rootContext = &g_contextStack.back();
 }
 
 void EndGui()
 {
-    if (g_contextStack.size() != 1) {
-        throw std::runtime_error("Unbalanced gui::Begin*/gui::End*!");
+    if (g_contextStack.empty()) {
+        detail::reportError("EndGui() without matching BeginGui()");
+        return;
     }
+    while (g_contextStack.size() > 1) {
+        detail::reportError(TextFormat("%s() missing before EndGui()", detail::functionNames(g_contextStack.back().type).second));
+        detail::closeContext();
+    }
+    detail::repairStacks(g_contextStack.back());
     GuiContext::handleDeferredDropBoxes();
     PopupContext::renderPopups();
     GuiContext::popup.render();
-    g_contextStack = std::stack<GuiContext>();
+    g_contextStack.clear();
 #if !defined(PLATFORM_WEB) && !defined(NDEBUG) && defined(RLGUIPP_DEBUG_CURSOR)
     auto pos = GetMousePosition();
     GuiDrawIcon(20, pos.x - 1, pos.y, 1, ::WHITE);
@@ -648,12 +791,48 @@ void EndGui()
 void UnloadGui()
 {
     g_popupMap.clear();
+    g_popupUnderMouse = nullptr;
+    g_tableContextMap.clear();
+    GuiContext::dropdownBoxes.clear();
+    GuiContext::openDropdownboxId = 0;
+    GuiContext::editFocusId = 0;
+}
+
+void PushId(const char* str)
+{
+    g_idStack.push_back(detail::hashId(str, detail::idScope()));
+}
+
+void PushId(int value)
+{
+    g_idStack.push_back(detail::hashId(&value, sizeof(value), detail::idScope()));
+}
+
+void PushId(const void* ptr)
+{
+    g_idStack.push_back(detail::hashId(&ptr, sizeof(ptr), detail::idScope()));
+}
+
+void PopId()
+{
+    // an id pushed outside of the current context can only be popped after its End*()
+    auto minSize = g_contextStack.empty() ? 0 : g_contextStack.back().idStackSize;
+    if (g_idStack.size() <= minSize) {
+        detail::reportError("PopId() without matching PushId()");
+        return;
+    }
+    g_idStack.pop_back();
+}
+
+Id GetId(const char* label)
+{
+    return detail::hashId(label, detail::idScope());
 }
 
 void Begin()
 {
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("Begin");
+    auto& ctx = ctxParent.newContext();
     ctx.type = GuiContext::ctGROUP;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, ctx.standardSize().x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
     ctx.content = ctx.area;
@@ -666,8 +845,8 @@ void Begin()
 
 static void EndImpl(Vector2 size = {})
 {
-    auto ctxOld = g_contextStack.top();
-    g_contextStack.pop();
+    auto ctxOld = g_contextStack.back();
+    g_contextStack.pop_back();
     auto& ctx = detail::context();
     if (size.x > 0 && size.y > 0) {
         ctx.increment(size);
@@ -682,13 +861,7 @@ static void EndImpl(Vector2 size = {})
 
 void End()
 {
-    if (g_contextStack.size() < 2) {
-        throw std::runtime_error("Unbalanced gui::Begin*/gui::End*!");
-    }
-    if (detail::context().horizontal) {
-         throw std::runtime_error("Unbalanced gui::BeginColumns/gui::EndColumns!");
-    }
-    EndImpl();
+    detail::endContext(GuiContext::ctGROUP);
 }
 
 void BeginColumns()
@@ -698,21 +871,23 @@ void BeginColumns()
     detail::context().horizontal = true;
 }
 
+static void EndColumnsImpl()
+{
+    auto& ctx = g_contextStack.back();
+    EndImpl({ctx.currentPos.x - ctx.area.x, ctx.maxSize.y});
+}
+
 void EndColumns()
 {
-    auto ctx = detail::context();
-    if (!ctx.horizontal) {
-        throw std::runtime_error("Unbalanced gui::BeginColumns/gui::EndColumns!");
-    }
-    EndImpl({ctx.currentPos.x - ctx.area.x, ctx.maxSize.y});
+    detail::endContext(GuiContext::ctCOLUMNS);
 }
 
 void BeginPanel(const char* text, Vector2 padding)
 {
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("BeginPanel");
+    auto& ctx = ctxParent.newContext();
     auto size = ctx.standardSize();
-    ctx.type = GuiContext::ctGROUP;
+    ctx.type = GuiContext::ctPANEL;
     if (text) {
         GuiStatusBar({ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctx.rowHeight}, text);
         ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
@@ -732,9 +907,9 @@ void BeginPanel(const char* text, Vector2 padding)
     ctx.padding = padding;
 }
 
-void EndPanel()
+static void EndPanelImpl()
 {
-    auto& ctx = detail::context();
+    auto& ctx = g_contextStack.back();
     if (ctx.level > 1) {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y - ctx.spacingV}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
@@ -744,33 +919,53 @@ void EndPanel()
     EndImpl();
 }
 
+void EndPanel()
+{
+    detail::endContext(GuiContext::ctPANEL);
+}
+
 void BeginTabView(int *activeTab)
 {
-    auto& tvc = TabViewContext::getContext(activeTab);
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("BeginTabView");
+    auto& ctx = ctxParent.newContext();
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctTABVIEW;
+    auto& tvc = g_tabViewStack.emplace_back();
     tvc.activeTab = activeTab;
     tvc.currentTab = 0;
     tvc.tabOffset = 2.0f;
+    // the size of the tab bar alone, used if there is no active tab
+    tvc.incX = size.x;
+    tvc.incY = ctx.rowHeight;
     ctx.contextData = &tvc;
     GuiStatusBar({ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctx.rowHeight}, " ");
 }
 
-void EndTabView()
+static void EndTabViewImpl()
 {
-    auto ctxOld = g_contextStack.top();
-    g_contextStack.pop();
+    auto ctxOld = g_contextStack.back();
+    g_contextStack.pop_back();
     auto& ctxNew = detail::context();
     auto& tvc = *std::get<TabViewContext*>(ctxOld.contextData);
     ctxNew.increment({tvc.incX, tvc.incY});
+    g_tabViewStack.pop_back();
 }
 
-bool BeginTab(const char* text, Vector2 padding)
+void EndTabView()
+{
+    detail::endContext(GuiContext::ctTABVIEW);
+}
+
+bool BeginTab(const char* label, Vector2 padding)
 {
     auto& ctxParent = detail::context();
+    if (ctxParent.type != GuiContext::ctTABVIEW) {
+        detail::reportError("BeginTab() outside of BeginTabView()/EndTabView()");
+        return false;
+    }
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
+    detail::LabelId labelId(label);
+    auto* text = labelId.text();
     auto labelSize = GetTextSize(text);
     bool isActive = *tvc.activeTab == tvc.currentTab;
     bool hoversOverTab = !GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), {ctxParent.currentPos.x + tvc.tabOffset + 1, ctxParent.currentPos.y + 3, labelSize.x + 4, ctxParent.rowHeight - 4});
@@ -801,7 +996,7 @@ bool BeginTab(const char* text, Vector2 padding)
     if(!isActive) {
         return false;
     }
-    auto& ctx = ctxParent.newContext("BeginTab");
+    auto& ctx = ctxParent.newContext();
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctTAB;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
@@ -814,12 +1009,14 @@ bool BeginTab(const char* text, Vector2 padding)
     ctx.groupName = text ? text : "";
     ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = padding;
+    g_idStack.push_back(labelId.id());
+    ctx.captureStackSizes();
     return true;
 }
 
-void EndTab()
+static void EndTabImpl()
 {
-    auto& ctx = detail::context();
+    auto& ctx = g_contextStack.back();
     auto ctxOld = ctx;
     if (ctx.level > 1) {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.currentPos.y - ctx.area.y + ctx.padding.y}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
@@ -827,7 +1024,8 @@ void EndTab()
     else {
         GuiDrawRectangle({ctx.area.x, ctx.area.y, ctx.area.width, ctx.area.height}, 1, Fade(GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), guiAlpha), {0, 0, 0, 0});
     }
-    g_contextStack.pop();
+    g_contextStack.pop_back();
+    g_idStack.pop_back();
     auto& ctxParent = detail::context();
     ctxOld.maxSize = {ctxOld.area.width, ctxOld.area.height};
     auto& tvc = *std::get<TabViewContext*>(ctxParent.contextData);
@@ -841,10 +1039,15 @@ void EndTab()
     }
 }
 
+void EndTab()
+{
+    detail::endContext(GuiContext::ctTAB);
+}
+
 void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
 {
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("BeginScrollPanel");
+    auto& ctx = ctxParent.newContext();
     auto size = ctx.standardSize();
     ctx.type = GuiContext::ctSCROLLPANEL;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, height > 0 ? height : ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
@@ -868,36 +1071,74 @@ void BeginScrollPanel(float height, Rectangle content, Vector2 *scroll)
         ctx.area.height - 2*GuiGetStyle(DEFAULT, BORDER_WIDTH)
     };
     BeginClipping(view);
+    ctx.captureStackSizes();
     ctx.mouseOffset = ctxParent.mouseOffset;
+}
+
+static void EndScrollPanelImpl()
+{
+    g_clippingStack.pop();
+    auto& ctx = g_contextStack.back();
+    EndImpl({ctx.area.width, ctx.area.height});
 }
 
 void EndScrollPanel()
 {
-    if (detail::context().type != GuiContext::ctSCROLLPANEL) {
-        throw std::runtime_error("Unbalanced gui::BeginScrollPanel/gui::EndScrollPanel!");
-    }
-    EndClipping();
-    auto& ctx = detail::context();
-    EndImpl({ctx.area.width, ctx.area.height});
+    detail::endContext(GuiContext::ctSCROLLPANEL);
 }
 
-void BeginTableView(float height, int numColumns, Vector2 *scroll)
+void BeginTableView(float height, const char* id, std::initializer_list<TableColumn> columns, Vector2 *scroll)
 {
-    auto& tc = TableContext::getContext(scroll);
+    auto tableId = GetId(id);
+    auto& tc = TableContext::getContext(tableId);
+    auto& ctxParent = detail::context();
+    auto areaWidth = ctxParent.standardSize().x;
+    auto areaHeight = height > 0 ? height : ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y;
     auto contentHeight = tc.curHeight;
-    auto contentWidth = tc.curWidth;
+    if (!tc.lastUpdate && scroll->y < 0) {
+        // The content height is only known after the first frame, until then make it large enough
+        // for the scroll position, so the scroll panel doesn't reset it
+        contentHeight = -scroll->y + areaHeight;
+    }
+    // Stretch columns share the width of the scroll panel's view that the fixed columns leave,
+    // the view is reduced by the vertical scrollbar the same way BeginScrollPanel() does it
+    auto borderWidth = (float)GuiGetStyle(DEFAULT, BORDER_WIDTH);
+    bool hasVerticalScrollBar = contentHeight + 4 > areaHeight - 2 * borderWidth;
+    auto viewWidth = areaWidth - 2 * borderWidth - (hasVerticalScrollBar ? (float)GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH) : 0.0f);
+    float fixedWidth = 0;
+    float stretchWeight = 0;
+    for (const auto& column : columns) {
+        if (column.kind == TableColumn::FIXED)
+            fixedWidth += column.value;
+        else
+            stretchWeight += column.value;
+    }
+    auto stretchWidth = std::max(0.0f, viewWidth - fixedWidth);
+    tc.columnWidth.clear();
+    float contentWidth = 0;
+    float stretchUsed = 0;
+    for (const auto& column : columns) {
+        float width = column.value;
+        if (column.kind == TableColumn::STRETCH && stretchWeight > 0) {
+            stretchUsed += column.value;
+            // the rounding difference goes to the next stretch column, so together they fill the width exactly
+            width = std::floor(stretchWidth * stretchUsed / stretchWeight) - std::floor(stretchWidth * (stretchUsed - column.value) / stretchWeight);
+        }
+        tc.columnWidth.push_back(width);
+        contentWidth += width;
+    }
+    if (!tc.lastUpdate && scroll->x < 0) {
+        contentWidth = std::max(contentWidth, -scroll->x + areaWidth);
+    }
+    tc.lastUpdate = GuiContext::frameId;
     tc.scroll = scroll;
-    tc.numColumns = numColumns;
     tc.curRow = -1;
     tc.curColumn = -1;
     tc.curRowHeight = 0;
-    tc.curColumnWidth = 0;
-    tc.curX = 0;
-    tc.curY = 0;
     tc.curWidth = 0;
     tc.curHeight = 0;
-    tc.columnWidth.clear();
     BeginScrollPanel(height, {0, 0, contentWidth, contentHeight+4}, scroll);
+    detail::context().type = GuiContext::ctTABLEVIEW;
     detail::context().contextData = &tc;
     if(!CheckCollisionPointRec(GetMousePosition(), detail::context().area) && !GuiIsLocked()) {
         GuiLock();
@@ -905,15 +1146,20 @@ void BeginTableView(float height, int numColumns, Vector2 *scroll)
     }
     // TableView has its own scroll handling for cells, so reset scroll offset
     detail::context().scrollOffset = {0,0};
+    g_idStack.push_back(tableId);
+    detail::context().captureStackSizes();
 }
 
 bool TableNextRow(float height, Color background)
 {
     auto& ctx = detail::context();
-    if(!std::holds_alternative<gui::TableContext*>(ctx.contextData))
-        throw std::runtime_error("TableNextRow outside BeginTableView/EndTableView");
+    if(!std::holds_alternative<gui::TableContext*>(ctx.contextData)) {
+        detail::reportError("TableNextRow() outside of BeginTableView()/EndTableView()");
+        return false;
+    }
     auto& tc = *std::get<TableContext*>(ctx.contextData);
     ++tc.curRow;
+    tc.curColumn = -1;
     tc.curRowHeight = height;
     tc.curHeight += height;
     tc.curWidth = 0;
@@ -935,32 +1181,28 @@ bool TableNextRow(float height, const std::function<void(Rectangle rect)>& handl
     return result;
 }
 
-bool TableNextColumn(float width)
+bool TableNextColumn()
 {
     auto& ctx = detail::context();
-    if(!std::holds_alternative<gui::TableContext*>(ctx.contextData))
-        throw std::runtime_error("TableNextColumn outside BeginTableView/EndTableView");
+    if(!std::holds_alternative<gui::TableContext*>(ctx.contextData)) {
+        detail::reportError("TableNextColumn() outside of BeginTableView()/EndTableView()");
+        return false;
+    }
     auto& tc = *std::get<TableContext*>(ctx.contextData);
-    if(width > 0 && width <= 1.0f) {
-        width = ctx.area.width * width;
+    if (tc.curColumn + 1 >= (int)tc.columnWidth.size()) {
+        detail::reportError("TableNextColumn() called more often than the table has columns");
+        return false;
     }
-    ++tc.curColumn;
-    tc.curColumnWidth = width;
+    auto width = tc.columnWidth[++tc.curColumn];
     tc.curWidth += width;
-    if(tc.columnWidth.size() < tc.numColumns) {
-        tc.columnWidth.push_back(width);
-    }
-    else {
-        // TODO: more checks
-    }
-    ctx.content = {ctx.area.x + tc.curWidth - width, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, width, tc.curRowHeight};
+    ctx.content = {ctx.area.x + tc.curWidth - width + tc.scroll->x, ctx.area.y + 2 + tc.curHeight - tc.curRowHeight + tc.scroll->y, width, tc.curRowHeight};
     ctx.initialPos = ctx.currentPos = {ctx.content.x + 2, ctx.content.y + 2};
     return CheckCollisionRecs(ctx.area, ctx.content);
 }
 
-void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler)
+void TableNextColumn(const std::function<void(Rectangle rect)>& handler)
 {
-    if (TableNextColumn(width)) {
+    if (TableNextColumn()) {
         auto& ctx = detail::context();
         BeginClipping(ctx.content);
         handler(ctx.content);
@@ -968,25 +1210,28 @@ void TableNextColumn(float width, const std::function<void(Rectangle rect)>& han
     }
 }
 
-void EndTableView()
+static void EndTableViewImpl()
 {
-    auto& ctx = detail::context();
-    if(!std::holds_alternative<gui::TableContext*>(ctx.contextData))
-        throw std::runtime_error("EndTableView without matching BeginTableView");
-    auto& tc = *std::get<TableContext*>(ctx.contextData);
-    EndScrollPanel();
+    auto& tc = *std::get<TableContext*>(g_contextStack.back().contextData);
+    g_idStack.pop_back();
+    EndScrollPanelImpl();
     if(tc.lockedGui) {
         tc.lockedGui = false;
         GuiUnlock();
     }
 }
 
+void EndTableView()
+{
+    detail::endContext(GuiContext::ctTABLEVIEW);
+}
+
 void BeginGroupBox(const char* text)
 {
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("BeginGroupBox");
+    auto& ctx = ctxParent.newContext();
     auto size = ctx.standardSize();
-    ctx.type = GuiContext::ctGROUP;
+    ctx.type = GuiContext::ctGROUPBOX;
     ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, size.x, ctxParent.area.height + ctxParent.area.y - ctxParent.currentPos.y};
     ctx.content = {ctx.area.x + 5, ctx.area.y + ctx.rowHeight * 2 / 3, ctx.area.width - 10, ctx.area.height - ctx.rowHeight * 2 / 3};
     ctx.initialPos = {ctx.content.x, ctx.content.y};
@@ -999,18 +1244,26 @@ void BeginGroupBox(const char* text)
     ctx.padding = {0, 0};
 }
 
-void EndGroupBox()
+static void EndGroupBoxImpl()
 {
-    auto& ctx = detail::context();
+    auto& ctx = g_contextStack.back();
     GuiGroupBox({ctx.area.x, ctx.area.y + 8, ctx.area.width, ctx.currentPos.y - ctx.area.y - 4}, ctx.groupName.c_str());
     ctx.increment({0, ctx.spacingV});
-    End();
+    EndImpl();
 }
 
-bool BeginPopup(Rectangle area, bool* isOpen)
+void EndGroupBox()
+{
+    detail::endContext(GuiContext::ctGROUPBOX);
+}
+
+namespace detail {
+
+// Returns the state of the popup if it is open, its content is described until the matching EndPopup()
+PopupContext* beginPopup(Rectangle area, Id id, bool* isOpen)
 {
     if (!*isOpen) {
-        return false;
+        return nullptr;
     }
     if(GuiContext::rootContext) {
         const auto* root = GuiContext::rootContext;
@@ -1020,7 +1273,7 @@ bool BeginPopup(Rectangle area, bool* isOpen)
             area.y = (root->area.height - area.height) / 2.0f;
     }
     auto& ctxParent = detail::context();
-    auto& ctx = ctxParent.newContext("BeginPopup" + std::to_string(reinterpret_cast<std::uintptr_t>(isOpen)));
+    auto& ctx = ctxParent.newContext();
     ctx.type = GuiContext::ctPOPUP;
     ctx.area = {0, 0, area.width, area.height};
     ctx.content = ctx.area;
@@ -1032,54 +1285,72 @@ bool BeginPopup(Rectangle area, bool* isOpen)
     ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
     ctx.padding = {0, 0};
 
-    if (auto* parentTexture = std::get_if<RenderTexture*>(&ctxParent.contextData); parentTexture && *parentTexture) {
+    if (g_renderTargets.back()) {
         EndTextureMode();
     }
-    auto* popup = PopupContext::find(isOpen);
+    auto* popup = PopupContext::find(id);
     if (!popup) {
-        popup = &g_popupMap.emplace(isOpen, PopupContext{area, isOpen}).first->second;
+        popup = &g_popupMap.emplace(id, PopupContext{area, isOpen}).first->second;
     }
+    popup->_isOpen = isOpen;
     ctx.mouseOffset = {ctxParent.mouseOffset.x - popup->position().x * GuiContext::guiScale.x, ctxParent.mouseOffset.y - popup->position().y * GuiContext::guiScale.y};
     ctx.contextData = &popup->texture();
+    g_renderTargets.push_back(&popup->texture());
     BeginTextureMode(popup->texture());
     GuiDrawRectangle({0, 0, area.width, area.height}, 1, GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)), GetColor(GetStyle(DEFAULT, BACKGROUND_COLOR)));
     SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
     if (g_popupUnderMouse == popup && GuiIsLocked()) {
         GuiUnlock();
     }
-    return true;
+    g_idStack.push_back(id);
+    ctx.captureStackSizes();
+    return popup;
 }
 
-void EndPopup()
+}  // namespace detail
+
+bool BeginPopup(Rectangle area, const char* id, bool* isOpen)
+{
+    return detail::beginPopup(area, GetId(id), isOpen) != nullptr;
+}
+
+static void EndPopupImpl()
 {
     if (g_popupUnderMouse && !GuiIsLocked()) {
         GuiLock();
     }
-    if (g_contextStack.empty() || !std::holds_alternative<RenderTexture*>(g_contextStack.top().contextData)) {
-        throw std::runtime_error("Unbalanced gui::BeginPopup/gui::EndPopup!");
-    }
     EndTextureMode();
-    g_contextStack.pop();
-    SetMouseOffset((int)g_contextStack.top().mouseOffset.x, (int)g_contextStack.top().mouseOffset.y);
-    if (auto* parentTexture = std::get_if<RenderTexture*>(&g_contextStack.top().contextData); parentTexture && *parentTexture) {
-        BeginTextureMode(**parentTexture);
+    g_contextStack.pop_back();
+    g_idStack.pop_back();
+    g_renderTargets.pop_back();
+    auto& ctx = detail::context();
+    SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
+    if (g_renderTargets.back()) {
+        BeginTextureMode(*g_renderTargets.back());
     }
 }
 
-bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags)
+void EndPopup()
+{
+    detail::endContext(GuiContext::ctPOPUP);
+}
+
+bool BeginWindowBox(Rectangle area, const char* label, bool* isOpen, WindowBoxFlags flags)
 {
     auto mouseParent = detail::context().mouseOffset;
-    if (!BeginPopup(area, isOpen)) {
+    detail::LabelId labelId(label);
+    auto* title = labelId.text();
+    auto* popup = detail::beginPopup(area, labelId.id(), isOpen);
+    if (!popup) {
         return false;
     }
-    auto popup = PopupContext::find(isOpen);
-    if(popup)
-        popup->_flags = flags;
+    popup->_flags = flags;
     auto& ctx = detail::context();
+    ctx.type = GuiContext::ctWINDOWBOX;
     if (flags & WBF_CLOSABLE) {
         if (GuiWindowBox({0, 0, area.width, area.height}, title)) {
             *isOpen = false;
-            EndPopup();
+            EndPopupImpl();
             return false;
         }
     }
@@ -1088,10 +1359,10 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
         GuiStatusBar({0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT}, title);
         GuiPanel({0, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT - 1, area.width, area.height - RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT + 1}, nullptr);
     }
-    if (popup && (flags & WBF_MOVABLE) && !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
+    if ((flags & WBF_MOVABLE) && !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {0, 0, area.width, RAYGUI_WINDOWBOX_STATUSBAR_HEIGHT})) {
         popup->_inDrag = true;
     }
-    else if (popup && popup->_inDrag) {
+    else if (popup->_inDrag) {
         auto delta = GetMouseDelta();
         popup->move(delta.x / GuiContext::guiScale.x, delta.y / GuiContext::guiScale.y);
         ctx.mouseOffset = {mouseParent.x - popup->position().x * GuiContext::guiScale.x, mouseParent.y - popup->position().y * GuiContext::guiScale.y};
@@ -1108,8 +1379,47 @@ bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFl
 
 void EndWindowBox()
 {
-    EndPopup();
+    detail::endContext(GuiContext::ctWINDOWBOX);
 }
+
+namespace detail {
+
+// Closes the context on top of the stack, as its End*() would do
+void closeContext()
+{
+    repairStacks(g_contextStack.back());
+    switch (g_contextStack.back().type) {
+        case GuiContext::ctROOT: break;  // only closed by EndGui()
+        case GuiContext::ctGROUP: EndImpl(); break;
+        case GuiContext::ctCOLUMNS: EndColumnsImpl(); break;
+        case GuiContext::ctPANEL: EndPanelImpl(); break;
+        case GuiContext::ctGROUPBOX: EndGroupBoxImpl(); break;
+        case GuiContext::ctTABVIEW: EndTabViewImpl(); break;
+        case GuiContext::ctTAB: EndTabImpl(); break;
+        case GuiContext::ctSCROLLPANEL: EndScrollPanelImpl(); break;
+        case GuiContext::ctTABLEVIEW: EndTableViewImpl(); break;
+        case GuiContext::ctPOPUP:
+        case GuiContext::ctWINDOWBOX: EndPopupImpl(); break;
+    }
+}
+
+// Called by the End*() functions: closes the innermost context of the given type, contexts that were
+// opened inside of it and not closed are closed first, an End*() without matching Begin*() is ignored
+void endContext(GuiContext::Type type)
+{
+    const auto* endName = functionNames(type).second;
+    if (std::ranges::none_of(g_contextStack, [type](const GuiContext& ctx) { return ctx.type == type; })) {
+        reportError(TextFormat("%s() without matching %s()", endName, functionNames(type).first));
+        return;
+    }
+    while (g_contextStack.back().type != type) {
+        reportError(TextFormat("%s() missing before %s()", functionNames(g_contextStack.back().type).second, endName));
+        closeContext();
+    }
+    closeContext();
+}
+
+}  // namespace detail
 
 void BeginClipping(const Rectangle& clipArea)
 {
@@ -1118,6 +1428,12 @@ void BeginClipping(const Rectangle& clipArea)
 
 void EndClipping()
 {
+    // a clipping area started outside of the current context can only be ended after its End*()
+    auto minSize = g_contextStack.empty() ? 0 : g_contextStack.back().clipStackSize;
+    if (g_clippingStack.size() <= minSize) {
+        detail::reportError("EndClipping() without matching BeginClipping()");
+        return;
+    }
     g_clippingStack.pop();
 }
 
@@ -1465,41 +1781,46 @@ int GuiDropupBox(Rectangle bounds, const char *text, int *active, bool editMode)
     return result;   // Mouse click: result = 1
 }
 
-bool DropdownBox(const char* text, int* active, bool directionUp)
+bool DropdownBox(const char* label, int* active, bool directionUp)
 {
-    return detail::defaultWidget(GuiContext::deferDropdownBox, text, active, directionUp, g_contextStack.top().hash);
+    detail::LabelId labelId(label);
+    return detail::defaultWidget(GuiContext::deferDropdownBox, labelId.text(), active, directionUp, labelId.id());
 }
 
-bool Spinner(const char* text, int* value, int minValue, int maxValue)
+bool Spinner(const char* label, int* value, int minValue, int maxValue)
 {
+    detail::LabelId labelId(label);
     auto oldValue = *value;
-    detail::editableWidget(GuiSpinner, (void*)value, text, value, minValue, maxValue);
+    detail::editableWidget(GuiSpinner, labelId.id(), labelId.text(), value, minValue, maxValue);
     *value = std::clamp(*value, minValue, maxValue);
     return *value != oldValue;
 }
 
-bool ValueBox(const char* text, int* value, int minValue, int maxValue)
+bool ValueBox(const char* label, int* value, int minValue, int maxValue)
 {
+    detail::LabelId labelId(label);
     auto oldValue = *value;
-    detail::editableWidget(GuiValueBox, (void*)value, text, value, minValue, maxValue);
+    detail::editableWidget(GuiValueBox, labelId.id(), labelId.text(), value, minValue, maxValue);
     return *value != oldValue;
 }
 
-bool TextBox(char* text, int textSize)
+bool TextBox(const char* id, char* text, int textSize)
 {
+    auto textId = GetId(id);
     // raygui only changes the text in edit mode, so only then a copy is needed
-    bool editing = HasKeyboardFocus(text);
+    bool editing = HasKeyboardFocus(textId);
     std::string oldText = editing ? text : "";
-    detail::editableWidget(GuiTextBox, (void*)text, text, textSize);
+    detail::editableWidget(GuiTextBox, textId, text, textSize);
     return editing && oldText != text;
 }
 
-bool TextBox(std::string& text, int textSize)
+bool TextBox(const char* id, std::string& text, int textSize)
 {
-    bool editing = HasKeyboardFocus(&text);
+    auto textId = GetId(id);
+    bool editing = HasKeyboardFocus(textId);
     std::string oldText = editing ? text : std::string();
     text.resize(textSize + 1);
-    detail::editableWidget(GuiTextBox, (void*)&text, text.data(), textSize);
+    detail::editableWidget(GuiTextBox, textId, text.data(), textSize);
     text.resize(std::strlen(text.data()));
     return editing && oldText != text;
 }
@@ -1670,10 +1991,10 @@ const char* IconText(int iconId, const char* text)
     return buffer;
 }
 
-bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active)
+bool SimpleListView(float height, const char* id, const std::vector<std::string>& items, Vector2* scrollPos, int* active)
 {
     Begin();
-    BeginTableView(height, 1, scrollPos);
+    BeginTableView(height, id, {TableColumn::Stretch()}, scrollPos);
     auto font = GuiGetFont();
     auto oldActive = *active;
     int count = 0;
@@ -2277,6 +2598,54 @@ const Style& GetMenuStyle()
 }
 
 } // namespace PopupMenu
+
+void MenuBar(const char* id, const PopupMenu::Bar& bar)
+{
+    auto& state = g_menuBarMap[GetId(id)];
+    state.lastUpdate = GuiContext::frameId;
+    auto rect = AllocateWidget({0, 0});
+    GuiStatusBar(rect, nullptr);
+
+    int openIndex = -1;
+    for (int i = 0; i < (int)bar.size(); ++i) {
+        if (PopupMenu::IsMenuOpen(bar[i].menu))
+            openIndex = i;
+    }
+    // While a menu is open the popup menu system locks the gui, the bar still has to react then. A click on
+    // a title already closed the open menu in BeginGui(), so openAtFrameStart tells if it was open before.
+    bool interactive = GuiGetState() != STATE_DISABLED && (openIndex >= 0 || state.openAtFrameStart >= 0 || !GuiIsLocked());
+    auto mouse = GetMousePosition();
+    const float padding = 6;
+    float x = rect.x;
+    for (int i = 0; i < (int)bar.size(); ++i) {
+        const auto& entry = bar[i];
+        Rectangle titleRect{x, rect.y + 1, GetTextSize(entry.title.c_str()).x + 2 * padding, rect.height - 2};
+        x += titleRect.width;
+        bool hovered = interactive && CheckCollisionPointRec(mouse, titleRect);
+        if (hovered) {
+            Vector2 menuPos{titleRect.x, rect.y + rect.height};
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                if (state.openAtFrameStart == i)
+                    PopupMenu::Close();
+                else
+                    PopupMenu::Open(menuPos, entry.menu);
+            }
+            else if (openIndex >= 0 && openIndex != i) {
+                PopupMenu::Open(menuPos, entry.menu);
+            }
+        }
+        bool highlighted = PopupMenu::IsMenuOpen(entry.menu) || (hovered && openIndex < 0);
+        int textColor = GuiGetState() == STATE_DISABLED ? TEXT_COLOR_DISABLED : (highlighted ? TEXT_COLOR_FOCUSED : TEXT_COLOR_NORMAL);
+        if (highlighted)
+            GuiDrawRectangle(titleRect, 0, BLANK, GetColor(GuiGetStyle(DEFAULT, BASE_COLOR_FOCUSED)));
+        GuiDrawText(entry.title.c_str(), titleRect, TEXT_ALIGN_CENTER, GetColor(GuiGetStyle(LABEL, textColor)));
+    }
+    state.openAtFrameStart = -1;
+    for (int i = 0; i < (int)bar.size(); ++i) {
+        if (PopupMenu::IsMenuOpen(bar[i].menu))
+            state.openAtFrameStart = i;
+    }
+}
 
 
 }  // namespace gui

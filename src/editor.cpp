@@ -62,12 +62,12 @@ void Editor::fixLinefeed(std::string& text)
 
 void Editor::setFocus()
 {
-    gui::SetKeyboardFocus((void*)this);
+    gui::SetKeyboardFocus(_focusId);
 }
 
 bool Editor::hasFocus() const
 {
-    return gui::HasKeyboardFocus((void*)this);
+    return gui::HasKeyboardFocus(_focusId);
 }
 
 void Editor::cursorLeft(int steps)
@@ -761,10 +761,10 @@ Rectangle Editor::drawToolArea()
             StyleManager::Scope guard;
             if (_findRegex && !_findRegexValid)
                 guard.setStyle(Style::TEXT_COLOR_PRESSED, RED);
-            if (TextBox(_findString, 4096))
+            if (TextBox("find", _findString, 4096))
                 updateFindResults();
             if (toolOpened)
-                SetKeyboardFocus((void*)&_findString);
+                SetKeyboardFocus(GetId("find"));
         }
         SetNextWidth(18);
         if (Toggle("Aa", &_findCaseSensitive))
@@ -797,7 +797,7 @@ Rectangle Editor::drawToolArea()
         SetNextWidth(18);
         Button("R");
         SetNextWidth(toolArea.width - 96 - 18);
-        if(TextBox(_replaceString, 4096))
+        if(TextBox("replace", _replaceString, 4096))
             updateFindResults();
         SetNextWidth(48);
         if(!_findResults || _findCurrentOffset != _selectionStart || _selectionEnd - _selectionStart != _findCurrentLength)
@@ -815,10 +815,10 @@ Rectangle Editor::drawToolArea()
         Button(GuiIconText(ICON_ARROW_DOWN,""));
         EndColumns();
         if(IsKeyPressed(KEY_TAB)) {
-            if(HasKeyboardFocus((void*)&_findString))
-                SetKeyboardFocus((void*)&_replaceString);
-            else if(HasKeyboardFocus((void*)&_replaceString))
-                SetKeyboardFocus((void*)&_findString);
+            if(HasKeyboardFocus(GetId("find")))
+                SetKeyboardFocus(GetId("replace"));
+            else if(HasKeyboardFocus(GetId("replace")))
+                SetKeyboardFocus(GetId("find"));
         }
     }
     return toolArea;

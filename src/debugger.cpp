@@ -382,7 +382,7 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
     static Vector2 scroll{0, 0};
     auto area = GetContentAvailable();
     Space(2);
-    BeginTableView(area.height - (10 * 14.0f + 6), 3, &scroll);
+    BeginTableView(area.height - (10 * 14.0f + 6), "breakpoints", {TableColumn::Fixed(24), TableColumn::Fixed(32), TableColumn::Stretch()}, &scroll);
     SetRowHeight(11);
     int count = -1;
     bool foundTriggeredBP = false;
@@ -393,7 +393,7 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
         //if (bpinfo->isEnabled && _triggeredBreakpointAddress == address && execUnit->getPC() == address)
         //    _selectedBreakpoint = count;
         TableNextRow(11.0f, count == _selectedBreakpoint ? StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL): Color{0,0,0,0});
-        TableNextColumn(24, [&](Rectangle rect){
+        TableNextColumn([&](Rectangle rect){
             GuiDrawIcon(address == _triggeredBreakpointAddress ? ICON_ARROW_RIGHT_FILL_SMALL : ICON_NONE, rect.x - 2, rect.y - 3, 1, YELLOW);
             if (address == _triggeredBreakpointAddress && execUnit->getPC() == address)
                 foundTriggeredBP = true;
@@ -403,13 +403,13 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
             }
             GuiDrawIcon(bpinfo->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, rect.x + 6, rect.y - 3, 1, RED);
         });
-        TableNextColumn(32, [&](Rectangle rect){
+        TableNextColumn([&](Rectangle rect){
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
                 selectBreakpoint(count);
             }
             DrawTextClipped(font, fmt::format("{:04x}", address).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
         });
-        TableNextColumn(area.width - 50, [&](Rectangle rect){
+        TableNextColumn([&](Rectangle rect){
             if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
                 selectBreakpoint(count);
             }
@@ -423,6 +423,8 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
     SetRowHeight(14);
     if (_selectedBreakpoint >= 0 && _selectedBreakpoint < _breakpointCache.size()) {
         auto [address, bpinfo] = _breakpointCache[_selectedBreakpoint];
+        // a different breakpoint gets different text box ids, so a focused box doesn't stay focused when the selection changes
+        PushId(bpinfo);
         auto execUnit = _core->executionUnit(bpinfo->unit);
         auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
         Label("Breakpoint Config:");
@@ -445,7 +447,7 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
             SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
             SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
         }
-        if (TextBox(bpinfo->condition, 256)) {
+        if (TextBox("condition", bpinfo->condition, 256)) {
             bpinfo->conditionExpr = execUnit->parseExpression(bpinfo->condition);
             DEBUG_LOG("Parsing breakpoint condition result: {}", bpinfo->conditionExpr.first ? "Okay" : bpinfo->conditionExpr.second.c_str());
         }
@@ -454,14 +456,14 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
 
         GuiDisable();
         Label("Log Format:");
-        TextBox(bpinfo->label, 256);
+        TextBox("logFormat", bpinfo->label, 256);
 
         Label("Log Condition:");
         if (!bpinfo->logCondition.empty() && !bpinfo->logConditionExpr.first) {
             SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
             SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
         }
-        if (TextBox(bpinfo->logCondition, 256)) {
+        if (TextBox("logCondition", bpinfo->logCondition, 256)) {
             bpinfo->logConditionExpr = execUnit->parseExpression(bpinfo->logCondition);
             DEBUG_LOG("Parsing log condition result: {}", bpinfo->logConditionExpr.first ? "Okay" : bpinfo->logConditionExpr.second.c_str());
         }
@@ -469,8 +471,9 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
         SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
 
         Label("Hit Count:");
-        TextBox(_bpHitCount, 64);
+        TextBox("hitCount", _bpHitCount, 64);
         GuiEnable();
+        PopId();
     }
     Space(GetContentAvailable().height);
 }

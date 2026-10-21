@@ -2007,7 +2007,7 @@ void main()
                             SetSpacing(0);
                             Label("Config Directory:");
                             GuiDisable();
-                            TextBox(_cfgPath, 4096);
+                            TextBox("cfgPath", _cfgPath, 4096);
                             GuiEnable();
                             Space(4);
                             BeginColumns();
@@ -2046,7 +2046,7 @@ void main()
                             }
                             GuiEnable();
                             EndColumns();
-                            SimpleListView(15*5+4, _cfg.libraryPath, &scrollPos, &activeEntry);
+                            SimpleListView(15*5+4, "libraryPath", _cfg.libraryPath, &scrollPos, &activeEntry);
                             Space(4);
                             /*
                             if (TextBox(_databaseDirectory, 4096)) {
@@ -2152,7 +2152,7 @@ void main()
                     SetNextWidth(40);
                     Label("Color:");
                     SetNextWidth(60);
-                    TextBox(_colorText, 7);
+                    TextBox("colorText", _colorText, 7);
                     if (IsLastWidgetEditFinished()) {
                         *_selectedColor = emu::Palette::Color("#"+_colorText);
                     }
@@ -2212,6 +2212,8 @@ void main()
 
     static int editProperty(emu::Property& prop, bool forceUpdate, PropertyAlign pa = PA_RIGHT)
     {
+        // the widgets of different properties can have the same label (or none), the property id keeps their ids apart
+        gui::PushId(prop.getId().c_str());
         auto prevTextAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
         if(pa == PA_RIGHT) {
             gui::BeginColumns();
@@ -2233,7 +2235,7 @@ void main()
                                 [](std::string& val) -> int {
                                     auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
                                     gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
-                                    gui::TextBox(val, 4096);
+                                    gui::TextBox("value", val, 4096);
                                     gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, prevTextAlignment);
                                     return 0;
                                 },
@@ -2248,6 +2250,7 @@ void main()
         if(pa == PA_RIGHT) {
             gui::EndColumns();
         }
+        gui::PopId();
         return rc;
     }
 
@@ -2585,14 +2588,14 @@ void main()
 #ifdef PLATFORM_WEB
         Space(area.height - 54);
 #else
-        TextBox(_currentDirectory, 4096);
+        TextBox("currentDirectory", _currentDirectory, 4096);
         if (IsLastWidgetEditFinished()) {
             _librarian.fetchDir(_currentDirectory);
             _currentDirectory = _librarian.currentDirectory();
         }
         Space(1);
         auto tabPos = GetCurrentPos();
-        BeginTableView(area.height - 135, 4, &scroll);
+        BeginTableView(area.height - 135, "library", {TableColumn::Fixed(24), TableColumn::Stretch(0.66f), TableColumn::Stretch(0.145f), TableColumn::Stretch(0.13f)}, &scroll);
         for(int i = 0; i < _librarian.numEntries(); ++i) {
             const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};
@@ -2606,7 +2609,7 @@ void main()
             auto pos = GetCurrentPos();
             bool hover = false; //CheckCollisionPointRec(GetMousePosition(), {5, pos.y + scroll.y + tabPos.y, area.width, 16.0f});
             TableNextRow(16, hover ? _styleManager.getStyleColor(Style::BASE_COLOR_NORMAL) : rowCol);
-            if(TableNextColumn(24)) {
+            if(TableNextColumn()) {
                 int icon = ICON_HELP2;
                 switch (info.type) {
                     case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
@@ -2621,7 +2624,7 @@ void main()
                     Label(GuiIconText(icon, ""));
                 }
             }
-            if(TableNextColumn(.66f)) {
+            if(TableNextColumn()) {
                 if(info.filePath.size() > 50 ? LabelButton(info.filePath.substr(0,50).c_str()) : LabelButton(info.filePath.c_str())) {
                     if(info.type == Librarian::Info::eDIRECTORY) {
                         if(info.filePath != "..") {
@@ -2650,9 +2653,9 @@ void main()
                     }
                 }
             }
-            if(TableNextColumn(.145f))
+            if(TableNextColumn())
                 Label(info.type == Librarian::Info::eDIRECTORY ? "" : fmt::format("{:>8s}", formatUnit(info.fileSize, "")).c_str());
-            if(TableNextColumn(.13f) && info.filePath != "..")
+            if(TableNextColumn() && info.filePath != "..")
                 Label(date::format("%F", date::floor<std::chrono::seconds>(info.changeDate)).c_str());
         }
         EndTableView();
@@ -2661,7 +2664,7 @@ void main()
         BeginColumns();
         SetNextWidth(36);
         Label("File:");
-        TextBox(_currentFileName, 4096);
+        TextBox("currentFileName", _currentFileName, 4096);
         EndColumns();
         Space(2);
         switch(mode) {

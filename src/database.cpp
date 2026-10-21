@@ -700,18 +700,18 @@ bool Database::render(Font& font)
         SetSpacing(4);
         auto area = GetContentAvailable();
         _pimpl->relayoutList(area.width);
-        TextBox(_pimpl->queryLine, 4096);
+        TextBox("query", _pimpl->queryLine, 4096);
         BeginColumns();
         {
             SetSpacing(4);
             auto tagsWidth = area.width / 4 - 5;
             SetNextWidth(tagsWidth);
             auto offset = GetCurrentPos();
-            BeginTableView(GetContentAvailable().height - 135, 2, &_pimpl->tagsScrollPos);
+            BeginTableView(GetContentAvailable().height - 135, "tags", {TableColumn::Stretch()}, &_pimpl->tagsScrollPos);
             for (const auto& tagText : _pimpl->sortedTags) {
                 const auto& badge = _badges[tagText];
                 TableNextRow(10);
-                TableNextColumn(tagsWidth - 8, [&](Rectangle rect) {
+                TableNextColumn([&](Rectangle rect) {
                     drawBadge(font, badge.text.c_str(), {rect.x + 2, rect.y + 2}, badge.textCol, badge.badgeCol);
                 });
             }

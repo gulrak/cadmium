@@ -799,7 +799,7 @@ public:
             BeginPanel("Library / Research");
             {
                 SetSpacing(5);
-                TextBox(_queryLine, 4096);
+                TextBox("queryTop", _queryLine, 4096);
                 auto area = GetContentAvailable();
                 BeginColumns();
                 {
@@ -825,22 +825,22 @@ public:
                     BeginScrollPanel(area.height - 135, {0,0,100,1000}, &scrollPos);
                     EndScrollPanel();
 #else
-                    BeginTableView(area.height - 135, 2, &_tagsScrollPos);
+                    BeginTableView(area.height - 135, "Table1", {TableColumn::Fixed(64), TableColumn::Stretch()}, &_tagsScrollPos);
                     TableNextRow(22);
-                    TableNextColumn(64);
+                    TableNextColumn();
                     Label("Table1");
                     EndTableView();
                     SetNextWidth(tagsWidth);
-                    BeginTableView(area.height - 135, 2, &_tagsScrollPos);
+                    BeginTableView(area.height - 135, "Table2", {TableColumn::Fixed(64), TableColumn::Stretch()}, &_tagsScrollPos);
                     TableNextRow(22);
-                    TableNextColumn(64);
+                    TableNextColumn();
                     Label("Table2");
                     EndTableView();
 #endif
 #endif
                 }
                 EndColumns();
-                TextBox(_queryLine, 4096);
+                TextBox("queryBottom", _queryLine, 4096);
             }
             //Space(_screenHeight - GetCurrentPos().y - 20 - 1);
             EndPanel();

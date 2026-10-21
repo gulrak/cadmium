@@ -28,6 +28,11 @@
 //   - Burger-menu toolbar at top
 //   - Tab-based main content area
 //   - Floating PopupMenu, modal WindowBox, and inline Popup
+//
+// Golden image tests:
+//   rlguipp_showcase --golden <approved-dir> --out <output-dir> [--update]
+// renders a fixed set of tabs, menus and dialogs in a hidden window and compares them
+// pixel by pixel with the approved PNGs, see README.md "Tests".
 //---------------------------------------------------------------------------------------
 
 #include <rlguipp/rlguiapp.hpp>
@@ -38,8 +43,12 @@
 #include <fmt/format.h>
 #include <ghc/fs_fwd.hpp>
 #include <cmath>
+#include <ctime>
+#include <cstdio>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fs = ghc::filesystem;
@@ -48,10 +57,15 @@ using namespace gui;
 
 class ShowcaseApp : public gui::Application {
 public:
-    ShowcaseApp() : gui::Application("rlGuipp Showcase", {800, 600, 2})
+    // In golden mode the window is hidden, the mouse is moved out of the gui and time stands still
+    explicit ShowcaseApp(bool goldenMode = false)
+        : gui::Application("rlGuipp Showcase", goldenMode ? Config{800, 600, 1, 60, FLAG_WINDOW_HIDDEN} : Config{800, 600, 2})
+        , _goldenMode(goldenMode)
     {
+        if (_goldenMode)
+            SetMousePosition(-10000, -10000);
         _styleManager.addTheme("Warm",  30.0f, 90, false);
-        _styleManager.addTheme("Dark", 200.0f, 90, true);
+        _styleManager.addTheme("Light", 200.0f, 90, true);
         _styleManager.setTheme(0);
         _fileDlg.path = fs::current_path().string();
         buildMenu();
@@ -74,7 +88,7 @@ private:
 
     void buildMenu()
     {
-        _themeNames = {"Default", "Warm", "Dark"};
+        _themeNames = {"Default", "Warm", "Light"};
 
         PopupMenu::Menu themeMenu;
         for (int i = 0; i < (int)_themeNames.size(); ++i) {
@@ -87,9 +101,38 @@ private:
         _mainMenu = {
             PopupMenu::Action("About...", [this]() { _aboutOpen = true; _aboutScroll = {}; }),
             PopupMenu::Separator(),
-            PopupMenu::Submenu("Theme", std::move(themeMenu)),
+            PopupMenu::Submenu("Theme", themeMenu),
             PopupMenu::Separator(),
             PopupMenu::Action("Quit", [this]() { requestClose(); }, "⌘Q"),
+        };
+
+        PopupMenu::Menu tabMenu;
+        const char* tabNames[] = {"Layout", "Controls", "Input", "Sliders", "Lists", "Windows", "Dialogs", "Widgets"};
+        for (int i = 0; i < 8; ++i) {
+            tabMenu.push_back(PopupMenu::Action(tabNames[i], [this, i]() { _activeTab = i; }));
+        }
+        auto openFileDialog = [this](FileDialogInfo::DialogType type, const char* title) {
+            return [this, type, title]() {
+                _fileDlg = {type, title, _fileDlg.path};
+                _fileDlgOpen = true;
+            };
+        };
+        _menuBar = {
+            {"File", {
+                PopupMenu::Action("Open File...", openFileDialog(FileDialogInfo::OpenFile, "Open File")),
+                PopupMenu::Action("Save File As...", openFileDialog(FileDialogInfo::SaveFile, "Save File As...")),
+                PopupMenu::Separator(),
+                PopupMenu::Action("Quit", [this]() { requestClose(); }, "⌘Q"),
+            }},
+            {"View", {
+                PopupMenu::Submenu("Theme", themeMenu),
+                PopupMenu::Submenu("Go to Tab", std::move(tabMenu)),
+                PopupMenu::Separator(),
+                PopupMenu::Toggle("Status Bar", &_showStatusBar),
+            }},
+            {"Help", {
+                PopupMenu::Action("About rlGuipp Showcase...", [this]() { _aboutOpen = true; _aboutScroll = {}; }),
+            }},
         };
     }
 
@@ -107,13 +150,15 @@ private:
         // Status bar - called first; rlguipp reserves space at the bottom.
         SetRowHeight(16);
         SetSpacing(0);
-        StatusBar({
-            {0.5f,  "rlGuipp Showcase v" RLGUIPP_VERSION_STRING},
-            {0.25f, fmt::format("{:.0f} FPS", (float)GetFPS()).c_str()},
-            {0.25f, fmt::format("Theme: {}", _themeNames[_themeIdx]).c_str()},
-        });
+        if (_showStatusBar) {
+            StatusBar({
+                {0.5f,  "rlGuipp Showcase v" RLGUIPP_VERSION_STRING},
+                {0.25f, fmt::format("{:.0f} FPS", _goldenMode ? 60.0f : (float)GetFPS()).c_str()},
+                {0.25f, fmt::format("Theme: {}", _themeNames[_themeIdx]).c_str()},
+            });
+        }
 
-        // Toolbar - burger menu left, title label fills remaining space.
+        // Toolbar - burger menu left, menu bar fills the remaining space.
         SetRowHeight(20);
         SetSpacing(0);
         BeginColumns();
@@ -121,8 +166,8 @@ private:
             if (iconButton(ICON_BURGER_MENU, PopupMenu::IsMenuOpen(_mainMenu)) && !PopupMenu::IsOpen())
                 PopupMenu::Open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
             SetTooltip("Main menu  (About is in the menu)");
-            SetNextWidth(GetContentAvailable().width);
-            Label("rlGuipp Showcase");
+            MenuBar("menubar", _menuBar);
+            _menuBarRect = GetLastWidgetRect();
         }
         EndColumns();
 
@@ -130,9 +175,8 @@ private:
         //Begin();
         BeginPanel("rlGuipp Feature Showcase", {4, 4});
         {
-            static int activeTab = 0;
             SetSpacing(0);
-            BeginTabView(&activeTab);
+            BeginTabView(&_activeTab);
             if (BeginTab("Layout",   {4, 4})) { drawLayoutTab();   EndTab(); }
             if (BeginTab("Controls", {4, 4})) { drawControlsTab(); EndTab(); }
             if (BeginTab("Input",    {4, 4})) { drawInputTab();    EndTab(); }
@@ -293,11 +337,11 @@ private:
         SetSpacing(4);
 
         Label("TextBox (char* variant):");
-        TextBox(_charBuf, sizeof(_charBuf));
+        TextBox("charBuf", _charBuf, sizeof(_charBuf));
         SetTooltip("Click to edit - char array");
 
         Label("TextBox (std::string variant):");
-        TextBox(_stringBuf, 256);
+        TextBox("stringBuf", _stringBuf, 256);
         SetTooltip("Click to edit - std::string");
 
         Space(4);
@@ -310,11 +354,11 @@ private:
             {
                 SetSpacing(4);
                 Label("Spinner:");
-                Spinner("", &_spinnerVal, 0, 100);
+                Spinner("##spinner", &_spinnerVal, 0, 100);
 
                 Space(4);
                 Label("ValueBox:");
-                ValueBox("", &_valueBoxVal, 0, 999);
+                ValueBox("##valueBox", &_valueBoxVal, 0, 999);
 
                 Space(4);
                 Label("ComboBox:");
@@ -364,7 +408,7 @@ private:
 
         Space(4);
         Label("ProgressBar (animated, auto-advances each frame):");
-        _progress = std::fmod(_progress + GetFrameTime() * 0.25f, 1.0f);
+        _progress = std::fmod(_progress + frameTime() * 0.25f, 1.0f);
         ProgressBar("0%", "100%", _progress, 0.0f, 1.0f);
 
         SetReserve(0);
@@ -434,7 +478,7 @@ private:
                     "Item 4 - fourth", "Item 5 - fifth",  "Item 6 - sixth",
                     "Item 7 - seventh","Item 8 - eighth",
                 };
-                SimpleListView(halfH, items, &_simpleListScroll, &_simpleListActive);
+                SimpleListView(halfH, "simpleList", items, &_simpleListScroll, &_simpleListActive);
             }
             End();
 
@@ -443,23 +487,23 @@ private:
             {
                 SetSpacing(4);
                 Label("BeginTableView (header + 20 data rows, scrollable):");
-                BeginTableView(area.height - 32, 3, &_tableScroll);
+                BeginTableView(area.height - 32, "table", {TableColumn::Fixed(120), TableColumn::Fixed(80), TableColumn::Fixed(80)}, &_tableScroll);
 
                 // Header row with tinted background
                 Color headerBg = GetColor(GetStyle(DEFAULT, BASE_COLOR_FOCUSED));
                 if (TableNextRow(16, headerBg)) {
-                    if (TableNextColumn(120)) Label("Name");
-                    if (TableNextColumn(80))  Label("Value");
-                    if (TableNextColumn(80))  Label("Status");
+                    if (TableNextColumn()) Label("Name");
+                    if (TableNextColumn())  Label("Value");
+                    if (TableNextColumn())  Label("Status");
                 }
 
                 // Data rows
                 static const char* statuses[] = {"OK", "Warn", "Error"};
                 for (int i = 0; i < 20; ++i) {
                     if (!TableNextRow(16)) continue;
-                    if (TableNextColumn(120)) Label(fmt::format("Row {:02d}", i + 1).c_str());
-                    if (TableNextColumn(80))  Label(fmt::format("{}", i * 7 + 3).c_str());
-                    if (TableNextColumn(80))  Label(statuses[i % 3]);
+                    if (TableNextColumn()) Label(fmt::format("Row {:02d}", i + 1).c_str());
+                    if (TableNextColumn())  Label(fmt::format("{}", i * 7 + 3).c_str());
+                    if (TableNextColumn())  Label(statuses[i % 3]);
                 }
                 EndTableView();
             }
@@ -486,7 +530,7 @@ private:
             _inlinePopupOpen = true;
 
         auto anchor = GetLastWidgetRect();
-        if (BeginPopup({anchor.x, anchor.y + anchor.height + 2, 120, 56}, &_inlinePopupOpen)) {
+        if (BeginPopup({anchor.x, anchor.y + anchor.height + 2, 120, 56}, "inlinePopup", &_inlinePopupOpen)) {
             SetSpacing(0);
             SetRowHeight(14);
             if (Button("Action A")) { _inlinePopupResult = "Action A"; _inlinePopupOpen = false; }
@@ -511,7 +555,7 @@ private:
 
     void drawWidgetsTab()
     {
-        _segTimer += GetFrameTime();
+        _segTimer += frameTime();
         if (_segTimer >= 0.25f) {
             _segTimer = 0.0f;
             ++_segValue;
@@ -747,14 +791,179 @@ private:
             _demoModalOpen = false;
     }
 
+    float frameTime() const { return _goldenMode ? 0.0f : GetFrameTime(); }
+
+public:
+    // -----------------------------------------------------------------------
+    // Golden image tests
+    // -----------------------------------------------------------------------
+
+    int runGoldenTests(const fs::path& approvedDir, const fs::path& outDir, bool updateApproved)
+    {
+        fs::create_directories(outDir);
+        if (updateApproved)
+            fs::create_directories(approvedDir);
+        createFileDialogFixture(outDir / "fixture");
+        // the file dialogs show the relative path "fixture", so it does not depend on the build directory
+        fs::current_path(outDir);
+
+        struct GoldenCase
+        {
+            const char* name;
+            int tab;
+            int theme;
+            std::function<void()> setup;
+        };
+        enum Tabs { LAYOUT, CONTROLS, INPUT, SLIDERS, LISTS, WINDOWS, DIALOGS, WIDGETS };
+        auto openFileDialog = [this](FileDialogInfo::DialogType type, const char* title) {
+            _fileDlg = {type, title, "fixture"};
+            _fileDlgOpen = true;
+        };
+        const std::vector<GoldenCase> cases = {
+            {"tab-layout", LAYOUT, 0, {}},
+            {"tab-controls", CONTROLS, 0, {}},
+            {"tab-input", INPUT, 0, {}},
+            {"tab-sliders", SLIDERS, 0, {}},
+            {"tab-lists", LISTS, 0, {}},
+            {"tab-windows", WINDOWS, 0, {}},
+            {"tab-dialogs", DIALOGS, 0, {}},
+            {"tab-widgets", WIDGETS, 0, {}},
+            {"theme-warm-controls", CONTROLS, 1, {}},
+            {"theme-light-layout", LAYOUT, 2, {}},
+            {"main-menu", LAYOUT, 0, [this]() { PopupMenu::Open({1.0f, 20.0f}, _mainMenu); }},
+            // the File menu is the first title of the bar, so it opens at the bar's left edge
+            {"menu-bar-file", LAYOUT, 0, [this]() { PopupMenu::Open({_menuBarRect.x, _menuBarRect.y + _menuBarRect.height}, _menuBar[0].menu); }},
+            {"no-status-bar", LAYOUT, 0, [this]() { _showStatusBar = false; }},
+            {"about-modal", LAYOUT, 0, [this]() { _aboutOpen = true; }},
+            {"demo-modal", WINDOWS, 0, [this]() { _demoModalOpen = true; }},
+            {"inline-popup", WINDOWS, 0, [this]() { _inlinePopupOpen = true; }},
+            {"file-dialog-open", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::OpenFile, "Open File"); }},
+            {"file-dialog-save", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::SaveFile, "Save File As..."); }},
+            {"file-dialog-folder", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::SelectFolder, "Select Folder"); }},
+        };
+
+        int failed = 0;
+        for (const auto& gc : cases) {
+            _activeTab = gc.tab;
+            _themeIdx = gc.theme;
+            _styleManager.setTheme(gc.theme);
+            _aboutOpen = _demoModalOpen = _inlinePopupOpen = _fileDlgOpen = false;
+            _showStatusBar = true;
+            _aboutScroll = _demoModalScroll = {};
+            PopupMenu::Close();
+            // one frame to close what the previous case opened, then a few frames to settle
+            // deferred widgets (dropdowns, popups, the file dialog reads its directory in its first frame)
+            update();
+            if (gc.setup)
+                gc.setup();
+            for (int i = 0; i < 4; ++i)
+                update();
+            auto actual = (outDir / (std::string(gc.name) + ".png")).string();
+            auto approved = (approvedDir / (std::string(gc.name) + ".png")).string();
+            exportFrame(actual.c_str());
+            if (updateApproved) {
+                fs::copy_file(actual, approved, fs::copy_options::overwrite_existing);
+                std::printf("updated %s\n", gc.name);
+                continue;
+            }
+            auto diff = (outDir / (std::string(gc.name) + "-diff.png")).string();
+            auto result = compareImages(actual, approved, diff);
+            if (result.empty()) {
+                std::printf("ok      %s\n", gc.name);
+            }
+            else {
+                std::printf("FAILED  %s: %s\n", gc.name, result.c_str());
+                ++failed;
+            }
+        }
+        if (!updateApproved)
+            std::printf("%d of %d golden image tests failed\n", failed, (int)cases.size());
+        return failed ? 1 : 0;
+    }
+
+private:
+    // A directory with fixed content and times for the file dialog cases
+    static void createFileDialogFixture(const fs::path& dir)
+    {
+        fs::remove_all(dir);
+        fs::create_directories(dir / "games");
+        auto writeFile = [&dir](const char* name, size_t size) {
+            std::string content(size, 'x');
+            if (auto* f = std::fopen((dir / name).string().c_str(), "wb")) {
+                std::fwrite(content.data(), 1, content.size(), f);
+                std::fclose(f);
+            }
+        };
+        writeFile("Breakout.ch8", 280);
+        writeFile("notes.txt", 1234);
+        writeFile("screenshot.png", 20480);
+        // a local time, so the dialog shows the same time in every time zone
+        std::tm tm{};
+        tm.tm_year = 2024 - 1900;
+        tm.tm_mon = 2;
+        tm.tm_mday = 15;
+        tm.tm_hour = 12;
+        tm.tm_min = 34;
+        tm.tm_sec = 56;
+        tm.tm_isdst = -1;
+        auto fixedTime = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            fs::last_write_time(entry.path(), fixedTime);
+        }
+    }
+
+    // Returns an empty string if both images are equal, otherwise what differs; then a diff image is written
+    static std::string compareImages(const std::string& actualPath, const std::string& approvedPath, const std::string& diffPath)
+    {
+        if (!fs::exists(approvedPath))
+            return "no approved image, run with --update to create it";
+        Image actual = LoadImage(actualPath.c_str());
+        Image approved = LoadImage(approvedPath.c_str());
+        std::string result;
+        if (actual.width != approved.width || actual.height != approved.height) {
+            result = fmt::format("size {}x{} instead of {}x{}", actual.width, actual.height, approved.width, approved.height);
+        }
+        else {
+            Color* a = LoadImageColors(actual);
+            Color* b = LoadImageColors(approved);
+            std::vector<Color> diff(actual.width * actual.height);
+            int differences = 0;
+            for (size_t i = 0; i < diff.size(); ++i) {
+                if (a[i].r != b[i].r || a[i].g != b[i].g || a[i].b != b[i].b || a[i].a != b[i].a) {
+                    diff[i] = Color{255, 0, 0, 255};
+                    ++differences;
+                }
+                else {
+                    auto gray = static_cast<unsigned char>((b[i].r + b[i].g + b[i].b) / 9);
+                    diff[i] = Color{gray, gray, gray, 255};
+                }
+            }
+            if (differences) {
+                Image diffImage{diff.data(), actual.width, actual.height, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+                ExportImage(diffImage, diffPath.c_str());
+                result = fmt::format("{} pixels differ, see {}", differences, diffPath);
+            }
+            UnloadImageColors(a);
+            UnloadImageColors(b);
+        }
+        UnloadImage(actual);
+        UnloadImage(approved);
+        return result;
+    }
+
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------
 
+    bool _goldenMode{false};
+    int _activeTab{0};
     StyleManager _styleManager;
 
     // Menu
     PopupMenu::Menu          _mainMenu;
+    PopupMenu::Bar           _menuBar;
+    Rectangle                _menuBarRect{};
+    bool                     _showStatusBar{true};
     std::vector<std::string> _themeNames;
     int _themeIdx{0};
 
@@ -810,8 +1019,29 @@ private:
     int64_t _segValue{0};
 };
 
-int main()
+int main(int argc, char* argv[])
 {
+    std::optional<fs::path> approvedDir;
+    fs::path outDir = "golden-out";
+    bool update = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string_view arg = argv[i];
+        if (arg == "--golden" && i + 1 < argc)
+            approvedDir = fs::absolute(argv[++i]);
+        else if (arg == "--out" && i + 1 < argc)
+            outDir = argv[++i];
+        else if (arg == "--update")
+            update = true;
+        else {
+            std::fprintf(stderr, "usage: %s [--golden <approved-dir> [--out <output-dir>] [--update]]\n", argv[0]);
+            return 2;
+        }
+    }
+    if (approvedDir) {
+        SetTraceLogLevel(LOG_WARNING);
+        ShowcaseApp app(true);
+        return app.runGoldenTests(*approvedDir, fs::absolute(outDir), update);
+    }
     ShowcaseApp app;
     while (!app.shouldClose())
         app.update();

@@ -184,9 +184,9 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
     if (info.firstFrame) {
         info.firstFrame = false;
         scroll = {0.0f, 0.0f};
-        if (readPath != info.path) {
-            readDirectory(info);
-        }
+        // always read, the entries belong to `info` while readPath is shared, and the
+        // previous dialog might have been closed from outside without resetting it
+        readDirectory(info);
         return false;
     }
     info.action = FileDialogInfo::None;
@@ -228,7 +228,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
     BeginColumns();
     SetSpacing(0);
     SetNextWidth(GetContentAvailable().width - 20);
-    if(TextBox(info.path, 4096)) {
+    if(TextBox("path", info.path, 4096)) {
         // TODO
     }
     auto pathBox = GetLastWidgetRect();
@@ -245,7 +245,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
     }
     Begin();
     auto heightAvailable = GetContentAvailable().height;
-    BeginTableView(heightAvailable - 20 - (editFilename ? 20.0f : 0.0f), 3, &scroll);
+    BeginTableView(heightAvailable - 20 - (editFilename ? 20.0f : 0.0f), "entries", {TableColumn::Fixed(272), TableColumn::Fixed(8*6), TableColumn::Fixed(20*6)}, &scroll);
     auto font = GuiGetFont();
     static constexpr float yo = 4;
     float entryHeight = 15;
@@ -290,11 +290,11 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
                 }
             }
         })) {
-            TableNextColumn(272, [&entry,&font,&textColor](Rectangle rect) {
+            TableNextColumn([&entry,&font,&textColor](Rectangle rect) {
                 GuiDrawIcon(entry.icon, rect.x + 1, rect.y, 1, textColor);
                 DrawTextClipped(font, ghc::filesystem::path(entry.name).filename().string().c_str(), {rect.x + 20, rect.y + yo}, textColor);
             });
-            TableNextColumn(8*6, [&entry,&font,&textColor](Rectangle rect) {
+            TableNextColumn([&entry,&font,&textColor](Rectangle rect) {
                 if (entry.type == FileDialogInfo::DirEntry::Dir) {
                     DrawTextClipped(GuiGetFont(), "  <DIR>", {rect.x + 4, rect.y + yo}, textColor);
                 }
@@ -307,7 +307,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
                         DrawTextClipped(font, TextFormat("%6dM", entry.size/1024/1024), {rect.x + 4, rect.y + yo}, textColor);
                 }
             });
-            TableNextColumn(20*6, [&entry,&font,&textColor](Rectangle rect) {
+            TableNextColumn([&entry,&font,&textColor](Rectangle rect) {
                 if (entry.time != ghc::filesystem::file_time_type{})
                     DrawTextClipped(font, formatFileTimeIso8601(entry.time).c_str(), {rect.x + 4, rect.y + yo}, textColor);
             });
@@ -320,7 +320,7 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
         SetSpacing(0);
         SetNextWidth(32);
         Label("Name:");
-        TextBox(info.filename, 4096);
+        TextBox("filename", info.filename, 4096);
         EndColumns();
     }
     Space(4);

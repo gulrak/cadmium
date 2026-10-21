@@ -103,8 +103,32 @@ inline const auto DEFAULT_ROW_HEIGHT = 26.0f;
 
 enum WindowBoxFlags { WBF_NONE = 0, WBF_CLOSABLE = 1, WBF_MOVABLE = 2, WBF_MODAL = 4 };
 
+// Width of a table column, given to BeginTableView()
+struct TableColumn
+{
+    enum Kind { FIXED, STRETCH };
+    Kind kind{STRETCH};
+    float value{1.0f};
+    static TableColumn Fixed(float width) { return {FIXED, width}; }             // width in pixels
+    static TableColumn Stretch(float weight = 1.0f) { return {STRETCH, weight}; }  // share of the width the fixed columns leave, split by weight
+};
+
+// Ids
+// Popups, windows, table views, dropdown boxes and the keyboard focus keep state between frames inside rlguipp. It is
+// identified by an id, the hash of their label or id string and the current id scope. State that was not used in a frame is dropped.
+// Popups, windows, table views and tabs start a new id scope for their content.
+// Labels that are also ids (Spinner, ValueBox, DropdownBox, BeginTab, BeginWindowBox) can have a part that is not shown:
+// "Text##id" shows "Text" and uses the whole label as id, "Text###id" uses only "###id", so the text can change.
+using Id = uint64_t;
+RLGUIPP_API void PushId(const char* str);                                                                                 // start an id scope, the ids of all following widgets depend on it, must be closed with PopId()
+RLGUIPP_API void PushId(int value);                                                                                       // start an id scope from an integer, e.g. a row index
+RLGUIPP_API void PushId(const void* ptr);                                                                                 // start an id scope from a pointer, it is only hashed, never dereferenced
+RLGUIPP_API void PopId();                                                                                                 // end the id scope
+RLGUIPP_API Id GetId(const char* label);                                                                                  // the id of a widget with the given label or id string in the current id scope
+
 // Containers
 // A Begin*() returning void must always be closed with its End*(), one returning bool only if it returned true.
+// Unbalanced calls assert in debug builds, release builds log an error and close what was left open.
 RLGUIPP_API void BeginGui(Rectangle area = {}, RenderTexture* renderTexture = nullptr, Vector2 mouseOffset = {}, Vector2 guiScale = {1.0f, 1.0f}); // Start the work on a GUI, needs to be closed with EndGui(), renderTexture is needed if rendering to a texture instead of the screen
 RLGUIPP_API void EndGui();                                                                                                // ends the GUI description
 RLGUIPP_API void UnloadGui();                                                                                             // unload any stuff cached by the gui handling
@@ -116,22 +140,22 @@ RLGUIPP_API void BeginPanel(const char* text = nullptr, Vector2 padding = {5, 5}
 RLGUIPP_API void EndPanel();                                                                                              // end the description of a panel group
 RLGUIPP_API void BeginTabView(int *activeTab);                                                                            // start a tab view (a stack of groups with labeled tabs on top), must be closed with EndTabView()
 RLGUIPP_API void EndTabView();                                                                                            // end the description of a tab view
-RLGUIPP_API bool BeginTab(const char* text, Vector2 padding = {5, 5});                                              // start a tab in a tab view (a page with the given text as label top), returns true for the active tab, only then it must be closed with EndTab()
+RLGUIPP_API bool BeginTab(const char* label, Vector2 padding = {5, 5});                                             // start a tab in a tab view (a page with the given label on top), returns true for the active tab, only then it must be closed with EndTab(), the label is the id scope of the content
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
-RLGUIPP_API void BeginTableView(float height, int numColumns, Vector2 *scroll);                                           // start a table view, the columns of all rows must have consistent widths, height can vary per row but must not change during table drawing
+RLGUIPP_API void BeginTableView(float height, const char* id, std::initializer_list<TableColumn> columns, Vector2 *scroll); // start a table view identified by id with the given columns, row heights can vary per row but must not change during table drawing
 RLGUIPP_API bool TableNextRow(float height, Color background = {0, 0, 0, 0});                                 // start a new row, returns false if the table row would not be visible due to scroll position
 RLGUIPP_API bool TableNextRow(float height, const std::function<void(Rectangle rect)>& handler);                          // start a new row, returns false if the table row would not be visible due to scroll position, calls the handler if visible
-RLGUIPP_API bool TableNextColumn(float width);                                                                            // start the next column, returns false if the column would not be visible
-RLGUIPP_API void TableNextColumn(float width, const std::function<void(Rectangle rect)>& handler);                        // start the next column, calls the handler if the column is visible
+RLGUIPP_API bool TableNextColumn();                                                                                       // start the next column of the row, returns false if the column would not be visible
+RLGUIPP_API void TableNextColumn(const std::function<void(Rectangle rect)>& handler);                                     // start the next column of the row, calls the handler if the column is visible
 RLGUIPP_API void EndTableView();                                                                                          // ends the table view
-RLGUIPP_API bool SimpleListView(float height, const std::vector<std::string>& items, Vector2* scrollPos, int* active);                        // start a simple list view, returns true the selection was changed (<0 means nothing selected)
+RLGUIPP_API bool SimpleListView(float height, const char* id, const std::vector<std::string>& items, Vector2* scrollPos, int* active);      // a simple list view identified by id, returns true the selection was changed (<0 means nothing selected)
 RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                                                               // start a group box, similar to panel but no title bar, title is instead in a gap of the border, must be closed with EndGroupBox()
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
-RLGUIPP_API bool BeginPopup(Rectangle area, bool* isOpen);                                                                // show a popup at the given area (negative x/y center it), returns `*isOpen`, only if true it must be closed with EndPopup()
+RLGUIPP_API bool BeginPopup(Rectangle area, const char* id, bool* isOpen);                                                // show the popup identified by id at the given area (negative x/y center it), returns `*isOpen`, only if true it must be closed with EndPopup()
 RLGUIPP_API void EndPopup();                                                                                              // end of the popup description
-RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* title, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar, the close button (WBF_CLOSABLE) sets `*isOpen` to false, only if true is returned it must be closed with EndWindowBox()
+RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* label, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar showing the label (also the id), the close button (WBF_CLOSABLE) sets `*isOpen` to false, only if true is returned it must be closed with EndWindowBox()
 RLGUIPP_API void EndWindowBox();                                                                                          // end of the WindowBox
 RLGUIPP_API void BeginClipping(const Rectangle& clipArea);                                                                // set a new clipping area (it will be clipped to the previous one, potentially setting an area of size 0)
 RLGUIPP_API void EndClipping();                                                                                           // pop the current clipping area
@@ -165,14 +189,14 @@ RLGUIPP_API bool Toggle(const char* text, bool* active);                        
 RLGUIPP_API bool ToggleGroup(const char* text, int* active);                                                              // Toggle Group control, items separated by ';' (columns) and '\n' (rows)
 RLGUIPP_API bool CheckBox(const char* text, bool* checked);                                                               // Check Box control
 RLGUIPP_API bool ComboBox(const char* text, int* active);                                                                 // Combo Box control, items separated by ';'
-RLGUIPP_API bool DropdownBox(const char* text, int* active, bool directionUp = false);                                    // Dropdown Box control, items separated by ';', a selection is reported in the frame after it was made
-RLGUIPP_API bool Spinner(const char* text, int* value, int minValue, int maxValue);                                       // Spinner control
-RLGUIPP_API bool ValueBox(const char* text, int* value, int minValue, int maxValue);                                      // Value Box control
-RLGUIPP_API bool TextBox(char* text, int textSize);                                                                       // Text Box control, textSize is the size of the buffer
-RLGUIPP_API bool TextBox(std::string& text, int textSize);                                                                // Text Box control, textSize is the maximum length
+RLGUIPP_API bool DropdownBox(const char* label, int* active, bool directionUp = false);                                   // Dropdown Box control, items separated by ';', the label is also the id, a selection is reported in the frame after it was made
+RLGUIPP_API bool Spinner(const char* label, int* value, int minValue, int maxValue);                                      // Spinner control, the label is also the id
+RLGUIPP_API bool ValueBox(const char* label, int* value, int minValue, int maxValue);                                     // Value Box control, the label is also the id
+RLGUIPP_API bool TextBox(const char* id, char* text, int textSize);                                                       // Text Box control identified by id, textSize is the size of the buffer
+RLGUIPP_API bool TextBox(const char* id, std::string& text, int textSize);                                                // Text Box control identified by id, textSize is the maximum length
 RLGUIPP_API bool IsLastWidgetEditFinished();                                                                              // True if the previous widget left its edit mode in this frame (enter or click elsewhere)
-RLGUIPP_API void SetKeyboardFocus(void* key);                                                                             // Claim keyboard focus and set focus key to `key`
-RLGUIPP_API bool HasKeyboardFocus(void* key);                                                                             // Check if key is current key for keyboard focus
+RLGUIPP_API void SetKeyboardFocus(Id id);                                                                                 // Give the keyboard focus to the widget with the id (0 removes it), it is dropped after a frame without the widget
+RLGUIPP_API bool HasKeyboardFocus(Id id);                                                                                 // Check if the widget with the id has the keyboard focus, for custom widgets this also keeps the focus
 RLGUIPP_API bool Slider(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue);       // Slider control
 RLGUIPP_API bool Slider(const char* textLeft, float* value, float minValue, float maxValue);                              // Slider control, the value is shown right with "%.2f"
 RLGUIPP_API bool SliderBar(const char* textLeft, const char* textRight, float* value, float minValue, float maxValue);    // Slider Bar control
@@ -335,7 +359,21 @@ RLGUIPP_API bool IsMenuOpen(const Menu& menu);              // Check if the menu
 RLGUIPP_API void SetMenuStyle(const Style& style);          // Set the style used for drawing popup menus
 RLGUIPP_API const Style& GetMenuStyle();                    // Get the style used for drawing popup menus
 
+// ============================================================================
+// Menu bar
+// ============================================================================
+
+struct BarEntry {
+    std::string title;
+    Menu menu;
+};
+using Bar = std::vector<BarEntry>;
+
 } // namespace PopupMenu
+
+// A menu bar at the current layout position, using the remaining width and the row height. Clicking a title
+// opens its menu below it, while a menu of the bar is open, hovering another title switches to its menu.
+RLGUIPP_API void MenuBar(const char* id, const PopupMenu::Bar& bar);
 
 
 }  // namespace gui

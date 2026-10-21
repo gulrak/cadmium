@@ -41,6 +41,7 @@
 
 #include <threadpool.hpp>
 #include <highlighter.hpp>
+#include <rlguipp/rlguipp.hpp>
 
 std::string GetClipboardTextX();
 void SetClipboardTextX(const std::string& text);
@@ -216,6 +217,7 @@ protected:
     bool _findRegexValid{false};
     std::string _findString;
     std::string _replaceString;
+    gui::Id _focusId{gui::GetId("Editor")};
     uint32_t _findUpdateRevision{0xFFFFFFFF};
     int _findResults{0};
     int _findCurrentResult{-1};
