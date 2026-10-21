@@ -1,5 +1,9 @@
 add_subdirectory(emulation)
 
+# The compiled in files from resources/files, the emulation library uses them too (HP-48SX ROM).
+add_library(resourcemanager STATIC resourcemanager.cpp resourcemanager.hpp)
+target_link_libraries(resourcemanager PUBLIC resourcedata raylib_static)
+
 set(CADMIUM_SOURCE
     c8capturehost.cpp
     c8capturehost.hpp
@@ -23,8 +27,6 @@ set(CADMIUM_SOURCE
     librarian.hpp
     logview.cpp
     logview.hpp
-    resourcemanager.cpp
-    resourcemanager.hpp
     stylemanager.cpp
     stylemanager.hpp
     systemtools.cpp
@@ -86,24 +88,9 @@ if(WEB_WITH_FETCHING)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_FETCHING)
 endif()
 set_source_files_properties(src/editor.cpp PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
-target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata ghc_filesystem Threads::Threads)
+target_link_libraries(cadmium PRIVATE emulation rlguipp resourcemanager ghc_filesystem Threads::Threads)
 target_code_coverage(cadmium)
 if (${PLATFORM} MATCHES "Web")
-    if(CADMIUM_WITH_HP48)
-        # The adapter assembles the selected interpreter at runtime. Embed only
-        # its sources and the default ROM, using the same virtual asset root.
-        set(hp48WebAssets
-            resources/sxrom-rev-e
-            resources/research/chip48.asap
-            resources/research/schip10.asap
-            resources/research/schip11.asap
-            resources/research/schpc.asap)
-        foreach(asset IN LISTS hp48WebAssets)
-            target_link_options(cadmium PRIVATE
-                "SHELL:--embed-file \"${hp48sx_SOURCE_DIR}/${asset}@/hp48/${asset}\"")
-            set_property(TARGET cadmium APPEND PROPERTY LINK_DEPENDS "${hp48sx_SOURCE_DIR}/${asset}")
-        endforeach()
-    endif()
     target_link_options(cadmium PRIVATE
         -sUSE_GLFW=3
         -sUSE_WEBGL2=0

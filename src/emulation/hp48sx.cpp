@@ -1,11 +1,39 @@
+//---------------------------------------------------------------------------------------
+// src/emulation/hp48sx.cpp
+//---------------------------------------------------------------------------------------
+//
+// Copyright (c) 2026, Steffen Schümann <s.schuemann@pobox.com>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+//---------------------------------------------------------------------------------------
+
 #include <emulation/hp48sx.hpp>
 
 #include <emulation/hardware/hp48/binary.hpp>
 #include <emulation/hardware/hp48/g48sxmachine.hpp>
-#include <tools/asacpp/asacpp.hpp>
+#include <emulation/hardware/hp48/asacpp/asacpp.hpp>
+#include <resourcemanager.hpp>
 
 #include <algorithm>
 #include <fstream>
+#include <span>
 #include <stdexcept>
 #include <stdendian/stdendian.h>
 
@@ -23,6 +51,8 @@ constexpr std::string_view PROP_SOUND = "soundSymbol";
 constexpr std::string_view PROP_STACK_POINTER = "stackPointerSymbol";
 constexpr std::string_view PROP_STACK = "stackSymbol";
 constexpr std::string_view PROP_KEY_TABLE = "keyTableSymbol";
+constexpr std::string_view PROP_FIXED_CONTRAST = "fixedContrast";
+constexpr std::string_view PROP_CONTRAST = "contrast";
 
 enum class Interpreter {
     NONE,
@@ -32,14 +62,28 @@ enum class Interpreter {
     SCHPC,
 };
 
-std::vector<uint8_t> readFile(const std::string& relativePath)
+constexpr std::string_view INTERPRETER_FOLDER = "hp-chip8";
+
+std::vector<uint8_t> readFile(const std::string& path)
 {
-    const auto path = ghc::filesystem::path(HP48SX_SOURCE_DIR) / relativePath;
     std::ifstream stream(path, std::ios::binary);
     if (!stream) {
-        throw std::runtime_error("Unable to open HP-48 asset: " + path.string());
+        throw std::runtime_error("Unable to open HP-48 asset: " + path);
     }
     return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+}
+
+std::vector<uint8_t> loadAsset(const std::string& name, std::string_view folder = {})
+{
+    auto& resources = ResourceManager::instance();
+    const auto fileName = ghc::filesystem::path(name).filename().string();
+    for (const auto& candidate : {name, folder.empty() ? fileName : std::string(folder) + "/" + fileName}) {
+        if (resources.resourceAvailable(candidate)) {
+            const auto resource = resources.resourceForName(candidate);
+            return {resource.data(), resource.data() + resource.size()};
+        }
+    }
+    return readFile(name);
 }
 
 chip8::VariantSet variantFor(Interpreter interpreter)
@@ -62,7 +106,7 @@ chip8::VariantSet variantFor(Interpreter interpreter)
 struct Hp48sxOptions
 {
     Interpreter interpreter{Interpreter::NONE};
-    std::string rom{"resources/sxrom-rev-e"};
+    std::string rom{"sxrom-rev-e"};
     std::string source;
     std::string fetchSymbol{"dispatch"};
     int symbolAddressBias{-16};
@@ -71,6 +115,8 @@ struct Hp48sxOptions
     std::string stackPointerSymbol;
     std::string stackSymbol;
     std::string keyTableSymbol{"keytab"};
+    bool fixedContrast{false};
+    int contrast{hp48::Hp48Display::DEFAULT_CONTRAST};
 
     static Properties& registeredPrototype()
     {
@@ -78,7 +124,10 @@ struct Hp48sxOptions
         auto& prototype = Properties::getProperties(PROPERTY_CLASS);
         if (!prototype) {
             prototype.registerProperty({std::string(PROP_INTERPRETER), "Interpreter", Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
-            prototype.registerProperty({std::string(PROP_ROM), "ROM", "resources/sxrom-rev-e"s, "HP-48SX ROM asset"});
+            prototype.registerProperty({std::string(PROP_ROM), "ROM", "sxrom-rev-e"s, "HP-48SX ROM asset"});
+            // The calculator settings (ON + [+]/[-]) can't be reached without its keyboard, so this replaces them
+            prototype.registerProperty({std::string(PROP_FIXED_CONTRAST), "Fixed contrast", false, "Use the Contrast setting instead of the contrast the calculator sets", PropertyFlags::eWritable});
+            prototype.registerProperty({std::string(PROP_CONTRAST), "Contrast", Property::Integer{hp48::Hp48Display::DEFAULT_CONTRAST, hp48::Hp48Display::MIN_CONTRAST, hp48::Hp48Display::MAX_CONTRAST}, "Display contrast (0-31, the calculator default is 11)", PropertyFlags::eWritable});
             prototype.registerProperty({std::string(PROP_SOURCE), "Interpreter Source", ""s, "ASAP source asset", PropertyFlags::eInvisible});
             prototype.registerProperty({std::string(PROP_FETCH), "Fetch Symbol", "dispatch"s, "CHIP-8 fetch loop symbol", PropertyFlags::eInvisible});
             prototype.registerProperty({std::string(PROP_SYMBOL_BIAS), "Symbol Address Bias", Property::Integer{-16, -65536, 65536}, "Nibble bias from ASAP symbols to the loaded HP object", PropertyFlags::eInvisible});
@@ -104,6 +153,8 @@ struct Hp48sxOptions
         properties[std::string(PROP_STACK_POINTER)].setString(stackPointerSymbol);
         properties[std::string(PROP_STACK)].setString(stackSymbol);
         properties[std::string(PROP_KEY_TABLE)].setString(keyTableSymbol);
+        properties[std::string(PROP_FIXED_CONTRAST)].setBool(fixedContrast);
+        properties[std::string(PROP_CONTRAST)].setInt(contrast);
         return properties;
     }
 
@@ -120,6 +171,8 @@ struct Hp48sxOptions
         options.stackPointerSymbol = properties[std::string(PROP_STACK_POINTER)].getString();
         options.stackSymbol = properties[std::string(PROP_STACK)].getString();
         options.keyTableSymbol = properties[std::string(PROP_KEY_TABLE)].getString();
+        options.fixedContrast = properties[std::string(PROP_FIXED_CONTRAST)].getBool();
+        options.contrast = properties[std::string(PROP_CONTRAST)].getInt();
         return options;
     }
 };
@@ -131,22 +184,22 @@ const std::array<SetupInfo, 5> PRESETS{{
      "Original CHIP-48 on HP-48SX",
      ".ch48;.c48",
      chip8::Variant::CHIP_48,
-     {.interpreter = Interpreter::CHIP_48, .source = "resources/research/chip48.asap", .timerSymbol = "ofs_timer", .soundSymbol = "ofs_sound", .stackPointerSymbol = "ofs_csp", .stackSymbol = "ofs_cstack"}},
+     {.interpreter = Interpreter::CHIP_48, .source = "hp-chip8/chip48.asap", .timerSymbol = "ofs_timer", .soundSymbol = "ofs_sound", .stackPointerSymbol = "ofs_csp", .stackSymbol = "ofs_cstack"}},
     {"SCHIP-1.0",
      "SUPER-CHIP 1.0 on HP-48SX",
      ".sc10",
      chip8::Variant::SCHIP_1_0,
-     {.interpreter = Interpreter::SCHIP_1_0, .source = "resources/research/schip10.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
+     {.interpreter = Interpreter::SCHIP_1_0, .source = "hp-chip8/schip10.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
     {"SCHIP-1.1",
      "SUPER-CHIP 1.1 on HP-48SX",
      ".sc8;.sc11",
      chip8::Variant::SCHIP_1_1,
-     {.interpreter = Interpreter::SCHIP_1_1, .source = "resources/research/schip11.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
+     {.interpreter = Interpreter::SCHIP_1_1, .source = "hp-chip8/schip11.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
     {"SCHPC",
      "SUPER-CHIP compatibility interpreter on HP-48SX",
      ".sc8;.scc",
      chip8::Variant::SCHIPC,
-     {.interpreter = Interpreter::SCHPC, .source = "resources/research/schpc.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
+     {.interpreter = Interpreter::SCHPC, .source = "hp-chip8/schpc.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
 }};
 
 struct Factory final : CoreRegistry::FactoryInfo<Hp48sxEmulationCore, SetupInfo, Hp48sxOptions>
@@ -161,6 +214,10 @@ struct Factory final : CoreRegistry::FactoryInfo<Hp48sxEmulationCore, SetupInfo,
         const auto index = properties[std::string(PROP_INTERPRETER)].getSelectedIndex();
         return {index, PRESETS[index].options.asProperties() == properties};
     }
+    void applyRules(Properties& props, std::string_view) const override
+    {
+        props.at(std::string(PROP_CONTRAST)).setState(props[std::string(PROP_FIXED_CONTRAST)].getBool() ? PropertyState::ACTIVE : PropertyState::INACTIVE);
+    }
 };
 
 const bool REGISTERED = CoreRegistry::registerFactory(std::string(PROPERTY_CLASS), std::make_unique<Factory>());
@@ -174,14 +231,6 @@ uint32_t readPacked(const hp48::G48sxMachine& machine, uint32_t address, unsigne
     return result;
 }
 
-uint32_t argb8888ToRaylibRgba(uint32_t color)
-{
-    // G48sx renders SDL_PIXELFORMAT_ARGB8888 values, while raylib expects
-    // R8G8B8A8 bytes in Image::data.
-    const auto rgba = (color << 8U) | (color >> 24U);
-    return be32(rgba);
-}
-
 }  // namespace
 
 struct Hp48sxEmulationCore::Private
@@ -193,10 +242,18 @@ struct Hp48sxEmulationCore::Private
         , syncedMemory(4096)
     {
         (void)REGISTERED;
-        auto rom = readFile(options.rom);
+        auto rom = loadAsset(options.rom);
         machine = std::make_unique<hp48::G48sxMachine>(hp48::G48SX_RECOVERY_RESET_KEY_HOLD_INSTRUCTIONS, std::move(rom), "Cadmium HP-48SX", hp48::G48sxTimingProfile::COMPARE);
         powerOnState = machine->saveStateBytes(false);
         idleStack.push(std::string("No program loaded"));
+        applyContrast();
+    }
+
+    void applyContrast()
+    {
+        const auto fixed = options.fixedContrast ? std::optional<int>(options.contrast) : std::nullopt;
+        machine->setFixedContrast(fixed);
+        idleDisplay.setContrast(fixed.value_or(hp48::Hp48Display::DEFAULT_CONTRAST));
     }
 
     Properties& properties;
@@ -244,8 +301,14 @@ Hp48sxEmulationCore::Hp48sxEmulationCore(EmulatorHost& host, Properties& propert
 
 Hp48sxEmulationCore::~Hp48sxEmulationCore() = default;
 
-bool Hp48sxEmulationCore::updateProperties(Properties&, Property&)
+bool Hp48sxEmulationCore::updateProperties(Properties& props, Property& changed)
 {
+    // The contrast is only a matter of rendering, so it is applied live
+    if (changed.getId() == PROP_FIXED_CONTRAST || changed.getId() == PROP_CONTRAST) {
+        _impl->options = Hp48sxOptions::fromProperties(props);
+        _impl->applyContrast();
+        return false;
+    }
     return true;
 }
 std::string Hp48sxEmulationCore::name() const
@@ -295,8 +358,7 @@ bool Hp48sxEmulationCore::loadData(std::span<const uint8_t> data, std::optional<
             restoreStartState();
             return true;
         }
-        // The toolbar reloads the same image after reset. Reuse its prepared
-        // machine state instead of assembling and bootstrapping it again.
+        // Reuse prepared machine state instead of assembling and bootstrapping it again.
         if (!_impl->startState.empty() && std::ranges::equal(data, _impl->loadedData)) {
             restoreStartState();
             return true;
@@ -343,8 +405,8 @@ bool Hp48sxEmulationCore::prepareInterpreter(std::span<const uint8_t> program)
         throw std::runtime_error("CHIP-8 program is too large for the HP-48 interpreter");
     }
     AsaCpp assembler;
-    const auto sourcePath = ghc::filesystem::path(HP48SX_SOURCE_DIR) / _impl->options.source;
-    assembler.compile(sourcePath);
+    const auto source = loadAsset(_impl->options.source, INTERPRETER_FOLDER);
+    assembler.compile(_impl->options.source, std::span<const char>(reinterpret_cast<const char*>(source.data()), source.size()));
     if (assembler.isError()) {
         throw std::runtime_error("Unable to assemble HP-48 interpreter: " + assembler.compileResult().errorMessage);
     }
@@ -726,7 +788,7 @@ ghc::span2d<const uint32_t> Hp48sxEmulationCore::getRGBASpan(ghc::span2d<uint32_
         _impl->idleDisplay.render(result, hp48::Hp48Display::Mode::Stack);
     else
         _impl->machine->render(result);
-    std::ranges::transform(result, result.begin(), argb8888ToRaylibRgba);
+    std::ranges::transform(result, result.begin(), argb8888ToRgba8888);
     return result.as_const();
 }
 

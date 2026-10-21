@@ -948,7 +948,9 @@ ghc::span2d<const uint32_t> Chip8GenericEmulator::getRGBASpan(ghc::span2d<uint32
     if (_options.optHP48Display) {
         auto result = target.subspan(0, 0, 540, 296);
         _screen.convertHp48({_hp48Framebuffer.data(), 16, 64, 17});
-        _hp48Display.render(result, hp48::Display::Mode::FrameBuffer);
+        _hp48Display.setAnnunciators({.busy = true});
+        _hp48Display.render(result, hp48::Hp48Display::Mode::FrameBuffer);
+        std::ranges::transform(result, result.begin(), argb8888ToRgba8888);
         return result.as_const();
     }
     return {};

@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/hpsaturnl2.hpp
+// src/emulation/hardware/hpsaturnl2.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>

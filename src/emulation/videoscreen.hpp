@@ -36,6 +36,13 @@
 
 namespace emu {
 
+// Converts an ARGB8888 value (the SDL pixel format, used by the HP-48 display) into the
+// R8G8B8A8 byte order raylib expects in its pixel data.
+inline uint32_t argb8888ToRgba8888(uint32_t argb)
+{
+    return be32((argb << 8U) | (argb >> 24U));
+}
+
 template<typename PixelType>
 class VideoScreen
 {

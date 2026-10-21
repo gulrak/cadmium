@@ -72,11 +72,17 @@ else()
 endif()
 
 option(CADMIUM_WITH_DATABASE "Compile Cadmium with a database functionality, this links sqlite into Cadmium" ${DATABASE_DEFAULT})
-option(CADMIUM_WITH_HP48 "Compile Cadmium with HP-48SX emulation support" OFF)
-if(FETCHCONTENT_SOURCE_DIR_HP48SX)
-    set(CADMIUM_WITH_HP48 ON CACHE BOOL "Compile Cadmium with HP-48SX emulation support" FORCE)
+# The HP-48SX core needs HP's ROM, which is not part of the repository (it is in .gitignore). With the ROM in
+# resources/files the core is built and the ROM compiled in, without it Cadmium is built without the core.
+option(CADMIUM_DISABLE_HP48 "Never build the HP-48SX core, even if its ROM is in resources/files (e.g. for builds to redistribute)" OFF)
+unset(CADMIUM_WITH_HP48 CACHE)  # was a user option, now it follows the ROM
+if(EXISTS "${PROJECT_SOURCE_DIR}/resources/files/sxrom-rev-e" AND NOT CADMIUM_DISABLE_HP48)
+    set(CADMIUM_WITH_HP48 ON)
+    message(STATUS "HP-48SX core enabled, its ROM is in resources/files")
+else()
+    set(CADMIUM_WITH_HP48 OFF)
+    message(STATUS "HP-48SX core disabled (no ROM in resources/files, or CADMIUM_DISABLE_HP48 is set)")
 endif()
-
 include(CheckIncludeFile)
 check_include_file(bcm_host.h HAS_BCMHOST)
 if(HAS_BCMHOST AND NOT GRAPHICS)
@@ -92,7 +98,6 @@ set(RAYLIB_BRANCH_NAME "6.0")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
-set(raylib_patch git apply ${PROJECT_SOURCE_DIR}/cmake/raylib.patch)
 FetchContent_Declare(
     raylib
     #URL https://github.com/gulrak/raylib/archive/refs/heads/master.zip
@@ -100,7 +105,6 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
-    PATCH_COMMAND ${raylib_patch}
     UPDATE_DISCONNECTED TRUE
     EXCLUDE_FROM_ALL
 )
@@ -160,24 +164,20 @@ include_directories(${chiplet_SOURCE_DIR}/external)
 include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
 
 if(CADMIUM_WITH_HP48)
-    if(NOT TARGET nlohmann_json::nlohmann_json)
-        add_library(cadmium_nlohmann_json INTERFACE)
-        add_library(nlohmann_json::nlohmann_json ALIAS cadmium_nlohmann_json)
-        target_include_directories(cadmium_nlohmann_json INTERFACE
-            "${PROJECT_SOURCE_DIR}/external")
-    endif()
-    set(HP48_LIBRARY_ONLY ON CACHE BOOL "" FORCE)
-    set(HP48_EXTERNAL_EMULATION_API ON CACHE BOOL "" FORCE)
-    set(HP48_CORE_TARGET hp48_core CACHE STRING "" FORCE)
-    set(HP48_ENABLE_INSTRUCTION_CACHE ON CACHE BOOL "" FORCE)
+    # zstd compresses the HP-48 state files
+    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
     FetchContent_Declare(
-        Hp48sx
-        GIT_REPOSITORY "https://github.com/gulrak/hp48sx.git"
-        GIT_TAG "main"
-        GIT_SHALLOW TRUE
+        zstd
+        URL "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SOURCE_SUBDIR build/cmake
         EXCLUDE_FROM_ALL
     )
-    FetchContent_MakeAvailable(Hp48sx)
+    FetchContent_MakeAvailable(zstd)
 endif()
 
 FetchContent_Declare(

@@ -1,25 +1,42 @@
+//---------------------------------------------------------------------------------------
+// src/emulation/hardware/hp48/display.cpp
+//---------------------------------------------------------------------------------------
 //
-// Created by Steffen Schümann on 18.02.26.
+// Copyright (c) 2026, Steffen Schümann <s.schuemann@pobox.com>
 //
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+//---------------------------------------------------------------------------------------
 
 #include "display.hpp"
 #include "font.hpp"
 
-#include <stdendian/stdendian.h>
-
+#include <algorithm>
 #include <cstring>
 
 namespace hp48 {
 
-#if 0
 constexpr uint32_t backgroundColor = 0xFFfbf4a5;
 constexpr uint32_t foregroundOffColor = 0xFF96b0aa;
 constexpr uint32_t foregroundOnColor = 0xFF0025b7;
-#else
-constexpr uint32_t backgroundColor = 0xfbf4a5FF;
-constexpr uint32_t foregroundOffColor = 0x96b0aaFF;
-constexpr uint32_t foregroundOnColor = 0x0025b7FF;
-#endif
+// Lit pixels at the maximum contrast
+constexpr uint32_t foregroundDarkColor = 0xFF000a2a;
 
 // Symbol 1: left-pointing notification badge (15px wide)
 constexpr uint16_t symbol0[12] = {0x7ffc, 0xfffe, 0xf9fe, 0xf3fe, 0xe7fe, 0xc01e, 0xc00e, 0xe7ce, 0xf3ce, 0xf9ce, 0xffce, 0x7fcc};
@@ -181,49 +198,83 @@ namespace {
 
 }  // namespace
 
-Display::Display(std::span<uint8_t> frameBuffer, const ObjectStack& stack, const std::vector<std::string>& menuRef)
+Hp48Display::Hp48Display(std::span<uint8_t> frameBuffer, const ObjectStack& stack, const std::vector<std::string>& menuRef)
     : _frameBuffer(frameBuffer)
     , _stack(stack)
     , _menuRef(menuRef)
 {
-    _bgCol = be32(backgroundColor);
-    _fgOnCol = be32(foregroundOnColor);
-    _fgOffCol = lerpU32Bytes(_fgOnCol, _bgCol, 220);
-    _shadowCol = lerpU32Bytes(_fgOnCol, _bgCol, 120);
 }
 
-void Display::setError(std::pair<std::string, std::string> error)
+void Hp48Display::setAnnunciators(Annunciators annunciators)
+{
+    _annunciators = annunciators;
+}
+
+void Hp48Display::setContrast(int contrast)
+{
+    _contrast = std::clamp(contrast, MIN_CONTRAST, MAX_CONTRAST);
+}
+
+void Hp48Display::setError(std::pair<std::string, std::string> error)
 {
     _error = error;
 }
 
-void Display::clearError()
+void Hp48Display::clearError()
 {
     _error = {};
 }
 
-void Display::render(ghc::span2d<uint32_t> pixelBuffer, Mode mode, int scale)
+void Hp48Display::render(ghc::span2d<uint32_t> pixelBuffer, Mode mode, int scale)
 {
     constexpr int xoffset = 2;
     constexpr int yoffset = 8;
 
-
+    // Contrast emulation: at the default contrast the colors are the nominal ones, below it the lit pixels fade
+    // into the background (invisible at 2 and below), above it they darken and the unlit pixels start to show,
+    // like on the real LCD. The curve is still sucks and needs, comparison with a real HP-48SX
+    const auto nominalOffColor = lerpU32Bytes(foregroundOffColor, backgroundColor, 200);
+    uint32_t onColor = foregroundOnColor;
+    uint32_t offColor = nominalOffColor;
+    if (_contrast < DEFAULT_CONTRAST) {
+        const auto amount = static_cast<float>(_contrast - 2) / static_cast<float>(DEFAULT_CONTRAST - 2);
+        onColor = mixColor(backgroundColor, foregroundOnColor, amount);
+        offColor = mixColor(backgroundColor, nominalOffColor, amount);
+    }
+    else if (_contrast > DEFAULT_CONTRAST) {
+        onColor = mixColor(foregroundOnColor, foregroundDarkColor, static_cast<float>(_contrast - DEFAULT_CONTRAST) / static_cast<float>(MAX_CONTRAST - DEFAULT_CONTRAST));
+        offColor = mixColor(nominalOffColor, foregroundOnColor, 0.6f * static_cast<float>(_contrast - 16) / static_cast<float>(MAX_CONTRAST - 16));
+    }
+    const auto shadowColor = lerpU32Bytes(onColor, backgroundColor, 120);
 
     // Fill buffer with background color
     for (size_t y = 0; y < pixelBuffer.height(); ++y) {
         for (auto& i : pixelBuffer.row(y)) {
-            i = _bgCol;
+            i = backgroundColor;
         }
     }
 
-    renderSymbol(pixelBuffer, (xoffset + 6) * scale, 4, symbol0, symbol_widths[0], _leftShift ? _fgOnCol : _fgOffCol);
-    renderSymbol(pixelBuffer, (xoffset + 28) * scale, 4, symbol1, symbol_widths[1], _rightShift ? _fgOnCol : _fgOffCol);
-    renderSymbol(pixelBuffer, (xoffset + 51) * scale, 6, symbol2, symbol_widths[2], _alpha ? _fgOnCol : _fgOffCol);
-    renderSymbol(pixelBuffer, (xoffset + 74) * scale, 6, symbol3, symbol_widths[3], _alarm ? _fgOnCol : _fgOffCol);
-    if (_busy)
-        renderSymbol(pixelBuffer, (xoffset + 96) * scale+1, 4+1, symbol4, symbol_widths[4], _shadowCol);
-    renderSymbol(pixelBuffer, (xoffset + 96) * scale, 4, symbol4, symbol_widths[4], _busy ? _fgOnCol : _fgOffCol);
-    renderSymbol(pixelBuffer, (xoffset + 118) * scale, 4, symbol5, symbol_widths[5], _transfer ? _fgOnCol : _fgOffCol);
+    const struct {
+        int x;
+        int y;
+        const uint16_t* symbol;
+        uint8_t width;
+        bool active;
+    } annunciators[] = {
+        {(xoffset + 6) * scale, 4, symbol0, symbol_widths[0], _annunciators.leftShift},
+        {(xoffset + 28) * scale, 4, symbol1, symbol_widths[1], _annunciators.rightShift},
+        {(xoffset + 51) * scale, 6, symbol2, symbol_widths[2], _annunciators.alpha},
+        {(xoffset + 74) * scale, 6, symbol3, symbol_widths[3], _annunciators.alarm},
+        {(xoffset + 96) * scale, 4, symbol4, symbol_widths[4], _annunciators.busy},
+        {(xoffset + 118) * scale, 4, symbol5, symbol_widths[5], _annunciators.transfer},
+    };
+    for (const auto& annunciator : annunciators) {
+        if (annunciator.active)
+            renderSymbol(pixelBuffer, annunciator.x + 1, annunciator.y + 1, annunciator.symbol, annunciator.width, shadowColor);
+    }
+    for (const auto& annunciator : annunciators) {
+        renderSymbol(pixelBuffer, annunciator.x, annunciator.y, annunciator.symbol, annunciator.width, annunciator.active ? onColor : offColor);
+    }
 
     if (mode == Mode::Stack) {
         std::memset(_frameBuffer.data(), 0, _frameBuffer.size());
@@ -257,24 +308,25 @@ void Display::render(ghc::span2d<uint32_t> pixelBuffer, Mode mode, int scale)
 
     }
     auto bufferWidth = static_cast<int>(pixelBuffer.width());
+    auto bufferHeight = static_cast<int>(pixelBuffer.height());
     for (int y = 0; y < 64; ++y) {
         for (int x = 0; x < 131; ++x) {
             auto xpos = (x + xoffset) * scale;
             auto ypos = (y + yoffset) * scale;
 
             bool active = _frameBuffer[y * 17 + (x >> 3)] & (0x80 >> (x & 7));
-            auto color = active ? _fgOnCol : _fgOffCol;
+            auto color = active ? onColor : offColor;
 
             // Set 3x3 pixels at xpos,ypos in pixelBuffer to color
             for (int dy = 0; dy < scale; ++dy) {
                 for (int dx = 0; dx < scale; ++dx) {
                     int px = xpos + dx;
                     int py = ypos + dy;
-                    if (px >= 0 && px < bufferWidth && py >= 0 && py < bufferWidth) {
+                    if (px >= 0 && px < bufferWidth && py >= 0 && py < bufferHeight) {
                         if (dx < scale - 1 && dy < scale - 1)
                             pixelBuffer(py, px) = color;
                         else if (active && dx && dy)
-                            pixelBuffer(py, px) = _shadowCol;
+                            pixelBuffer(py, px) = shadowColor;
                     }
                 }
             }
@@ -282,7 +334,16 @@ void Display::render(ghc::span2d<uint32_t> pixelBuffer, Mode mode, int scale)
     }
 }
 
-uint32_t Display::lerpU32Bytes(uint32_t a, uint32_t b, uint8_t mix)
+uint32_t Hp48Display::mixColor(uint32_t from, uint32_t to, float amount)
+{
+    if (amount <= 0.0f)
+        return from;
+    if (amount >= 1.0f)
+        return to;
+    return lerpU32Bytes(from, to, static_cast<uint8_t>(amount * 255.0f + 0.5f));
+}
+
+uint32_t Hp48Display::lerpU32Bytes(uint32_t a, uint32_t b, uint8_t mix)
 {
     auto m = static_cast<uint32_t>(mix);
     auto im = 255u - m;

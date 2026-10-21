@@ -30,6 +30,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 #include <ghc/filesystem.hpp>
 
@@ -62,6 +63,17 @@ void writeString(std::ostream& stream, const std::string& str)
         writeByte(stream, (unsigned char)(str[i]));
 }
 
+// An excluded entry is a file or a folder (then everything below it), relative to the input directory.
+static bool isExcluded(const std::set<std::string>& excluded, const std::string& filepath)
+{
+    for (const auto& entry : excluded) {
+        if (filepath == entry || (filepath.size() > entry.size() && filepath.compare(0, entry.size(), entry) == 0 && filepath[entry.size()] == '/')) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int main(int argc, char* argv[])
 {
     std::clog << "starting resourcer..." << std::endl;
@@ -69,8 +81,18 @@ int main(int argc, char* argv[])
     int totalSize = 0;
     int filenamesSize = 0;
     if (argc < 3) {
-        puts("USAGE: resourcer <outputfile> <directory> ...");
+        puts("USAGE: resourcer <outputfile> <directory> [--exclude <relative file or folder>]...");
         exit(-1);
+    }
+    std::set<std::string> excluded;
+    for (int argIdx = 3; argIdx < argc; ++argIdx) {
+        if (std::string(argv[argIdx]) == "--exclude" && argIdx + 1 < argc) {
+            excluded.insert(argv[++argIdx]);
+        }
+        else {
+            std::cerr << "ERROR: unexpected argument '" << argv[argIdx] << "'" << std::endl;
+            exit(-1);
+        }
     }
 
     // Process all directory arguments starting from argv[2]
@@ -84,7 +106,12 @@ int main(int argc, char* argv[])
         std::clog << "Reading content of '" << inputDir.string() << "' ..." << std::endl;
 
         for (fs::recursive_directory_iterator dir(inputDir); dir != fs::recursive_directory_iterator(); ++dir) {
-            std::string filepath = dir->path().string().substr(inputDir.string().length() + 1);
+            // generic_string() so names in subfolders use '/' on every platform
+            std::string filepath = dir->path().generic_string().substr(inputDir.generic_string().length() + 1);
+            if (isExcluded(excluded, filepath)) {
+                std::clog << "Excluding '" << filepath << "'" << std::endl;
+                continue;
+            }
             if (!filepath.empty() && filepath[0] != '.' && fs::is_regular_file(*dir)) {
                 long size = (long)fs::file_size(*dir);
                 std::cout << filepath << " (" << size << ")" << std::endl;

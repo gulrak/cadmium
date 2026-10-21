@@ -2,9 +2,11 @@ file(GLOB
         RESOURCE_FILES
         CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/files/*.png
-        ${CMAKE_SOURCE_DIR}/files/*.ttf
-        ${CMAKE_SOURCE_DIR}/files/*.vs
-        ${CMAKE_SOURCE_DIR}/files/*.fs
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/*.ttf
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/*.vs
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/*.fs
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/sxrom-rev-e
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/hp-chip8/*.asap
 )
 
 # ------------------------------------------------------------
@@ -105,11 +107,18 @@ endif()
 # ------------------------------------------------------------
 # Resource data generation (now works for native, Web, and mingw cross)
 # ------------------------------------------------------------
+# The HP-48SX ROM may lie in files/ while the core is disabled, then neither it nor the interpreter
+# sources are compiled in.
+set(RESOURCE_EXCLUDES)
+if(NOT CADMIUM_WITH_HP48)
+    set(RESOURCE_EXCLUDES --exclude sxrom-rev-e --exclude hp-chip8)
+endif()
 add_custom_command(
         OUTPUT resourcedata.c
         COMMAND ${RESOURCER_RUNNER}
         ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
         ${CMAKE_CURRENT_SOURCE_DIR}/files/
+        ${RESOURCE_EXCLUDES}
         DEPENDS resourcer_tool ${RESOURCE_FILES}
         VERBATIM
 )

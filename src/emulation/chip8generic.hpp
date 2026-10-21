@@ -39,8 +39,8 @@
 //#include <emulation/chip8options.hpp>
 #include <chiplet/chip8meta.hpp>
 #include <emulation/time.hpp>
-#include <emulation/hp48/display.hpp>
-#include <emulation/hp48/stack.hpp>
+#include <emulation/hardware/hp48/display.hpp>
+#include <emulation/hardware/hp48/stack.hpp>
 
 namespace emu
 {
@@ -571,7 +571,7 @@ private:
     mutable std::array<uint8_t,1088> _hp48Framebuffer{};
     hp48::ObjectStack _hp48Stack;
     std::vector<std::string> _hp48Menu;
-    mutable hp48::Display _hp48Display{{_hp48Framebuffer.data(),_hp48Framebuffer.size()}, _hp48Stack, _hp48Menu};
+    mutable hp48::Hp48Display _hp48Display{{_hp48Framebuffer.data(),_hp48Framebuffer.size()}, _hp48Stack, _hp48Menu};
 #ifdef GEN_OPCODE_STATS
     std::map<uint16_t,int64_t> _opcodeStats;
 #endif
