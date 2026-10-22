@@ -26,6 +26,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include <configuration.hpp>
 #include <emulation/coreregistry.hpp>
@@ -46,7 +47,7 @@ public:
     {
         std::string name;
         emu::Properties properties;
-        std::span<const uint8_t> data;
+        std::vector<uint8_t> data; // REVIEW: was a span onto a temporary vector built in render(), so it dangled immediately
     };
     struct BadgeInfo
     {

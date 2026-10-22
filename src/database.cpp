@@ -303,6 +303,7 @@ struct Database::Private
     std::string textFilter;
     Vector2 tagsScrollPos{};
     float listContentHeight{0};
+    int selectedProgramId{-1};
     emu::ThreadedBackgroundHost backgroundHost;
 
 
@@ -732,6 +733,7 @@ bool Database::render(Font& font)
             //}
             auto grayCol = StyleManager::mappedColor(GRAY);
             auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
+            auto selectedCol = StyleManager::getStyleColor(gui::Style::TEXT_COLOR_PRESSED);
             for (const int pid : _pimpl->shownIndices) {
                 const auto& program = _pimpl->programs.at(pid);
                 Rectangle itemRect = {program.rect.x + px + cx + scrollPos.x, program.rect.y + py + cy + scrollPos.y, program.rect.width, program.rect.height - 2};
@@ -740,40 +742,43 @@ bool Database::render(Font& font)
                     if (disp > maxDisp) {
                         maxDisp = disp;
                     }
+                    const bool isSelected = pid == _pimpl->selectedProgramId;
+                    if (isSelected) {
+                        DrawRectangleClipped(itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height, StyleManager::getStyleColor(gui::Style::BASE_COLOR_PRESSED));
+                    }
                     if (CheckCollisionPointRec(GetMousePosition(), itemRect)) {
-                        DrawRectangleClipped(itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
+                        if (!isSelected) {
+                            DrawRectangleClipped(itemRect.x - 2, itemRect.y - 2, itemRect.width, itemRect.height, StyleManager::getStyleColor(gui::Style::BASE_COLOR_NORMAL));
+                        }
                         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                            _pimpl->selectedProgramId = pid;
+                            _selectedProgram.reset();
+                            _pimpl->backgroundHost.killEmulation();
                             if (program.binaries.size() == 1) {
                                 const auto& binary = _pimpl->binaries.at(program.binaries.front());
-                                if (binary.configs.size() == 1) {
+                                if (!binary.configs.empty()) {
                                     const auto& config = binary.configs.front();
                                     auto preset = config.preset;
                                     if (preset == "generic-chip-8")
-                                        preset = "chip-8";
+                                        preset = "xo-chip";
                                     emu::Properties props;
-                                    if (!fuzzyCompare(preset, "generic-chip-8")) {
-                                        props = emu::CoreRegistry::propertiesForPreset(preset);
-                                        const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
-                                        if (!propString.empty()) {
-                                            props.applyDiff(nlohmann::json::parse(propString));
-                                        }
+                                    props = emu::CoreRegistry::propertiesForPreset(preset);
+                                    const auto& propString = _pimpl->binaries[program.binaries.front()].configs.front().properties;
+                                    if (!propString.empty()) {
+                                        props.applyDiff(nlohmann::json::parse(propString));
                                     }
                                     const auto& data = _pimpl->binaries[program.binaries.front()].data;
                                     _selectedProgram = {.name = program.name, .properties = props, .data = std::vector<uint8_t>(data.begin(), data.end())};
-                                    _pimpl->backgroundHost.killEmulation();
                                     _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
                                     binarySelected = true;
                                 }
                             }
-                            else {
-                                _selectedProgram = {};//{.name = program.name, .properties = {}, .data = {}};
-                            }
                         }
                     }
-                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, lightgrayCol);
+                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, isSelected ? selectedCol : lightgrayCol);
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto binary = _pimpl->binaries.at(program.binaries[i]);
-                        DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, grayCol);
+                        DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, isSelected ? selectedCol : grayCol);
                         //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                         Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
                         for (const auto& bincfg : binary.configs) {

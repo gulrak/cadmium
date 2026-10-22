@@ -270,7 +270,7 @@ public:
     void updateEmulatorOptions(const Properties& properties) override;
     void updateScreen() override;
     std::pair<Texture2D*, Rectangle> updateTexture();
-    void vblank() override;
+    void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override {}
     void drawScreen(Rectangle dest) const;
@@ -282,9 +282,7 @@ private:
     bool applyRequests() override;
     void worker();
     void tick();
-    Image* _screen{nullptr};
-    Image _screen1{};
-    Image _screen2{};
+    Image _screen{};
     Texture2D _screenTexture{};
     std::atomic_bool _shutdown{false};
     std::atomic<std::chrono::steady_clock::duration> _frameDuration{std::chrono::steady_clock::duration::zero()};

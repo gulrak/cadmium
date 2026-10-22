@@ -947,9 +947,7 @@ ThreadedBackgroundHost::ThreadedBackgroundHost(CadmiumConfiguration& cfg, double
 , _workerThread(&ThreadedBackgroundHost::worker, this)
 {
     setFrameRate(initialFrameRate);
-    _screen1 = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
-    _screen2 = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
-    _screen = &_screen1;
+    _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
 }
 
 ThreadedBackgroundHost::ThreadedBackgroundHost(CadmiumConfiguration& cfg, const Properties& options, double initialFrameRate)
@@ -967,8 +965,7 @@ ThreadedBackgroundHost::~ThreadedBackgroundHost()
     if (_workerThread.joinable()) {
         _workerThread.join();
     }
-    UnloadImage(_screen2);
-    UnloadImage(_screen1);
+    UnloadImage(_screen);
 }
 
 void ThreadedBackgroundHost::setFrameRate(double frequency)
@@ -1011,8 +1008,7 @@ void ThreadedBackgroundHost::killEmulation()
 {
     std::unique_lock guard(_mutex);
     _chipEmu.reset();
-    ImageClearBackground(&_screen1, BLACK);
-    ImageClearBackground(&_screen2, BLACK);
+    ImageClearBackground(&_screen, BLACK);
 }
 
 
@@ -1042,7 +1038,8 @@ void ThreadedBackgroundHost::drawScreen(Rectangle dest) const
         //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
         int scrHeight = _chipEmu->getCurrentScreenHeight();
         auto videoScaleX = dest.width / scrWidth;
-        auto videoScaleY = _chipEmu->getScreen() && _chipEmu->getScreen()->ratio() ? videoScaleX / _chipEmu->getScreen()->ratio() : videoScaleX;
+        auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
+        auto videoScaleY = ratio ? videoScaleX / ratio : videoScaleX;
         auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
         auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
         if(_chipEmu->getMaxScreenWidth() > 128)
@@ -1063,29 +1060,26 @@ void ThreadedBackgroundHost::updateScreen()
 
 std::pair<Texture2D*, Rectangle> ThreadedBackgroundHost::updateTexture()
 {
+    // REVIEW: converting here instead of in vblank() also shows what was drawn after the last vblank,
+    // e.g. before a program ends in a jump-to-self that pauses the core and stops further vblanks.
+    // The worker holds the mutex for a whole executeFrame(), so this always sees a state between frames.
     std::unique_lock guard(_mutex);
-    if (!_screenTexture.id)
-        _screenTexture = LoadTextureFromImage(*_screen);
-    UpdateTexture(_screenTexture, _screen->data);
-    return {&_screenTexture, {0, 0, 0, 0}};
-}
-
-void ThreadedBackgroundHost::vblank()
-{
-    std::unique_lock guard(_mutex);
-    if (_chipEmu && _screen) {
-        if (auto* pixel = static_cast<uint32_t*>(_screen->data)) {
+    if (_chipEmu) {
+        if (auto* pixel = static_cast<uint32_t*>(_screen.data)) {
             if (const auto* screen = _chipEmu->getScreen()) {
-                screen->convert(pixel, _screen->width, 255, nullptr);
+                screen->convert(pixel, _screen.width, 255, nullptr);
             }
             else {
                 if (const auto* screenRgb = _chipEmu->getScreenRGBA()) {
-                    screenRgb->convert(pixel, _screen->width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                    screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
                 }
             }
         }
-        _screen = _screen == &_screen1 ? &_screen2 : &_screen1;
     }
+    if (!_screenTexture.id)
+        _screenTexture = LoadTextureFromImage(_screen);
+    UpdateTexture(_screenTexture, _screen.data);
+    return {&_screenTexture, {0, 0, 0, 0}};
 }
 
 bool ThreadedBackgroundHost::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, const bool isKnown)
