@@ -62,11 +62,20 @@ public:
     int scanLibrary();
     ghc::expected<FileInfo,LoadError> scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
     std::optional<Program> getSelectedProgram() const;
-    bool render(Font& font); // returns true if a program was selected
+    enum class Action { NONE, LOAD, RUN };
+    Action render(Font& font); // LOAD or RUN if getSelectedProgram() should be loaded (and run)
     bool fetchC8PDB();
+    bool containsBinary(const Sha1::Digest& sha1) const;
+    std::string storeSettings(const Sha1::Digest& sha1, const emu::Properties& properties);
+    std::string addFiles(const std::vector<std::string>& paths);
+    // Compares the library with programs.json of the chip-8-database (https://github.com/chip-8/chip-8-database,
+    // platforms.json is expected next to it), reports where they disagree on the variants and settings of ROMs,
+    // and writes programs_<timestamp>.json with the library ROMs missing in it added, used by --update-program-database.
+    static int updateProgramDatabase(const std::string& dataPath, const std::string& programsJsonPath);
 private:
     void refreshBadges();
     void fetchProgramInfo();
+    void updatePreview();
     static Vector2 drawBadge(Font& font, std::string_view text, Vector2 pos, Color textCol, Color badgeCol);
     const std::string& getBadge(std::string badgeText) const;
     const emu::CoreRegistry& _registry;

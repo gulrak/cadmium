@@ -176,6 +176,7 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({PROP_FRAME_RATE, "Frame rate", Property::Integer{60, 50, 100}, "Number of frames per second, default 60", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s, "8192"s, "16384"s, "32768"s, "65536"s, "16777216"s}, "Size of ram in bytes", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{0x200, 0, 0x7f0}, "Load and start address of the program, default depends on variant"});
+        prototype.registerProperty({PROP_SCREEN_ROTATION, "Rotation", Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, "Clockwise rotation of the shown screen, for programs played sideways", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_JUST_SHIFT_VX, "8xy6/8xyE just shift Vx", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_DONT_RESET_VF, "8xy1/8xy2/8xy3 don't reset VF", false, PropertyFlags::eWritable});
@@ -202,7 +203,6 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({PROP_Q_XO_CHIP_SOUND, "XO-CHIP sound engine", false, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_CUBECHIP_TONE, "CubeChip contextual tone", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_PAL_VIDEO, "PAL video format", false, PropertyFlags::eInvisible});
-        prototype.registerProperty({PROP_SCREEN_ROTATION, "Screen rotation", Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_TOUCH_INPUT_MODE, "Touch input mode", Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_FONT_5PX, "Font 5px", Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_FONT_10PX, "Font 10px", Property::Combo{"DEFAULT"s, "SCHIP10"s, "SCHIP11"s, "FISH"s, "MEGACHIP"s, "OCTO"s, "AUCHIP"s}, PropertyFlags::eInvisible});
@@ -643,7 +643,7 @@ void Chip8GenericEmulator::handleReset(bool cold)
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)
 {
-    if (const auto& id = changed.getId(); id == PROP_TRACE_LOG || id == PROP_INSTRUCTIONS_PER_FRAME || id == PROP_FRAME_RATE) {
+    if (const auto& id = changed.getId(); id == PROP_TRACE_LOG || id == PROP_INSTRUCTIONS_PER_FRAME || id == PROP_FRAME_RATE || id == PROP_SCREEN_ROTATION) {
         _options = Chip8GenericOptions::fromProperties(props);
         return false;
     }

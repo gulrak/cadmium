@@ -193,7 +193,7 @@ RLGUIPP_API bool DropdownBox(const char* label, int* active, bool directionUp = 
 RLGUIPP_API bool Spinner(const char* label, int* value, int minValue, int maxValue);                                      // Spinner control, the label is also the id
 RLGUIPP_API bool ValueBox(const char* label, int* value, int minValue, int maxValue);                                     // Value Box control, the label is also the id
 RLGUIPP_API bool TextBox(const char* id, char* text, int textSize);                                                       // Text Box control identified by id, textSize is the size of the buffer
-RLGUIPP_API bool TextBox(const char* id, std::string& text, int textSize);                                                // Text Box control identified by id, textSize is the maximum length
+RLGUIPP_API bool TextBox(const char* id, std::string& text, int textSize);                                                // Text Box control identified by id, textSize is the maximum length in bytes
 RLGUIPP_API bool IsLastWidgetEditFinished();                                                                              // True if the previous widget left its edit mode in this frame (enter or click elsewhere)
 RLGUIPP_API void SetKeyboardFocus(Id id);                                                                                 // Give the keyboard focus to the widget with the id (0 removes it), it is dropped after a frame without the widget
 RLGUIPP_API bool HasKeyboardFocus(Id id);                                                                                 // Check if the widget with the id has the keyboard focus, for custom widgets this also keeps the focus

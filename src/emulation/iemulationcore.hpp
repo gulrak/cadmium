@@ -118,6 +118,7 @@ public:
     virtual PixelRatio getPixelRatio() const { return {}; }
     virtual bool isDoublePixel() const { return false; }
     virtual int getMaxColors() const { return 2; }
+    virtual int screenRotation() const { return 0; }  // how the host shows the screen, clockwise in degrees: 0, 90, 180 or 270
     virtual const VideoType* getScreen() const { return nullptr; }
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
     virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }

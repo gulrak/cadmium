@@ -321,8 +321,10 @@ struct GuiContext
         int state{0};
         bool guiDisabled{false};
         unsigned int style[RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED];
+        Id owner{0};                // the popup the box was described in, 0 for none
     };
     inline static std::unordered_map<Id, DropdownInfo> dropdownBoxes;
+    inline static std::vector<Id> popupStack;  // the ids of the popups currently described, innermost last
     inline static Id openDropdownboxId{0};
     inline static Id editFocusId{0};
     inline static int64_t editFocusFrame{0};  // last frame the focused widget was shown or asked for the focus
@@ -337,10 +339,14 @@ struct GuiContext
             iter->second.lastUpdate = frameId;
             iter->second.rect = rect;
             iter->second.active = active;
+            // a label with "###id" keeps the id while the items or the direction change
+            iter->second.text = text;
+            iter->second.directionUp = directionUp;
             for (int i = 0; i < RAYGUI_MAX_PROPS_BASE + RAYGUI_MAX_PROPS_EXTENDED; ++i) {
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
             iter->second.guiDisabled = GuiGetState() == STATE_DISABLED;
+            iter->second.owner = popupStack.empty() ? 0 : popupStack.back();
             return std::exchange(iter->second.changed, false);
         }
         else {
@@ -349,6 +355,7 @@ struct GuiContext
                 iter->second.style[i] = GetStyle(DROPDOWNBOX, i);
             }
             iter->second.guiDisabled = GuiGetState() == STATE_DISABLED;
+            iter->second.owner = popupStack.empty() ? 0 : popupStack.back();
             return false;
         }
     }
@@ -395,6 +402,9 @@ struct GuiContext
                 SetStyle(DROPDOWNBOX, i, info.style[i]);
             }
             auto oldState = GuiGetState();
+            // the items may have changed since the selection was made, raygui doesn't check the index
+            const int itemCount = static_cast<int>(std::ranges::count(info.text, ';')) + 1;
+            *info.active = std::clamp(*info.active, 0, itemCount - 1);
             auto oldActive = *info.active;
             if(info.guiDisabled)
                 GuiDisable();
@@ -411,18 +421,23 @@ struct GuiContext
             info.lastDraw = info.lastUpdate;
         }
     }
-    static void handleDeferredDropBoxes()
+    // Draws the dropdown boxes described in the given popup (0 for the ones outside of popups), at the end of
+    // that popup, as its rectangles are in the coordinates of the popup and drawn into its render texture.
+    static void handleDeferredDropBoxes(Id owner)
     {
         for (auto& [key, info] : dropdownBoxes) {
-            if(!info.editMode) {
+            if(!info.editMode && info.owner == owner) {
                 handleDeferredDropBox(key, info);
             }
         }
         for (auto& [key, info] : dropdownBoxes) {
-            if(info.editMode) {
+            if(info.editMode && info.owner == owner) {
                 handleDeferredDropBox(key, info);
             }
         }
+    }
+    static void drawDeferredTooltip()
+    {
         if(!GuiContext::tooltipText.empty()) {
             auto move = GetMouseDelta();
             if(std::abs(move.x) > 0.01f || std::abs(move.y) > 0.01f) {
@@ -744,6 +759,7 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
     SetMouseOffset(mouseOffset.x, mouseOffset.y);
 
     g_tabViewStack.clear();
+    GuiContext::popupStack.clear();
     detail::pruneUnusedState(renderTexture);
     detail::updatePopupUnderMouse();
     if ((GuiContext::openDropdownboxId || g_popupUnderMouse) && !GuiIsLocked()) {
@@ -773,7 +789,8 @@ void EndGui()
         detail::closeContext();
     }
     detail::repairStacks(g_contextStack.back());
-    GuiContext::handleDeferredDropBoxes();
+    GuiContext::handleDeferredDropBoxes(0);
+    GuiContext::drawDeferredTooltip();
     PopupContext::renderPopups();
     GuiContext::popup.render();
     g_contextStack.clear();
@@ -1299,9 +1316,11 @@ PopupContext* beginPopup(Rectangle area, Id id, bool* isOpen)
     BeginTextureMode(popup->texture());
     GuiDrawRectangle({0, 0, area.width, area.height}, 1, GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)), GetColor(GetStyle(DEFAULT, BACKGROUND_COLOR)));
     SetMouseOffset((int)ctx.mouseOffset.x, (int)ctx.mouseOffset.y);
-    if (g_popupUnderMouse == popup && GuiIsLocked()) {
+    // an open dropdown box keeps everything else locked, as it does outside of popups
+    if (g_popupUnderMouse == popup && GuiIsLocked() && !GuiContext::openDropdownboxId) {
         GuiUnlock();
     }
+    GuiContext::popupStack.push_back(id);
     g_idStack.push_back(id);
     ctx.captureStackSizes();
     return popup;
@@ -1316,6 +1335,10 @@ bool BeginPopup(Rectangle area, const char* id, bool* isOpen)
 
 static void EndPopupImpl()
 {
+    if (!GuiContext::popupStack.empty()) {
+        GuiContext::handleDeferredDropBoxes(GuiContext::popupStack.back());
+        GuiContext::popupStack.pop_back();
+    }
     if (g_popupUnderMouse && !GuiIsLocked()) {
         GuiLock();
     }
@@ -1819,8 +1842,9 @@ bool TextBox(const char* id, std::string& text, int textSize)
     auto textId = GetId(id);
     bool editing = HasKeyboardFocus(textId);
     std::string oldText = editing ? text : std::string();
+    // GuiTextBox takes the buffer size including the terminating zero
     text.resize(textSize + 1);
-    detail::editableWidget(GuiTextBox, textId, text.data(), textSize);
+    detail::editableWidget(GuiTextBox, textId, text.data(), textSize + 1);
     text.resize(std::strlen(text.data()));
     return editing && oldText != text;
 }

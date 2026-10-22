@@ -143,13 +143,14 @@ Include in your CMake project by adding this repository and linking against the 
 
 - `db::Database` manages one or more SQLite connections and is safe to use across threads. Constructor:
   - `Database(const std::string& path, uint8_t concurrency = 1)`
+  - The database is switched to WAL journal mode, so readers don't block a writer and the other way around.
+    SQLite keeps `-wal` and `-shm` files next to the database file while it is open.
 - `db::Session` is a lightweight view that executes statements and ORM operations on a `Database`.
 
 ```cpp
 db::Database db{"app.db"};
 db::Session session{db};
 
-db.execute("PRAGMA journal_mode=WAL;");
 auto val = db.executeForValue("SELECT 1;"); // ValueRef convertible to int/double/string
 ```
 
@@ -207,6 +208,11 @@ Notes:
 
 Call `db::Registry::syncTables(db);` once after registration to create or evolve tables. It inspects SQLite schema and applies non-destructive changes when possible.
 
+Missing tables are created, and columns missing in an existing table are added with `ALTER TABLE ... ADD COLUMN`.
+Optional columns start as `NULL`, required ones get the zero value of their type (`0`, `0.0`, `''` or an empty blob) as
+default. SQLite can't add `UNIQUE` columns or required foreign keys to an existing table, so `syncTables` throws a
+`db::Exception` for those. Other differences (extra columns, changed constraints) are only reported on `std::cout`.
+
 ```cpp
 registerTables();
 db::Database db{"app.db"};
@@ -252,13 +258,22 @@ auto fetched = session.fetch<User>(u.id);
 
 // Fetch all rows
 auto allUsers = session.fetchAll<User>(); // std::vector<User>
+
+// Delete by id or by object, returns the number of deleted rows
+session.remove<User>(u.id);
+session.remove(u);
 ```
+
+`update` and `remove` return the number of changed rows, so `0` means there was no row with that id.
+Deleting a row also deletes rows that refer to it with `ON DELETE CASCADE`.
 
 ---
 
 ## Querying
 
 Use `session.select<T>()` with expression builders. To refer to a column, use `db::col(&T::member)`. Combine predicates using `&&`, `||`, and `!`. Comparison operators are overloaded. Use `db::like(col, pattern)` for `LIKE`.
+
+`orderBy`, `limit` and `offset` are set first, then the query runs with either `where(expr)` or `all()` (no `WHERE` clause).
 
 ```cpp
 using db::col;
@@ -277,11 +292,14 @@ User byDefault = users.valueOrDefault(User{0, "", ""});
 
 // Complex expressions
 auto result = session.select<User>()
-    .where((col(&User::name) == std::string("Ada"))
-        || db::like(col(&User::email), "%@example.org"))
-    .order_by("name", /*desc=*/false)
+    .orderBy("name", /*desc=*/false)
     .limit(10)
-    .offset(0);
+    .offset(0)
+    .where((col(&User::name) == std::string("Ada"))
+        || db::like(col(&User::email), "%@example.org"));
+
+// All rows, sorted and paged
+auto page = session.select<User>().orderBy("name").limit(20).offset(40).all();
 
 for (auto& u : result) {
     // ...
@@ -345,6 +363,14 @@ db::Table<Profile>("profiles")
     .column("id", &Profile::id)
     .column("nickname", &Profile::nickname)
     .registerTable();
+```
+
+Optional columns compare against their value type, rows with NULL never match a comparison.
+Use `db::isNull(col)` and `db::isNotNull(col)` to test for NULL.
+
+```cpp
+auto named = session.select<Profile>().where(db::col(&Profile::nickname) == std::string("gulrak"));
+auto unnamed = session.select<Profile>().where(db::isNull(db::col(&Profile::nickname)));
 ```
 
 ### BLOB fields

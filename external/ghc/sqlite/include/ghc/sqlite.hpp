@@ -80,6 +80,22 @@ inline constexpr bool is_std_optional_v = is_std_optional_impl<std::remove_cv_t<
 template <typename T>
 concept StdOptional = is_std_optional_v<T>;
 
+/// The value type of a column: U for std::optional<U>, else T itself.
+template <typename T>
+struct unwrap_optional
+{
+    using type = T;
+};
+
+template <typename U>
+struct unwrap_optional<std::optional<U>>
+{
+    using type = U;
+};
+
+template <typename T>
+using unwrap_optional_t = typename unwrap_optional<T>::type;
+
 template <class T>
 concept OrmRecord = std::is_aggregate_v<T> && std::is_standard_layout_v<T> && requires(T t) {
     requires std::is_integral_v<std::remove_cvref_t<decltype(t.id)>>;
@@ -96,6 +112,9 @@ namespace detail {
 
 template <std::ranges::input_range R>
 std::string join(R&& r, std::string_view delimiter);
+
+/// Quote an identifier (table or column name) for use in SQL.
+std::string quoteIdent(std::string_view name);
 
 }
 
@@ -177,6 +196,15 @@ struct Cmp : ExprBase<Cmp<Col, Val, OpTag>>
     using table_type = typename Col::table_type;
     const Col& col;
     Val val;  // store by value; cheap and safe
+};
+
+// Leaf: `col IS NULL` or `col IS NOT NULL`
+template <class Col>
+struct IsNull : ExprBase<IsNull<Col>>
+{
+    using table_type = typename Col::table_type;
+    const Col& col;
+    bool negated;
 };
 
 // Unary: NOT
@@ -279,6 +307,8 @@ struct SelectBuilder
 
     template <class E>
     QueryResult<T> where(const E& e);
+    /// Run the query without a WHERE clause, still honoring orderBy, limit and offset.
+    QueryResult<T> all();
     SelectBuilder& orderBy(const char* col, bool desc = false);
     SelectBuilder& limit(int n);
     SelectBuilder& one();
@@ -297,6 +327,8 @@ struct SelectFieldBuilder
 
     template <class E>
     QueryResult<FT> where(const E& e);
+    /// Run the query without a WHERE clause, still honoring orderBy, limit and offset.
+    QueryResult<FT> all();
     SelectFieldBuilder& orderBy(const char* col, bool desc = false);
     SelectFieldBuilder& limit(int n);
     SelectFieldBuilder& one();
@@ -320,6 +352,28 @@ void toSql(const Bin<L, R, Tag>& e, std::string& out, std::vector<Parameter>& ps
 template <class E>
 void toSql(const Not<E>& e, std::string& out, std::vector<Parameter>& ps);
 
+template <class Col>
+void toSql(const IsNull<Col>& e, std::string& out, std::vector<Parameter>& ps);
+
+namespace detail {
+/// Stand-in for a missing WHERE expression, used by the all() query terminals.
+template <class T>
+struct AllRows
+{
+    using table_type = T;
+};
+}  // namespace detail
+
+template <class T>
+void toSql(const detail::AllRows<T>&, std::string&, std::vector<Parameter>&)
+{
+}
+
+/// A handle to the database connection of the creating thread.
+///
+/// All sessions created on the same thread share one connection (and so its transaction state).
+/// Copies share the connection too, and it is released when the last copy is destroyed, even if
+/// that happens on another thread. A session should only be used on the thread that created it.
 class Session
 {
 public:
@@ -332,8 +386,18 @@ public:
     int64_t insert(T& obj);
     template <OrmRecord T>
     int64_t insert(const T& obj);
+    /// Update the row with the id of obj.
+    /// @return the number of changed rows, so 0 if there is no row with that id.
     template <OrmRecord T>
     int64_t update(const T& obj);
+    /// Delete the row with the given id, rows referring to it via ON DELETE CASCADE go with it.
+    /// @return the number of deleted rows, so 0 if there is no row with that id.
+    template <OrmRecord T>
+    int64_t remove(int64_t id);
+    /// Delete the row with the id of obj.
+    /// @return the number of deleted rows, so 0 if there is no row with that id.
+    template <OrmRecord T>
+    int64_t remove(const T& obj);
     template <OrmRecord T>
     T fetch(int64_t id);
     template <OrmRecord T>
@@ -519,7 +583,8 @@ public:
     bool step();
 
     /// Execute the non-query statement and return the row id if this was an insert.
-    /// @return the row id of the last insert or 0 if this was not an insert.
+    /// @return the row id of the last insert on this connection, so it is only meaningful for an insert,
+    ///         use changes() for the number of affected rows.
     /// @throw ghc::db::Exception if this statement was a query resulting in rows
     int64_t execute();
 
@@ -614,9 +679,8 @@ public:
 private:
     friend class Statement;
     friend class Session;
-    int64_t lastInsertRowId();
     ::sqlite3* acquireConnection();
-    void releaseConnection(::sqlite3* connection);
+    void releaseConnection(::sqlite3* connection, std::thread::id owner);
     typedef std::list<::sqlite3*> FreeConnectionList;
     typedef std::map<std::thread::id, std::pair<int, ::sqlite3*>> UsedConnectionMap;
     FreeConnectionList _freeConnections;
@@ -632,8 +696,10 @@ public:
     virtual const std::string& tableName() const = 0;
     virtual const std::vector<std::unique_ptr<BaseFieldInfo>>& fields() const = 0;
     virtual std::string createTableSql() const = 0;
-    const std::string& insertSql() const;
-    const std::string& updateSql() const;
+    /// The quoted column list in registration order, to be used instead of `SELECT *`.
+    const std::string& columnsSql() const { return _columnsSql; }
+    const std::string& insertSql() const { return _insertSql; }
+    const std::string& updateSql() const { return _updateSql; }
 
     // Find field by member pointer with type checking
     template <typename StructType, typename FieldType>
@@ -667,8 +733,13 @@ public:
     bool hasField(const std::string& fieldName) const;
 
 protected:
-    mutable std::string _insertSql;
-    mutable std::string _updateSql;
+    /// Build the SQL used for every select, insert and update once, so it is never written
+    /// while other threads read it. Must be called by the constructor of the derived class.
+    void buildStatementSql();
+
+    std::string _columnsSql;
+    std::string _insertSql;
+    std::string _updateSql;
 };
 
 template <typename T>
@@ -683,6 +754,7 @@ public:
         if (_fields.empty() || _fields[0]->name != "id" || _fields[0]->sqlType != SqlType::INTEGER) {
             throw std::runtime_error("First field must be 'id' of type int64_t");
         }
+        buildStatementSql();
     }
 
     const std::string& tableName() const override { return _tableName; }
@@ -691,13 +763,13 @@ public:
     // Generate CREATE TABLE SQL
     [[nodiscard]] std::string createTableSql() const override
     {
-        std::string sql = "CREATE TABLE IF NOT EXISTS \"" + _tableName + "\" (";
+        std::string sql = "CREATE TABLE IF NOT EXISTS " + detail::quoteIdent(_tableName) + " (";
 
         for (const auto& field : _fields) {
             if (sql.back() != '(')
                 sql += ", ";
 
-            sql += "\"" + field->name + "\" ";
+            sql += detail::quoteIdent(field->name) + " ";
 
             switch (field->sqlType) {
                 case SqlType::INTEGER:
@@ -724,7 +796,7 @@ public:
         }
         for (const auto& field : _fields) {
             if (field->fkInfo) {
-                sql += ", FOREIGN KEY(\"" + field->name + "\") REFERENCES \"" + field->fkInfo->refTable + "\"(\"" + field->fkInfo->refColumn + "\")";
+                sql += ", FOREIGN KEY(" + detail::quoteIdent(field->name) + ") REFERENCES " + detail::quoteIdent(field->fkInfo->refTable) + "(" + detail::quoteIdent(field->fkInfo->refColumn) + ")";
                 if (field->fkInfo->on_update == Action::ON_UPDATE_CASCADE) {
                     sql += " ON UPDATE CASCADE";
                 }
@@ -785,11 +857,11 @@ private:
         std::string defaultValue;
     };
 
-    static std::string escapeIdent(const std::string& s);
     static void fetchForeignKeyInfo(Session& session, const std::string& tableName, std::unordered_map<std::string, ForeignKeyInfo>& foreignKeys);
     static std::vector<SQLiteTableInfo> getSQLiteTableSchema(Database& db, const std::string& tableName);
     static std::set<std::vector<std::string>> getSQLiteUniqueIndexes(Database& db, const std::string& tableName);
-    static void analyzeTableDifferences(Database& db, const std::string& tableName, const std::vector<SQLiteTableInfo>& existing, const std::vector<std::unique_ptr<BaseFieldInfo>>& required);
+    static std::vector<const BaseFieldInfo*> analyzeTableDifferences(Database& db, const std::string& tableName, const std::vector<SQLiteTableInfo>& existing, const std::vector<std::unique_ptr<BaseFieldInfo>>& required);
+    static std::string addColumnSql(const std::string& tableName, const BaseFieldInfo& field);
 
     std::vector<std::unique_ptr<BaseTableMetadata>> _tables;
     std::unordered_map<std::string, size_t> _tablesMap;
@@ -826,6 +898,12 @@ auto operator!(E e);
 
 template <class ST, class FT>
 auto like(const FieldInfo<ST, FT>& f, std::string_view pattern);
+
+template <class ST, class FT>
+auto isNull(const FieldInfo<ST, FT>& f);
+
+template <class ST, class FT>
+auto isNotNull(const FieldInfo<ST, FT>& f);
 
 template <OrmRecord StructType>
 class Table
@@ -880,6 +958,20 @@ std::string join(R&& r, std::string_view delimiter)
     }
 
     return out.str();
+}
+
+inline std::string quoteIdent(std::string_view name)
+{
+    std::string out;
+    out.reserve(name.size() + 2);
+    out.push_back('"');
+    for (char c : name) {
+        if (c == '"')
+            out.push_back('"');
+        out.push_back(c);
+    }
+    out.push_back('"');
+    return out;
 }
 }  // namespace detail
 
@@ -1027,7 +1119,7 @@ const T& QueryResult<T>::first() const
 // Expression toSql helpers
 inline void emitComparison(std::string& out, std::vector<Parameter>& ps, std::string_view col, const Parameter& p, const char* op)
 {
-    out += col;
+    out += detail::quoteIdent(col);
     out += ' ';
     out += op;
     out += " ?";
@@ -1037,17 +1129,16 @@ inline void emitComparison(std::string& out, std::vector<Parameter>& ps, std::st
 template <class Col, class Val, class OpTag>
 void toSql(const Cmp<Col, Val, OpTag>& e, std::string& out, std::vector<Parameter>& ps)
 {
-    // Map Val -> Parameter
-    using FT = typename Col::field_type;
-    (void)sizeof(FT);
+    // Map Val -> Parameter, optional columns compare against their value type
+    using FT = unwrap_optional_t<typename Col::field_type>;
     Parameter p;
-    if constexpr (std::is_same_v<typename Col::field_type, std::string>)
+    if constexpr (std::is_same_v<FT, std::string>)
         p = std::string(e.val);
-    else if constexpr (std::is_integral_v<typename Col::field_type> && !std::is_same_v<typename Col::field_type, bool>)
+    else if constexpr (std::is_integral_v<FT> && !std::is_same_v<FT, bool>)
         p = static_cast<int64_t>(e.val);
-    else if constexpr (std::is_same_v<typename Col::field_type, bool>)
+    else if constexpr (std::is_same_v<FT, bool>)
         p = static_cast<int64_t>(e.val ? 1 : 0);
-    else if constexpr (std::is_floating_point_v<typename Col::field_type>)
+    else if constexpr (std::is_floating_point_v<FT>)
         p = static_cast<double>(e.val);
     else
         static_assert(sizeof(Col) == 0, "Add binder for this cpp_type.");
@@ -1065,7 +1156,7 @@ void toSql(const Cmp<Col, Val, OpTag>& e, std::string& out, std::vector<Paramete
     if constexpr (std::is_same_v<OpTag, OpGe>)
         emitComparison(out, ps, e.col.name, p, ">=");
     if constexpr (std::is_same_v<OpTag, OpLike>) {
-        out += e.col.name + " LIKE ?";
+        out += detail::quoteIdent(e.col.name) + " LIKE ?";
         ps.push_back(p);
     }
 }
@@ -1088,6 +1179,13 @@ void toSql(const Not<E>& e, std::string& out, std::vector<Parameter>& ps)
     out += ')';
 }
 
+template <class Col>
+void toSql(const IsNull<Col>& e, std::string& out, std::vector<Parameter>&)
+{
+    out += detail::quoteIdent(e.col.name);
+    out += e.negated ? " IS NOT NULL" : " IS NULL";
+}
+
 // ValueRef optional conversion
 template <StdOptional T>
 ValueRef::operator T() const
@@ -1099,6 +1197,25 @@ ValueRef::operator T() const
     return static_cast<ValueType>(*this);
 }
 
+namespace detail {
+// A plain static_cast<std::optional<U>>(ValueRef) picks optional's converting
+// constructor via one of the scalar cast operators and never yields nullopt,
+// so optionals are handled explicitly here.
+template <typename T>
+T fromValue(const ValueRef& value)
+{
+    if constexpr (is_std_optional_v<T>) {
+        if (value.isNull()) {
+            return std::nullopt;
+        }
+        return static_cast<typename T::value_type>(value);
+    }
+    else {
+        return static_cast<T>(value);
+    }
+}
+}  // namespace detail
+
 // getSqlType
 template <typename T>
 constexpr SqlType getSqlType()
@@ -1106,8 +1223,8 @@ constexpr SqlType getSqlType()
     if constexpr (std::is_integral_v<T>) {
         return SqlType::INTEGER;
     }
-    else if constexpr (is_std_optional_v<T> && std::is_integral_v<typename T::value_type>) {
-        return SqlType::INTEGER;
+    else if constexpr (is_std_optional_v<T>) {
+        return getSqlType<typename T::value_type>();
     }
     else if constexpr (std::is_same_v<T, float>) {
         return SqlType::REAL;
@@ -1189,9 +1306,8 @@ void FieldInfo<StructType, FieldType>::bind(Statement& stmt, const void* obj)
 template <typename StructType, typename FieldType>
 void FieldInfo<StructType, FieldType>::fetch(Statement& stmt, void* obj, int columnIndex)
 {
-    (void)columnIndex;  // unused, kept for signature compatibility
     auto* field = reinterpret_cast<FieldType*>(static_cast<char*>(obj) + offset);
-    stmt >> *field;
+    *field = detail::fromValue<FieldType>(stmt.column(columnIndex));
 }
 
 // SelectBuilder fluent setters
@@ -1294,26 +1410,40 @@ template <class L, class R>
     requires SameTable<L, R>
 auto operator&&(L l, R r)
 {
-    return Bin<L, R, OpAnd>{std::move(l), std::move(r)};
+    return Bin<L, R, OpAnd>{{}, std::move(l), std::move(r)};
 }
 
 template <class L, class R>
     requires SameTable<L, R>
 auto operator||(L l, R r)
 {
-    return Bin<L, R, OpOr>{std::move(l), std::move(r)};
+    return Bin<L, R, OpOr>{{}, std::move(l), std::move(r)};
 }
 
 template <class E>
 auto operator!(E e)
 {
-    return Not<E>{std::move(e)};
+    return Not<E>{{}, std::move(e)};
 }
 
 template <class ST, class FT>
 auto like(const FieldInfo<ST, FT>& f, std::string_view pattern)
 {
     return Cmp<FieldInfo<ST, FT>, std::string, OpLike>{{}, f, std::string(pattern)};
+}
+
+template <class ST, class FT>
+auto isNull(const FieldInfo<ST, FT>& f)
+{
+    static_assert(is_std_optional_v<FT>, "Only std::optional columns can be NULL");
+    return IsNull<FieldInfo<ST, FT>>{{}, f, false};
+}
+
+template <class ST, class FT>
+auto isNotNull(const FieldInfo<ST, FT>& f)
+{
+    static_assert(is_std_optional_v<FT>, "Only std::optional columns can be NULL");
+    return IsNull<FieldInfo<ST, FT>>{{}, f, true};
 }
 
 // Table<>
@@ -1415,7 +1545,27 @@ int64_t Session::update(const T& obj)
     }
     const auto& idField = metadata->fields()[0];
     idField->bind(stmt, &obj);
-    return stmt.execute();
+    stmt.execute();
+    return stmt.changes();
+}
+
+template <OrmRecord T>
+int64_t Session::remove(const int64_t id)
+{
+    auto metadata = Registry::findMetadata<T>();
+    if (!metadata) {
+        throw Exception("No metadata found for type");
+    }
+    Statement stmt(*this, "DELETE FROM " + detail::quoteIdent(metadata->tableName()) + " WHERE id = ?");
+    stmt << id;
+    stmt.execute();
+    return stmt.changes();
+}
+
+template <OrmRecord T>
+int64_t Session::remove(const T& obj)
+{
+    return remove<T>(static_cast<int64_t>(obj.id));
 }
 
 template <OrmRecord T>
@@ -1425,7 +1575,7 @@ T Session::fetch(const int64_t id)
     if (!metadata) {
         throw Exception("No metadata found for type");
     }
-    std::string sql = "SELECT * FROM \"" + metadata->tableName() + "\" WHERE id = ?";
+    std::string sql = "SELECT " + metadata->columnsSql() + " FROM " + detail::quoteIdent(metadata->tableName()) + " WHERE id = ?";
     Statement stmt(*this, sql);
     stmt << id;
     if (!stmt.step()) {
@@ -1465,7 +1615,7 @@ std::vector<T> Session::fetchAll()
     if (!metadata) {
         throw Exception("No metadata found for type");
     }
-    std::string sql = "SELECT * FROM \"" + metadata->tableName() + "\"";
+    std::string sql = "SELECT " + metadata->columnsSql() + " FROM " + detail::quoteIdent(metadata->tableName());
     Statement stmt(*this, sql);
     std::vector<T> results;
     while (stmt.step()) {
@@ -1486,14 +1636,16 @@ SqlAndParams compileWhere(const BaseTableMetadata& metadata, const std::string& 
     std::string whereSql;
     toSql(expr, whereSql, r.params);
     std::string sql = "SELECT " + output + " FROM ";
-    sql += tableName;
-    sql += " WHERE ";
-    sql += whereSql;
+    sql += detail::quoteIdent(tableName);
+    if (!whereSql.empty()) {
+        sql += " WHERE ";
+        sql += whereSql;
+    }
 
     if (orderBy) {
         if (metadata.hasField(orderBy->first)) {
             sql += " ORDER BY ";
-            sql += orderBy->first;
+            sql += detail::quoteIdent(orderBy->first);
             sql += orderBy->second ? " DESC" : " ASC";
         }
         else {
@@ -1503,6 +1655,10 @@ SqlAndParams compileWhere(const BaseTableMetadata& metadata, const std::string& 
     if (limit) {
         sql += " LIMIT ?";
         r.params.emplace_back(int64_t(*limit));
+    }
+    else if (offset) {
+        // SQLite only accepts OFFSET after a LIMIT, and a negative limit means no limit.
+        sql += " LIMIT -1";
     }
     if (offset) {
         sql += " OFFSET ?";
@@ -1521,7 +1677,7 @@ QueryResult<T> fetchWhere(Session& session, const char* tableName, const WhereEx
         throw Exception("No metadata found for type");
     }
 
-    auto [sql, params] = compileWhere(*metadata, "*", tableName, where, limit, offset, orderBy);
+    auto [sql, params] = compileWhere(*metadata, metadata->columnsSql(), tableName, where, limit, offset, orderBy);
     Statement stmt(session, sql);
 
     int idx = 1;
@@ -1548,7 +1704,7 @@ QueryResult<FT> fetchFieldWhere(Session& session, const char* tableName, const s
         throw Exception("No metadata found for type");
     }
 
-    auto [sql, params] = compileWhere(*metadata, column, tableName, where, limit, offset, orderBy);
+    auto [sql, params] = compileWhere(*metadata, detail::quoteIdent(column), tableName, where, limit, offset, orderBy);
     Statement stmt(session, sql);
 
     int idx = 1;
@@ -1557,7 +1713,7 @@ QueryResult<FT> fetchFieldWhere(Session& session, const char* tableName, const s
 
     QueryResult<FT> results;
     while (stmt.step()) {
-        results.push_back(stmt.column(0));
+        results.push_back(detail::fromValue<FT>(stmt.column(0)));
     }
     return results;
 }
@@ -1584,6 +1740,18 @@ template <class E>
 QueryResult<FT> SelectFieldBuilder<T, FT>::where(const E& e)
 {
     return fetchFieldWhere<T, FT>(db, table.c_str(), columnToFetch, e, lim, off, orderName.empty() ? std::nullopt : std::optional{std::pair{orderName.c_str(), orderDesc}});
+}
+
+template <typename T>
+QueryResult<T> SelectBuilder<T>::all()
+{
+    return where(detail::AllRows<T>{});
+}
+
+template <typename T, typename FT>
+QueryResult<FT> SelectFieldBuilder<T, FT>::all()
+{
+    return where(detail::AllRows<T>{});
 }
 
 template <typename T>
@@ -1617,8 +1785,7 @@ Statement& Statement::operator>>(T& value)
     }
     int idx = _resultColumnIdx;
     using U = std::remove_cv_t<std::remove_reference_t<T>>;
-    auto tmp = static_cast<U>(column(idx));
-    value = std::move(tmp);
+    value = detail::fromValue<U>(column(idx));
     _resultColumnIdx = idx + 1;
     return *this;
 }

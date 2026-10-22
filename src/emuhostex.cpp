@@ -1037,17 +1037,21 @@ void ThreadedBackgroundHost::drawScreen(Rectangle dest) const
         int scrWidth = _chipEmu->getCurrentScreenWidth();
         //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
         int scrHeight = _chipEmu->getCurrentScreenHeight();
-        auto videoScaleX = dest.width / scrWidth;
         auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
-        auto videoScaleY = ratio ? videoScaleX / ratio : videoScaleX;
-        auto videoX = (dest.width - _chipEmu->getCurrentScreenWidth() * videoScaleX) / 2 + dest.x;
-        auto videoY = (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
+        const float contentW = static_cast<float>(scrWidth);
+        const float contentH = ratio ? static_cast<float>(scrHeight) / ratio : static_cast<float>(scrHeight);
+        // fitted into dest, with the sides swapped for a screen rotated by 90° or 270°
+        const int rotation = _chipEmu->screenRotation();
+        const bool sideways = rotation == 90 || rotation == 270;
+        const float scale = std::min(dest.width / (sideways ? contentH : contentW), dest.height / (sideways ? contentW : contentH));
+        const float dstW = contentW * scale;
+        const float dstH = contentH * scale;
         if(_chipEmu->getMaxScreenWidth() > 128)
             DrawRectangleRec(dest, {0,0,0,255});
         else
             DrawRectangleRec(dest, {0,12,24,255});
 
-        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {dest.x + dest.width / 2, dest.y + dest.height / 2, dstW, dstH}, {dstW / 2, dstH / 2}, static_cast<float>(rotation), WHITE);
     }
     else {
         DrawRectangleRec(dest, {0,0,0,255});

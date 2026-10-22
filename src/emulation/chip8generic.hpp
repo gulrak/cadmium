@@ -141,6 +141,7 @@ public:
     void setPalette(const Palette& palette) override;
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     int getMaxColors() const override;
+    int screenRotation() const override { return static_cast<int>(_options.rotation) * 90; }
     uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
     unsigned stackSize() const override { return 16; }

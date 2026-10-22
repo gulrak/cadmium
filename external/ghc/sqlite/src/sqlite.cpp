@@ -91,18 +91,22 @@ namespace ghc::sqlite {
 struct Session::SharedSession
 {
     Database& _db;
+    std::thread::id _owner;
     sqlite3* _connection;
 
     explicit SharedSession(Database& db)
         : _db(db)
+        , _owner(std::this_thread::get_id())
         , _connection(_db.acquireConnection())
     {
     }
 
     ~SharedSession()
     {
+        // The last copy of a session might be destroyed on another thread, so release
+        // the connection for the thread that acquired it, not the current one.
         if (_connection) {
-            _db.releaseConnection(_connection);
+            _db.releaseConnection(_connection, _owner);
         }
     }
 };
@@ -157,10 +161,16 @@ Transaction::Transaction(Session& session)
 
 Transaction::~Transaction()
 {
-    if (_inTransaction) {
-        Statement stmt(_session, "ROLLBACK TRANSACTION;");
-        stmt.step();
-        _inTransaction = false;
+    // SQLite already rolls back on its own after errors like SQLITE_FULL or SQLITE_IOERR,
+    // so only roll back if a transaction is still open, and never throw from here.
+    if (_inTransaction && !sqlite3_get_autocommit(_session.connection())) {
+        try {
+            Statement stmt(_session, "ROLLBACK TRANSACTION;");
+            stmt.step();
+        }
+        catch (const std::exception& ex) {
+            ERROR_LOG("Rollback failed: {}", ex.what());
+        }
     }
 }
 
@@ -296,6 +306,11 @@ void Statement::bind(int idx, const std::string& value)
 
 void Statement::bind(int idx, const Blob& value)
 {
+    // An empty vector may have a null data pointer, which sqlite3_bind_blob would turn into NULL.
+    if (value.empty()) {
+        SQLITE3_STMT(bind_zeroblob, connection(), _stmt->get(), idx, 0);
+        return;
+    }
     SQLITE3_STMT(bind_blob, connection(), _stmt->get(), idx, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
 }
 
@@ -432,6 +447,11 @@ Database::Database(const std::string& path, uint8_t concurrency)
         }
         _freeConnections.push_back(connection);
     }
+    // WAL lets readers and a writer work at the same time, with the default rollback journal
+    // a commit has to wait for all readers. The mode is stored in the database file.
+    if (!_freeConnections.empty()) {
+        sqlite3_exec(_freeConnections.front(), "PRAGMA journal_mode = WAL;", nullptr, nullptr, nullptr);
+    }
     for (auto& connnection : _freeConnections) {
         sqlite3_busy_timeout(connnection, 1000);
         sqlite3_exec(connnection, "PRAGMA foreign_keys = ON;", nullptr, nullptr, nullptr);
@@ -456,7 +476,7 @@ Database::Database(const std::string& path, const std::string& hexUMK, const std
 
 Database::~Database()
 {
-    bool loop = false;
+    size_t inUse = 0;
     do {
         {
             std::unique_lock<std::mutex> lock(_mutex);
@@ -464,13 +484,13 @@ Database::~Database()
                 sqlite3_close(connection);
             }
             _freeConnections.clear();
-            loop = !_usedConnections.empty();
+            inUse = _usedConnections.size();
         }
-        if (loop) {
-            ERROR_LOG("Database destructor reached with {} free connections still active!", _freeConnections.size());
+        if (inUse) {
+            ERROR_LOG("Database destructor waiting for {} connections still in use!", inUse);
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
-    } while (loop);
+    } while (inUse);
 }
 
 Session Database::session()
@@ -496,11 +516,6 @@ ValueRef Database::executeForValue(const std::string& query)
     return stmt.column(0);
 }
 
-int64_t Database::lastInsertRowId()
-{
-    return sqlite3_last_insert_rowid(acquireConnection());
-}
-
 ::sqlite3* Database::acquireConnection()
 {
     std::unique_lock<std::mutex> lock(_mutex);
@@ -520,63 +535,36 @@ int64_t Database::lastInsertRowId()
     }
 }
 
-void Database::releaseConnection(::sqlite3* connection)
+void Database::releaseConnection(::sqlite3* connection, std::thread::id owner)
 {
     std::unique_lock<std::mutex> lock(_mutex);
-    std::thread::id tid = std::this_thread::get_id();
-    auto uci = _usedConnections.find(tid);
+    auto uci = _usedConnections.find(owner);
     DEBUG_LOG("releasing db connection for thread {}", thisThreadId());
     if (uci != _usedConnections.end()) {
         if (--(uci->second.first) == 0) {
-            _usedConnections.erase(tid);
+            _usedConnections.erase(uci);
             _freeConnections.push_back(connection);
             _condition.notify_one();
         }
     }
     else {
+        ERROR_LOG("Released a db connection that was not in use!");
         _freeConnections.push_back(connection);
         _condition.notify_one();
     }
 }
 
-const std::string& BaseTableMetadata::insertSql() const
+void BaseTableMetadata::buildStatementSql()
 {
-    if (_insertSql.empty()) {
-        std::string sql = "INSERT INTO \"" + tableName() + "\" (";
-        std::string values;
-        bool first = true;
-        for (size_t i = 1; i < fields().size(); ++i) {  // Skip id field
-            if (!first) {
-                sql += ", ";
-                values += ", ";
-            }
-            first = false;
-            sql += "\"" + fields()[i]->name + "\"";
-            values += "?";
-        }
-        sql += ") VALUES (" + values + ")";
-        _insertSql = sql;
-    }
-    return _insertSql;
+    _columnsSql = detail::join(fields() | std::views::transform([](const auto& field) { return detail::quoteIdent(field->name); }), ", ");
+
+    // The id field is skipped for insert and update, as it is set by SQLite or used in the WHERE clause.
+    auto dataFields = fields() | std::views::drop(1);
+    _insertSql = "INSERT INTO " + detail::quoteIdent(tableName()) + " (" + detail::join(dataFields | std::views::transform([](const auto& field) { return detail::quoteIdent(field->name); }), ", ") + ") VALUES (" +
+                 detail::join(dataFields | std::views::transform([](const auto&) { return "?"; }), ", ") + ")";
+    _updateSql = "UPDATE " + detail::quoteIdent(tableName()) + " SET " + detail::join(dataFields | std::views::transform([](const auto& field) { return detail::quoteIdent(field->name) + " = ?"; }), ", ") + " WHERE id = ?";
 }
 
-const std::string& BaseTableMetadata::updateSql() const
-{
-    if (_updateSql.empty()) {
-        std::string sql = "UPDATE \"" + tableName() + "\" SET ";
-        bool first = true;
-        for (size_t i = 1; i < fields().size(); ++i) {  // Skip id field
-            if (!first) {
-                sql += ", ";
-            }
-            first = false;
-            sql += "\"" + fields()[i]->name + "\" = ?";
-        }
-        sql += " WHERE id = ?";
-        _updateSql = sql;
-    }
-    return _updateSql;
-}
 bool BaseTableMetadata::hasField(const std::string& fieldName) const
 {
     for (const auto& field : fields()) {
@@ -602,39 +590,77 @@ void Registry::doSyncTables(Database& db) const
             std::cout << table->createTableSql() << "\n";
             Transaction transaction(session);
             Statement createStmt(session, table->createTableSql());
+            // Unique columns are declared UNIQUE inline, which already creates their index.
             createStmt.step();
-            for (auto& field : table->fields()) {
-                if (field->isUnique) {
-                    Statement createIdxStmt(session, "CREATE UNIQUE INDEX \"" + table->tableName() + "_" + field->name + "\" ON \"" + table->tableName() + "\" (" + field->name + ");");
-                    createIdxStmt.step();
-                }
-            }
             transaction.commit();
         }
         else {
             auto schema = getSQLiteTableSchema(db, table->tableName());
-            analyzeTableDifferences(db, table->tableName(), schema, table->fields());
+            auto missing = analyzeTableDifferences(db, table->tableName(), schema, table->fields());
+            if (!missing.empty()) {
+                Transaction transaction(session);
+                for (const auto* field : missing) {
+                    auto sql = addColumnSql(table->tableName(), *field);
+                    std::cout << "Adding column with: " << sql << "\n";
+                    Statement alterStmt(session, sql);
+                    alterStmt.step();
+                }
+                transaction.commit();
+            }
         }
     }
 }
 
-std::string Registry::escapeIdent(const std::string& s)
+// SQLite can only add columns that are not UNIQUE and, if NOT NULL, have a non-NULL default. Required
+// columns get the zero value of their type as default, so existing rows read like a default constructed field.
+std::string Registry::addColumnSql(const std::string& tableName, const BaseFieldInfo& field)
 {
-    std::string out;
-    out.reserve(s.size() * 2);
-    out.push_back('"');
-    for (char c : s) {
-        if (c == '"')
-            out.push_back('"');
-        out.push_back(c);
+    if (field.isUnique) {
+        throw Exception("Can't add UNIQUE column '" + field.name + "' to existing table '" + tableName + "'");
     }
-    out.push_back('"');
-    return out;
+    if (field.fkInfo && !field.isOptional) {
+        throw Exception("Can't add required foreign key column '" + field.name + "' to existing table '" + tableName + "'");
+    }
+    std::string sql = "ALTER TABLE " + detail::quoteIdent(tableName) + " ADD COLUMN " + detail::quoteIdent(field.name) + " ";
+    std::string zeroValue;
+    switch (field.sqlType) {
+        case SqlType::INTEGER:
+            sql += "INTEGER";
+            zeroValue = "0";
+            break;
+        case SqlType::REAL:
+            sql += "REAL";
+            zeroValue = "0.0";
+            break;
+        case SqlType::TEXT:
+            sql += "TEXT";
+            zeroValue = "''";
+            break;
+        case SqlType::BLOB:
+            sql += "BLOB";
+            zeroValue = "X''";
+            break;
+        case SqlType::NULL_TYPE:
+            throw Exception("NULL_TYPE is not a valid SQL type");
+    }
+    if (!field.isOptional) {
+        sql += " NOT NULL DEFAULT " + zeroValue;
+    }
+    if (field.fkInfo) {
+        sql += " REFERENCES " + detail::quoteIdent(field.fkInfo->refTable) + "(" + detail::quoteIdent(field.fkInfo->refColumn) + ")";
+        if (field.fkInfo->on_update == Action::ON_UPDATE_CASCADE) {
+            sql += " ON UPDATE CASCADE";
+        }
+        if (field.fkInfo->on_delete == Action::ON_DELETE_CASCADE) {
+            sql += " ON DELETE CASCADE";
+        }
+    }
+    return sql + ";";
 }
 
 void Registry::fetchForeignKeyInfo(Session& session, const std::string& tableName, std::unordered_map<std::string, ForeignKeyInfo>& foreignKeys)
 {
-    Statement fkStmt(session, "PRAGMA foreign_key_list(\"" + tableName + "\");");
+    Statement fkStmt(session, "PRAGMA foreign_key_list(" + detail::quoteIdent(tableName) + ");");
     while (fkStmt.step()) {
         ForeignKeyInfo fki;
         std::string localColumn = std::string(fkStmt.column(3));
@@ -653,18 +679,18 @@ std::vector<Registry::SQLiteTableInfo> Registry::getSQLiteTableSchema(Database& 
     std::unordered_map<std::string, ForeignKeyInfo> foreignKeys;
     auto session = db.session();
     fetchForeignKeyInfo(session, tableName, foreignKeys);
-    Statement stmt(session, "PRAGMA table_info(\"" + tableName + "\");");
+    auto uniqueIndexes = getSQLiteUniqueIndexes(db, tableName);
+    // PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+    Statement stmt(session, "PRAGMA table_info(" + detail::quoteIdent(tableName) + ");");
     while (stmt.step()) {
         SQLiteTableInfo info;
-        bool notNull;
-        stmt >> info.name >> info.type >> notNull;
-        info.isOptional = !notNull;
-        if ((int)stmt.column(5) > 0) {
-            auto it = foreignKeys.find(info.name);
-            if (it != foreignKeys.end()) {
-                info.isUnique = false;
-                info.fkInfo = it->second;
-            }
+        info.name = std::string(stmt.column(1));
+        info.type = std::string(stmt.column(2));
+        info.isOptional = !static_cast<bool>(stmt.column(3));
+        info.isUnique = uniqueIndexes.contains({info.name});
+        auto it = foreignKeys.find(info.name);
+        if (it != foreignKeys.end()) {
+            info.fkInfo = it->second;
         }
         if (!stmt.column(4).isNull()) {
             info.defaultValue = std::string(stmt.column(4));
@@ -677,14 +703,14 @@ std::set<std::vector<std::string>> Registry::getSQLiteUniqueIndexes(Database& db
 {
     std::set<std::vector<std::string>> uniques;
     auto session = db.session();
-    Statement idxList(session, "PRAGMA index_list(\"" + tableName + "\");");
+    Statement idxList(session, "PRAGMA index_list(" + detail::quoteIdent(tableName) + ");");
     while (idxList.step()) {
         const std::string idxName = std::string(idxList.column(1));
         const int unique = (int)idxList.column(2);
         if (!unique)
             continue;
         // Fetch columns for this index
-        Statement idxInfo(session, "PRAGMA index_info(\"" + idxName + "\");");
+        Statement idxInfo(session, "PRAGMA index_info(" + detail::quoteIdent(idxName) + ");");
         std::vector<std::string> cols;
         while (idxInfo.step()) {
             cols.emplace_back(std::string(idxInfo.column(2)));  // column name
@@ -696,36 +722,17 @@ std::set<std::vector<std::string>> Registry::getSQLiteUniqueIndexes(Database& db
     return uniques;
 }
 
-void Registry::analyzeTableDifferences(Database& db, const std::string& tableName, const std::vector<SQLiteTableInfo>& existing, const std::vector<std::unique_ptr<BaseFieldInfo>>& required)
+std::vector<const BaseFieldInfo*> Registry::analyzeTableDifferences(Database& db, const std::string& tableName, const std::vector<SQLiteTableInfo>& existing, const std::vector<std::unique_ptr<BaseFieldInfo>>& required)
 {
+    std::vector<const BaseFieldInfo*> missing;
     std::cout << "Analyzing table '" << tableName << "':\n";
-    auto existingUniqueIdxCols = getSQLiteUniqueIndexes(db, tableName);
     // Check for missing columns
     for (const auto& reqCol : required) {
         auto it = std::find_if(existing.begin(), existing.end(), [&reqCol](const SQLiteTableInfo& info) { return info.name == reqCol->name; });
 
         if (it == existing.end()) {
             std::cout << "Missing column: " << reqCol->name << "\n";
-            std::cout << "ALTER TABLE \"" << tableName << "\" ADD COLUMN \"" << reqCol->name << "\" ";
-            switch (reqCol->sqlType) {
-                case SqlType::INTEGER:
-                    std::cout << "INTEGER";
-                    break;
-                case SqlType::REAL:
-                    std::cout << "REAL";
-                    break;
-                case SqlType::TEXT:
-                    std::cout << "TEXT";
-                    break;
-                case SqlType::BLOB:
-                    std::cout << "BLOB";
-                    break;
-                default:
-                    break;
-            }
-            if (!reqCol->isOptional)
-                std::cout << " NOT NULL";
-            std::cout << ";\n";
+            missing.push_back(reqCol.get());
         }
         else {
             if (it->isOptional != reqCol->isOptional) {
@@ -748,6 +755,7 @@ void Registry::analyzeTableDifferences(Database& db, const std::string& tableNam
             std::cout << "Extra column found: " << existCol.name << "\n";
         }
     }
+    return missing;
 }
 
 }  // namespace ghc::sqlite

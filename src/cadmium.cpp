@@ -1275,6 +1275,13 @@ void main()
             auto files = LoadDroppedFiles();
             if (files.count > 0) {
                 //TraceLog(LOG_INFO, "About to load one of %d dropped files.", (int)files.count);
+#ifndef PLATFORM_WEB
+                // files dropped on the library are added to it instead of being loaded
+                if (_mainView == eLIBRARY && _database) {
+                    TraceLog(LOG_INFO, "%s", _database->addFiles({files.paths, files.paths + files.count}).c_str());
+                }
+                else
+#endif
                 loadRom(files.paths[0], LoadOptions::None);
             }
             UnloadDroppedFiles(files);
@@ -1411,30 +1418,40 @@ void main()
         // Logical "display" height includes the vertical stretch ratio.
         const float contentW = static_cast<float>(scrWidth);
         const float contentH = static_cast<float>(scrHeight / ratio);
+        // a screen rotated by 90° or 270° is fitted with its sides swapped
+        const int rotation = _chipEmu ? _chipEmu->screenRotation() : 0;
+        const bool sideways = rotation == 90 || rotation == 270;
+        const float shownW = sideways ? contentH : contentW;
+        const float shownH = sideways ? contentW : contentH;
 
         // Bare CHIP-8 pixels retain integer scaling. Pre-rendered LCDs use
         // filtered fractional scaling to avoid aliasing their fine pixel grid.
-        const float maxScaleX = dest.width / contentW;
-        const float maxScaleY = dest.height / contentH;
+        const float maxScaleX = dest.width / shownW;
+        const float maxScaleY = dest.height / shownH;
         const float fitScale = std::min(maxScaleX, maxScaleY);
         const float scale = _screenIsPreRendered ? fitScale :
             (fitScale >= 1.0f ? std::floor(fitScale) : 1.0f / std::ceil(1.0f / fitScale));
 
         const float dstW = contentW * static_cast<float>(scale);
         const float dstH = contentH * static_cast<float>(scale);
+        const float boxW = shownW * static_cast<float>(scale);
+        const float boxH = shownH * static_cast<float>(scale);
 
         // Center inside dest. Round to whole pixels to avoid subpixel wobble.
-        const float videoX = std::floor(dest.x + (dest.width - dstW) * 0.5f);
-        const float videoY = std::floor(dest.y + (dest.height - dstH) * 0.5f);
+        const float videoX = std::floor(dest.x + (dest.width - boxW) * 0.5f);
+        const float videoY = std::floor(dest.y + (dest.height - boxH) * 0.5f);
 
+        // drawn around the center of the box, so the rotation keeps it in place
         const Rectangle srcRect{0.0f, 0.0f, static_cast<float>(scrWidth), static_cast<float>(scrHeight)};
-        const Rectangle dstRect{videoX, videoY, dstW, dstH};
+        const Rectangle dstRect{videoX + boxW * 0.5f, videoY + boxH * 0.5f, dstW, dstH};
 
-        DrawTexturePro(_screenTexture, srcRect, dstRect, {0.0f, 0.0f}, 0.0f, WHITE);
+        DrawTexturePro(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation), WHITE);
 
         if(_showKeyMap) {
+            // REVIEW: The key map now sits in the corner of the shown screen, before it used the unstretched
+            // height, which put it below the screen for a stretch ratio above 1.
             auto s = scale / std::max(1, _screenScale);
-            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * scale - 40.0f*s, videoY + scrHeight * scale - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
+            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + boxW - 40.0f*s, videoY + boxH - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
         }
         if(GetTime() < 5 && _romImage.empty()) {
             auto scale = dest.width / 128;
@@ -1609,6 +1626,15 @@ void main()
             PopupMenu::Action("Save...", [this]() {
                 openSavePage(false);
             }, "⌘S"),
+        });
+#ifndef PLATFORM_WEB
+        // captures the current emulation settings as config of the ROM in the library
+        auto storeSettings = PopupMenu::Action("Save settings to library", [this]() {
+            TraceLog(LOG_INFO, "%s", _database->storeSettings(_romSha1, *_properties).c_str());
+        });
+        _mainMenu.push_back(_database && _properties && _database->containsBinary(_romSha1) ? storeSettings : PopupMenu::Disabled(storeSettings));
+#endif
+        _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Separator(),
             PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
 #ifndef PLATFORM_WEB
@@ -1786,7 +1812,7 @@ void main()
                 SetTooltip("OPEN PROGRAM");
 #ifndef PLATFORM_WEB
                 if (iconButton(ICON_NOTEBOOK, _mainView == eLIBRARY)) {
-                    _mainView = eLIBRARY;
+                    _mainView = eLIBRARY, _chipEmu->setExecMode(ExecMode::ePAUSED);
                 }
                 SetTooltip("OPEN LIBRARY");
 #endif
@@ -2121,11 +2147,17 @@ void main()
                     SetSpacing(0);
                     Begin();
                     BeginPanel("Library / Research");
-                    if (_database && _database->render(_font)) {
-                        auto program = _database->getSelectedProgram();
-                        if (program) {
+                    if (auto action = _database ? _database->render(_font) : Database::Action::NONE; action != Database::Action::NONE) {
+                        if (auto program = _database->getSelectedProgram()) {
                             loadBinary(program->name, program->data, program->properties, true);
-                            _lastRunView = _mainView = eDEBUGGER;
+                            if (action == Database::Action::RUN) {
+                                // like the PLAY button of the tool bar
+                                _debugger.setExecMode(ExecMode::eRUNNING);
+                                _lastRunView = _mainView = eVIDEO;
+                            }
+                            else {
+                                _lastRunView = _mainView = eDEBUGGER;
+                            }
                         }
                     }
                     Space(_screenHeight - GetCurrentPos().y - 20 - 1);
@@ -2152,7 +2184,7 @@ void main()
                     SetNextWidth(40);
                     Label("Color:");
                     SetNextWidth(60);
-                    TextBox("colorText", _colorText, 7);
+                    TextBox("colorText", _colorText, 6);
                     if (IsLastWidgetEditFinished()) {
                         *_selectedColor = emu::Palette::Color("#"+_colorText);
                     }
@@ -3410,6 +3442,7 @@ int main(int argc, char* argv[])
     bool headlessLimitSpecified = false;
     HeadlessRunOptions headlessOptions;
     std::string dumpInterpreter;
+    std::string updateProgramDatabase;
     int64_t execSpeed = -1;
     std::string randomGen;
     std::string emulationCore;
@@ -3434,6 +3467,9 @@ int main(int argc, char* argv[])
     cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
     cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
     cli.optionEnable({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
+#ifdef CADMIUM_WITH_DATABASE
+    cli.option({"--update-program-database"}, updateProgramDatabase, "Compare the library with the given programs.json of the chip-8-database and write programs_<timestamp>.json with the missing programs added");
+#endif
 #ifndef NDEBUG
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
     cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
@@ -3590,6 +3626,11 @@ int main(int argc, char* argv[])
         dumpLibraryNickel();
         exit(0);
     }
+#ifdef CADMIUM_WITH_DATABASE
+    if(!updateProgramDatabase.empty()) {
+        exit(Database::updateProgramDatabase(dataPath(), updateProgramDatabase));
+    }
+#endif
     if(!dumpInterpreter.empty()) {
         // TODO: Fix this
         /*

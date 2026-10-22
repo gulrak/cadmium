@@ -774,6 +774,17 @@ private:
         if (!BeginWindowBox({-1, -1, 380, 280}, "Demo Modal - BeginScrollPanel inside", &_demoModalOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL)))
             return;
 
+        // a dropdown inside a window box is drawn at the end of the window box, into its render texture
+        BeginColumns();
+        SetNextWidth(110);
+        Label("DropdownBox:");
+        SetNextWidth(120);
+        // "###modal" keeps the id, so the dropdown keeps its state while the items change
+        DropdownBox(_demoModalOtherItems ? "Cyan;Magenta;Black;White###modal" : "Red;Green;Blue;Yellow###modal", &_demoModalDropdownActive);
+        Space(4);
+        CheckBox("Other items", &_demoModalOtherItems);
+        EndColumns();
+        Space(4);
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         BeginScrollPanel(-1, {0, 0, 360, 520}, &_demoModalScroll);
         SetRowHeight(10);
@@ -813,6 +824,7 @@ public:
             int tab;
             int theme;
             std::function<void()> setup;
+            std::function<void()> afterFirstFrame{};  // for changes of something shown in the first frame
         };
         enum Tabs { LAYOUT, CONTROLS, INPUT, SLIDERS, LISTS, WINDOWS, DIALOGS, WIDGETS };
         auto openFileDialog = [this](FileDialogInfo::DialogType type, const char* title) {
@@ -836,6 +848,8 @@ public:
             {"no-status-bar", LAYOUT, 0, [this]() { _showStatusBar = false; }},
             {"about-modal", LAYOUT, 0, [this]() { _aboutOpen = true; }},
             {"demo-modal", WINDOWS, 0, [this]() { _demoModalOpen = true; }},
+            // a dropdown keeps its id but gets other items, they have to be shown
+            {"demo-modal-other-items", WINDOWS, 0, [this]() { _demoModalOpen = true; }, [this]() { _demoModalOtherItems = true; }},
             {"inline-popup", WINDOWS, 0, [this]() { _inlinePopupOpen = true; }},
             {"file-dialog-open", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::OpenFile, "Open File"); }},
             {"file-dialog-save", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::SaveFile, "Save File As..."); }},
@@ -847,7 +861,7 @@ public:
             _activeTab = gc.tab;
             _themeIdx = gc.theme;
             _styleManager.setTheme(gc.theme);
-            _aboutOpen = _demoModalOpen = _inlinePopupOpen = _fileDlgOpen = false;
+            _aboutOpen = _demoModalOpen = _inlinePopupOpen = _fileDlgOpen = _demoModalOtherItems = false;
             _showStatusBar = true;
             _aboutScroll = _demoModalScroll = {};
             PopupMenu::Close();
@@ -856,8 +870,11 @@ public:
             update();
             if (gc.setup)
                 gc.setup();
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 4; ++i) {
                 update();
+                if (i == 0 && gc.afterFirstFrame)
+                    gc.afterFirstFrame();
+            }
             auto actual = (outDir / (std::string(gc.name) + ".png")).string();
             auto approved = (approvedDir / (std::string(gc.name) + ".png")).string();
             exportFrame(actual.c_str());
@@ -972,6 +989,8 @@ private:
     Vector2 _aboutScroll{};
     bool    _demoModalOpen{false};
     Vector2 _demoModalScroll{};
+    int _demoModalDropdownActive{0};
+    bool _demoModalOtherItems{false};
 
     // Controls tab
     bool        _toggleState{false};
