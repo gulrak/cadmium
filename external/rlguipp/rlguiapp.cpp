@@ -23,6 +23,7 @@
 //---------------------------------------------------------------------------------------
 #include <rlguipp/rlguiapp.hpp>
 #include <rlguipp/rlguipp_font.hpp>
+#include <algorithm>
 #include <vector>
 #include <cstdlib>
 
