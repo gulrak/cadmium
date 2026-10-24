@@ -54,6 +54,7 @@ public:
     ~CosmacVIP() override;
 
     bool updateProperties(Properties& props, Property& changed) override;
+    bool crtEffect() const override;
     std::string name() const override;
     chip8::VariantSet supportedChip8Variants() const override;
 

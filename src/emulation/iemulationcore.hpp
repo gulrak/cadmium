@@ -119,6 +119,7 @@ public:
     virtual bool isDoublePixel() const { return false; }
     virtual int getMaxColors() const { return 2; }
     virtual int screenRotation() const { return 0; }  // how the host shows the screen, clockwise in degrees: 0, 90, 180 or 270
+    virtual bool crtEffect() const { return false; }  // whether the host shows the screen through a CRT beam shader
     virtual const VideoType* getScreen() const { return nullptr; }
     virtual const VideoRGBAType* getScreenRGBA() const { return nullptr; }
     virtual const VideoRGBAType* getWorkRGBA() const { return nullptr; }

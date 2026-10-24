@@ -68,6 +68,7 @@ inline constexpr std::string_view TRACE_LOG{"traceLog"};
 inline constexpr std::string_view INSTRUCTIONS_PER_FRAME{"instructionsPerFrame"};
 inline constexpr std::string_view FRAME_RATE{"frameRate"};
 inline constexpr std::string_view START_ADDRESS{"startAddress"};
+inline constexpr std::string_view CRT_EFFECT{"crtEffect"};  // display only: the host renders the screen with a CRT beam shader
 }
 GHC_ENUM_ENABLE_BIT_OPERATIONS(PropertyFlags)
 

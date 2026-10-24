@@ -30,6 +30,7 @@
 #include <rlguipp/rlguipp_font.hpp>
 #include <stylemanager.hpp>
 #include "configuration.hpp"
+#include "crtrenderer.hpp"
 
 #include <raymath.h>
 
@@ -399,236 +400,9 @@ public:
         //else
         //    SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
 
-#ifdef PLATFORM_WEB
-        const char* scanLineShader = R"(
-#version 100
-
-precision mediump float;
-
-// Input vertex attributes (from vertex shader)
-varying vec2 fragTexCoord;
-varying vec4 fragColor;
-
-// Input uniform values
-uniform sampler2D texture0;
-uniform vec4 colDiffuse;
-
-// NOTE: Add here your custom variables
-
-float offset = 0.0;
-float frequency = 450.0/3.0;
-
-uniform float time;
-
-void main()
-{
-/*
-    // Scanlines method 1
-    float tval = 0; //time
-    vec2 uv = 0.5 + (fragTexCoord - 0.5)*(0.9 + 0.01*sin(0.5*tval));
-
-    vec4 color = texture2D(texture0, fragTexCoord);
-
-    color = clamp(color*0.5 + 0.5*color*color*1.2, 0.0, 1.0);
-    color *= 0.5 + 0.5*16.0*uv.x*uv.y*(1.0 - uv.x)*(1.0 - uv.y);
-    color *= vec4(0.8, 1.0, 0.7, 1);
-    color *= 0.9 + 0.1*sin(10.0*tval + uv.y*1000.0);
-    color *= 0.97 + 0.03*sin(110.0*tval);
-
-    fragColor = color;
-*/
-    // Scanlines method 2
-    float globalPos = (fragTexCoord.y + offset) * frequency;
-    float wavePos = cos((fract(globalPos) - 0.5)*3.14);
-
-    vec4 color = texture2D(texture0, fragTexCoord);
-
-    gl_FragColor = mix(vec4(0.0, 0.3, 0.0, 0.0), color, wavePos);
-}
-)";
-#else
-        const char* scanLineShader = R"(
-#version 330
-
-// Input vertex attributes (from vertex shader)
-in vec2 fragTexCoord;
-in vec4 fragColor;
-
-// Input uniform values
-uniform sampler2D texture0;
-uniform vec4 colDiffuse;
-
-// Output fragment color
-out vec4 finalColor;
-
-// NOTE: Add here your custom variables
-vec2 res=vec2(128.0/1.0,128.0/1.0);
-float hardScan=-10.0;
-float hardPix=-2.0;
-vec2 warp=vec2(1.0/64.0,1.0/24.0);
-float shape=3.0;
-float overdrive=1.25;
-
-float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
-vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
-
-// Linear to sRGB.
-// Assuing using sRGB typed textures this should not be needed.
-float ToSrgb1(float c){return(c<0.0031308?c*12.92:1.055*pow(c,0.41666)-0.055);}
-vec3 ToSrgb(vec3 c){return vec3(ToSrgb1(c.r),ToSrgb1(c.g),ToSrgb1(c.b));}
-
-// Testing only, something to help generate a dark signal for bloom test.
-// Set to zero, or remove Test() if using this shader.
-#if 1
- vec3 Test(vec3 c){return c*(1.0/64.0)+c*c;}
-#else
- vec3 Test(vec3 c){return c;}
-#endif
-
-// Nearest emulated sample given floating point position and texel offset.
-// Also zero's off screen.
-vec3 Fetch(vec2 pos,vec2 off){
-  pos=floor(pos*res+off)/res;
-  if(max(abs(pos.x-0.5),abs(pos.y-0.5))>0.5)return vec3(0.0,0.0,0.0);
-    return Test(ToLinear(texture(texture0,vec2(pos.x,pos.y),-16.0).rgb));}
-
-// Distance in emulated pixels to nearest texel.
-vec2 Dist(vec2 pos){pos=pos*res;return -((pos-floor(pos))-vec2(0.5));}
-
-// Try different filter kernels.
-float Gaus(float pos,float scale){return exp2(scale*pow(abs(pos),shape));}
-
-// 3-tap Gaussian filter along horz line.
-vec3 Horz3(vec2 pos,float off){
-  vec3 b=Fetch(pos,vec2(-1.0,off));
-  vec3 c=Fetch(pos,vec2( 0.0,off));
-  vec3 d=Fetch(pos,vec2( 1.0,off));
-  float dst=Dist(pos).x;
-  // Convert distance to weight.
-  float scale=hardPix;
-  float wb=Gaus(dst-1.0,scale);
-  float wc=Gaus(dst+0.0,scale);
-  float wd=Gaus(dst+1.0,scale);
-  // Return filtered sample.
-  return (b*wb+c*wc+d*wd)/(wb+wc+wd);}
-
-// 5-tap Gaussian filter along horz line.
-vec3 Horz5(vec2 pos,float off){
-  vec3 a=Fetch(pos,vec2(-2.0,off));
-  vec3 b=Fetch(pos,vec2(-1.0,off));
-  vec3 c=Fetch(pos,vec2( 0.0,off));
-  vec3 d=Fetch(pos,vec2( 1.0,off));
-  vec3 e=Fetch(pos,vec2( 2.0,off));
-  float dst=Dist(pos).x;
-  // Convert distance to weight.
-  float scale=hardPix;
-  float wa=Gaus(dst-2.0,scale);
-  float wb=Gaus(dst-1.0,scale);
-  float wc=Gaus(dst+0.0,scale);
-  float wd=Gaus(dst+1.0,scale);
-  float we=Gaus(dst+2.0,scale);
-  // Return filtered sample.
-  return (a*wa+b*wb+c*wc+d*wd+e*we)/(wa+wb+wc+wd+we);}
-
-// 7-tap Gaussian filter along horz line.
-vec3 Horz7(vec2 pos,float off){
-  vec3 a=Fetch(pos,vec2(-3.0,off));
-  vec3 b=Fetch(pos,vec2(-2.0,off));
-  vec3 c=Fetch(pos,vec2(-1.0,off));
-  vec3 d=Fetch(pos,vec2( 0.0,off));
-  vec3 e=Fetch(pos,vec2( 1.0,off));
-  vec3 f=Fetch(pos,vec2( 2.0,off));
-  vec3 g=Fetch(pos,vec2( 3.0,off));
-  float dst=Dist(pos).x;
-  // Convert distance to weight.
-  float scale=hardPix;
-  float wa=Gaus(dst-3.0,scale);
-  float wb=Gaus(dst-2.0,scale);
-  float wc=Gaus(dst-1.0,scale);
-  float wd=Gaus(dst+0.0,scale);
-  float we=Gaus(dst+1.0,scale);
-  float wf=Gaus(dst+2.0,scale);
-  float wg=Gaus(dst+3.0,scale);
-  // Return filtered sample.
-  return (a*wa+b*wb+c*wc+d*wd+e*we+f*wf+g*wg)/(wa+wb+wc+wd+we+wf+wg);}
-
-// Return scanline weight.
-float Scan(vec2 pos,float off){
-  float dst=Dist(pos).y;
-  return Gaus(dst+off,hardScan);}
-
-// Allow nearest three lines to effect pixel.
-vec3 Tri(vec2 pos){
-  vec3 a=Horz5(pos,-2.0);
-  vec3 b=Horz7(pos,-1.0);
-  vec3 c=Horz7(pos, 0.0);
-  vec3 d=Horz7(pos, 1.0);
-  vec3 e=Horz5(pos, 2.0);
-  float wa=Scan(pos,-2.0);
-  float wb=Scan(pos,-1.0);
-  float wc=Scan(pos, 0.0);
-  float wd=Scan(pos, 1.0);
-  float we=Scan(pos, 2.0);
-  return (a*wa+b*wb+c*wc+d*wd+e*we)*overdrive;}
-
-// Distortion of scanlines, and end of screen alpha.
-vec2 Warp(vec2 pos){
-  pos=pos*2.0-1.0;
-  pos*=vec2(1.0+(pos.y*pos.y)*warp.x,1.0+(pos.x*pos.x)*warp.y);
-  return pos*0.5+0.5;}
-
-// Draw dividing bars.
-float Bar(float pos,float bar){pos-=bar;return pos*pos<4.0?0.0:1.0;}
-
-// Entry.
-void main(){
-  vec2 pos=Warp(fragTexCoord.xy/res.xy);
-  finalColor.rgb=Tri(pos) * 1.5;//*Mask(fragTexCoord.xy);
-  finalColor.a=1.0;
-  finalColor.rgb=ToSrgb(finalColor.rgb);
-}
-
-/*
-// NOTE: Render size values must be passed from code
-const float renderWidth = 800;
-const float renderHeight = 2048;
-float offset = 0.0;
-
-uniform float time;
-
-void main()
-{
-    float frequency = renderHeight/3.0;
-*/
-/*
-    // Scanlines method 1
-    float tval = 0; //time
-    vec2 uv = 0.5 + (fragTexCoord - 0.5)*(0.9 + 0.01*sin(0.5*tval));
-
-    vec4 color = texture(texture0, fragTexCoord);
-
-    color = clamp(color*0.5 + 0.5*color*color*1.2, 0.0, 1.0);
-    color *= 0.5 + 0.5*16.0*uv.x*uv.y*(1.0 - uv.x)*(1.0 - uv.y);
-    color *= vec4(0.8, 1.0, 0.7, 1);
-    color *= 0.9 + 0.1*sin(10.0*tval + uv.y*1000.0);
-    color *= 0.97 + 0.03*sin(110.0*tval);
-
-    fragColor = color;
-*/
-/*
-    // Scanlines method 2
-    float globalPos = (fragTexCoord.y + offset) * frequency;
-    float wavePos = cos((fract(globalPos) - 0.5)*3.14);
-
-    // Texel color fetching from texture sampler
-    vec4 texelColor = texture(texture0, fragTexCoord);
-
-    finalColor = mix(vec4(0.0, 0.3, 0.0, 0.0), texelColor, wavePos);
-}*/
-)";
-#endif
-
-        _scanLineShader = LoadShaderFromMemory(NULL, scanLineShader);
+        if (!_crtRenderer.load()) {
+            TraceLog(LOG_WARNING, "CRT shader could not be compiled, the CRT effect is not available");
+        }
 
 //        _styleManager.setDefaultTheme();
         _styleManager.addTheme("dark", 235.0f, 0.1, false);
@@ -756,6 +530,7 @@ void main()
         UnloadTexture(_screenShotTexture);
         UnloadTexture(_crtTexture);
         UnloadTexture(_screenTexture);
+        _crtRenderer.unload();
         UnloadAudioStream(_audioStream);
         CloseAudioDevice();
         UnloadImage(_screenShot);
@@ -1228,15 +1003,11 @@ void main()
             else {
                 const auto* screen = _chipEmu->getScreen();
                 if (screen) {
-                    if (!_renderCrt) {
-                        screen->convert(pixel, _screen.width, 255, nullptr);
-                        UpdateTexture(_screenTexture, _screen.data);
-                        _screenRatio = screen->ratio();
-                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
-                        _screenBorderColor = GetColor(be32(screen->getBorderColor()));
-                    }
-                    else {
-                    }
+                    screen->convert(pixel, _screen.width, 255, nullptr);
+                    UpdateTexture(_screenTexture, _screen.data);
+                    _screenRatio = screen->ratio();
+                    _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
+                    _screenBorderColor = GetColor(be32(screen->getBorderColor()));
                 }
                 else {
                     // TraceLog(LOG_INFO, "Updating MC8 screen!");
@@ -1425,11 +1196,13 @@ void main()
         const float shownH = sideways ? contentW : contentH;
 
         // Bare CHIP-8 pixels retain integer scaling. Pre-rendered LCDs use
-        // filtered fractional scaling to avoid aliasing their fine pixel grid.
+        // filtered fractional scaling to avoid aliasing their fine pixel grid,
+        // the CRT effect draws soft beams and needs no pixel alignment either.
+        const bool crtEffect = _chipEmu && _chipEmu->crtEffect() && _crtRenderer.isLoaded() && !_screenIsPreRendered;
         const float maxScaleX = dest.width / shownW;
         const float maxScaleY = dest.height / shownH;
         const float fitScale = std::min(maxScaleX, maxScaleY);
-        const float scale = _screenIsPreRendered ? fitScale :
+        const float scale = _screenIsPreRendered || crtEffect ? fitScale :
             (fitScale >= 1.0f ? std::floor(fitScale) : 1.0f / std::ceil(1.0f / fitScale));
 
         const float dstW = contentW * static_cast<float>(scale);
@@ -1445,7 +1218,12 @@ void main()
         const Rectangle srcRect{0.0f, 0.0f, static_cast<float>(scrWidth), static_cast<float>(scrHeight)};
         const Rectangle dstRect{videoX + boxW * 0.5f, videoY + boxH * 0.5f, dstW, dstH};
 
-        DrawTexturePro(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation), WHITE);
+        if (crtEffect) {
+            _crtRenderer.draw(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation));
+        }
+        else {
+            DrawTexturePro(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation), WHITE);
+        }
 
         if(_showKeyMap) {
             // REVIEW: The key map now sits in the corner of the shown screen, before it used the unstretched
@@ -3058,7 +2836,6 @@ private:
     int _subBehaviorSel{0};
     //float _messageTime{};
     std::string _timedMessage;
-    bool _renderCrt{false};
     bool _updateScreen{false};
     int _frameBoost{1};
     std::atomic_uint _audioCallbackAvgFrames{};
@@ -3091,7 +2868,7 @@ private:
     Debugger _debugger;
     LogView _logView;
     Editor _editor;
-    Shader _scanLineShader;
+    CrtRenderer _crtRenderer;
     bool _aboutOpen{false};
     Vector2 _aboutScroll{0,0};
     RecentFiles _recentFiles;

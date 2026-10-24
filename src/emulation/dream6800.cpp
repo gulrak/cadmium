@@ -49,6 +49,7 @@ static const std::string PROP_CLEAN_RAM = "cleanRam";
 static const std::string PROP_VIDEO = "video";
 static const std::string PROP_ROM_NAME = "romName";
 static const std::string PROP_START_ADDRESS = "startAddress";
+static const std::string PROP_CRT_EFFECT{propid::CRT_EFFECT};
 
 enum class DreamVideoType { TTL };
 
@@ -63,6 +64,7 @@ struct Dream6800Options
         result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
         result[PROP_CLEAN_RAM].setBool(cleanRam);
         result[PROP_VIDEO].setSelectedIndex(toType(videoType));
+        result[PROP_CRT_EFFECT].setBool(crtEffect);
         result[PROP_ROM_NAME].setSelectedText(romName);
         //result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
         result[PROP_START_ADDRESS].setInt(startAddress);
@@ -78,6 +80,7 @@ struct Dream6800Options
         opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
         opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
         opts.videoType = static_cast<DreamVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        opts.crtEffect = props[PROP_CRT_EFFECT].getBool();
         opts.romName = props[PROP_ROM_NAME].getSelectedText();
         //opts.interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
         opts.startAddress = props[PROP_START_ADDRESS].getInt();
@@ -95,6 +98,7 @@ struct Dream6800Options
             prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s}, "Size of ram in bytes", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"TTL"}, "Video hardware, only TTL"});
+            prototype.registerProperty({PROP_CRT_EFFECT, "CRT Effect", false, "Show the screen like a CRT with visible scan lines (display only)", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_ROM_NAME, "ROM Name", Property::Combo{"NONE", "CHIPOS"s, "CHIPOSLO"s}, "Rom image name, default c8-monitor", PropertyFlags::eWritable});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
             prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
@@ -109,6 +113,7 @@ struct Dream6800Options
     DreamVideoType videoType;
     std::string romName;
     uint16_t startAddress;
+    bool crtEffect{false};
     Palette palette;
 };
 
@@ -439,11 +444,16 @@ chip8::VariantSet Dream6800::supportedChip8Variants() const
 
 bool Dream6800::updateProperties(Properties& props, Property& changed)
 {
-    if(changed.getId() == PROP_TRACE_LOG) {
+    if(changed.getId() == PROP_TRACE_LOG || changed.getId() == PROP_CRT_EFFECT) {
         _impl->_options = Dream6800Options::fromProperties(props);
         return false;
     }
     return true;
+}
+
+bool Dream6800::crtEffect() const
+{
+    return _impl->_options.crtEffect;
 }
 
 Properties& Dream6800::getProperties()

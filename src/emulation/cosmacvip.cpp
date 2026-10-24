@@ -56,6 +56,7 @@ static const std::string PROP_KEYBOARD = "keyboard";
 static const std::string PROP_ROM_NAME = "romName";
 static const std::string PROP_INTERPRETER = "interpreter";
 static const std::string PROP_START_ADDRESS = "startAddress";
+static const std::string PROP_CRT_EFFECT{propid::CRT_EFFECT};
 
 // The enums must list the combo options of the matching property in the same order, the selected index is cast to them.
 // VVT_CDP1864 is not emulated yet and behaves like VP-590, the ASCII keyboards are not emulated yet either.
@@ -76,6 +77,7 @@ struct CosmacVIPOptions
         result[PROP_CLEAN_RAM].setBool(cleanRam);
         result[PROP_VIDEO].setSelectedIndex(toType(videoType));
         result[PROP_TRACE_VIDEO].setBool(traceVideo);
+        result[PROP_CRT_EFFECT].setBool(crtEffect);
         result[PROP_AUDIO].setSelectedIndex(toType(audioType));
         result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
         result[PROP_ROM_NAME].setString(romName);
@@ -94,6 +96,7 @@ struct CosmacVIPOptions
         opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
         opts.videoType = static_cast<VIPVideoType>(props[PROP_VIDEO].getSelectedIndex());
         opts.traceVideo = props[PROP_TRACE_VIDEO].getBool();
+        opts.crtEffect = props[PROP_CRT_EFFECT].getBool();
         opts.audioType = static_cast<VIPAudioType>(props[PROP_AUDIO].getSelectedIndex());
         opts.keyboard = static_cast<VIPKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
         opts.romName = props[PROP_ROM_NAME].getString();
@@ -114,6 +117,7 @@ struct CosmacVIPOptions
             prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"CDP1861", "CDP1861-C10-HIRES", "VP-590", "VP-590-MPD", "CDP1864"}, "Video hardware, default cdp1861"});
             prototype.registerProperty({PROP_TRACE_VIDEO, "Trace Video", false, "Insert video events into trace log", PropertyFlags::eWritable});
+            prototype.registerProperty({PROP_CRT_EFFECT, "CRT Effect", false, "Show the screen like a CRT with visible scan lines (display only)", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_AUDIO, "Audio", Property::Combo{"CA555 Buzzer", "VP-595 Simple SB", "VP-551 2x Super SB"}, "Audio hardware, default is ca555-buzzer"});
             prototype.registerProperty({PROP_KEYBOARD, "Keyboard", Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
             prototype.registerProperty(Property::separator());
@@ -135,6 +139,7 @@ struct CosmacVIPOptions
     std::string romName;
     VIPChip8Interpreter interpreter;
     uint16_t startAddress;
+    bool crtEffect{false};
     Palette palette;
 };
 
@@ -854,12 +859,17 @@ void CosmacVIP::handleReset(bool cold)
 bool CosmacVIP::updateProperties(Properties& props, Property& changed)
 {
     // Clock rate is not live, the CPU and the audio sample rate only take it on construction.
-    if(changed.getId() == PROP_TRACE_LOG || changed.getId() == PROP_TRACE_VIDEO) {
+    if(changed.getId() == PROP_TRACE_LOG || changed.getId() == PROP_TRACE_VIDEO || changed.getId() == PROP_CRT_EFFECT) {
         _impl->_options = CosmacVIPOptions::fromProperties(props);
         _impl->_video.setTrace(_impl->_options.traceVideo);
         return false;
     }
     return true;
+}
+
+bool CosmacVIP::crtEffect() const
+{
+    return _impl->_options.crtEffect;
 }
 
 uint16_t CosmacVIP::patchRAM(VIPChip8Interpreter interpreter, uint8_t* ram, size_t size)

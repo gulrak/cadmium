@@ -32,6 +32,8 @@ set(CADMIUM_SOURCE
     systemtools.cpp
     systemtools.hpp
     texturescaler.hpp
+    crtrenderer.cpp
+    crtrenderer.hpp
 )
 
 if(CADMIUM_WITH_DATABASE)

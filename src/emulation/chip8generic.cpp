@@ -73,6 +73,7 @@ static const std::string PROP_Q_XO_CHIP_SOUND = "xoChipSound";
 static const std::string PROP_Q_EXTENDED_VBLANK = "extendedVblank";
 static const std::string PROP_Q_PAL_VIDEO = "palVideo";
 static const std::string PROP_SCREEN_ROTATION = "screenRotation";
+static const std::string PROP_CRT_EFFECT{propid::CRT_EFFECT};
 static const std::string PROP_TOUCH_INPUT_MODE = "touchMode";
 static const std::string PROP_FONT_5PX = "font5px";
 static const std::string PROP_FONT_10PX = "font10px";
@@ -114,6 +115,7 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_Q_PAL_VIDEO].setBool(optPalVideo);
     result[PROP_CUBECHIP_TONE].setBool(optCubeChipTone);
     result[PROP_SCREEN_ROTATION].setSelectedIndex(int(rotation));
+    result[PROP_CRT_EFFECT].setBool(crtEffect);
     result[PROP_TOUCH_INPUT_MODE].setSelectedIndex(int(touchInputMode));
     result[PROP_FONT_5PX].setSelectedIndex(int(fontStyle5));
     result[PROP_FONT_10PX].setSelectedIndex(int(fontStyle10));
@@ -157,6 +159,7 @@ Chip8GenericOptions Chip8GenericOptions::fromProperties(const Properties& props)
     opts.optPalVideo = props[PROP_Q_PAL_VIDEO].getBool();
     opts.optCubeChipTone = props[PROP_CUBECHIP_TONE].getBool();
     opts.rotation = static_cast<ScreenRotation>(props[PROP_SCREEN_ROTATION].getSelectedIndex());
+    opts.crtEffect = props[PROP_CRT_EFFECT].getBool();
     opts.touchInputMode = static_cast<TouchInputMode>(props[PROP_TOUCH_INPUT_MODE].getSelectedIndex());
     opts.fontStyle5 = static_cast<FontStyle5px>(props[PROP_FONT_5PX].getSelectedIndex());
     opts.fontStyle10 = static_cast<FontStyle10px>(props[PROP_FONT_10PX].getSelectedIndex());
@@ -177,6 +180,7 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"2048"s, "4096"s, "8192"s, "16384"s, "32768"s, "65536"s, "16777216"s}, "Size of ram in bytes", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{0x200, 0, 0x7f0}, "Load and start address of the program, default depends on variant"});
         prototype.registerProperty({PROP_SCREEN_ROTATION, "Rotation", Property::Combo{"0°"s, "90°"s, "180°"s, "270°"s}, "Clockwise rotation of the shown screen, for programs played sideways", PropertyFlags::eWritable});
+        prototype.registerProperty({PROP_CRT_EFFECT, "CRT Effect", false, "Show the screen like a CRT with visible scan lines (display only)", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_JUST_SHIFT_VX, "8xy6/8xyE just shift Vx", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_DONT_RESET_VF, "8xy1/8xy2/8xy3 don't reset VF", false, PropertyFlags::eWritable});
@@ -384,6 +388,9 @@ const PropertyRule propertyRules[] = {
     {PROP_Q_WRAP_SPRITES, [](const GenericOpts& opts) { return opts.behaviorBase != GenericOpts::eCHIP8X; }},
     {PROP_CUBECHIP_TONE, [](const GenericOpts& opts) { return !opts.optXOChipSound && opts.behaviorBase != GenericOpts::eCHIP8X; }},
     {PROP_Q_EXTENDED_VBLANK, nullptr, [](const GenericOpts& opts) { return !opts.optInstantDxyn; }},
+    // Only for CRT based variants. The CHIP-8 family will follow (with several scan
+    // lines per lores row, see CrtRenderer::draw()), SCHIP/XO-CHIP never get it.
+    {PROP_CRT_EFFECT, [](const GenericOpts& opts) { return opts.behaviorBase == GenericOpts::eMEGACHIP; }},
 };
 
 // Of each group only one can be set. When a configuration sets more, the first one wins, as that is the one
@@ -643,7 +650,7 @@ void Chip8GenericEmulator::handleReset(bool cold)
 
 bool Chip8GenericEmulator::updateProperties(Properties& props, Property& changed)
 {
-    if (const auto& id = changed.getId(); id == PROP_TRACE_LOG || id == PROP_INSTRUCTIONS_PER_FRAME || id == PROP_FRAME_RATE || id == PROP_SCREEN_ROTATION) {
+    if (const auto& id = changed.getId(); id == PROP_TRACE_LOG || id == PROP_INSTRUCTIONS_PER_FRAME || id == PROP_FRAME_RATE || id == PROP_SCREEN_ROTATION || id == PROP_CRT_EFFECT) {
         _options = Chip8GenericOptions::fromProperties(props);
         return false;
     }

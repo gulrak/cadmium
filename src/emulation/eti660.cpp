@@ -56,6 +56,7 @@ static const std::string PROP_AUDIO = "audio";
 static const std::string PROP_KEYBOARD = "keyboard";
 static const std::string PROP_ROM_NAME = "romName";
 static const std::string PROP_START_ADDRESS = "startAddress";
+static const std::string PROP_CRT_EFFECT{propid::CRT_EFFECT};
 
 enum ETIVideoType { ETI_VT_CDP1864 };
 enum ETIAudioType { ETI_AT_CDP1864 };
@@ -82,6 +83,7 @@ struct Eti660Options
         result[PROP_RAM].setSelectedText(std::to_string(ramSize)); // !!!!
         result[PROP_CLEAN_RAM].setBool(cleanRam);
         result[PROP_VIDEO].setSelectedIndex(toType(videoType));
+        result[PROP_CRT_EFFECT].setBool(crtEffect);
         result[PROP_AUDIO].setSelectedIndex(toType(audioType));
         result[PROP_KEYBOARD].setSelectedIndex(toType(keyboard));
         result[PROP_ROM_NAME].setString(romName);
@@ -99,6 +101,7 @@ struct Eti660Options
         opts.ramSize = std::stoul(props[PROP_RAM].getSelectedText()); // !!!!
         opts.cleanRam = props[PROP_CLEAN_RAM].getBool();
         opts.videoType = static_cast<ETIVideoType>(props[PROP_VIDEO].getSelectedIndex());
+        opts.crtEffect = props[PROP_CRT_EFFECT].getBool();
         opts.audioType = static_cast<ETIAudioType>(props[PROP_AUDIO].getSelectedIndex());
         opts.keyboard = static_cast<ETIKeyboard>(props[PROP_KEYBOARD].getSelectedIndex());
         opts.romName = props[PROP_ROM_NAME].getString();
@@ -118,6 +121,7 @@ struct Eti660Options
             prototype.registerProperty({PROP_RAM, "Memory", Property::Combo{"3072"s}, "Size of ram in bytes"});
             prototype.registerProperty({PROP_CLEAN_RAM, "Clean RAM", false, "Delete ram on startup", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_VIDEO, "Video", Property::Combo{"CDP1864"}, "Video hardware, only cdp1864"});
+            prototype.registerProperty({PROP_CRT_EFFECT, "CRT Effect", false, "Show the screen like a CRT with visible scan lines (display only)", PropertyFlags::eWritable});
             prototype.registerProperty({PROP_AUDIO, "Audio", Property::Combo{"CDP1864"}, "Audio hardware, only cdp1864"});
             prototype.registerProperty({PROP_KEYBOARD, "Keyboard", Property::Combo{"ETI660 Hex", "ETI660 2-ROW", "VIP Hex"}, "Keyboard type, default is ETI660 hex"});
             prototype.registerProperty(Property::separator());
@@ -137,6 +141,7 @@ struct Eti660Options
     ETIKeyboard keyboard;
     std::string romName;
     uint16_t startAddress;
+    bool crtEffect{false};
     Palette palette;
 };
 
@@ -416,11 +421,16 @@ void Eti660::handleReset(bool cold)
 
 bool Eti660::updateProperties(Properties& props, Property& changed)
 {
-    if(changed.getId() == PROP_TRACE_LOG) {
+    if(changed.getId() == PROP_TRACE_LOG || changed.getId() == PROP_CRT_EFFECT) {
         _impl->_options = Eti660Options::fromProperties(props);
         return false;
     }
     return true;
+}
+
+bool Eti660::crtEffect() const
+{
+    return _impl->_options.crtEffect;
 }
 
 std::string Eti660::name() const

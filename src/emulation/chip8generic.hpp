@@ -91,6 +91,7 @@ struct Chip8GenericOptions
     int frameRate{60};
     std::string traceFile;
     ScreenRotation rotation{ScreenRotation::CW0};
+    bool crtEffect{false};
     TouchInputMode touchInputMode{TouchInputMode::UNKNOWN};
     FontStyle5px fontStyle5{FontStyle5px::VIP};
     FontStyle10px fontStyle10{FontStyle10px::NONE};
@@ -142,6 +143,7 @@ public:
     bool isDoublePixel() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? false : (_options.optAllowHires && !_isHires); }
     int getMaxColors() const override;
     int screenRotation() const override { return static_cast<int>(_options.rotation) * 90; }
+    bool crtEffect() const override { return _options.crtEffect; }
     uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
     unsigned stackSize() const override { return 16; }
