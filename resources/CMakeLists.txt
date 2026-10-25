@@ -7,6 +7,7 @@ file(GLOB
         ${CMAKE_CURRENT_SOURCE_DIR}/files/*.fs
         ${CMAKE_CURRENT_SOURCE_DIR}/files/sxrom-rev-e
         ${CMAKE_CURRENT_SOURCE_DIR}/files/hp-chip8/*.asap
+        ${CMAKE_CURRENT_SOURCE_DIR}/files/library/*.cd48db
 )
 
 # ------------------------------------------------------------
@@ -30,12 +31,15 @@ endif()
 
 # Host compiler to build host tools
 if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    set(HOST_CC gcc)
     set(HOST_CXX g++)
 else()
     # Prefer system clang++ on macOS to avoid PATH toolchain surprises
     if (EXISTS "/usr/bin/clang++")
+        set(HOST_CC /usr/bin/clang)
         set(HOST_CXX /usr/bin/clang++)
     else()
+        set(HOST_CC clang)
         set(HOST_CXX clang++)
     endif()
 endif()
@@ -45,13 +49,21 @@ if (NEED_HOST_TOOLS)
     set(RESOURCER_RUNNER     ${CMAKE_CURRENT_BINARY_DIR}/resourcer_host)
     set(ICONGENERATOR_RUNNER ${CMAKE_CURRENT_BINARY_DIR}/icongenerator_host)
 
-    # Build host resourcer
+    # Build host resourcer, as a small project of its own, as it needs zstd to pack resources
     add_custom_command(
             OUTPUT resourcer_host
-            COMMAND ${HOST_CXX} -o resourcer_host -std=c++17
-            ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp
-            -I${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
-            DEPENDS ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp
+            COMMAND ${CMAKE_COMMAND}
+            -S ${PROJECT_SOURCE_DIR}/cmake/host-resourcer
+            -B ${CMAKE_CURRENT_BINARY_DIR}/host-resourcer-build
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_C_COMPILER=${HOST_CC}
+            -DCMAKE_CXX_COMPILER=${HOST_CXX}
+            -DCADMIUM_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+            -DCADMIUM_GHC_FILESYSTEM_INCLUDE_DIR=${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
+            -DCADMIUM_ZSTD_SOURCE_DIR=${zstd_SOURCE_DIR}
+            -DCADMIUM_HOST_RESOURCER_OUTPUT=${RESOURCER_RUNNER}
+            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR}/host-resourcer-build --target resourcer --config Release
+            DEPENDS ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp ${PROJECT_SOURCE_DIR}/cmake/host-resourcer/CMakeLists.txt
             VERBATIM
     )
 
@@ -66,6 +78,7 @@ if (NEED_HOST_TOOLS)
 
     # Convenient phony targets for dependencies
     add_custom_target(resourcer_tool     DEPENDS resourcer_host)
+    set(RESOURCER_DEPENDS ${RESOURCER_RUNNER})
     add_custom_target(icongenerator_tool DEPENDS icongenerator_host)
 else()
     # Native case: use the normal targets you already have elsewhere
@@ -73,6 +86,7 @@ else()
     set(ICONGENERATOR_RUNNER icongenerator)
 
     add_custom_target(resourcer_tool     DEPENDS resourcer)
+    set(RESOURCER_DEPENDS resourcer)
     add_custom_target(icongenerator_tool DEPENDS icongenerator)
 endif()
 
@@ -113,13 +127,18 @@ set(RESOURCE_EXCLUDES)
 if(NOT CADMIUM_WITH_HP48)
     set(RESOURCE_EXCLUDES --exclude sxrom-rev-e --exclude hp-chip8)
 endif()
+# The starter metadata of the library is only of use with the database (not on the web).
+if(NOT CADMIUM_WITH_DATABASE)
+    list(APPEND RESOURCE_EXCLUDES --exclude library)
+endif()
 add_custom_command(
         OUTPUT resourcedata.c
         COMMAND ${RESOURCER_RUNNER}
         ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
         ${CMAKE_CURRENT_SOURCE_DIR}/files/
         ${RESOURCE_EXCLUDES}
-        DEPENDS resourcer_tool ${RESOURCE_FILES}
+        # the resourcer itself, not only its target, so a changed resource format regenerates the data
+        DEPENDS resourcer_tool ${RESOURCER_DEPENDS} ${RESOURCE_FILES}
         VERBATIM
 )
 

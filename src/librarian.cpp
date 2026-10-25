@@ -33,6 +33,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 
 #include "emulation/coreregistry.hpp"
@@ -48,6 +49,25 @@ inline std::chrono::system_clock::time_point convertClock(TP tp)
 #include "knownfiles.ipp"
 
 static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]);
+static std::atomic<const Librarian::MetadataSource*> g_metadataSource{nullptr};
+
+void Librarian::setMetadataSource(const MetadataSource* source)
+{
+    g_metadataSource = source;
+}
+
+std::optional<RomMetadata> Librarian::findRomMetadata(const Sha1::Digest& sha1)
+{
+    if (const auto* source = g_metadataSource.load()) {
+        if (auto metadata = source->romMetadata(sha1)) {
+            return metadata;
+        }
+    }
+    if (const auto* romInfo = findKnownRom(sha1)) {
+        return RomMetadata{romInfo->preset, romInfo->options ? romInfo->options : ""};
+    }
+    return std::nullopt;
+}
 
 size_t Librarian::numKnownRoms()
 {
@@ -289,12 +309,12 @@ bool Librarian::update(const emu::Properties& properties)
 bool Librarian::isKnownFile(std::span<const uint8_t> data) const
 {
     auto sha1 = calculateSha1(data);
-    return _cfg.romConfigs.contains(sha1) || findKnownRom(sha1) != nullptr;
+    return isKnownFile(sha1);
 }
 
 bool Librarian::isKnownFile(const Sha1::Digest& sha1) const
 {
-    return _cfg.romConfigs.contains(sha1) || findKnownRom(sha1) != nullptr;
+    return _cfg.romConfigs.contains(sha1) || findRomMetadata(sha1).has_value();
 }
 
 bool Librarian::isGenericChip8(std::span<const uint8_t> data) const
@@ -305,8 +325,8 @@ bool Librarian::isGenericChip8(std::span<const uint8_t> data) const
 
 bool Librarian::isGenericChip8(const Sha1::Digest& sha1) const
 {
-    auto* romInfo = findKnownRom(sha1);
-    return romInfo && std::string(romInfo->preset) == "generic-chip-8";
+    auto metadata = findRomMetadata(sha1);
+    return metadata && metadata->preset == "generic-chip-8";
 }
 
 
@@ -316,8 +336,8 @@ std::string Librarian::getPresetForFile(const Sha1::Digest& sha1) const
     // TODO: Fix this
     //if(cfgIter != _cfg.romConfigs.end())
     //    return cfgIter->second.behaviorBase;
-    const auto* romInfo = findKnownRom(sha1);
-    return romInfo ? romInfo->preset : "chip-8";
+    auto metadata = findRomMetadata(sha1);
+    return metadata ? metadata->preset : "chip-8";
 }
 
 std::string Librarian::getPresetForFile(std::span<const uint8_t> data) const
@@ -377,10 +397,15 @@ emu::Properties Librarian::getPropertiesForFile(const Sha1::Digest& sha1) const
 
 emu::Properties Librarian::getPropertiesForSha1(const Sha1::Digest& sha1)
 {
-    if (const auto* romInfo = findKnownRom(sha1)) {
-        auto properties = emu::CoreRegistry::propertiesForPreset(romInfo->preset);
-        if(romInfo->options) {
-            properties.applyDiff(nlohmann::json::parse(std::string(romInfo->options)));
+    if (auto metadata = findRomMetadata(sha1)) {
+        auto properties = emu::CoreRegistry::propertiesForPreset(metadata->preset);
+        if (!metadata->properties.empty()) {
+            try {
+                properties.applyDiff(nlohmann::json::parse(metadata->properties));
+            }
+            catch (const nlohmann::json::exception& ex) {
+                TraceLog(LOG_WARNING, "Ignoring invalid properties of ROM %s: %s", sha1.to_hex().c_str(), ex.what());
+            }
         }
         return properties;
     }

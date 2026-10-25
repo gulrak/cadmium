@@ -695,7 +695,9 @@ public:
     virtual ~BaseTableMetadata() = default;
     virtual const std::string& tableName() const = 0;
     virtual const std::vector<std::unique_ptr<BaseFieldInfo>>& fields() const = 0;
-    virtual std::string createTableSql() const = 0;
+    /// The CREATE TABLE statement, for the table's own name or another one (used when rebuilding it).
+    std::string createTableSql() const { return createTableSql(tableName()); }
+    virtual std::string createTableSql(const std::string& tableName) const = 0;
     /// The quoted column list in registration order, to be used instead of `SELECT *`.
     const std::string& columnsSql() const { return _columnsSql; }
     const std::string& insertSql() const { return _insertSql; }
@@ -760,10 +762,11 @@ public:
     const std::string& tableName() const override { return _tableName; }
     const std::vector<std::unique_ptr<BaseFieldInfo>>& fields() const override { return _fields; }
 
+    using BaseTableMetadata::createTableSql;
     // Generate CREATE TABLE SQL
-    [[nodiscard]] std::string createTableSql() const override
+    [[nodiscard]] std::string createTableSql(const std::string& tableName) const override
     {
-        std::string sql = "CREATE TABLE IF NOT EXISTS " + detail::quoteIdent(_tableName) + " (";
+        std::string sql = "CREATE TABLE IF NOT EXISTS " + detail::quoteIdent(tableName) + " (";
 
         for (const auto& field : _fields) {
             if (sql.back() != '(')
@@ -862,6 +865,7 @@ private:
     static std::set<std::vector<std::string>> getSQLiteUniqueIndexes(Database& db, const std::string& tableName);
     static std::vector<const BaseFieldInfo*> analyzeTableDifferences(Database& db, const std::string& tableName, const std::vector<SQLiteTableInfo>& existing, const std::vector<std::unique_ptr<BaseFieldInfo>>& required);
     static std::string addColumnSql(const std::string& tableName, const BaseFieldInfo& field);
+    static void rebuildTable(Database& db, const BaseTableMetadata& table);
 
     std::vector<std::unique_ptr<BaseTableMetadata>> _tables;
     std::unordered_map<std::string, size_t> _tablesMap;

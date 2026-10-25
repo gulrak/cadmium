@@ -2,7 +2,8 @@ add_subdirectory(emulation)
 
 # The compiled in files from resources/files, the emulation library uses them too (HP-48SX ROM).
 add_library(resourcemanager STATIC resourcemanager.cpp resourcemanager.hpp)
-target_link_libraries(resourcemanager PUBLIC resourcedata raylib_static)
+target_link_libraries(resourcemanager PUBLIC resourcedata raylib_static PRIVATE libzstd_static)
+target_include_directories(resourcemanager PRIVATE "${zstd_SOURCE_DIR}/lib")
 
 set(CADMIUM_SOURCE
     c8capturehost.cpp

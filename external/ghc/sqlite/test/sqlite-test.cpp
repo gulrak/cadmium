@@ -262,6 +262,20 @@ struct GrownUnique
     std::string key;
 };
 
+struct RelaxedRecord
+{
+    int id{0};
+    std::string name;
+    std::optional<db::Blob> data;
+    std::optional<int> size;
+};
+
+struct RelaxedChild
+{
+    int id{0};
+    int record_id{0};
+};
+
 struct WalRecord
 {
     int id{0};
@@ -597,4 +611,39 @@ TEST_CASE("ORM schema sync refuses to add a UNIQUE column to an existing table",
     db::Database db((t.path() / "test.db").string());
     db.execute("CREATE TABLE grown_uniques (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL);");
     CHECK_THROWS_AS(db::Registry::syncTables(db), db::Exception);
+}
+
+TEST_CASE("ORM schema sync rebuilds a table whose column became optional", "[orm]")
+{
+    TemporaryDirectory t;
+    db::Table<RelaxedRecord>("relaxed_records").column("id", &RelaxedRecord::id).column("name", &RelaxedRecord::name).column("data", &RelaxedRecord::data).column("size", &RelaxedRecord::size).registerTable();
+    db::Table<RelaxedChild>("relaxed_children")
+        .column("id", &RelaxedChild::id)
+        .column("record_id", &RelaxedChild::record_id, "relaxed_records", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .registerTable();
+    db::Database db((t.path() / "test.db").string());
+    db.execute("CREATE TABLE relaxed_records (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, data BLOB NOT NULL);");
+    db.execute("CREATE TABLE relaxed_children (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, record_id INTEGER NOT NULL, "
+               "FOREIGN KEY(record_id) REFERENCES relaxed_records(id) ON UPDATE CASCADE ON DELETE CASCADE);");
+    db.execute("INSERT INTO relaxed_records (name, data) VALUES ('old', X'0102');");
+    db.execute("INSERT INTO relaxed_children (record_id) VALUES (1);");
+    db::Registry::syncTables(db);
+    auto report = captureCout([&] { db::Registry::syncTables(db); });
+    CHECK(report.find("mismatch") == std::string::npos);
+    CHECK(report.find("Rebuilding") == std::string::npos);
+    auto session = db.session();
+    auto records = session.fetchAll<RelaxedRecord>();
+    REQUIRE(records.size() == 1);
+    CHECK(records[0].name == "old");
+    REQUIRE(records[0].data);
+    CHECK(*records[0].data == db::Blob{1, 2});
+    CHECK_FALSE(records[0].size);
+    CHECK(session.fetchAll<RelaxedChild>().size() == 1);
+    RelaxedRecord missing{0, "missing", std::nullopt, 128};
+    REQUIRE_NOTHROW(session.insert(missing));
+    CHECK_FALSE(session.fetch<RelaxedRecord>(missing.id).data);
+    CHECK(0 == (int)db.executeForValue("SELECT COUNT(*) FROM sqlite_master WHERE name = 'relaxed_records_rebuild';"));
+    // the foreign key of the child table still works after the rebuild
+    CHECK(session.remove(records[0]) == 1);
+    CHECK(session.fetchAll<RelaxedChild>().empty());
 }

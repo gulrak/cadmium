@@ -33,6 +33,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,10 +45,23 @@ struct KnownRomInfo {
     const char* url;
 };
 
+// The config of a known ROM: a preset and the changes of its properties.
+struct RomMetadata
+{
+    std::string preset;
+    std::string properties;  // a JSON diff to the preset, empty if there is none
+};
+
 class Librarian
 {
 public:
     static constexpr size_t MAX_ROM_SIZE = 16 * 1024 * 1024 - 512;
+    class MetadataSource
+    {
+    public:
+        virtual ~MetadataSource() = default;
+        virtual std::optional<RomMetadata> romMetadata(const Sha1::Digest& sha1) const = 0;
+    };
     struct Info
     {
         enum Type { eDIRECTORY, eUNKNOWN_FILE, eROM_FILE, eOCTO_SOURCE };
@@ -102,6 +116,9 @@ public:
     static const KnownRomInfo* getKnownRoms();
     static const KnownRomInfo* findKnownRom(const Sha1::Digest& sha1);
     static size_t findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms);
+    static void setMetadataSource(const MetadataSource* source);
+    // the metadata source first, then the compiled in list
+    static std::optional<RomMetadata> findRomMetadata(const Sha1::Digest& sha1);
 private:
     int _activeEntry{-1};
     std::string _currentPath;

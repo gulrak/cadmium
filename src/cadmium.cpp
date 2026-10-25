@@ -3220,6 +3220,7 @@ int main(int argc, char* argv[])
     HeadlessRunOptions headlessOptions;
     std::string dumpInterpreter;
     std::string updateProgramDatabase;
+    std::string exportMetadataDb;
     int64_t execSpeed = -1;
     std::string randomGen;
     std::string emulationCore;
@@ -3248,6 +3249,9 @@ int main(int argc, char* argv[])
     cli.option({"--update-program-database"}, updateProgramDatabase, "Compare the library with the given programs.json of the chip-8-database and write programs_<timestamp>.json with the missing programs added");
 #endif
 #ifndef NDEBUG
+#ifdef CADMIUM_WITH_DATABASE
+    cli.option({"--export-metadata-db"}, exportMetadataDb, "Write the library without ROM data and file names to the given file, as starter library for the resources");
+#endif
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
     cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
 #endif
@@ -3406,6 +3410,9 @@ int main(int argc, char* argv[])
 #ifdef CADMIUM_WITH_DATABASE
     if(!updateProgramDatabase.empty()) {
         exit(Database::updateProgramDatabase(dataPath(), updateProgramDatabase));
+    }
+    if(!exportMetadataDb.empty()) {
+        exit(Database::exportMetadata(dataPath(), exportMetadataDb));
     }
 #endif
     if(!dumpInterpreter.empty()) {

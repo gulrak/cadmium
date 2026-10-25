@@ -606,9 +606,50 @@ void Registry::doSyncTables(Database& db) const
                     alterStmt.step();
                 }
                 transaction.commit();
+                schema = getSQLiteTableSchema(db, table->tableName());
+            }
+            // a column that became optional needs the table rebuilt, SQLite can't drop a NOT NULL
+            const bool relaxed = std::ranges::any_of(table->fields(), [&schema](const auto& field) {
+                auto it = std::ranges::find_if(schema, [&field](const SQLiteTableInfo& info) { return info.name == field->name; });
+                return it != schema.end() && !it->isOptional && field->isOptional;
+            });
+            if (relaxed) {
+                std::cout << "Rebuilding table '" << table->tableName() << "' for columns that became optional\n";
+                rebuildTable(db, *table);
             }
         }
     }
+}
+
+// The table is created under a temporary name, filled from the old one, which is then dropped and replaced.
+// Foreign keys are off meanwhile, so rows of other tables referencing it are kept, they are checked before
+// the commit. All registered columns exist at this point, as missing ones were added before.
+void Registry::rebuildTable(Database& db, const BaseTableMetadata& table)
+{
+    auto session = db.session();
+    const auto& name = table.tableName();
+    const auto temporary = name + "_rebuild";
+    const auto columns = detail::join(table.fields() | std::views::transform([](const auto& field) { return detail::quoteIdent(field->name); }), ", ");
+    // foreign_keys can't be changed inside a transaction
+    Statement(session, "PRAGMA foreign_keys = OFF;").execute();
+    try {
+        Transaction transaction(session);
+        Statement(session, "DROP TABLE IF EXISTS " + detail::quoteIdent(temporary) + ";").execute();
+        Statement(session, table.createTableSql(temporary)).execute();
+        Statement(session, "INSERT INTO " + detail::quoteIdent(temporary) + " (" + columns + ") SELECT " + columns + " FROM " + detail::quoteIdent(name) + ";").execute();
+        Statement(session, "DROP TABLE " + detail::quoteIdent(name) + ";").execute();
+        Statement(session, "ALTER TABLE " + detail::quoteIdent(temporary) + " RENAME TO " + detail::quoteIdent(name) + ";").execute();
+        Statement check(session, "PRAGMA foreign_key_check;");
+        if (check.step()) {
+            throw Exception("Rebuilding table '" + name + "' would break foreign keys");
+        }
+        transaction.commit();
+    }
+    catch (...) {
+        Statement(session, "PRAGMA foreign_keys = ON;").execute();
+        throw;
+    }
+    Statement(session, "PRAGMA foreign_keys = ON;").execute();
 }
 
 // SQLite can only add columns that are not UNIQUE and, if NOT NULL, have a non-NULL default. Required

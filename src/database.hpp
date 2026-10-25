@@ -72,6 +72,9 @@ public:
     // platforms.json is expected next to it), reports where they disagree on the variants and settings of ROMs,
     // and writes programs_<timestamp>.json with the library ROMs missing in it added, used by --update-program-database.
     static int updateProgramDatabase(const std::string& dataPath, const std::string& programsJsonPath);
+    // Writes a copy of the library with only its metadata (no ROMs, file names, ignored ROMs or "new" tags),
+    // marked as starter metadata, used by --export-metadata-db to create the starter library of the resources.
+    static int exportMetadata(const std::string& dataPath, const std::string& outputFile);
 private:
     void refreshBadges();
     void fetchProgramInfo();

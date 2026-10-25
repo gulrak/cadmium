@@ -3,6 +3,11 @@
 
 #include <cassert>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
+#include <string_view>
+
+#include <zstd.h>
 
 extern "C" {
 extern const unsigned char g_resourceData[];
@@ -17,6 +22,58 @@ static size_t readInteger(const unsigned char* data)
     val |= uint32_t(data[3])<<24u;
     return size_t(val);
 }
+
+namespace {
+
+constexpr std::uint32_t RESOURCE_FLAG_ZSTD_COMPRESSED = 0x01;
+
+// An entry of the resource data: stored size, original size, flags and name length, followed by the name and data.
+struct ResourceEntry {
+    size_t storedSize = 0;
+    size_t originalSize = 0;
+    std::uint32_t flags = 0;
+    size_t nameSize = 0;
+    const unsigned char* name = nullptr;
+    const unsigned char* data = nullptr;
+};
+
+ResourceEntry readEntry(const unsigned char* dataPtr)
+{
+    ResourceEntry entry;
+    entry.storedSize = readInteger(dataPtr);
+    entry.originalSize = readInteger(dataPtr + 4);
+    entry.flags = static_cast<std::uint32_t>(readInteger(dataPtr + 8));
+    entry.nameSize = readInteger(dataPtr + 12);
+    entry.name = dataPtr + 16;
+    entry.data = entry.name + entry.nameSize;
+    return entry;
+}
+
+std::vector<unsigned char> decompressResource(std::string_view name, const ResourceEntry& entry)
+{
+    const unsigned long long contentSize = ZSTD_getFrameContentSize(entry.data, entry.storedSize);
+    if (contentSize == ZSTD_CONTENTSIZE_ERROR) {
+        throw std::runtime_error("embedded resource is not a valid zstd frame: " + std::string(name));
+    }
+    if (contentSize == ZSTD_CONTENTSIZE_UNKNOWN) {
+        throw std::runtime_error("embedded resource zstd frame does not declare decompressed size: " + std::string(name));
+    }
+    if (contentSize != entry.originalSize) {
+        throw std::runtime_error("embedded resource zstd size mismatch: " + std::string(name));
+    }
+    if (contentSize > static_cast<unsigned long long>(std::numeric_limits<std::size_t>::max())) {
+        throw std::runtime_error("embedded resource is too large for this host: " + std::string(name));
+    }
+    std::vector<unsigned char> decoded(static_cast<std::size_t>(contentSize));
+    const std::size_t result = ZSTD_decompress(decoded.data(), decoded.size(), entry.data, entry.storedSize);
+    if (ZSTD_isError(result)) {
+        throw std::runtime_error("failed to decompress embedded resource " + std::string(name) + ": " + ZSTD_getErrorName(result));
+    }
+    decoded.resize(result);
+    return decoded;
+}
+
+}  // namespace
 
 unsigned char *LoadFileDataFromResource(const char *fileName, int *bytesRead)
 {
@@ -67,9 +124,8 @@ void ResourceManager::registerResources(const void* data, long size)
     for(size_t i = 0; i < numFiles && (dataPtr - startPtr) < size; ++i)
     {
         size_t offset   = readInteger(dataPtr + 4 + i*4);
-        //size_t filesize = readInteger(dataPtr + offset);
-        size_t namelen  = readInteger(dataPtr + offset + 4);
-        std::string fileName((const char*)dataPtr + offset + 8, namelen);
+        const ResourceEntry entry = readEntry(dataPtr + offset);
+        std::string fileName((const char*)entry.name, entry.nameSize);
         _resources[fileName] = dataPtr + offset;
         //std::clog << "Application: Found resource '" << fileName << "' with " << filesize << " bytes." << std::endl;
     }
@@ -91,9 +147,21 @@ ResourceManager::Resource ResourceManager::resourceForName(const std::string& na
         return Resource(name, nullptr, 0);
 
     const auto* dataPtr = (const unsigned char*)iter->second;
-    size = readInteger(dataPtr);
-    size_t fileNameSize = readInteger(dataPtr + 4);
-    data = dataPtr + 8 + fileNameSize;
+    const ResourceEntry entry = readEntry(dataPtr);
+    if ((entry.flags & RESOURCE_FLAG_ZSTD_COMPRESSED) != 0) {
+        // the cache only grows, so the data of an entry stays where it is when others are added
+        std::lock_guard lock(_decompressedMutex);
+        auto cacheIter = _decompressedResources.find(name);
+        if (cacheIter == _decompressedResources.end()) {
+            cacheIter = _decompressedResources.emplace(name, decompressResource(name, entry)).first;
+        }
+        data = cacheIter->second.data();
+        size = cacheIter->second.size();
+    }
+    else {
+        data = entry.data;
+        size = entry.originalSize;
+    }
 
     return Resource(name, data, size);
 }

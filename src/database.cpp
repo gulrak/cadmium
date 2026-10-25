@@ -27,6 +27,7 @@
 #include "database.hpp"
 #include "emuhostex.hpp"
 #include "librarian.hpp"
+#include "resourcemanager.hpp"
 #include "stylemanager.hpp"
 #include <c8db/database.hpp>
 
@@ -50,6 +51,7 @@ struct DBVersion
 {
     int id{0};
     int schema_version{1};
+    std::optional<int> starter_version;  // the version of the starter metadata the library was created from
 };
 
 struct DBTags
@@ -70,6 +72,8 @@ struct DBProgram
     std::string url;
     std::string license;    // an SPDX license expression, like "MIT" or "MIT OR Apache-2.0"
     std::string copyright;  // free text, for programs without a known license
+    std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
+    int user_modified{0};                // changed by the user, so newer starter metadata doesn't overwrite it
 
     Rectangle rect{};
     std::vector<int> tags;
@@ -92,7 +96,10 @@ struct DBBinary
     std::string sha1;
     std::string release;
     std::string description;
-    db::Blob data;
+    std::optional<db::Blob> data;  // none for a ROM only known from metadata, until a scan finds its file
+    int size{0};                   // known without the data, too
+    std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
+    int user_modified{0};                // its program or configs were changed by the user
 
     std::vector<std::string> filenames;
     std::vector<int> tags;
@@ -157,6 +164,7 @@ void registerTables()
     db::Table<DBVersion>("version")
         .column("id", &DBVersion::id)
         .column("schema_version", &DBVersion::schema_version)
+        .column("starter_version", &DBVersion::starter_version)
         .registerTable();
 
     db::Table<DBProgram>("programs")
@@ -169,6 +177,8 @@ void registerTables()
         .column("url", &DBProgram::url)
         .column("license", &DBProgram::license)
         .column("copyright", &DBProgram::copyright)
+        .column("starter_version", &DBProgram::starter_version)
+        .column("user_modified", &DBProgram::user_modified)
         .registerTable();
 
     db::Table<DBBinary>("binaries")
@@ -178,6 +188,9 @@ void registerTables()
         .column("release", &DBBinary::release)
         .column("description", &DBBinary::description)
         .column("data", &DBBinary::data)
+        .column("size", &DBBinary::size)
+        .column("starter_version", &DBBinary::starter_version)
+        .column("user_modified", &DBBinary::user_modified)
         .registerTable();
 
     db::Table<DBBinaryConfig>("binary_configs")
@@ -278,6 +291,14 @@ void migrateData(db::Database& database)
             db::Statement(session, "ALTER TABLE programs DROP COLUMN year;").execute();
         }
         version.schema_version = 4;
+        session.insertOrUpdate(version);
+        transaction.commit();
+    }
+    if (version.schema_version < 5) {
+        // ROM data became optional, so the size is kept separately
+        db::Transaction transaction{session};
+        db::Statement(session, "UPDATE binaries SET size = length(data) WHERE data IS NOT NULL;").execute();
+        version.schema_version = 5;
         session.insertOrUpdate(version);
         transaction.commit();
     }
@@ -404,6 +425,62 @@ static bool isReleaseDate(std::string_view release)
     return rest.empty();
 }
 
+static const char* const STARTER_LIBRARY = "library/cadmium_library_starter.cd48db";
+
+// A new library starts from the metadata compiled into Cadmium, if there is a starter database.
+static std::string libraryFile(const std::string& path)
+{
+    const auto file = path + "/cadmium_library.cd48db";
+    std::error_code ec;
+    if (fs::exists(file, ec) || !ResourceManager::instance().resourceAvailable(STARTER_LIBRARY)) {
+        return file;
+    }
+    const auto resource = ResourceManager::instance().resourceForName(STARTER_LIBRARY);
+    {
+        std::ofstream os(file, std::ios::binary);
+        os.write(reinterpret_cast<const char*>(resource.data()), static_cast<std::streamsize>(resource.size()));
+        if (os) {
+            TraceLog(LOG_INFO, fmt::format("New library created from the starter metadata ({} bytes)", resource.size()).c_str());
+            return file;
+        }
+    }
+    // a partly written file would be taken for a library, better start empty
+    TraceLog(LOG_WARNING, fmt::format("Could not create the library from the starter metadata at '{}'", file).c_str());
+    fs::remove(file, ec);
+    return file;
+}
+
+// The library answers the Librarian's questions about known ROMs, its configs come before the compiled in list.
+class LibraryMetadataSource : public Librarian::MetadataSource
+{
+public:
+    explicit LibraryMetadataSource(db::Database& database)
+        : _database(database)
+    {
+    }
+
+    std::optional<RomMetadata> romMetadata(const Sha1::Digest& sha1) const override
+    {
+        try {
+            auto session = db::Session(_database);
+            // the first config of a ROM is its default, as in the library's preview
+            db::Statement query(session, "SELECT binary_configs.preset, binary_configs.properties FROM binary_configs JOIN binaries ON binaries.id = binary_configs.binary_id "
+                                         "WHERE binaries.sha1 = ? ORDER BY binary_configs.id LIMIT 1");
+            query << sha1.to_hex();
+            if (query.step()) {
+                return RomMetadata{std::string(query.column(0)), std::string(query.column(1))};
+            }
+        }
+        catch (const db::Exception& ex) {
+            TraceLog(LOG_WARNING, fmt::format("Looking up {} in the library failed: {}", sha1.to_hex(), ex.what()).c_str());
+        }
+        return std::nullopt;
+    }
+
+private:
+    db::Database& _database;
+};
+
 struct Database::Private
 {
     // The edit buffer of the editor dialog, written to the database only on save.
@@ -455,6 +532,7 @@ struct Database::Private
     std::vector<VariantGroup> variantGroups;
     std::string coresCombo;
     std::string queryLine;
+    bool showMissing{false};  // also list programs none of whose ROMs were found in the library folders
     std::set<std::string> selectedTags;
     std::string textFilter;
     Vector2 tagsScrollPos{};
@@ -491,10 +569,11 @@ struct Database::Private
     bool dragging{false};
     std::atomic<bool> cancelScan{false};
     emu::ThreadedBackgroundHost backgroundHost;
+    LibraryMetadataSource metadataSource{database};
 
 
     explicit Private(CadmiumConfiguration& cfg, const std::string& path)
-        : database(path + "/cadmium_library.cd48db", 4)
+        : database(libraryFile(path), 4)
         , backgroundHost(cfg)
     {
         registerTables();
@@ -508,6 +587,53 @@ struct Database::Private
             auto iter = binaries.find(binaryId);
             return iter != binaries.end() && std::ranges::any_of(iter->second.configs, [&](const DBBinaryConfig& config) { return config.preset == preset; });
         });
+    }
+
+    bool isPresent(const DBProgram& program) const
+    {
+        return std::ranges::any_of(program.binaries, [&](int binaryId) {
+            auto iter = binaries.find(binaryId);
+            return iter != binaries.end() && iter->second.data;
+        });
+    }
+
+    // A ROM known only from metadata gets its data when a scan or a drop finds its file, its program is
+    // tagged as new like the program of a new ROM. Only the database is written, see applyBinaryData().
+    bool storeBinaryData(db::Session& session, int binaryId, int programId, bool tagNew, const std::vector<uint8_t>& data)
+    {
+        try {
+            db::Transaction transaction{session};
+            db::Statement fill(session, "UPDATE binaries SET data = ?, size = ? WHERE id = ?");
+            fill << db::Blob(data.begin(), data.end()) << static_cast<int>(data.size()) << binaryId;
+            fill.execute();
+            if (tagNew) {
+                session.insert(DBProgramTag{.program_id = programId, .tag_id = newTagId});
+            }
+            transaction.commit();
+        }
+        catch (const db::Exception& ex) {
+            TraceLog(LOG_WARNING, fmt::format("Storing the data of ROM {} failed: {}", binaryId, ex.what()).c_str());
+            return false;
+        }
+        return true;
+    }
+
+    // the cached side of storeBinaryData(), called with the mutex held where the scan runs concurrently
+    void applyBinaryData(int binaryId, bool tagNew, const std::vector<uint8_t>& data)
+    {
+        auto& binary = binaries.at(binaryId);
+        binary.data = db::Blob(data.begin(), data.end());
+        binary.size = static_cast<int>(data.size());
+        if (tagNew) {
+            programs.at(binary.program_id).tags.push_back(newTagId);
+        }
+    }
+
+    // whether filling in the data of the ROM should also tag its program as new
+    bool needsNewTag(int programId) const
+    {
+        auto iter = programs.find(programId);
+        return newTagId && iter != programs.end() && std::ranges::find(iter->second.tags, newTagId) == iter->second.tags.end();
     }
 
     bool hasTag(const DBProgram& program, int tagId) const
@@ -525,7 +651,10 @@ struct Database::Private
             return selectedBinaryId;
         }
         if (auto iter = programs.find(selectedProgramId); iter != programs.end() && !iter->second.binaries.empty()) {
-            return iter->second.binaries.front();
+            // a program shows its first ROM that is in the library folders, ROMs only known from metadata can't run
+            const auto& ids = iter->second.binaries;
+            auto present = std::ranges::find_if(ids, [this](int binaryId) { return binaries.contains(binaryId) && binaries.at(binaryId).data; });
+            return present != ids.end() ? *present : ids.front();
         }
         return -1;
     }
@@ -561,7 +690,7 @@ struct Database::Private
     static void setProgramOfBinary(db::Session& session, int binaryId, int programId)
     {
         // an update of just the column, session.update() would also write the ROM data
-        db::Statement relink(session, "UPDATE binaries SET program_id = ? WHERE id = ?");
+        db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1 WHERE id = ?");
         relink << programId << binaryId;
         relink.execute();
     }
@@ -573,6 +702,7 @@ struct Database::Private
             std::erase(iter->second.binaries, binaryId);
         }
         binary.program_id = programId;
+        binary.user_modified = 1;  // in sync with setProgramOfBinary() and the relink of mergePrograms()
         programs.at(programId).binaries.push_back(binaryId);
     }
 
@@ -722,7 +852,7 @@ struct Database::Private
                 if (programId == survivorId || !programs.contains(programId)) {
                     continue;
                 }
-                db::Statement relink(session, "UPDATE binaries SET program_id = ? WHERE program_id = ?");
+                db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1 WHERE program_id = ?");
                 relink << survivorId << programId;
                 relink.execute();
                 for (const auto tagId : programs.at(programId).tags) {
@@ -739,11 +869,15 @@ struct Database::Private
                 }
                 session.remove<DBProgram>(programId);
             }
+            db::Statement modified(session, "UPDATE programs SET user_modified = 1 WHERE id = ?");
+            modified << survivorId;
+            modified.execute();
             transaction.commit();
         }
         catch (const db::Exception& ex) {
             return ex.what();
         }
+        programs.at(survivorId).user_modified = 1;
         for (const auto programId : programIds) {
             if (programId == survivorId || !programs.contains(programId)) {
                 continue;
@@ -837,7 +971,7 @@ struct Database::Private
                 programId = program.id;
                 entry.program = program;
             }
-            entry.binary = DBBinary{.program_id = programId, .sha1 = digest.to_hex(), .data = db::Blob(data.begin(), data.end())};
+            entry.binary = DBBinary{.program_id = programId, .sha1 = digest.to_hex(), .data = db::Blob(data.begin(), data.end()), .size = static_cast<int>(data.size())};
             session.insert(entry.binary);
             if (isKnown) {
                 for (const auto* romInfo : foundRoms) {
@@ -1145,7 +1279,11 @@ struct Database::Private
             config.binary_id = binary.id;
             session.insert(config);
         }
+        db::Statement modified(session, "UPDATE binaries SET user_modified = 1 WHERE id = ?");
+        modified << binary.id;
+        modified.execute();
         binary.configs = std::move(configs);
+        binary.user_modified = 1;
         updateUnclassifiedTag(session, binary);
     }
 
@@ -1220,6 +1358,7 @@ struct Database::Private
                     tagIds.insert(tag.id);
                 }
             }
+            program.user_modified = 1;
             session.update(program);
             db::Statement removeTags(session, "DELETE FROM program_tags WHERE program_id = ?");
             removeTags << program.id;
@@ -1253,6 +1392,7 @@ struct Database::Private
         stored.url = program.url;
         stored.license = program.license;
         stored.copyright = program.copyright;
+        stored.user_modified = program.user_modified;
         stored.tags.assign(tagIds.begin(), tagIds.end());
         stored.authors = authorIds;
         updateFilter();
@@ -1394,7 +1534,7 @@ struct Database::Private
             PushId(&binary);
             BeginColumns();
             SetNextWidth(infoWidth);
-            Label(fitText(fmt::format("{}  {} bytes  {} file{}  {}", binary.sha1.substr(0, 8), binary.data.size(), binary.filenames.size(), binary.filenames.size() == 1 ? "" : "s", variants.empty() ? "???" : join(variants.begin(), variants.end(), ", ")), infoWidth - 16).c_str());
+            Label(fitText(fmt::format("{}  {} bytes  {} file{}  {}", binary.sha1.substr(0, 8), binary.size, binary.filenames.size(), binary.filenames.size() == 1 ? "" : "s", variants.empty() ? "???" : join(variants.begin(), variants.end(), ", ")), infoWidth - 16).c_str());
             SetNextWidth(80);
             if (Button("Configs")) {
                 showConfigs = binaryId;
@@ -1460,7 +1600,7 @@ struct Database::Private
         std::vector<std::string> romNames;
         for (const auto binaryId : program.binaries) {
             const auto& binary = binaries.at(binaryId);
-            romNames.push_back(fmt::format("{} ({} bytes)", binary.sha1.substr(0, 8), binary.data.size()));
+            romNames.push_back(fmt::format("{} ({} bytes)", binary.sha1.substr(0, 8), binary.size));
         }
         if (romNames.size() == 1) {
             Label(romNames.front().c_str());
@@ -1524,6 +1664,10 @@ struct Database::Private
             if (Button("Del")) {
                 remove = i;
             }
+            // a ROM only known from metadata has nothing to load
+            if (!binaries.at(edit.binaryId).data) {
+                GuiDisable();
+            }
             SetNextWidth(20);
             if (Button(IconText(ICON_ROM, ""))) {
                 load = {i, Action::LOAD};
@@ -1534,6 +1678,7 @@ struct Database::Private
                 load = {i, Action::RUN};
             }
             SetTooltip("RUN");
+            GuiEnable();
             TextBox("##properties", config.properties, 4096);
             EndColumns();
             PopId();
@@ -1620,7 +1765,7 @@ struct Database::Private
             }
         }
         auto programIter = programs.find(binary.program_id);
-        return {.name = programIter != programs.end() ? programIter->second.name : binary.sha1, .properties = props, .data = std::vector<uint8_t>(binary.data.begin(), binary.data.end())};
+        return {.name = programIter != programs.end() ? programIter->second.name : binary.sha1, .properties = props, .data = binary.data ? std::vector<uint8_t>(binary.data->begin(), binary.data->end()) : std::vector<uint8_t>{}};
     }
 
     void selectTag(const std::string& tag, bool addToSelection)
@@ -1660,6 +1805,9 @@ struct Database::Private
                 show = false;
             }
             if (show && !std::ranges::all_of(tagIds, [&](int tagId) { return hasTag(program, tagId); })) {
+                show = false;
+            }
+            if (show && !showMissing && !isPresent(program)) {
                 show = false;
             }
             if (show) {
@@ -1731,6 +1879,9 @@ struct Database::Private
             }
         }
         std::string description = !program.description.empty() ? program.description : (binary ? binary->description : "");
+        // descriptions from the chip-8-database can have several lines, the row has one
+        std::ranges::replace_if(description, [](char c) { return c == '\n' || c == '\r' || c == '\t'; }, ' ');
+        description.erase(std::unique(description.begin(), description.end(), [](char a, char b) { return a == ' ' && b == ' '; }), description.end());
 
         constexpr float labelWidth = 80;
         SetRowHeight(12);
@@ -1750,7 +1901,7 @@ struct Database::Private
         row("Variant:", join(variants.begin(), variants.end(), ", "));
         row("Tags:", join(tagNames.begin(), tagNames.end(), ", "));
         row("SHA1:", sha1);
-        row("Size:", binary ? fmt::format("{} bytes", binary->data.size()) : "");
+        row("Size:", binary ? fmt::format("{} bytes{}", binary->size, binary->data ? "" : " (missing, not found in the library folders)") : "");
         row("File:", file, true);
         row("Description:", description);
     }
@@ -1774,6 +1925,7 @@ Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& conf
     , _configuration(configuration)
     , _pimpl(std::make_unique<Private>(configuration, path))
 {
+    Librarian::setMetadataSource(&_pimpl->metadataSource);
     /*_pimpl->connection = std::make_unique<DBConnection>((path + "/cadmium_library.sqlite").c_str(), 0, nullptr, [](auto level, const auto& msg) {
         if (zxorm::log_level::Error == level)
             std::cerr << "Ooops: " << msg << std::endl;
@@ -1815,6 +1967,7 @@ Database::Database(const emu::CoreRegistry& registry, CadmiumConfiguration& conf
 
 Database::~Database()
 {
+    Librarian::setMetadataSource(nullptr);
     // The library scan runs on the thread pool and uses _pimpl, so stop it before that goes away.
     _pimpl->cancelScan = true;
     if (_scanResult.valid()) {
@@ -1994,6 +2147,23 @@ int Database::scanLibrary()
                             auto bid = session.select(db::col(&DBBinary::id)).where(db::col(&DBBinary::sha1) == digest);
                             if (!bid.empty()) {
                                 const auto path = de.path().string();
+                                int programId = -1;
+                                bool tagNew = false;
+                                {
+                                    std::lock_guard lock(_pimpl->mutex);
+                                    if (auto iter = _pimpl->binaries.find(bid.first()); iter != _pimpl->binaries.end() && !iter->second.data) {
+                                        programId = iter->second.program_id;
+                                        tagNew = _pimpl->needsNewTag(programId);
+                                    }
+                                }
+                                if (programId >= 0 && _pimpl->storeBinaryData(session, bid.first(), programId, tagNew, data)) {
+                                    TraceLog(LOG_INFO, fmt::format("found {}: known from metadata '{}'", digest, path).c_str());
+                                    std::lock_guard lock(_pimpl->mutex);
+                                    _pimpl->applyBinaryData(bid.first(), tagNew, data);
+                                    if ((numFiles & 63) == 0) {
+                                        _pimpl->updateFilter();
+                                    }
+                                }
                                 auto known = session.select(db::col(&DBFilename::id)).where(db::col(&DBFilename::binary_id) == bid.first() && db::col(&DBFilename::name) == path);
                                 if (known.empty()) {
                                     session.insert(DBFilename{.binary_id = bid.first(), .name = path});
@@ -2026,6 +2196,30 @@ int Database::scanLibrary()
 
 ghc::expected<Database::FileInfo,LoadError> Database::scanFile(const std::string& filePath, std::vector<uint8_t>* outData)
 {
+    if (toLower(fs::path(filePath).extension().string()) == ".hex") {
+        // HEX files are known by the SHA1 of the data they load, like EmuHostEx::loadHexFile() identifies them,
+        // so the library keeps that data (from the first address on, gaps filled with zeros), not the HEX text.
+        try {
+            emu::HexFile hex(filePath, emu::HexFile::Mode::READ);
+            if (hex.ranges().empty()) {
+                return ghc::unexpected(LoadError{std::make_error_code(std::errc::invalid_argument), "HEX file without data", filePath});
+            }
+            const auto firstAddress = hex.ranges().front().first;
+            const auto& [lastAddress, lastData] = hex.ranges().back();
+            std::vector<uint8_t> image(lastAddress + lastData.size() - firstAddress, 0);
+            for (const auto& [address, data] : hex.ranges()) {
+                std::copy(data.begin(), data.end(), image.begin() + (address - firstAddress));
+            }
+            auto result = FileInfo{filePath, hex.sha1Digest()};
+            if (outData) {
+                *outData = std::move(image);
+            }
+            return result;
+        }
+        catch (const std::exception& ex) {
+            return ghc::unexpected(LoadError{std::make_error_code(std::errc::invalid_argument), ex.what(), filePath});
+        }
+    }
     auto data = loadFile(filePath);
     if (data) {
         auto result = FileInfo{filePath, calculateSha1(*data)};
@@ -2130,8 +2324,15 @@ std::string Database::addFiles(const std::vector<std::string>& paths)
             }
             int binaryId = -1;
             if (auto iter = std::ranges::find_if(_pimpl->binaries, [&](const auto& entry) { return entry.second.sha1 == sha1; }); iter != _pimpl->binaries.end()) {
-                // a known ROM gets the file name and moves to the program it was dropped on
+                // a known ROM gets the file name (and its data if it was only known from metadata) and moves
+                // to the program it was dropped on
                 binaryId = iter->first;
+                if (!iter->second.data) {
+                    const bool tagNew = _pimpl->needsNewTag(iter->second.program_id);
+                    if (_pimpl->storeBinaryData(session, binaryId, iter->second.program_id, tagNew, data)) {
+                        _pimpl->applyBinaryData(binaryId, tagNew, data);
+                    }
+                }
                 if (std::ranges::find(iter->second.filenames, path) == iter->second.filenames.end()) {
                     session.insert(DBFilename{.binary_id = binaryId, .name = path});
                     iter->second.filenames.push_back(path);
@@ -2169,8 +2370,8 @@ void Database::updatePreview()
     _selectedProgram.reset();
     _pimpl->backgroundHost.killEmulation();
     auto iter = _pimpl->binaries.find(_pimpl->currentBinaryId());
-    if (iter == _pimpl->binaries.end() || iter->second.configs.empty()) {
-        return;
+    if (iter == _pimpl->binaries.end() || iter->second.configs.empty() || !iter->second.data) {
+        return;  // no preview and nothing to load for a ROM only known from metadata
     }
     _selectedProgram = _pimpl->programForConfig(iter->second, iter->second.configs.front());
     _pimpl->backgroundHost.loadBinary(_selectedProgram->name, _selectedProgram->data, _selectedProgram->properties, true);
@@ -2242,11 +2443,17 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         SetSpacing(4);
 
-        SetNextWidth(area.width - 2 * 60 - 2 * 20 - 4 * 4);
+        SetNextWidth(area.width - 2 * 60 - 3 * 20 - 5 * 4);
         if (TextBox("query", _pimpl->queryLine, 4096)) {
             _pimpl->textFilter = toLower(trim(_pimpl->queryLine));
             _pimpl->updateFilter();
         }
+        SetNextWidth(20);
+        if (Button(IconText(_pimpl->showMissing ? ICON_EYE_ON : ICON_EYE_OFF, ""))) {
+            _pimpl->showMissing = !_pimpl->showMissing;
+            _pimpl->updateFilter();
+        }
+        SetTooltip(_pimpl->showMissing ? "HIDE MISSING ROMS" : "SHOW MISSING ROMS");
         if (!_pimpl->programs.contains(_pimpl->selectedProgramId)) {
             GuiDisable();
         }
@@ -2326,6 +2533,7 @@ Database::Action Database::render(Font& font)
             auto grayCol = StyleManager::mappedColor(GRAY);
             auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
             auto selectedCol = StyleManager::getStyleColor(gui::Style::TEXT_COLOR_PRESSED);
+            auto missingCol = StyleManager::mappedColor(DARKGRAY);  // ROMs only known from metadata
             const auto mouse = GetMousePosition();
             const bool mouseInList = !GuiIsLocked() && CheckCollisionPointRec(mouse, listRect);
             std::optional<std::pair<int, int>> clicked;  // program id and binary id (-1 for the program line)
@@ -2370,13 +2578,13 @@ Database::Action Database::render(Font& font)
                             }
                         }
                     }
-                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, isSelected ? selectedCol : lightgrayCol);
+                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, isSelected ? selectedCol : (_pimpl->isPresent(program) ? lightgrayCol : grayCol));
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto& binary = _pimpl->binaries.at(program.binaries[i]);
                         if (pid == _pimpl->selectedProgramId && binary.id == _pimpl->selectedBinaryId) {
                             DrawPanelClipped({itemRect.x - 2, itemRect.y + (i + 1) * 9 - 1, itemRect.width, 9}, 1, StyleManager::getStyleColor(gui::Style::BORDER_COLOR_PRESSED), {0, 0, 0, 0});
                         }
-                        DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, isSelected ? selectedCol : grayCol);
+                        DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, isSelected ? selectedCol : (binary.data ? grayCol : missingCol));
                         //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                         Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
                         for (const auto& bincfg : binary.configs) {
@@ -2801,6 +3009,97 @@ std::optional<OrderedJson> c8dbRomEntry(const DBBinary& binary, const std::map<s
 
 }  // namespace
 
+// REVIEW: A library of an older Cadmium gets the columns and migrations the UI would apply on start, for the
+// command line tools. The schema report of the ORM is not shown, it would only clutter their output on stdout.
+static bool upgradeLibrary(db::Database& database)
+{
+    std::ostringstream schemaReport;
+    auto* coutBuffer = std::cout.rdbuf(schemaReport.rdbuf());
+    try {
+        db::Registry::syncTables(database);
+        migrateData(database);
+    }
+    catch (const db::Exception& ex) {
+        std::cout.rdbuf(coutBuffer);
+        std::cerr << "ERROR: Could not update the library schema: " << ex.what() << std::endl;
+        return false;
+    }
+    std::cout.rdbuf(coutBuffer);
+    return true;
+}
+
+int Database::exportMetadata(const std::string& dataPath, const std::string& outputFile)
+{
+    const auto library = fs::path(dataPath) / "cadmium_library.cd48db";
+    if (!fs::exists(library)) {
+        std::cerr << "ERROR: No library found at '" << library.string() << "'." << std::endl;
+        return 1;
+    }
+    if (fs::exists(outputFile)) {
+        std::cerr << "ERROR: '" << outputFile << "' exists already, it is not overwritten." << std::endl;
+        return 1;
+    }
+    registerTables();
+    {
+        db::Database database(library.string(), 1);
+        if (!upgradeLibrary(database)) {
+            return 1;
+        }
+        try {
+            // a consistent copy, the library could be in use by a running Cadmium
+            auto session = database.session();
+            db::Statement copy(session, "VACUUM INTO ?");
+            copy << outputFile;
+            copy.execute();
+        }
+        catch (const db::Exception& ex) {
+            std::cerr << "ERROR: Could not copy the library to '" << outputFile << "': " << ex.what() << std::endl;
+            return 1;
+        }
+    }
+    // REVIEW: The starter version is the export date, newer starter metadata then has a higher version.
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &now);
+#else
+    gmtime_r(&now, &tm);
+#endif
+    const int starterVersion = (tm.tm_year + 1900) * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
+    int programs = 0, binaries = 0;
+    try {
+        db::Database database(outputFile, 1);
+        auto session = database.session();
+        db::Transaction transaction{session};
+        // only metadata: no ROMs, file names or what this installation ignores or found newly
+        db::Statement(session, "UPDATE binaries SET data = NULL;").execute();
+        db::Statement(session, "DELETE FROM filenames;").execute();
+        db::Statement(session, "DELETE FROM ignored_binaries;").execute();
+        db::Statement(session, "DELETE FROM program_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'new');").execute();
+        db::Statement(session, "DELETE FROM binary_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'new');").execute();
+        for (const auto* table : {"programs", "binaries"}) {
+            db::Statement mark(session, fmt::format("UPDATE {} SET starter_version = ?, user_modified = 0;", table));
+            mark << starterVersion;
+            mark.execute();
+        }
+        db::Statement version(session, "UPDATE version SET starter_version = ?;");
+        version << starterVersion;
+        version.execute();
+        transaction.commit();
+        programs = static_cast<int>(database.executeForValue("SELECT COUNT(*) FROM programs;"));
+        binaries = static_cast<int>(database.executeForValue("SELECT COUNT(*) FROM binaries;"));
+        // a single file without WAL, as it is copied out of the resources
+        database.execute("PRAGMA journal_mode = DELETE;");
+        database.execute("VACUUM;");
+    }
+    catch (const db::Exception& ex) {
+        std::cerr << "ERROR: Could not strip '" << outputFile << "' to metadata: " << ex.what() << std::endl;
+        return 1;
+    }
+    std::cout << fmt::format("Exported {} programs with {} ROMs as starter metadata version {} to '{}' ({} bytes).", programs, binaries, starterVersion, outputFile, fs::file_size(outputFile)) << std::endl;
+    return 0;
+}
+
 int Database::updateProgramDatabase(const std::string& dataPath, const std::string& programsJsonPath)
 {
     const fs::path programsPath = programsJsonPath;
@@ -2829,21 +3128,8 @@ int Database::updateProgramDatabase(const std::string& dataPath, const std::stri
     // the library, read without the UI and the scan
     registerTables();
     db::Database database(libraryFile.string(), 1);
-    {
-        // REVIEW: A library of an older Cadmium gets the columns and migrations the UI would apply on start,
-        // the schema report of the ORM is not shown, it would only clutter the report on stdout.
-        std::ostringstream schemaReport;
-        auto* coutBuffer = std::cout.rdbuf(schemaReport.rdbuf());
-        try {
-            db::Registry::syncTables(database);
-            migrateData(database);
-        }
-        catch (const db::Exception& ex) {
-            std::cout.rdbuf(coutBuffer);
-            std::cerr << "ERROR: Could not update the library schema: " << ex.what() << std::endl;
-            return 1;
-        }
-        std::cout.rdbuf(coutBuffer);
+    if (!upgradeLibrary(database)) {
+        return 1;
     }
     auto session = db::Session(database);
     std::map<int, DBProgram> programs;

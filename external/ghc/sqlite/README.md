@@ -211,7 +211,10 @@ Call `db::Registry::syncTables(db);` once after registration to create or evolve
 Missing tables are created, and columns missing in an existing table are added with `ALTER TABLE ... ADD COLUMN`.
 Optional columns start as `NULL`, required ones get the zero value of their type (`0`, `0.0`, `''` or an empty blob) as
 default. SQLite can't add `UNIQUE` columns or required foreign keys to an existing table, so `syncTables` throws a
-`db::Exception` for those. Other differences (extra columns, changed constraints) are only reported on `std::cout`.
+`db::Exception` for those. A column that became optional (`std::optional`) while the table has it as
+`NOT NULL` makes `syncTables` rebuild the table, as SQLite can't drop a `NOT NULL`: it is recreated under a
+temporary name, the rows are copied, and it replaces the old one, with foreign keys off meanwhile and checked
+before the commit. Other differences (extra columns, changed constraints) are only reported on `std::cout`.
 
 ```cpp
 registerTables();

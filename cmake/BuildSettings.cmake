@@ -163,22 +163,20 @@ FetchContent_MakeAvailable(Chiplet)
 include_directories(${chiplet_SOURCE_DIR}/external)
 include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
 
-if(CADMIUM_WITH_HP48)
-    # zstd compresses the HP-48 state files
-    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        zstd
-        URL "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-        SOURCE_SUBDIR build/cmake
-        EXCLUDE_FROM_ALL
-    )
-    FetchContent_MakeAvailable(zstd)
-endif()
+# zstd packs the compiled in resources and compresses the HP-48 state files
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    zstd
+    URL "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SOURCE_SUBDIR build/cmake
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(zstd)
 
 FetchContent_Declare(
     Chip8TestSuite
