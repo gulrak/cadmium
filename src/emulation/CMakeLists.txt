@@ -19,6 +19,8 @@ set(CHIP8_EMU_SOURCE
     cosmacvip.hpp
     eti660.cpp
     eti660.hpp
+    studio2.cpp
+    studio2.hpp
     datavariants.cpp
     datavariants.hpp
     dream6800.cpp

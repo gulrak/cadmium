@@ -42,6 +42,11 @@ endif()
 target_link_libraries(eti660-tests PRIVATE doctest emulation)
 doctest_discover_tests(eti660-tests)
 
+add_executable(studio2-tests main.cpp studio2_tests.cpp)
+target_compile_definitions(studio2-tests PRIVATE WITHOUT_STB_IMAGE)
+target_link_libraries(studio2-tests PRIVATE doctest emulation)
+doctest_discover_tests(studio2-tests)
+
 if(CADMIUM_WITH_HP48)
     add_executable(hp48sx-tests main.cpp hp48sx_tests.cpp)
     target_compile_definitions(hp48sx-tests PRIVATE WITHOUT_STB_IMAGE)
