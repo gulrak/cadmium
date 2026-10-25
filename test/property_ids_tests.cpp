@@ -105,6 +105,13 @@ const std::vector<ExpectedProperty> EXPECTED_PROPERTIES = {
     {"ETI660", "Keyboard", "keyboard", "keyboard"},
     {"ETI660", "ROM Name", "romName", "rom-name"},
     {"ETI660", "Start Address", "startAddress", "start-address"},
+    {"STUDIO-II", "Trace Log", "traceLog", "trace-log"},
+    {"STUDIO-II", "CPU", "cpu", "cpu"},
+    {"STUDIO-II", "Clock Rate", "clockRate", "clock-rate"},
+    {"STUDIO-II", "Clean RAM", "cleanRam", "clean-ram"},
+    {"STUDIO-II", "Video", "video", "video"},
+    {"STUDIO-II", "CRT Effect", "crtEffect", "crt-effect"},
+    {"STUDIO-II", "ROM Name", "romName", "rom-name"},
 };
 
 } // namespace
