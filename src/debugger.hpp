@@ -30,6 +30,7 @@
 #include <emulation/chip8realcorebase.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <highlighter.hpp>
+#include <disassemblyview.hpp>
 
 #include <raylib.h>
 
@@ -67,6 +68,8 @@ private:
     emu::GenericCpu* _backend{nullptr};
     size_t _visibleExecUnit{0};
     std::vector<int> _instructionOffset{};
+    std::vector<DisassemblyView> _disassemblyViews{};
+    float _wheelRemainder{0.0f};
     int _activeInstructionsTab{0};
     bool _memViewFollow{true};
     std::vector<RegPack> _cpuStates;

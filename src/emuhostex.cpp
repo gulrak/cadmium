@@ -1064,9 +1064,6 @@ void ThreadedBackgroundHost::updateScreen()
 
 std::pair<Texture2D*, Rectangle> ThreadedBackgroundHost::updateTexture()
 {
-    // REVIEW: converting here instead of in vblank() also shows what was drawn after the last vblank,
-    // e.g. before a program ends in a jump-to-self that pauses the core and stops further vblanks.
-    // The worker holds the mutex for a whole executeFrame(), so this always sees a state between frames.
     std::unique_lock guard(_mutex);
     if (_chipEmu) {
         if (auto* pixel = static_cast<uint32_t*>(_screen.data)) {

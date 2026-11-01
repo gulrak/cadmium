@@ -47,7 +47,7 @@ public:
     {
         std::string name;
         emu::Properties properties;
-        std::vector<uint8_t> data; // REVIEW: was a span onto a temporary vector built in render(), so it dangled immediately
+        std::vector<uint8_t> data;
     };
     struct BadgeInfo
     {

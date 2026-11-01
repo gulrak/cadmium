@@ -1226,8 +1226,6 @@ public:
         }
 
         if(_showKeyMap) {
-            // REVIEW: The key map now sits in the corner of the shown screen, before it used the unstretched
-            // height, which put it below the screen for a stretch ratio above 1.
             auto s = scale / std::max(1, _screenScale);
             DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + boxW - 40.0f*s, videoY + boxH - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
         }

@@ -272,13 +272,9 @@ void registerTables()
         .registerTable();
 }
 
-// REVIEW: The version table was never written before, so an empty table counts as version 1.
 void migrateData(db::Database& database)
 {
     auto session = db::Session(database);
-    // REVIEW: The ORM has no indices, the opcodes of a ROM are replaced and cascaded by its id, in a table of over
-    // 100000 rows with the starter metadata. Created on every start, as a rebuild of the table by syncTables would
-    // drop it.
     db::Statement(session, "CREATE INDEX IF NOT EXISTS binary_opcodes_binary_id ON binary_opcodes (binary_id);").execute();
     auto versions = session.fetchAll<DBVersion>();
     auto version = versions.empty() ? DBVersion{} : versions.front();
@@ -305,8 +301,6 @@ void migrateData(db::Database& database)
     if (version.schema_version < 4) {
         // The release of a program is a date like in the chip-8-database, the year column it replaces moves into
         // an empty release. Libraries created after the change never had the column.
-        // REVIEW: A release that is not a date stays as it is, the editor asks for a date when the program is saved,
-        // and --update-program-database doesn't export it.
         db::Transaction transaction{session};
         bool hasYear = false;
         {
@@ -1016,8 +1010,6 @@ struct Database::Private
         return join(names.begin(), names.end(), ", ");
     }
 
-    // REVIEW: Authors are edited as one comma separated text, so a name can't contain a comma ("Foo, Inc." becomes
-    // two authors). That seemed acceptable for CHIP-8 authors and keeps the editor a single text field.
     static std::vector<std::string> parseAuthors(const std::string& text)
     {
         std::vector<std::string> names;
@@ -2259,7 +2251,6 @@ struct Database::Private
                 filter = LibraryQuery::parse(LibraryQuery::combine(smartQueries), searchProperties());
             }
             catch (const LibraryQuery::Error& error) {
-                // REVIEW: A smart tag whose query became invalid (a property of a core was renamed) is left out.
                 TraceLog(LOG_WARNING, fmt::format("A selected smart tag has no valid query: {}", error.what()).c_str());
             }
         }
@@ -3539,8 +3530,6 @@ std::optional<OrderedJson> c8dbRomEntry(const DBBinary& binary, const std::map<s
 
 }  // namespace
 
-// REVIEW: A library of an older Cadmium gets the columns and migrations the UI would apply on start, for the
-// command line tools. The schema report of the ORM is not shown, it would only clutter their output on stdout.
 static bool upgradeLibrary(db::Database& database)
 {
     std::ostringstream schemaReport;
@@ -3625,7 +3614,6 @@ int Database::exportMetadata(const std::string& dataPath, const std::string& out
             return 1;
         }
     }
-    // REVIEW: The starter version is the export date, newer starter metadata then has a higher version.
     const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm tm{};
 #if defined(_WIN32)

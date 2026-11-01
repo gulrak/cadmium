@@ -16,6 +16,8 @@ set(CADMIUM_SOURCE
     configuration.hpp
     debugger.cpp
     debugger.hpp
+    disassemblyview.cpp
+    disassemblyview.hpp
     editor.cpp
     editor.hpp
     emuhostex.cpp

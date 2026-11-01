@@ -168,6 +168,14 @@ public:
 
     size_t disassemblyPrefixSize() const override { return 18; }
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override;
+    bool isKnownInstructionStart(uint32_t address) const override
+    {
+#if defined(HP48_ENABLE_INSTRUCTION_CACHE)
+        return !_instructionCache.empty() && _instructionCache[address & ADDRESS_MASK].info != nullptr;
+#else
+        return false;
+#endif
+    }
 
     SaturnState getState() const override;
     void setState(const SaturnState& state) override;

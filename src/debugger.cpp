@@ -46,6 +46,7 @@ void Debugger::updateCore(emu::IEmulationCore* core)
         _activeInstructionsTab = 0;
         // ensure cached data has the correct size by actually forcing a capture
         _instructionOffset.resize(_core->numberOfExecutionUnits());
+        _disassemblyViews.assign(_core->numberOfExecutionUnits(), DisassemblyView{});
         _cpuStates.resize(_core->numberOfExecutionUnits());
         for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
             _instructionOffset[i] = -1;
@@ -296,14 +297,44 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     bool mouseInPanel = false;
     auto& instructionOffset = _instructionOffset[_visibleExecUnit];
     auto pc = cpu.getPC();
-    // Some hardware backends (notably Saturn) have PCs wider than 16 bits.
-    // Preserve the existing range for 16-bit cores and include the current
-    // 64K address page for wider cores.
-    const uint32_t maxAddress = pc | 0xffffU;
+    // The Saturn has variable length instructions in nibbles, so it uses a view that
+    // keeps its line boundaries while scrolling, the other CPUs resync every frame.
+    constexpr uint32_t SATURN_CPU_ID = 471588;
+    DisassemblyView* view = nullptr;
+    if (cpu.cpuID() == SATURN_CPU_ID) {
+        view = &_disassemblyViews[_visibleExecUnit];
+        view->setConfig({.addressEnd = 0x100000, .maxInstructionSize = 24, .unitsPerLine = 6, .leadIn = 128});
+        view->setSizeFunction([&cpu](uint32_t address) {
+            int bytes = 0;
+            cpu.disassembleInstructionWithBytes(static_cast<int32_t>(address), &bytes);
+            return static_cast<uint32_t>(bytes);
+        });
+        view->setKnownStartFunction([&cpu](uint32_t address) { return cpu.isKnownInstructionStart(address); });
+        if (instructionOffset < 0)
+            view->follow(pc);
+        else if (view->empty())
+            view->follow(instructionOffset);
+    }
+    // Some hardware backends have PCs wider than 16 bits. Preserve the existing
+    // range for 16-bit cores and include the current 64K address page for wider
+    // cores, the view knows its own address space.
+    const uint32_t maxAddress = view ? 0xfffffU : pc | 0xffffU;
     if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
         auto wheel = GetMouseWheelMoveV();
         mouseInPanel = true;
-        if (std::fabs(wheel.y) >= 0.5f) {
+        if (view) {
+            // Every whole wheel unit scrolls a line, fractions (trackpads) add up over
+            // the frames, a change of direction drops what was left from the other one.
+            if (wheel.y * _wheelRemainder < 0.0f)
+                _wheelRemainder = 0.0f;
+            _wheelRemainder += wheel.y;
+            if (const int lines = static_cast<int>(_wheelRemainder)) {
+                _wheelRemainder -= static_cast<float>(lines);
+                view->scroll(-lines);
+                instructionOffset = static_cast<int>(view->anchor().address);
+            }
+        }
+        else if (std::fabs(wheel.y) >= 0.5f) {
             if (instructionOffset < 0) {
                 instructionOffset = pc;
             }
@@ -318,7 +349,8 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     auto dialect = Dialect::eCHIP8OCTO;
     switch (cpu.cpuID()) {
         case 1802: dialect = Dialect::eCDP1802; break;
-        case 6800: dialect = Dialect::eM6800;
+        case 6800: dialect = Dialect::eM6800; break;
+        case SATURN_CPU_ID: dialect = Dialect::eSATURN; break;
         default: break;
     }
     setDialect(dialect);
@@ -326,7 +358,16 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     auto extraLines = visibleInstructions / 2 + 1;
     auto insOff = instructionOffset >= 0 ? instructionOffset : pc;
     auto yposPC = area.y + int(area.height / 2) - 4;
-    const auto& prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
+    std::vector<std::pair<uint32_t, std::string>> prefix;
+    if (view) {
+        view->update(extraLines, extraLines + 1);
+        insOff = view->anchor().address;
+        for (const auto& line : view->linesAbove(extraLines))
+            prefix.emplace_back(line.address, cpu.disassembleInstructionWithBytes(static_cast<int32_t>(line.address), nullptr));
+    }
+    else {
+        prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
+    }
     BeginClipping({area.x - 4, area.y, area.width + 8, area.height});
     auto pcColor = cpu.inErrorState() ? RED : StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL);
     bool inIf = false;

@@ -123,6 +123,9 @@ public:
 
     virtual size_t disassemblyPrefixSize() const = 0;
     virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
+    /// True if an instruction is known to start at address, e.g. because it was executed there,
+    /// the debugger uses it to keep its disassembly on the real instruction boundaries
+    virtual bool isKnownInstructionStart(uint32_t address) const { return false; }
 
     void swapBreakpoints(GenericCpu& other)
     {

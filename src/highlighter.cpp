@@ -87,6 +87,7 @@ size_t Highlighter::highlightSegment(Dialect dialect, const char* text, const ch
         case eCHIP8CHIPPER: return highlightLineChipper(text, end, index);
         case eCDP1802: return highlightLine1802(text, end, index);
         case eM6800: return highlightLine6800(text, end, index);
+        case eSATURN: return highlightLineSaturn(text, end, index);
         case eNONE: break;
     }
     return highlightPlain(text, end, index);
@@ -304,6 +305,7 @@ size_t Highlighter::highlightLineOcto(const char* text, const char* end, size_t 
         if (cp == ' ')
             ++index;
         else if (cp == '#') {
+            _highlighting[index++].front = _colors[eCOMMENT];
             while (text < end)
                 utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
         }
@@ -419,6 +421,47 @@ size_t Highlighter::highlightLine1802(const char* text, const char* end, size_t 
 size_t Highlighter::highlightLine6800(const char* text, const char* end, size_t index)
 {
     return highlightPlain(text, end, index);
+}
+
+static std::unordered_set<std::string_view> g_saturnRegisters = {
+    "a", "b", "c", "d", "d0", "d1", "r0", "r1", "r2", "r3", "r4", "p", "pc", "st", "id"
+};
+
+// Follows the ASAP syntax the Saturn disassembler emits: an optional `label:`, the
+// mnemonic with its field suffix, then operands separated by `,`, where `#` marks
+// hex numbers and `@` memory access. `;` starts a comment.
+size_t Highlighter::highlightLineSaturn(const char* text, const char* end, size_t index)
+{
+    bool expectOpcode = true;
+    while (text < end && *text != '\n') {
+        const char* token = text;
+        uint32_t cp = utf8::fetchCodepoint(text, end);
+        if (cp == ' ' || cp == '\t' || cp == ',' || cp == '@')
+            _highlighting[index++].front = _colors[eNORMAL];
+        else if (cp == ';') {
+            _highlighting[index++].front = _colors[eCOMMENT];
+            while (text < end && *text != '\n')
+                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+        }
+        else {
+            auto start = index++;
+            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
+                utf8::fetchCodepoint(text, end), ++index;
+            std::string_view tok(token, text - token);
+            Color col = _colors[eNORMAL];
+            if (tok.size() > 1 && tok.back() == ':')
+                col = _colors[eLABEL];
+            else if (expectOpcode)
+                col = _colors[eOPCODE], expectOpcode = false;
+            else if (cp == '#' || (cp >= '0' && cp <= '9'))
+                col = _colors[eNUMBER];
+            else if (g_saturnRegisters.contains(tok))
+                col = _colors[eREGISTER];
+            while (start < index)
+                _highlighting[start++].front = col;
+        }
+    }
+    return index;
 }
 
 void Highlighter::drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight, LineState state)
