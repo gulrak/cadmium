@@ -3221,6 +3221,7 @@ int main(int argc, char* argv[])
     std::string dumpInterpreter;
     std::string updateProgramDatabase;
     std::string exportMetadataDb;
+    bool opcodeStats = false;
     int64_t execSpeed = -1;
     std::string randomGen;
     std::string emulationCore;
@@ -3251,6 +3252,7 @@ int main(int argc, char* argv[])
 #ifndef NDEBUG
 #ifdef CADMIUM_WITH_DATABASE
     cli.option({"--export-metadata-db"}, exportMetadataDb, "Write the library without ROM data and file names to the given file, as starter library for the resources");
+    cli.optionEnable({"--opcode-stats"}, opcodeStats, "Print the opcode statistics of the given ROM files as JSON, analyzed like the library does");
 #endif
     cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
     cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
@@ -3413,6 +3415,9 @@ int main(int argc, char* argv[])
     }
     if(!exportMetadataDb.empty()) {
         exit(Database::exportMetadata(dataPath(), exportMetadataDb));
+    }
+    if(opcodeStats) {
+        exit(Database::printOpcodeStatistics(dataPath(), romFile));
     }
 #endif
     if(!dumpInterpreter.empty()) {

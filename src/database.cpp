@@ -27,6 +27,8 @@
 #include "database.hpp"
 #include "emuhostex.hpp"
 #include "librarian.hpp"
+#include "libraryquery.hpp"
+#include <chiplet/chip8decompiler.hpp>
 #include "resourcemanager.hpp"
 #include "stylemanager.hpp"
 #include <c8db/database.hpp>
@@ -59,6 +61,7 @@ struct DBTags
     int id{0};
     std::string name;
     std::string color;
+    std::optional<std::string> query;  // a smart tag: the saved query it selects, it is never given to programs
 };
 
 struct DBProgram
@@ -100,10 +103,21 @@ struct DBBinary
     int size{0};                   // known without the data, too
     std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
     int user_modified{0};                // its program or configs were changed by the user
+    std::optional<int> analysis_version;  // the version of the opcode analysis its binary_opcodes come from
 
     std::vector<std::string> filenames;
+    std::vector<uint16_t> opcodes;  // the distinct opcodes of its binary_opcodes, sorted
     std::vector<int> tags;
     std::vector<DBBinaryConfig> configs;
+};
+
+// How often an opcode is used on the execution paths of a ROM, as the decompiler finds them.
+struct DBOpcode
+{
+    int id{0};
+    int binary_id{0};
+    int opcode{0};
+    int count{0};
 };
 
 struct DBFilename
@@ -191,6 +205,7 @@ void registerTables()
         .column("size", &DBBinary::size)
         .column("starter_version", &DBBinary::starter_version)
         .column("user_modified", &DBBinary::user_modified)
+        .column("analysis_version", &DBBinary::analysis_version)
         .registerTable();
 
     db::Table<DBBinaryConfig>("binary_configs")
@@ -198,6 +213,13 @@ void registerTables()
         .column("binary_id", &DBBinaryConfig::binary_id, "binaries", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
         .column("preset", &DBBinaryConfig::preset)
         .column("properties", &DBBinaryConfig::properties)
+        .registerTable();
+
+    db::Table<DBOpcode>("binary_opcodes")
+        .column("id", &DBOpcode::id)
+        .column("binary_id", &DBOpcode::binary_id, "binaries", "id", db::Action::ON_UPDATE_CASCADE, db::Action::ON_DELETE_CASCADE)
+        .column("opcode", &DBOpcode::opcode)
+        .column("count", &DBOpcode::count)
         .registerTable();
 
     db::Table<DBFilename>("filenames")
@@ -210,6 +232,7 @@ void registerTables()
         .column("id", &DBTags::id)
         .column("name", &DBTags::name, true)
         .column("color", &DBTags::color)
+        .column("query", &DBTags::query)
         .registerTable();
 
     db::Table<DBProgramTag>("program_tags")
@@ -253,6 +276,10 @@ void registerTables()
 void migrateData(db::Database& database)
 {
     auto session = db::Session(database);
+    // REVIEW: The ORM has no indices, the opcodes of a ROM are replaced and cascaded by its id, in a table of over
+    // 100000 rows with the starter metadata. Created on every start, as a rebuild of the table by syncTables would
+    // drop it.
+    db::Statement(session, "CREATE INDEX IF NOT EXISTS binary_opcodes_binary_id ON binary_opcodes (binary_id);").execute();
     auto versions = session.fetchAll<DBVersion>();
     auto version = versions.empty() ? DBVersion{} : versions.front();
     if (version.schema_version < 2) {
@@ -426,6 +453,36 @@ static bool isReleaseDate(std::string_view release)
 }
 
 static const char* const STARTER_LIBRARY = "library/cadmium_library_starter.cd48db";
+static constexpr int OPCODE_ANALYSIS_VERSION = 1;
+
+static bool isAnalyzable(const std::string& preset)
+{
+    return !preset.ends_with("-none");
+}
+
+static int analysisStartAddress(const std::string& preset, const std::string& properties)
+{
+    try {
+        auto props = emu::CoreRegistry::propertiesForPreset(preset == "generic-chip-8" ? std::string("xo-chip") : preset);
+        if (!trim(properties).empty()) {
+            props.applyDiff(nlohmann::json::parse(properties));
+        }
+        if (const auto* prop = props.find("startAddress")) {
+            return prop->getInt();
+        }
+    }
+    catch (const std::exception&) {
+    }
+    return preset.starts_with("eti") ? 0x600 : 0x200;
+}
+
+static std::map<uint16_t, int> opcodeStatistics(std::span<const uint8_t> data, int startAddress)
+{
+    std::scoped_lock lock(Librarian::decompilerMutex());
+    emu::Chip8Decompiler decompiler{data, static_cast<uint32_t>(startAddress)};
+    decompiler.decompile("", static_cast<uint32_t>(startAddress), nullptr, true, true);
+    return {decompiler.fullStats().begin(), decompiler.fullStats().end()};
+}
 
 // A new library starts from the metadata compiled into Cadmium, if there is a starter database.
 static std::string libraryFile(const std::string& path)
@@ -534,7 +591,16 @@ struct Database::Private
     std::string queryLine;
     bool showMissing{false};  // also list programs none of whose ROMs were found in the library folders
     std::set<std::string> selectedTags;
-    std::string textFilter;
+    LibraryQuery query;     // the last valid query of the search field
+    std::string queryText;   // the text of that query
+    std::string queryError;  // why the current text of the search field is no valid query
+    size_t queryErrorPosition{0};
+    size_t shownRomCount{0};  // the ROMs matching a query with ROM fields, of the shown programs
+    LibraryQuery filter;     // the query of the search field together with the queries of the selected smart tags
+    std::string smartTagsQuery;  // the queries of the selected smart tags as one
+    std::unordered_map<int, std::set<int>> matchingBinaries;  // of the shown programs, for a query with ROM fields
+    std::set<std::string> queryProperties;  // the names of all properties of the cores, lowercase, with aliases
+    mutable std::unordered_map<std::string, ConfigFacts> configFactsCache;  // by preset and properties text
     Vector2 tagsScrollPos{};
     float listContentHeight{0};
     int selectedProgramId{-1};
@@ -563,6 +629,10 @@ struct Database::Private
     bool removeOpen{false};
     std::vector<int> removeIds;
     std::string removeQuestion;
+    bool smartTagOpen{false};
+    int smartTagId{-1};  // the edited smart tag, -1 for a new one
+    std::string smartTagName;
+    std::string smartTagQuery;
     // dragging a ROM line onto another program
     int dragBinaryId{-1};
     Vector2 dragStart{};
@@ -629,11 +699,240 @@ struct Database::Private
         }
     }
 
+    // Analyzes the ROMs with data that have no opcode statistics of the current analysis yet, with the mutex
+    // released while decompiling, as this runs after scans. Returns the number of analyzed ROMs.
+    int analyzeBinaries(db::Session& session)
+    {
+        struct Job
+        {
+            int binaryId;
+            db::Blob data;
+            int startAddress;
+            bool analyzable;
+        };
+        std::vector<Job> jobs;
+        {
+            std::lock_guard lock(mutex);
+            for (const auto& [binaryId, binary] : binaries) {
+                if (binary.data && binary.analysis_version != OPCODE_ANALYSIS_VERSION) {
+                    const auto preset = binary.configs.empty() ? std::string() : binary.configs.front().preset;
+                    const auto properties = binary.configs.empty() ? std::string() : binary.configs.front().properties;
+                    jobs.push_back({binaryId, *binary.data, analysisStartAddress(preset, properties), isAnalyzable(preset)});
+                }
+            }
+        }
+        int analyzed = 0;
+        for (const auto& job : jobs) {
+            if (cancelScan) {
+                break;
+            }
+            const auto statistics = job.analyzable ? opcodeStatistics(job.data, job.startAddress) : std::map<uint16_t, int>{};
+            try {
+                db::Transaction transaction{session};
+                db::Statement remove(session, "DELETE FROM binary_opcodes WHERE binary_id = ?");
+                remove << job.binaryId;
+                remove.execute();
+                for (const auto& [opcode, count] : statistics) {
+                    session.insert(DBOpcode{.binary_id = job.binaryId, .opcode = opcode, .count = count});
+                }
+                db::Statement version(session, "UPDATE binaries SET analysis_version = ? WHERE id = ?");
+                version << OPCODE_ANALYSIS_VERSION << job.binaryId;
+                version.execute();
+                transaction.commit();
+            }
+            catch (const db::Exception& ex) {
+                TraceLog(LOG_WARNING, fmt::format("Storing the opcodes of ROM {} failed: {}", job.binaryId, ex.what()).c_str());
+                continue;
+            }
+            std::lock_guard lock(mutex);
+            if (auto iter = binaries.find(job.binaryId); iter != binaries.end()) {
+                iter->second.opcodes.clear();
+                for (const auto& [opcode, count] : statistics) {
+                    iter->second.opcodes.push_back(opcode);
+                }
+                iter->second.analysis_version = OPCODE_ANALYSIS_VERSION;
+            }
+            if ((++analyzed & 63) == 0) {
+                updateFilter();  // "uses" finds more as the analysis goes on
+            }
+        }
+        if (analyzed) {
+            std::lock_guard lock(mutex);
+            updateFilter();
+            TraceLog(LOG_INFO, fmt::format("analyzed the opcodes of {} ROMs", analyzed).c_str());
+        }
+        return analyzed;
+    }
+
     // whether filling in the data of the ROM should also tag its program as new
     bool needsNewTag(int programId) const
     {
         auto iter = programs.find(programId);
         return newTagId && iter != programs.end() && std::ranges::find(iter->second.tags, newTagId) == iter->second.tags.end();
+    }
+
+    ProgramFacts programFacts(const DBProgram& program) const
+    {
+        ProgramFacts facts{.name = program.name, .description = program.description, .release = program.release, .origin = program.origin,
+                           .originReference = program.origin_reference, .license = program.license, .copyright = program.copyright, .url = program.url,
+                           .present = isPresent(program)};
+        for (const auto authorId : program.authors) {
+            if (auto iter = authors.find(authorId); iter != authors.end()) {
+                facts.authors.push_back(iter->second.name);
+            }
+        }
+        for (const auto& [tagId, tag] : tags) {
+            if (hasTag(program, tagId)) {
+                facts.tags.push_back(tag.name);
+            }
+        }
+        
+        if (filter.usesRomFields()) {
+            for (const auto binaryId : program.binaries) {
+                const auto& binary = binaries.at(binaryId);
+                RomFacts rom{.sha1 = binary.sha1, .size = binary.size, .files = binary.filenames, .present = binary.data.has_value(),
+                             .analyzed = binary.analysis_version == OPCODE_ANALYSIS_VERSION, .opcodes = binary.opcodes};
+                for (const auto& config : binary.configs) {
+                    rom.configs.push_back(configFacts(config));
+                }
+                facts.roms.push_back(std::move(rom));
+            }
+        }
+        return facts;
+    }
+
+    const ConfigFacts& configFacts(const DBBinaryConfig& config) const
+    {
+        const auto key = config.preset + '\n' + config.properties;
+        if (auto iter = configFactsCache.find(key); iter != configFactsCache.end()) {
+            return iter->second;
+        }
+        ConfigFacts facts{.preset = config.preset};
+        try {
+            auto props = emu::CoreRegistry::propertiesForPreset(config.preset == "generic-chip-8" ? std::string("xo-chip") : config.preset);
+            if (!trim(config.properties).empty()) {
+                props.applyDiff(nlohmann::json::parse(config.properties));
+            }
+            for (size_t i = 0; i < props.numProperties(); ++i) {
+                const auto& prop = props[i];
+                std::string value;
+                std::visit([&value](const auto& v) {
+                    using T = std::decay_t<decltype(v)>;
+                    if constexpr (std::is_same_v<T, bool>) {
+                        value = v ? "true" : "false";
+                    }
+                    else if constexpr (std::is_same_v<T, emu::Property::Integer>) {
+                        value = std::to_string(v.intValue);
+                    }
+                    else if constexpr (std::is_same_v<T, std::string>) {
+                        value = v;
+                    }
+                    else if constexpr (std::is_same_v<T, emu::Property::Combo>) {
+                        value = v.selectedText();
+                    }
+                }, prop.getValue());
+                if (prop.isValid()) {
+                    facts.properties.emplace(toLower(prop.getId()), value);
+                }
+            }
+        }
+        catch (const std::exception& ex) {
+            TraceLog(LOG_WARNING, fmt::format("No properties of config {} for the search: {}", config.id, ex.what()).c_str());
+        }
+        auto& p = facts.properties;
+        auto flag = [&p](const char* name) { auto iter = p.find(name); return iter != p.end() && iter->second == "true"; };
+        if (p.contains("instructionsperframe")) {
+            p["ipf"] = p["instructionsperframe"];
+        }
+        if (p.contains("justshiftvx")) {
+            auto text = [](bool value) { return std::string(value ? "true" : "false"); };
+            p["shift"] = text(flag("justshiftvx"));
+            p["memoryincrementbyx"] = text(flag("loadstoreincibyx"));
+            p["memoryleaveiunchanged"] = text(!flag("loadstoreincibyxplus1") && !flag("loadstoreincibyx"));
+            p["wrap"] = text(flag("wrapsprites"));
+            p["jump"] = text(flag("jump0bxnn"));
+            p["vblank"] = text(!flag("instantdxyn"));
+            p["logic"] = text(!flag("dontresetvf"));
+        }
+        return configFactsCache.emplace(key, std::move(facts)).first->second;
+    }
+
+    const std::set<std::string>& searchProperties()
+    {
+        if (queryProperties.empty()) {
+            for (const auto& group : variantGroups) {
+                for (const auto& preset : group.presets) {
+                    for (const auto& [name, value] : configFacts(DBBinaryConfig{.preset = preset}).properties) {
+                        queryProperties.insert(name);
+                    }
+                }
+            }
+        }
+        return queryProperties;
+    }
+
+    void setQuery(const std::string& text)
+    {
+        try {
+            query = LibraryQuery::parse(text, searchProperties());
+            queryText = text;
+            queryError.clear();
+        }
+        catch (const LibraryQuery::Error& error) {
+            queryError = error.what();
+            queryErrorPosition = error.position();
+        }
+        updateFilter();
+    }
+
+    // The line under the search field: why its text is no valid query, or what the list shows.
+    std::string queryFeedback() const
+    {
+        if (!queryError.empty()) {
+            return fmt::format("Column {}: {} - the list shows the last valid query", queryErrorPosition + 1, queryError);
+        }
+        auto text = fmt::format("{} of {} programs", shownIndices.size(), programs.size());
+        if (filter.usesRomFields()) {
+            text += fmt::format(", {} matching ROM{}", shownRomCount, shownRomCount == 1 ? "" : "s");
+        }
+        return text;
+    }
+
+    std::unordered_map<int, DBTags>::const_iterator findTag(const std::string& name) const
+    {
+        return std::ranges::find_if(tags, [&](const auto& entry) { return entry.second.name == name; });
+    }
+
+    int editableSmartTag() const
+    {
+        if (selectedTags.size() != 1 || !trim(queryLine).empty()) {
+            return -1;
+        }
+        auto iter = findTag(*selectedTags.begin());
+        return iter != tags.end() && iter->second.query ? iter->first : -1;
+    }
+
+    std::string filterAsQuery() const
+    {
+        std::vector<std::string> parts;
+        std::vector<std::string> variants;
+        for (const auto& name : selectedTags) {
+            auto iter = findTag(name);
+            if (iter == tags.end()) {
+                variants.push_back("variant = " + LibraryQuery::quoted(name));
+            }
+            else if (iter->second.query) {
+                parts.push_back(*iter->second.query);
+            }
+            else {
+                parts.push_back("tag = " + LibraryQuery::quoted(name));
+            }
+        }
+        if (!variants.empty()) {
+            parts.insert(parts.begin(), join(variants.begin(), variants.end(), " or "));
+        }
+        parts.push_back(queryLine);
+        return LibraryQuery::combine(parts);
     }
 
     bool hasTag(const DBProgram& program, int tagId) const
@@ -1124,6 +1423,148 @@ struct Database::Private
         EndWindowBox();
     }
 
+    void openSmartTag()
+    {
+        dialogError.clear();
+        smartTagId = editableSmartTag();
+        if (smartTagId >= 0) {
+            smartTagName = tags.at(smartTagId).name;
+            smartTagQuery = tags.at(smartTagId).query.value_or("");
+        }
+        else {
+            smartTagName.clear();
+            try {
+                smartTagQuery = filterAsQuery();
+            }
+            catch (const LibraryQuery::Error&) {
+                smartTagQuery = queryLine;
+                dialogError = "A selected tag can't be part of a query, it has a quote in its name.";
+            }
+        }
+        smartTagOpen = true;
+    }
+
+    // Stores the smart tag of the dialog, a new one becomes the selection instead of what it was saved from.
+    std::string saveSmartTag(const std::set<std::string>& reservedNames)
+    {
+        const auto name = trim(smartTagName);
+        const auto text = trim(smartTagQuery);
+        if (name.empty()) {
+            return "The smart tag needs a name.";
+        }
+        if (auto iter = findTag(name); (iter != tags.end() && iter->first != smartTagId) || reservedNames.contains(name)) {
+            return fmt::format("There is a tag or variant named '{}' already.", name);
+        }
+        if (text.empty()) {
+            return "The smart tag needs a query.";
+        }
+        try {
+            LibraryQuery::parse(text, searchProperties());
+        }
+        catch (const LibraryQuery::Error& error) {
+            return error.what();
+        }
+        DBTags tag = smartTagId >= 0 ? tags.at(smartTagId) : DBTags{0, name, NEW_TAG_COLORS[tags.size() % NEW_TAG_COLORS.size()]};
+        tag.name = name;
+        tag.query = text;
+        try {
+            auto session = db::Session(database);
+            if (tag.id) {
+                session.update(tag);
+            }
+            else {
+                session.insert(tag);
+            }
+        }
+        catch (const db::Exception& ex) {
+            return ex.what();
+        }
+        if (smartTagId >= 0) {
+            selectedTags.erase(tags.at(smartTagId).name);
+        }
+        else {
+            selectedTags.clear();
+            queryLine.clear();
+            setQuery(queryLine);
+        }
+        tags.insert_or_assign(tag.id, tag);
+        selectedTags.insert(name);
+        updateFilter();
+        return {};
+    }
+
+    std::string deleteSmartTag()
+    {
+        try {
+            auto session = db::Session(database);
+            db::Statement remove(session, "DELETE FROM tags WHERE id = ?");
+            remove << smartTagId;
+            remove.execute();
+        }
+        catch (const db::Exception& ex) {
+            return ex.what();
+        }
+        selectedTags.erase(tags.at(smartTagId).name);
+        tags.erase(smartTagId);
+        updateFilter();
+        return {};
+    }
+
+    // Returns true when the smart tags changed.
+    bool renderSmartTagDialog(const std::set<std::string>& reservedNames)
+    {
+        using namespace gui;
+        constexpr float labelWidth = 50;
+        if (!BeginWindowBox({-1, -1, 520, 150}, smartTagId >= 0 ? "Edit smart tag###librarySmartTag" : "Save as smart tag###librarySmartTag", &smartTagOpen, DIALOG_FLAGS)) {
+            return false;
+        }
+        SetSpacing(2);
+        Label("A smart tag lists the programs its query finds, combined with the other selections.");
+        Space(4);
+        BeginColumns();
+        SetNextWidth(labelWidth);
+        Label("Name:");
+        SetNextWidth(160);
+        TextBox("##smartTagName", smartTagName, 32);
+        EndColumns();
+        BeginColumns();
+        SetNextWidth(labelWidth);
+        Label("Query:");
+        TextBox("##smartTagQuery", smartTagQuery, 4096);
+        EndColumns();
+        Space(GetContentAvailable().height - GetStyle(DEFAULT, TEXT_SIZE) - 16);
+        bool changed = false;
+        BeginColumns();
+        SetSpacing(4);
+        const auto errorWidth = GetContentAvailable().width - 3 * 80 - 3 * 4;
+        SetNextWidth(errorWidth);
+        Label(fitText(dialogError, errorWidth).c_str());
+        SetNextWidth(80);
+        if (smartTagId < 0) {
+            GuiDisable();
+        }
+        if (Button("Delete")) {
+            dialogError = deleteSmartTag();
+            changed = dialogError.empty();
+        }
+        GuiEnable();
+        SetNextWidth(80);
+        if (Button("Cancel")) {
+            smartTagOpen = false;
+        }
+        SetNextWidth(80);
+        if (Button("Save")) {
+            dialogError = saveSmartTag(reservedNames);
+            changed = dialogError.empty();
+        }
+        EndColumns();
+        if (changed) {
+            smartTagOpen = false;
+        }
+        EndWindowBox();
+        return changed;
+    }
+
     void closeSubDialog()
     {
         moveOpen = mergeOpen = removeOpen = false;
@@ -1348,7 +1789,11 @@ struct Database::Private
                 }
             }
             for (const auto& name : edit.newTags) {
-                if (auto iter = std::ranges::find_if(tags, [&](const auto& entry) { return entry.second.name == name; }); iter != tags.end()) {
+                if (auto iter = findTag(name); iter != tags.end() && iter->second.query) {
+                    edit.error = fmt::format("'{}' is a smart tag, it can't be given to programs.", name);
+                    return false;
+                }
+                else if (iter != tags.end()) {
                     tagIds.insert(iter->first);
                 }
                 else {
@@ -1404,7 +1849,9 @@ struct Database::Private
         using namespace gui;
         std::vector<const DBTags*> sorted;
         for (const auto& tag : tags | std::views::values) {
-            sorted.push_back(&tag);
+            if (!tag.query) {
+                sorted.push_back(&tag);
+            }
         }
         std::ranges::sort(sorted, std::less<>{}, [](const DBTags* tag) { return toLower(tag->name); });
         // the tags as toggles, wrapped into rows, followed by the tags that will be created on save
@@ -1454,7 +1901,10 @@ struct Database::Private
         if (Button("+ tag")) {
             auto name = trim(edit.newTag);
             if (!name.empty()) {
-                if (auto iter = std::ranges::find_if(tags, [&](const auto& entry) { return entry.second.name == name; }); iter != tags.end()) {
+                if (auto iter = findTag(name); iter != tags.end() && iter->second.query) {
+                    edit.error = fmt::format("'{}' is a smart tag, it can't be given to programs.", name);
+                }
+                else if (iter != tags.end()) {
                     edit.tagIds.insert(iter->first);
                 }
                 else if (std::ranges::find(edit.newTags, name) == edit.newTags.end()) {
@@ -1788,16 +2238,34 @@ struct Database::Private
     {
         std::vector<std::string> variants;
         std::vector<int> tagIds;
+        std::vector<std::string> smartQueries;
         for (const auto& name : selectedTags) {
-            auto iter = std::ranges::find_if(tags, [&](const auto& entry) { return entry.second.name == name; });
-            if (iter != tags.end()) {
+            auto iter = findTag(name);
+            if (iter != tags.end() && iter->second.query) {
+                smartQueries.push_back(*iter->second.query);
+            }
+            else if (iter != tags.end()) {
                 tagIds.push_back(iter->first);
             }
             else {
                 variants.push_back(name);
             }
         }
+        filter = query;
+        smartTagsQuery = LibraryQuery::combine(smartQueries);
+        if (!smartQueries.empty()) {
+            smartQueries.push_back(queryText);
+            try {
+                filter = LibraryQuery::parse(LibraryQuery::combine(smartQueries), searchProperties());
+            }
+            catch (const LibraryQuery::Error& error) {
+                // REVIEW: A smart tag whose query became invalid (a property of a core was renamed) is left out.
+                TraceLog(LOG_WARNING, fmt::format("A selected smart tag has no valid query: {}", error.what()).c_str());
+            }
+        }
         shownIndices.clear();
+        matchingBinaries.clear();
+        shownRomCount = 0;
         shownIndices.reserve(programs.size());
         for (auto& program : programs | std::views::values) {
             auto show = true;
@@ -1807,20 +2275,27 @@ struct Database::Private
             if (show && !std::ranges::all_of(tagIds, [&](int tagId) { return hasTag(program, tagId); })) {
                 show = false;
             }
-            if (show && !showMissing && !isPresent(program)) {
+            // a query asking for present or missing programs decides that itself, else the eye toggle does
+            if (show && !filter.usesPresence() && !showMissing && !isPresent(program)) {
                 show = false;
             }
-            if (show) {
-                if (!textFilter.empty()) {
-                    if (toLower(program.name).find(textFilter) == std::string::npos
-                        && toLower(program.description).find(textFilter) == std::string::npos
-                        && toLower(authorNames(program)).find(textFilter) == std::string::npos) {
-                        show = false;
+            if (show && !filter.empty()) {
+                const auto facts = programFacts(program);
+                if (!filter.matches(facts)) {
+                    show = false;
+                }
+                else if (filter.usesRomFields()) {
+                    auto& matching = matchingBinaries[program.id];
+                    for (const auto index : filter.matchingRoms(facts)) {
+                        matching.insert(program.binaries[index]);
                     }
                 }
             }
             if (show) {
                 shownIndices.emplace_back(program.id);
+                if (auto matching = matchingBinaries.find(program.id); matching != matchingBinaries.end()) {
+                    shownRomCount += matching->second.size();
+                }
             }
         }
         std::ranges::sort(shownIndices, std::less<>{}, [this](const int key) {
@@ -2007,7 +2482,12 @@ void Database::refreshBadges()
     for (const auto& [id, tag] : _pimpl->tags) {
         if (!_badges.contains(tag.name)) {
             emu::Palette::Color col(tag.color);
-            if (tag.name == "???") {
+            if (tag.query) {
+                // a smart tag shows its color as text on a dark badge, unlike the tags given to programs
+                const Color color{col.r, col.g, col.b, 0xFF};
+                _badges.emplace(tag.name, BadgeInfo{BadgeInfo::SMART_TAG, tag.name, color, ColorBrightness(color, -0.7f)});
+            }
+            else if (tag.name == "???") {
                 _badges.emplace(tag.name, BadgeInfo{BadgeInfo::UNDEFINED, tag.name, LIGHTGRAY, {col.r, col.g, col.b, 0xFF}});
             }
             else if (fuzzyCompare(tag.name, "new")) {
@@ -2084,6 +2564,11 @@ void Database::fetchProgramInfo()
             for (const auto& filename : session.select<DBFilename>().orderBy("id").all()) {
                 if (auto iter = _pimpl->binaries.find(filename.binary_id); iter != _pimpl->binaries.end()) {
                     iter->second.filenames.push_back(filename.name);
+                }
+            }
+            for (const auto& opcode : session.select<DBOpcode>().orderBy("opcode").all()) {
+                if (auto iter = _pimpl->binaries.find(opcode.binary_id); iter != _pimpl->binaries.end()) {
+                    iter->second.opcodes.push_back(static_cast<uint16_t>(opcode.opcode));
                 }
             }
             for (const auto& binaryTag : session.select<DBBinaryTag>().orderBy("id").all()) {
@@ -2191,6 +2676,8 @@ int Database::scanLibrary()
         _pimpl->updateFilter();
     }
     durationOfLastJob = std::chrono::steady_clock::now() - start;
+    // the opcodes of new ROMs and of ROMs now found, the list is usable before
+    _pimpl->analyzeBinaries(session);
     return numFiles;
 }
 
@@ -2360,6 +2847,7 @@ std::string Database::addFiles(const std::vector<std::string>& paths)
             TraceLog(LOG_WARNING, fmt::format("Adding '{}' to the library failed: {}", path, ex.what()).c_str());
         }
     }
+    _pimpl->analyzeBinaries(session);
     _pimpl->updateFilter();
     updatePreview();
     return fmt::format("Added {} new and {} known ROM{} to the library.", added, known, added + known == 1 ? "" : "s");
@@ -2443,11 +2931,28 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         SetSpacing(4);
 
-        SetNextWidth(area.width - 2 * 60 - 3 * 20 - 5 * 4);
+        SetNextWidth(area.width - 2 * 60 - 4 * 20 - 6 * 4);
         if (TextBox("query", _pimpl->queryLine, 4096)) {
-            _pimpl->textFilter = toLower(trim(_pimpl->queryLine));
-            _pimpl->updateFilter();
+            _pimpl->setQuery(_pimpl->queryLine);
         }
+        if (_pimpl->queryLine.empty() && !_pimpl->smartTagsQuery.empty()) {
+            // the queries of the selected smart tags show in the empty field, as what the list is searched for
+            const auto box = GetLastWidgetRect();
+            const auto text = fitText(_pimpl->smartTagsQuery, box.width - 12);
+            const auto size = MeasureTextEx(font, text.c_str(), 8, 1);
+            DrawTextEx(font, text.c_str(), {box.x + 6, std::floor(box.y + (box.height - size.y) / 2)}, 8, 1, StyleManager::mappedColor(GRAY));
+        }
+        SetTooltip("WORDS, OR FIELDS LIKE: release < 1980, author ~ winter, tag = new, variant = xo-chip, ipf > 100, wrap = true, size < 1k, uses F?75, missing - COMBINE WITH and, or, not/-, ( )");
+        SetNextWidth(20);
+        const bool editSmartTag = _pimpl->editableSmartTag() >= 0;
+        if (!editSmartTag && _pimpl->selectedTags.empty() && trim(_pimpl->queryLine).empty()) {
+            GuiDisable();
+        }
+        if (Button(IconText(ICON_STAR, ""))) {
+            _pimpl->openSmartTag();
+        }
+        GuiEnable();
+        SetTooltip(editSmartTag ? "EDIT SMART TAG" : "SAVE SELECTION AND SEARCH AS SMART TAG");
         SetNextWidth(20);
         if (Button(IconText(_pimpl->showMissing ? ICON_EYE_ON : ICON_EYE_OFF, ""))) {
             _pimpl->showMissing = !_pimpl->showMissing;
@@ -2484,6 +2989,16 @@ Database::Action Database::render(Font& font)
         SetTooltip("RUN");
         GuiEnable();
         EndColumns();
+        {
+            // what the query found or why it is no valid query, on its own line to have room for the text
+            const auto labelColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
+            if (!_pimpl->queryError.empty()) {
+                SetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(StyleManager::mappedColor(RED)));
+            }
+            SetNextWidth(area.width);
+            Label(fitText(_pimpl->queryFeedback(), area.width - 8).c_str());
+            SetStyle(LABEL, TEXT_COLOR_NORMAL, labelColor);
+        }
         BeginColumns();
         {
             SetSpacing(4);
@@ -2584,6 +3099,10 @@ Database::Action Database::render(Font& font)
                         if (pid == _pimpl->selectedProgramId && binary.id == _pimpl->selectedBinaryId) {
                             DrawPanelClipped({itemRect.x - 2, itemRect.y + (i + 1) * 9 - 1, itemRect.width, 9}, 1, StyleManager::getStyleColor(gui::Style::BORDER_COLOR_PRESSED), {0, 0, 0, 0});
                         }
+                        // the ROMs a query with ROM fields found
+                        if (auto matching = _pimpl->matchingBinaries.find(pid); matching != _pimpl->matchingBinaries.end() && matching->second.contains(binary.id)) {
+                            DrawRectangleClipped(itemRect.x - 2, itemRect.y + (i + 1) * 9 - 1, 9 * 6 - 4, 9, Fade(StyleManager::getStyleColor(gui::Style::BASE_COLOR_FOCUSED), 0.35f));
+                        }
                         DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, isSelected ? selectedCol : (binary.data ? grayCol : missingCol));
                         //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                         Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
@@ -2682,6 +3201,17 @@ Database::Action Database::render(Font& font)
         if (_pimpl->editorOpen && _pimpl->renderEditor()) {
             refreshBadges();
             updatePreview();
+        }
+        if (_pimpl->smartTagOpen) {
+            std::set<std::string> variantNames;
+            for (const auto& [name, badge] : _badges) {
+                if (badge.type == BadgeInfo::PRESET || badge.type == BadgeInfo::GENERIC) {
+                    variantNames.insert(name);
+                }
+            }
+            if (_pimpl->renderSmartTagDialog(variantNames)) {
+                refreshBadges();
+            }
         }
         if (_pimpl->moveOpen || _pimpl->mergeOpen || _pimpl->removeOpen) {
             if (_pimpl->moveOpen) {
@@ -3026,6 +3556,44 @@ static bool upgradeLibrary(db::Database& database)
     }
     std::cout.rdbuf(coutBuffer);
     return true;
+}
+
+int Database::printOpcodeStatistics(const std::string& dataPath, const std::vector<std::string>& files)
+{
+    // the configs of the library come first, like when it analyzes its ROMs itself
+    const auto library = fs::path(dataPath) / "cadmium_library.cd48db";
+    std::unique_ptr<db::Database> database;
+    std::unique_ptr<LibraryMetadataSource> metadataSource;
+    if (fs::exists(library)) {
+        registerTables();
+        database = std::make_unique<db::Database>(library.string(), 1);
+        metadataSource = std::make_unique<LibraryMetadataSource>(*database);
+        Librarian::setMetadataSource(metadataSource.get());
+    }
+    nlohmann::ordered_json roms = nlohmann::ordered_json::object();
+    int failed = 0;
+    for (const auto& file : files) {
+        std::vector<uint8_t> data;
+        auto info = scanFile(file, &data);
+        if (!info) {
+            std::cerr << "ERROR: Could not read '" << file << "': " << info.error().message << std::endl;
+            ++failed;
+            continue;
+        }
+        const auto metadata = Librarian::findRomMetadata(info->digest).value_or(RomMetadata{});
+        const auto startAddress = analysisStartAddress(metadata.preset, metadata.properties);
+        auto opcodes = nlohmann::ordered_json::object();
+        if (isAnalyzable(metadata.preset)) {
+            for (const auto& [opcode, count] : opcodeStatistics(data, startAddress)) {
+                opcodes[fmt::format("{:04X}", opcode)] = count;
+            }
+        }
+        roms[info->digest.to_hex()] = {{"file", file}, {"preset", metadata.preset}, {"startAddress", startAddress}, {"opcodes", opcodes}};
+    }
+    Librarian::setMetadataSource(nullptr);
+    nlohmann::ordered_json result = {{"analysisVersion", OPCODE_ANALYSIS_VERSION}, {"roms", roms}};
+    std::cout << result.dump(1) << std::endl;
+    return failed ? 1 : 0;
 }
 
 int Database::exportMetadata(const std::string& dataPath, const std::string& outputFile)

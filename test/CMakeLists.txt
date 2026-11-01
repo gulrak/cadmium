@@ -42,6 +42,11 @@ endif()
 target_link_libraries(eti660-tests PRIVATE doctest emulation)
 doctest_discover_tests(eti660-tests)
 
+add_executable(libraryquery-tests main.cpp libraryquery_tests.cpp ${PROJECT_SOURCE_DIR}/src/libraryquery.cpp)
+target_include_directories(libraryquery-tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(libraryquery-tests PRIVATE doctest fmt::fmt)
+doctest_discover_tests(libraryquery-tests)
+
 add_executable(studio2-tests main.cpp studio2_tests.cpp)
 target_compile_definitions(studio2-tests PRIVATE WITHOUT_STB_IMAGE)
 target_link_libraries(studio2-tests PRIVATE doctest emulation)

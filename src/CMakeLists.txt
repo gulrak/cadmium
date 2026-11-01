@@ -26,6 +26,8 @@ set(CADMIUM_SOURCE
     headlessrun.hpp
     librarian.cpp
     librarian.hpp
+    libraryquery.cpp
+    libraryquery.hpp
     logview.cpp
     logview.hpp
     stylemanager.cpp

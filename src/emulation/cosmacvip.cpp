@@ -122,7 +122,7 @@ struct CosmacVIPOptions
             prototype.registerProperty({PROP_KEYBOARD, "Keyboard", Property::Combo{"VIP Hex", "VP-580 2x Hex", "VP-601 VIP ASCII", "VP-611 VIP A+NP"}, "Keyboard type, default is VIP hex"});
             prototype.registerProperty(Property::separator());
             prototype.registerProperty({PROP_ROM_NAME, "ROM Name", "COSMAC-VIP"s, "Rom image name, default cosmac-vip"});
-            prototype.registerProperty({PROP_INTERPRETER, "Interpreter", Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8TDPTS", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
+            prototype.registerProperty({PROP_INTERPRETER, "Interpreter", Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8TDPTS", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E", "CHIP8R"}, "CHIP-8 interpreter variant"});
             prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{512, 0, 4095}, "Initial CHIP-8 interpreter PC address"});
         }
         return prototype;
@@ -161,6 +161,7 @@ static chip8::Variant getVariantForInterpreter(VIPChip8Interpreter interpreter)
         case VC8I_CHIP8TPD: return chip8::Variant::CHIP_8_TPD_COSMAC_VIP;
         case VC8I_CHIP8TPDTS: return chip8::Variant::CHIP_8_TPD_TS_COSMAC_VIP;
         case VC8I_CHIP8FPD: return chip8::Variant::HI_RES_CHIP_8;
+        case VC8I_CHIP8R: return chip8::Variant::CHIP_8_R;
         default:
             break;
     }
@@ -254,6 +255,13 @@ static CosmacVipSetupInfo vipPresets[] = {
         ".c8e",
         chip8::Variant::CHIP_8E,
         { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 4096, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8E, .startAddress = 512}
+    },
+    {
+        "CHIP-8R",
+        "CHIP-8 research variant with PC relative jumps (BBnn, BFnn), calls through I (BC00) and 16 bit I loads (F000 nnnn) instead of BMMM, for programs beyond 4k",
+        ".c8r",
+        chip8::Variant::CHIP_8_R,
+        { .cpuType = "CDP1802", .clockFrequency = 1760640, .ramSize = 32768, .cleanRam = true, .traceLog = false, .videoType = VVT_CDP1861, .audioType = VAT_CA555_BUZZER, .keyboard = VIPK_HEX, .romName = "COSMAC-VIP", .interpreter = VC8I_CHIP8R, .startAddress = 512}
     }
 };
 // clang-format on
@@ -612,6 +620,22 @@ static std::map<VIPChip8Interpreter,PatchSet> g_patchSets = {
                      0xa5, 0x95, 0x7c}},
             {0x1f6, {0xb5, 0x25, 0xd4, 0xf7, 0xa5, 0x95, 0x7f, 0x00, 0x30, 0xf6}}
         }}
+    },
+    {
+        VC8I_CHIP8R, // CHIP-8 with PC relative jumps, see research/chip8rel/vip-chip8rel.asm
+        {0x200, 0x01B, {
+            {0x056, {0x00}},
+            {0x061, {0x7e, 0x75, 0x88, 0x93, 0x85, 0xfc, 0xc2, 0xc7, 0x90, 0xf5, 0xa4, 0xe3}},
+            {0x0fc, {0x45, 0x56, 0xd4, 0x00, 0x45, 0xba, 0x45, 0xaa, 0xd4}},
+            {0x17b, {0x33, 0xbd, 0x25, 0x45, 0xa5, 0x86, 0xfa, 0x0f, 0xb5, 0xd4, 0x15, 0x07, 0x38, 0x45, 0xe6, 0xf3,
+                     0x3a, 0x84, 0x15, 0x15, 0xd4, 0x15, 0x07, 0x38, 0x45, 0xe6, 0xf3, 0x3a, 0x8d, 0xd4}},
+            {0x19f, {0x8d, 0xd4, 0x3e, 0x8d, 0xd4, 0x86, 0xfc, 0x04, 0x32, 0x75, 0xe5, 0x33, 0xb4, 0x85, 0x77, 0xa5,
+                     0x95, 0x7f, 0x00, 0xb5, 0xd4, 0x85, 0xf4, 0xa5, 0x95, 0x7c, 0x00, 0xb5, 0x25, 0xd4, 0x9a, 0xb5,
+                     0x8a, 0xa5, 0xd4, 0x45, 0xe6, 0xf4, 0x56, 0xd4, 0x45, 0xfa, 0x0f, 0x3a, 0xcf, 0x07, 0x56, 0xd4,
+                     0xaf, 0x22, 0xf8, 0xd3, 0x73, 0x8f, 0xf9, 0xf0, 0x52, 0xe6, 0x07, 0xd2, 0x56, 0xf8, 0xff, 0xa6,
+                     0x9c, 0x7e, 0x56, 0xd4, 0x19, 0x89, 0xae, 0x93, 0xbe, 0x99, 0xee, 0xf4, 0x56, 0x76, 0xe6, 0xf4,
+                     0xb9, 0x56, 0x45, 0xf2, 0x56, 0xd4, 0x45, 0xaa, 0x86, 0xfa, 0x0f, 0xba, 0xd4}}
+        }}
     }/*,
     {
         "CHIP8ELF",
@@ -935,6 +959,7 @@ GenericCpu::StackContent CosmacVIP::stack() const
         case VC8I_CHIP8RB:
         case VC8I_CHIP8E:
         case VC8I_CHIP8X:
+        case VC8I_CHIP8R:
             return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x15f, 46)};
         case VC8I_CHIP10:
             return {2, eBIG, eDOWNWARDS, std::span(_impl->_ram.data() + _impl->_options.ramSize - 0x45f, 46)};

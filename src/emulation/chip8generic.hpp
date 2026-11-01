@@ -518,6 +518,10 @@ private:
         if(addr <= ADDRESS_MASK)
             _memory[addr] = val;
     }
+    bool isWaitingForKey() const
+    {
+        return _cpuState == eWAIT && (_memory[_rPC] & 0xF0) == 0xF0 && _memory[_rPC + 1] == 0x0A;
+    }
     void halt()
     {
         _execMode = ePAUSED;

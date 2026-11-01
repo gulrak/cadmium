@@ -208,3 +208,39 @@ TEST_CASE("Generic core uses preset and updated frame rates")
 #include "basic_opcode_tests.hpp"
 #undef QUIRKS
 #undef C8CORE
+
+TEST_CASE("Generic core ends the frame while waiting for a key")
+{
+    // XO-CHIP/SCHIP-MODERN use the instant Dxyn fast path, MEGACHIP with 0011 the MegaChip loop,
+    // the breakpoint forces executeInstruction() in all of them
+    for (const auto& [preset, megaChipMode] : {std::pair{"CHIP-8", false}, {"SCHIP-1.1", false}, {"SCHIP-MODERN", false},
+                                               {"XO-CHIP", false}, {"MEGACHIP", false}, {"MEGACHIP", true}}) {
+        for (bool withBreakpoint : {false, true}) {
+            INFO((std::string(preset) + (megaChipMode ? " in megachip mode" : "") + (withBreakpoint ? " with breakpoint" : "")));
+            auto props = emu::CoreRegistry::propertiesForPreset(preset);
+            REQUIRE(props);
+            auto ipf = props["instructionsPerFrame"].getInt();
+            HeadlessTestHost host(props);
+            auto [name, core] = emu::CoreRegistry::create(host, props, nullptr);
+            REQUIRE(core);
+            auto* emuCore = core.get();
+            auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(core->executionUnit(0));
+            REQUIRE(chip8);
+            host.setCore(std::move(core));
+            emuCore->reset();
+            if (megaChipMode)
+                write(chip8, 0x200, {0x0011, 0xF50A, 0x7101, 0x1204});
+            else
+                write(chip8, 0x200, {0xF50A, 0x7101, 0x1202});
+            if (withBreakpoint)
+                chip8->setBreakpoint(0x300, {});
+            for (int i = 0; i < 10; ++i)
+                host.executeFrame();
+            CHECK(emuCore->cycles() == 10 * ipf);
+            CHECK(emuCore->executedInstructions() == (megaChipMode ? 11 : 10));
+            host.selectKey(7);
+            CHECK(chip8->getV(5) == 7);
+            CHECK(chip8->getV(1) != 0);
+        }
+    }
+}

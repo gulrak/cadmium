@@ -51,7 +51,7 @@ public:
     };
     struct BadgeInfo
     {
-        enum Type { PRESET, GENERIC, UNDEFINED, NEW_TAG, USER_TAG};
+        enum Type { SMART_TAG, PRESET, GENERIC, UNDEFINED, NEW_TAG, USER_TAG};
         Type type;
         std::string text;
         Color textCol{};
@@ -60,7 +60,7 @@ public:
     explicit Database(const emu::CoreRegistry& registry, CadmiumConfiguration& configuration, ThreadPool& threadPool, const std::string& path);
     ~Database();
     int scanLibrary();
-    ghc::expected<FileInfo,LoadError> scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
+    static ghc::expected<FileInfo,LoadError> scanFile(const std::string& filePath, std::vector<uint8_t>* outData = nullptr);
     std::optional<Program> getSelectedProgram() const;
     enum class Action { NONE, LOAD, RUN };
     Action render(Font& font); // LOAD or RUN if getSelectedProgram() should be loaded (and run)
@@ -75,6 +75,10 @@ public:
     // Writes a copy of the library with only its metadata (no ROMs, file names, ignored ROMs or "new" tags),
     // marked as starter metadata, used by --export-metadata-db to create the starter library of the resources.
     static int exportMetadata(const std::string& dataPath, const std::string& outputFile);
+    // Prints the opcode statistics of ROM files as JSON, analyzed like the library does with the first config the
+    // library (if there is one) or the compiled in metadata has for them, used by --opcode-stats to put the
+    // statistics into the starter library.
+    static int printOpcodeStatistics(const std::string& dataPath, const std::vector<std::string>& files);
 private:
     void refreshBadges();
     void fetchProgramInfo();

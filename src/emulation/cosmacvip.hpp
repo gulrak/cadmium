@@ -38,7 +38,7 @@ namespace emu {
 extern const uint8_t _chip8_cvip[0x200];
 extern const uint8_t _rom_cvip[0x200];
 
-enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8TPDTS, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E };
+enum VIPChip8Interpreter { VC8I_NONE, VC8I_CHIP8, VC8I_CHIP10, VC8I_CHIP8RB, VC8I_CHIP8TPD, VC8I_CHIP8TPDTS, VC8I_CHIP8FPD, VC8I_CHIP8X, VC8I_CHIP8XTPD, VC8I_CHIP8XFPD, VC8I_CHIP8E, VC8I_CHIP8R };
 
 /// COSMAC VIP Emulation Core
 /// This core emulates the hardware of a COSMAC VIP and allows a few hardware configuration

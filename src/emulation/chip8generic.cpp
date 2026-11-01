@@ -387,7 +387,7 @@ const PropertyRule propertyRules[] = {
     {PROP_Q_JUMP0_BXNN, [](const GenericOpts& opts) { return opts.behaviorBase != GenericOpts::eCHIP8X; }},
     {PROP_Q_WRAP_SPRITES, [](const GenericOpts& opts) { return opts.behaviorBase != GenericOpts::eCHIP8X; }},
     {PROP_CUBECHIP_TONE, [](const GenericOpts& opts) { return !opts.optXOChipSound && opts.behaviorBase != GenericOpts::eCHIP8X; }},
-    {PROP_Q_EXTENDED_VBLANK, nullptr, [](const GenericOpts& opts) { return !opts.optInstantDxyn; }},
+    {PROP_Q_EXTENDED_VBLANK, [](const GenericOpts& opts) { return opts.behaviorBase < GenericOpts::eCHIP48; }, [](const GenericOpts& opts) { return !opts.optInstantDxyn; }},
     // Only for CRT based variants. The CHIP-8 family will follow (with several scan
     // lines per lores row, see CrtRenderer::draw()), SCHIP/XO-CHIP never get it.
     {PROP_CRT_EFFECT, [](const GenericOpts& opts) { return opts.behaviorBase == GenericOpts::eMEGACHIP; }},
@@ -1031,6 +1031,8 @@ void Chip8GenericEmulator::executeInstructions(int numInstructions)
     if(_execMode == ePAUSED)
         return;
     auto start = _cycleCounter;
+    // Waiting for a key ends the frame in every path: Fx0A is executed (and counted) once
+    // per frame and the rest of the frame is skipped, like the instant Dxyn fast path does.
     if(_isMegaChipMode) {
         if(_execMode == eRUNNING) {
             auto end = _cycleCounter + numInstructions;
@@ -1039,11 +1041,20 @@ void Chip8GenericEmulator::executeInstructions(int numInstructions)
                     Chip8GenericEmulator::executeInstructionNoBreakpoints();
                 else
                     Chip8GenericEmulator::executeInstruction();
+                if(isWaitingForKey()) {
+                    _cycleCounter = end;
+                    break;
+                }
             }
         }
         else {
-            for (int i = 0; i < numInstructions; ++i)
+            for (int i = 0; i < numInstructions; ++i) {
                 Chip8GenericEmulator::executeInstruction();
+                if(isWaitingForKey()) {
+                    _cycleCounter += numInstructions - i - 1;
+                    break;
+                }
+            }
         }
     }
     else if(_isInstantDxyn) {
@@ -1072,8 +1083,13 @@ void Chip8GenericEmulator::executeInstructions(int numInstructions)
             //    Chip8GenericEmulator::executeInstructionNoBreakpoints();
         }
         else  {
-            for (int i = 0; i < numInstructions; ++i)
+            for (int i = 0; i < numInstructions; ++i) {
                 Chip8GenericEmulator::executeInstruction();
+                if(isWaitingForKey()) {
+                    _cycleCounter += numInstructions - i - 1;
+                    break;
+                }
+            }
         }
     }
     else {
@@ -1087,6 +1103,10 @@ void Chip8GenericEmulator::executeInstructions(int numInstructions)
                 Chip8GenericEmulator::executeInstructionNoBreakpoints();
             else
                 Chip8GenericEmulator::executeInstruction();
+            if(isWaitingForKey()) {
+                _cycleCounter += numInstructions - i - 1;
+                break;
+            }
         }
     }
     _systemTime.addCycles(_cycleCounter - start);
