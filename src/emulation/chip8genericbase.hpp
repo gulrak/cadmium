@@ -49,7 +49,7 @@ public:
     ExecMode execMode() const override { return GenericCpu::execMode(); }
     int64_t cycles() const override { return _cycleCounter; }
     int64_t frames() const override { return _frameCounter; }
-    int frameRate() const override { return 60; };
+    double frameRate() const override { return 60; };
     const ClockedTime& time() const override { return _systemTime; }
     Logger::FrameTime frameTime() const override { return {_frameCounter & 0x7FFF,static_cast<int>(_cycleCounter & 0x7FFF)}; }
     const std::string& errorMessage() const override { return _errorMessage; }

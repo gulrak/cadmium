@@ -209,6 +209,18 @@ TEST_CASE("Generic core uses preset and updated frame rates")
 #undef QUIRKS
 #undef C8CORE
 
+TEST_CASE("Generic core limits an instructions per frame value that is still being typed")
+{
+    auto props = emu::CoreRegistry::propertiesForPreset("CHIP-8");
+    REQUIRE(props);
+    auto& ipf = props["instructionsPerFrame"];
+    // a value box writes the raw value through this reference while editing
+    ipf.getIntRef() = 99'999'999;
+    CHECK(emu::Chip8GenericOptions::fromProperties(props).instructionsPerFrame == ipf.getIntMax());
+    ipf.getIntRef() = -5;
+    CHECK(emu::Chip8GenericOptions::fromProperties(props).instructionsPerFrame == ipf.getIntMin());
+}
+
 TEST_CASE("Generic core ends the frame while waiting for a key")
 {
     // XO-CHIP/SCHIP-MODERN use the instant Dxyn fast path, MEGACHIP with 0011 the MegaChip loop,

@@ -613,9 +613,9 @@ int64_t Eti660::machineCycles() const
     return _impl->_cpu.cycles() >> 3;
 }
 
-int Eti660::frameRate() const
+double Eti660::frameRate() const
 {
-    return std::lround(_impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame());
+    return _impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame();
 }
 
 bool Eti660::executeCdp1802()

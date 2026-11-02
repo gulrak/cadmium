@@ -101,7 +101,7 @@ public:
     virtual int64_t executedInstructions() const { return cycles(); }
     virtual int64_t machineCycles() const = 0;
     virtual int64_t frames() const = 0;
-    virtual int frameRate() const = 0;
+    virtual double frameRate() const = 0;
     virtual bool supportsFrameBoost() const { return true; }
 
     virtual uint8_t* memory() = 0;

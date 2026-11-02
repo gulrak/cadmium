@@ -479,9 +479,9 @@ int64_t Studio2::machineCycles() const
     return _impl->_cpu.cycles() >> 3;
 }
 
-int Studio2::frameRate() const
+double Studio2::frameRate() const
 {
-    return std::lround(_impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame());
+    return _impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame();
 }
 
 bool Studio2::executeCdp1802()

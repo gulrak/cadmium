@@ -55,7 +55,7 @@ public:
     IChip8Emulator* chip8Core() override;
 
     void executeFrame() override;
-    int frameRate() const override { return 50; }
+    double frameRate() const override { return 50; }
 
     uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;

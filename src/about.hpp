@@ -82,6 +82,7 @@ ETI-660 hardware emulation:
 HP-48SX hardware emulation (in builds with the HP-48SX ROM):
   * HP48 (raw HP-48SX)
   * HP48-CHIP-48
+  * HP48-SCHIP-1.0-BETA
   * HP48-SCHIP-1.0
   * HP48-SCHIP-1.1
   * HP48-SCHPC (SUPER-CHIP compatibility interpreter)

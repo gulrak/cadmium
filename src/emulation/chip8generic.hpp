@@ -106,7 +106,11 @@ class Chip8GenericEmulator : public Chip8GenericBase
 public:
     static constexpr unsigned MAX_SCREEN_WIDTH = 256;
     static constexpr unsigned MAX_SCREEN_HEIGHT = 192;
-    using OpcodeHandler = void (Chip8GenericEmulator::*)(uint16_t);
+    static constexpr int MAX_LORES_WIDTH = 64;   // where drawSprite<0> clips
+    static constexpr int MAX_LORES_HEIGHT = 32;
+    using OpcodeHandler = void (*)(Chip8GenericEmulator*, uint16_t);
+    template<void (Chip8GenericEmulator::*Method)(uint16_t)>
+    static void handler(Chip8GenericEmulator* self, uint16_t opcode) { (self->*Method)(opcode); }
     uint32_t ADDRESS_MASK;
     int SCREEN_WIDTH;
     int SCREEN_HEIGHT;
@@ -120,7 +124,7 @@ public:
     }
     chip8::VariantSet supportedChip8Variants() const override;
     uint32_t cpuID() const override { return 0xC8; }
-    int frameRate() const override { return _options.frameRate; }
+    double frameRate() const override { return _options.frameRate; }
     bool updateProperties(Properties& props, Property& changed) override;
     int64_t machineCycles() const override { return cycles(); }
     int64_t executedInstructions() const override { return _instructionCounter; }
@@ -305,9 +309,21 @@ public:
             }
         }
         else {
+            int lines = opcode & 0xF;
+            if constexpr (quirks == 0) {
+                if(lines) {
+                    // The screen width always is a power of two, the height not (PAL video).
+                    int x = _rV[(opcode >> 8) & 0xF] & (SCREEN_WIDTH - 1);
+                    int y = _rV[(opcode >> 4) & 0xF];
+                    if(y >= SCREEN_HEIGHT)
+                        y %= SCREEN_HEIGHT;
+                    _rV[15] = _screen.drawSpriteWidth8(x, y, &_memory[_rI & ADDRESS_MASK], lines, MAX_LORES_WIDTH, MAX_LORES_HEIGHT);
+                    _screenNeedsUpdate = true;
+                    return;
+                }
+            }
             int x = _rV[(opcode >> 8) & 0xF] % SCREEN_WIDTH;
             int y = _rV[(opcode >> 4) & 0xF] % SCREEN_HEIGHT;
-            int lines = opcode & 0xF;
             _rV[15] = drawSprite<quirks>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false);
         }
 #if SCREEN_DUMP

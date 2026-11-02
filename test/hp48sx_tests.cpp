@@ -140,7 +140,7 @@ TEST_CASE("HP48 backend exposes resolved Saturn disassembly at the interpreter e
 
 TEST_CASE("HP48 unloaded interpreter shows a static calculator stack")
 {
-    for (const auto preset : {"hp-48-chip-48", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
+    for (const auto preset : {"hp-48-chip-48", "hp-48-schip-1-0-beta", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
         INFO(std::string(preset));
         Hp48Fixture fixture(preset);
         auto& core = fixture.core;
@@ -181,7 +181,7 @@ TEST_CASE("HP48 unloaded interpreter shows a static calculator stack")
 
 TEST_CASE("HP48 interpreter reset restores the loaded program and machine state")
 {
-    for (const auto preset : {"hp-48-chip-48", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
+    for (const auto preset : {"hp-48-chip-48", "hp-48-schip-1-0-beta", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
         SUBCASE(preset)
         {
             INFO(std::string(preset));
@@ -252,6 +252,22 @@ TEST_CASE("HP48 interpreter reset restores the loaded program and machine state"
             CHECK(core.executeInstruction() == 0);
         }
     }
+}
+
+TEST_CASE("HP48 SCHIP 1.0 beta selects the large font through Fx29")
+{
+    const auto fontAddress = [](const char* preset, uint8_t value, uint8_t opcodeLow) {
+        Hp48Fixture fixture(preset);
+        const std::array<uint8_t, 6> program{0x60, value, 0xf0, opcodeLow, 0x12, 0x04};
+        REQUIRE(fixture.core.loadData(program, {}));
+        fixture.runInstructions(2);
+        return fixture.core.getI();
+    };
+
+    CHECK(fontAddress("hp-48-schip-1-0-beta", 0x05, 0x29) == 0x19);
+    CHECK(fontAddress("hp-48-schip-1-0-beta", 0x15, 0x29) == 0x82);
+    CHECK(fontAddress("hp-48-schip-1-0", 0x15, 0x29) == 0x19);
+    CHECK(fontAddress("hp-48-schip-1-0", 0x05, 0x30) == 0x82);
 }
 
 TEST_CASE("HP48 raw preset reset restores a ready calculator and loaded object")

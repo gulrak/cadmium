@@ -164,7 +164,7 @@ TEST_CASE("ETI660 boot and memory use hardware addresses")
     CHECK(fixture.eti->getSP() == 0);
     CHECK(fixture.core->memSize() == 4096);
     CHECK(fixture.core->defaultLoadAddress() == 0x600);
-    CHECK(fixture.core->frameRate() == 51);
+    CHECK(fixture.core->frameRate() == doctest::Approx(1773448.0 / 8 / 4368));
     CHECK(fixture.eti->time().getClockFreq() == 1773448);
     CHECK(fixture.eti->supportedChip8Variants() == emu::chip8::Variant::CHIP_8_ETI660);
     CHECK(fixture.eti->readByte(0) == 0xF8);

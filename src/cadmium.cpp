@@ -59,6 +59,7 @@
 #include <systemtools.hpp>
 #include <texturescaler.hpp>
 
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -392,7 +393,11 @@ public:
         _audioStream = LoadAudioStream(44100, 16, 1);
         SetAudioStreamCallback(_audioStream, Cadmium::audioInputCallback);
         PlayAudioStream(_audioStream);
+#ifndef PLATFORM_WEB
+        // In a browser requestAnimationFrame paces the loop already. The wait of raylib would be a
+        // busy-wait on the main thread there, keeping it at 100% load on a 120Hz display, at any IPF.
         SetTargetFPS(60);
+#endif
 
         //_renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
         //if (GetWindowScaleDPI().x != std::trunc(GetWindowScaleDPI().x))
@@ -693,8 +698,13 @@ public:
 
     void vblank() override
     {
-        if(_chipEmu)
-            pushAudio(44100 / _chipEmu->frameRate());
+        if(_chipEmu) {
+            // Keep the fraction, a whole number of samples per frame would run short at 64Hz or 50.75Hz.
+            _audioSamplesDue += 44100.0 / _chipEmu->frameRate();
+            const auto samples = static_cast<int>(_audioSamplesDue);
+            _audioSamplesDue -= samples;
+            pushAudio(samples);
+        }
     }
 
     int getKeyPressed() override
@@ -1082,6 +1092,10 @@ public:
                 _fps.reset();
                 _partialFrameTime = 1000;
             }
+            // A time boxed frame takes as long as a display frame, so catching up would only lock the
+            // loop at half the rate. Keep the fraction though, or frame rates below 60Hz would run too slow.
+            if(!_chipEmu->supportsFrameBoost() && _partialFrameTime >= 2000)
+                _partialFrameTime = 1999;
             if(_partialFrameTime >= 1000) {
                 while (_partialFrameTime >= 1000) {
                     _partialFrameTime -= 1000;
@@ -2132,7 +2146,7 @@ public:
         //SetRowHeight(20);
         SetSpacing(2);
         auto ipf = editPropertySpinner(emu::propid::INSTRUCTIONS_PER_FRAME, "Instructions per frame", forceUpdate);
-        editPropertySpinner(emu::propid::FRAME_RATE, "Frame rate", forceUpdate, _chipEmu->frameRate());
+        editPropertySpinner(emu::propid::FRAME_RATE, "Frame rate", forceUpdate, static_cast<int>(std::lround(_chipEmu->frameRate())));
         if(ipf != 0) {
             Spinner("Frame boost", &_frameBoost, 1, 1000);
         }
@@ -2834,7 +2848,8 @@ private:
     SMA<120,uint32_t> _frameTimeAverage_us;
     SMA<120,int> _frameDelta;
     emu::FpsMeasure _fps;
-    int _partialFrameTime{0};
+    double _partialFrameTime{0};
+    double _audioSamplesDue{0};
     int _scaleMode{1};
     int _behaviorSel{0};
     int _subBehaviorSel{0};

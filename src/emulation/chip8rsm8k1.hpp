@@ -62,7 +62,7 @@ public:
     void executeInstructions(int count) override;
     void executeFrame() override;
     void handleTimer() override;
-    int frameRate() const override { return 50; }
+    double frameRate() const override { return 50; }
     int64_t machineCycles() const override { return cycles(); }
     unsigned stackSize() const override { return 16; }
     StackContent stack() const override;

@@ -125,6 +125,7 @@ The Supported presets are (possible specific file extensions in parentheses):
 | **HP-48SX** | **LLE** | **Emulation of a HP-48SX Calculator** | |
 | hp-48-none | .hp; .hp48 | Raw HP-48SX, debugger still wip | 1990 | - |
 | hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX, debugger still wip | 1990 | WIP |
+| hp-48-schip-1-0-beta | .sc10b | SUPER-CHIP 1.0 beta on HP-48SX, debugger still wip | 1991 | WIP |
 | hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX, debugger still wip | 1991 | WIP |
 | hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX, debugger still wip | 1991 | WIP |
 | hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX, debugger still wip | 2017 | WIP |

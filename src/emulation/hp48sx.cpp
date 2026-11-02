@@ -57,6 +57,7 @@ constexpr std::string_view PROP_CONTRAST = "contrast";
 enum class Interpreter {
     NONE,
     CHIP_48,
+    SCHIP_1_0_BETA,
     SCHIP_1_0,
     SCHIP_1_1,
     SCHPC,
@@ -91,6 +92,8 @@ chip8::VariantSet variantFor(Interpreter interpreter)
     switch (interpreter) {
         case Interpreter::CHIP_48:
             return chip8::Variant::CHIP_48;
+        case Interpreter::SCHIP_1_0_BETA:
+            return chip8::Variant::SCHIP_1_0_BETA;
         case Interpreter::SCHIP_1_0:
             return chip8::Variant::SCHIP_1_0;
         case Interpreter::SCHIP_1_1:
@@ -123,7 +126,7 @@ struct Hp48sxOptions
         using namespace std::string_literals;
         auto& prototype = Properties::getProperties(PROPERTY_CLASS);
         if (!prototype) {
-            prototype.registerProperty({std::string(PROP_INTERPRETER), "Interpreter", Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
+            prototype.registerProperty({std::string(PROP_INTERPRETER), "Interpreter", Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
             prototype.registerProperty({std::string(PROP_ROM), "ROM", "sxrom-rev-e"s, "HP-48SX ROM asset"});
             // The calculator settings (ON + [+]/[-]) can't be reached without its keyboard, so this replaces them
             prototype.registerProperty({std::string(PROP_FIXED_CONTRAST), "Fixed contrast", false, "Use the Contrast setting instead of the contrast the calculator sets", PropertyFlags::eWritable});
@@ -178,13 +181,18 @@ struct Hp48sxOptions
 };
 
 using SetupInfo = CoreRegistry::SetupInfo<Hp48sxOptions>;
-const std::array<SetupInfo, 5> PRESETS{{
+const std::array<SetupInfo, 6> PRESETS{{
     {"NONE", "Raw HP-48SX", ".hp;.hp48", chip8::Variant::NONE, {.interpreter = Interpreter::NONE}},
     {"CHIP-48",
      "Original CHIP-48 on HP-48SX",
      ".ch48;.c48",
      chip8::Variant::CHIP_48,
      {.interpreter = Interpreter::CHIP_48, .source = "hp-chip8/chip48.asap", .timerSymbol = "ofs_timer", .soundSymbol = "ofs_sound", .stackPointerSymbol = "ofs_csp", .stackSymbol = "ofs_cstack"}},
+    {"SCHIP-1.0-BETA",
+     "SUPER-CHIP 1.0 beta on HP-48SX",
+     ".sc10b",
+     chip8::Variant::SCHIP_1_0_BETA,
+     {.interpreter = Interpreter::SCHIP_1_0_BETA, .source = "hp-chip8/schip10beta.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
     {"SCHIP-1.0",
      "SUPER-CHIP 1.0 on HP-48SX",
      ".sc10",
@@ -643,9 +651,9 @@ void Hp48sxEmulationCore::executeFrame()
     _host.updateScreen();
 }
 
-int Hp48sxEmulationCore::frameRate() const
+double Hp48sxEmulationCore::frameRate() const
 {
-    return static_cast<int>(hp48::G48SX_EMULATED_FRAME_HZ);
+    return static_cast<double>(hp48::G48SX_EMULATED_FRAME_HZ);
 }
 int64_t Hp48sxEmulationCore::machineCycles() const
 {

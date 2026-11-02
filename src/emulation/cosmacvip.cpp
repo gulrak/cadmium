@@ -1121,9 +1121,9 @@ void CosmacVIP::traceNextFrame()
     }
 }
 
-int CosmacVIP::frameRate() const
+double CosmacVIP::frameRate() const
 {
-    return std::lround(_impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame());
+    return _impl->_options.clockFrequency / 8.0 / _impl->_video.cyclesPerFrame();
 }
 
 bool CosmacVIP::executeCdp1802()
