@@ -2225,6 +2225,7 @@ public:
             static constexpr int customSel = 8;
             static int sel = customSel;
             if(_colorPalette.numBackgroundColors <= 1 && DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;C64;Intellivision;CGA;Custom", &sel, true)) {
+                const bool presetChosen = sel != customSel;
                 switch(sel) {
                     case 0: // Cadmium
                         setPalette({
@@ -2300,6 +2301,11 @@ public:
                         break;
                     default:
                         break;
+                }
+                // a chosen preset belongs to the ROM's settings like an edited color, so "Save settings to library"
+                // stores it (the vector setPalette doesn't touch the properties, emulators use it at runtime)
+                if (presetChosen && _properties) {
+                    _properties->palette() = _colorPalette;
                 }
                 // SWEETIE-16:
                 // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57,  0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75,  0xb13e53, 0x38b764, 0x29366f, 0x566c86,  0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}

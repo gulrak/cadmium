@@ -102,7 +102,7 @@ struct DBBinary
     std::optional<db::Blob> data;  // none for a ROM only known from metadata, until a scan finds its file
     int size{0};                   // known without the data, too
     std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
-    int user_modified{0};                // its program or configs were changed by the user
+    int user_modified{0};                // its program, configs or tags were changed by the user
     std::optional<int> analysis_version;  // the version of the opcode analysis its binary_opcodes come from
 
     std::vector<std::string> filenames;
@@ -356,6 +356,9 @@ static std::string fitText(const std::string& text, float width, bool keepEnd = 
 
 // Colors for tags created in the editor, picked round robin
 static constexpr std::array<const char*, 6> NEW_TAG_COLORS = {"#E0A000", "#A060E0", "#40C060", "#E06080", "#4090E0", "#C0C040"};
+// A ROM with this tag is known to be broken, it is created when it is first given to a ROM.
+static constexpr const char* BAD_TAG_NAME = "bad";
+static constexpr const char* BAD_TAG_COLOR = "#C03030";
 // The licenses offered by the editor, "Other..." allows any SPDX license expression.
 static constexpr std::array<const char*, 14> COMMON_LICENSES = {"CC0-1.0", "Unlicense", "MIT", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "MPL-2.0", "GPL-2.0-or-later", "GPL-3.0-or-later", "LGPL-3.0-or-later", "CC-BY-4.0", "CC-BY-SA-4.0", "CC-BY-NC-4.0", "CC-BY-NC-SA-4.0"};
 static constexpr int OTHER_LICENSE_INDEX = static_cast<int>(COMMON_LICENSES.size()) + 1;
@@ -546,6 +549,8 @@ struct Database::Private
         std::vector<std::string> newTags;
         std::string newTag;
         std::string error;
+        int tagsBinaryId{-1};  // the ROM whose tags are open in the ROMs tab
+        std::string newRomTag;
         int binaryId{-1};   // the ROM shown in the Configs tab
         std::map<int, std::vector<DBBinaryConfig>> configs;
         std::vector<std::pair<int, int>> variantSelections;
@@ -564,6 +569,7 @@ struct Database::Private
     //db::Session session{database};
     int newTagId{1};
     int unclassifiedTagId{2};
+    int badTagId{0};  // 0 as long as no ROM was given the tag yet
     std::unordered_map<int, DBProgram> programs;
     std::unordered_map<int, DBBinary> binaries;
     std::unordered_map<int, DBTags> tags;
@@ -606,6 +612,7 @@ struct Database::Private
     Action requestedAction{Action::NONE};
     std::optional<std::pair<DBBinaryConfig, Action>> configAction;
     bool editorOpen{false};
+    bool romTagsChanged{false};  // badges and preview have to follow, as ROM tags are stored immediately
     int editorTab{0};
     ProgramEdit edit;
     bool moveOpen{false};
@@ -775,16 +782,20 @@ struct Database::Private
                 facts.authors.push_back(iter->second.name);
             }
         }
-        for (const auto& [tagId, tag] : tags) {
-            if (hasTag(program, tagId)) {
-                facts.tags.push_back(tag.name);
+        auto tagNames = [&](const std::vector<int>& tagIds) {
+            std::vector<std::string> names;
+            for (const auto tagId : tagIds) {
+                if (auto iter = tags.find(tagId); iter != tags.end()) {
+                    names.push_back(iter->second.name);
+                }
             }
-        }
-        
+            return names;
+        };
+        facts.tags = tagNames(program.tags);
         if (filter.usesRomFields()) {
             for (const auto binaryId : program.binaries) {
                 const auto& binary = binaries.at(binaryId);
-                RomFacts rom{.sha1 = binary.sha1, .size = binary.size, .files = binary.filenames, .present = binary.data.has_value(),
+                RomFacts rom{.sha1 = binary.sha1, .size = binary.size, .files = binary.filenames, .tags = tagNames(binary.tags), .present = binary.data.has_value(),
                              .analyzed = binary.analysis_version == OPCODE_ANALYSIS_VERSION, .opcodes = binary.opcodes};
                 for (const auto& config : binary.configs) {
                     rom.configs.push_back(configFacts(config));
@@ -937,6 +948,11 @@ struct Database::Private
                });
     }
 
+    bool isBad(const DBBinary& binary) const
+    {
+        return badTagId && std::ranges::find(binary.tags, badTagId) != binary.tags.end();
+    }
+
     // The ROM shown in the info form and the preview, the selected one or the first of the selected program.
     int currentBinaryId() const
     {
@@ -944,9 +960,15 @@ struct Database::Private
             return selectedBinaryId;
         }
         if (auto iter = programs.find(selectedProgramId); iter != programs.end() && !iter->second.binaries.empty()) {
-            // a program shows its first ROM that is in the library folders, ROMs only known from metadata can't run
+            // a program shows its first ROM that is in the library folders, ROMs only known from metadata can't run,
+            // and a bad one only if nothing else is left
             const auto& ids = iter->second.binaries;
-            auto present = std::ranges::find_if(ids, [this](int binaryId) { return binaries.contains(binaryId) && binaries.at(binaryId).data; });
+            auto isPresentRom = [this](int binaryId) { return binaries.contains(binaryId) && binaries.at(binaryId).data; };
+            auto good = std::ranges::find_if(ids, [&](int binaryId) { return isPresentRom(binaryId) && !isBad(binaries.at(binaryId)); });
+            if (good != ids.end()) {
+                return *good;
+            }
+            auto present = std::ranges::find_if(ids, isPresentRom);
             return present != ids.end() ? *present : ids.front();
         }
         return -1;
@@ -1836,6 +1858,36 @@ struct Database::Private
         return true;
     }
 
+    // The items as toggles, wrapped into rows next to a label, returns the index of the one that was toggled.
+    std::optional<size_t> renderToggleRows(float labelWidth, const char* label, std::vector<std::pair<std::string, bool>>& items)
+    {
+        using namespace gui;
+        std::optional<size_t> toggled;
+        const float width = GetContentAvailable().width - labelWidth - 4;
+        size_t index = 0;
+        do {
+            BeginColumns();
+            SetNextWidth(labelWidth);
+            Label(index ? "" : label);
+            float used = 0;
+            while (index < items.size()) {
+                auto& [name, active] = items[index];
+                const auto itemWidth = GetTextSize(name.c_str()).x + 12;
+                if (used > 0 && used + itemWidth > width) {
+                    break;
+                }
+                SetNextWidth(itemWidth);
+                if (Toggle(name.c_str(), &active)) {
+                    toggled = index;
+                }
+                used += itemWidth + 4;
+                ++index;
+            }
+            EndColumns();
+        } while (index < items.size());
+        return toggled;
+    }
+
     void renderTagToggles(float labelWidth)
     {
         using namespace gui;
@@ -1854,36 +1906,17 @@ struct Database::Private
         for (const auto& name : edit.newTags) {
             items.emplace_back(name, true);
         }
-        const float width = GetContentAvailable().width - labelWidth - 4;
-        size_t index = 0;
-        do {
-            BeginColumns();
-            SetNextWidth(labelWidth);
-            Label(index ? "" : "Tags:");
-            float used = 0;
-            while (index < items.size()) {
-                auto& [name, active] = items[index];
-                const auto itemWidth = GetTextSize(name.c_str()).x + 12;
-                if (used > 0 && used + itemWidth > width) {
-                    break;
-                }
-                SetNextWidth(itemWidth);
-                if (Toggle(name.c_str(), &active)) {
-                    if (index >= sorted.size()) {
-                        std::erase(edit.newTags, name);
-                    }
-                    else if (active) {
-                        edit.tagIds.insert(sorted[index]->id);
-                    }
-                    else {
-                        edit.tagIds.erase(sorted[index]->id);
-                    }
-                }
-                used += itemWidth + 4;
-                ++index;
+        if (const auto toggled = renderToggleRows(labelWidth, "Tags:", items)) {
+            if (*toggled >= sorted.size()) {
+                std::erase(edit.newTags, items[*toggled].first);
             }
-            EndColumns();
-        } while (index < items.size());
+            else if (items[*toggled].second) {
+                edit.tagIds.insert(sorted[*toggled]->id);
+            }
+            else {
+                edit.tagIds.erase(sorted[*toggled]->id);
+            }
+        }
         BeginColumns();
         SetNextWidth(labelWidth);
         Label("");
@@ -1960,13 +1993,109 @@ struct Database::Private
         renderTagToggles(labelWidth);
     }
 
+    // Gives a tag to a ROM or takes it away, a tag that doesn't exist yet is created.
+    std::string setRomTag(int binaryId, const std::string& name, bool active)
+    {
+        auto iter = findTag(name);
+        if (iter != tags.end() && (iter->second.query || iter->first == newTagId || iter->first == unclassifiedTagId)) {
+            return fmt::format("'{}' can't be given to ROMs.", name);
+        }
+        auto& binary = binaries.at(binaryId);
+        std::optional<DBTags> createdTag;
+        int tagId = iter != tags.end() ? iter->first : 0;
+        try {
+            auto session = db::Session(database);
+            db::Transaction transaction{session};
+            if (iter == tags.end()) {
+                createdTag = DBTags{0, name, name == BAD_TAG_NAME ? BAD_TAG_COLOR : NEW_TAG_COLORS[tags.size() % NEW_TAG_COLORS.size()]};
+                session.insert(*createdTag);
+                tagId = createdTag->id;
+            }
+            if (active) {
+                session.insert(DBBinaryTag{.binary_id = binaryId, .tag_id = tagId});
+            }
+            else {
+                db::Statement removeTag(session, "DELETE FROM binary_tags WHERE binary_id = ? AND tag_id = ?");
+                removeTag << binaryId << tagId;
+                removeTag.execute();
+            }
+            db::Statement modified(session, "UPDATE binaries SET user_modified = 1 WHERE id = ?");
+            modified << binaryId;
+            modified.execute();
+            transaction.commit();
+        }
+        catch (const db::Exception& ex) {
+            return ex.what();
+        }
+        if (createdTag) {
+            tags.emplace(tagId, *createdTag);
+            if (name == BAD_TAG_NAME) {
+                badTagId = tagId;
+            }
+        }
+        if (active) {
+            binary.tags.push_back(tagId);
+        }
+        else {
+            std::erase(binary.tags, tagId);
+        }
+        binary.user_modified = 1;
+        romTagsChanged = true;
+        updateFilter();
+        return {};
+    }
+
+    // The tags of a ROM as toggles, what changed is returned to be stored by the caller.
+    std::optional<std::pair<std::string, bool>> renderRomTags(const DBBinary& binary, float labelWidth)
+    {
+        using namespace gui;
+        std::optional<std::pair<std::string, bool>> change;
+        // "new" and "???" follow the state of a program or ROM, "bad" is offered before it exists
+        std::vector<std::pair<std::string, bool>> items;
+        for (const auto& [tagId, tag] : tags) {
+            if (!tag.query && tagId != newTagId && tagId != unclassifiedTagId) {
+                items.emplace_back(tag.name, std::ranges::find(binary.tags, tagId) != binary.tags.end());
+            }
+        }
+        if (findTag(BAD_TAG_NAME) == tags.end()) {
+            items.emplace_back(BAD_TAG_NAME, false);
+        }
+        std::ranges::sort(items, std::less<>{}, [](const auto& item) { return toLower(item.first); });
+        if (const auto toggled = renderToggleRows(labelWidth, "Tags:", items)) {
+            change = items[*toggled];
+        }
+        BeginColumns();
+        SetNextWidth(labelWidth);
+        Label("");
+        SetNextWidth(120);
+        TextBox("##newRomTag", edit.newRomTag, 32);
+        SetNextWidth(60);
+        if (Button("+ tag")) {
+            if (auto name = trim(edit.newRomTag); !name.empty()) {
+                change = std::pair{name, true};
+            }
+            edit.newRomTag.clear();
+        }
+        EndColumns();
+        // a tag the ROM already has stays as it is
+        if (change && change->second) {
+            if (auto iter = findTag(change->first); iter != tags.end() && std::ranges::find(binary.tags, iter->first) != binary.tags.end()) {
+                change.reset();
+            }
+        }
+        return change;
+    }
+
     void renderRomsTab()
     {
         using namespace gui;
         const auto& program = programs.at(edit.program.id);
         Label("The actions in this tab are applied immediately, not on Save.");
         std::optional<int> showConfigs, detach, move, remove;
-        const auto infoWidth = GetContentAvailable().width - 4 * 100;
+        std::optional<std::pair<std::string, bool>> tagChange;
+        constexpr float buttonWidth = 64;
+        constexpr float buttonSpacing = 4;
+        const auto infoWidth = GetContentAvailable().width - 5 * (buttonWidth + buttonSpacing);
         for (const auto binaryId : program.binaries) {
             const auto& binary = binaries.at(binaryId);
             std::vector<std::string> variants;
@@ -1975,29 +2104,43 @@ struct Database::Private
             }
             PushId(&binary);
             BeginColumns();
+            SetSpacing(buttonSpacing);
             SetNextWidth(infoWidth);
             Label(fitText(fmt::format("{}  {} bytes  {} file{}  {}", binary.sha1.substr(0, 8), binary.size, binary.filenames.size(), binary.filenames.size() == 1 ? "" : "s", variants.empty() ? "???" : join(variants.begin(), variants.end(), ", ")), infoWidth - 16).c_str());
-            SetNextWidth(80);
+            SetNextWidth(buttonWidth);
             if (Button("Configs")) {
                 showConfigs = binaryId;
+            }
+            // "???" is no tag to set here, it only says that the ROM has no configs
+            const auto tagCount = std::ranges::count_if(binary.tags, [&](int tagId) { return tagId != unclassifiedTagId; });
+            SetNextWidth(buttonWidth);
+            if (Button(tagCount ? fmt::format("Tags ({})", tagCount).c_str() : "Tags")) {
+                edit.tagsBinaryId = edit.tagsBinaryId == binaryId ? -1 : binaryId;
             }
             if (program.binaries.size() < 2) {
                 GuiDisable();
             }
-            SetNextWidth(80);
+            SetNextWidth(buttonWidth);
             if (Button("Detach")) {
                 detach = binaryId;
             }
             GuiEnable();
-            SetNextWidth(80);
+            SetNextWidth(buttonWidth);
             if (Button("Move...")) {
                 move = binaryId;
             }
+            SetNextWidth(buttonWidth);
             if (Button("Remove...")) {
                 remove = binaryId;
             }
             EndColumns();
+            if (edit.tagsBinaryId == binaryId) {
+                tagChange = renderRomTags(binary, 40);
+            }
             PopId();
+        }
+        if (tagChange) {
+            edit.error = setRomTag(edit.tagsBinaryId, tagChange->first, tagChange->second);
         }
         if (showConfigs) {
             edit.binaryId = *showConfigs;
@@ -2062,7 +2205,7 @@ struct Database::Private
         Label("The variants this ROM runs on, the first one is used for the preview.");
         Label("Properties are a JSON diff to the variant, \"Save settings to library\"");
         Label("in the main menu captures them from the running emulator.");
-        std::optional<size_t> moveUp, remove;
+        std::optional<size_t> moveUp, duplicate, remove;
         std::optional<std::pair<size_t, Action>> load;
         edit.variantSelections.resize(configs->size());
         for (size_t i = 0; i < configs->size(); ++i) {
@@ -2070,6 +2213,7 @@ struct Database::Private
             auto& [coreSelection, variantSelection] = edit.variantSelections[i];
             PushId(&config);
             BeginColumns();
+            SetSpacing(4);
             // lower rows open their lists upwards, so they stay inside the window
             const bool openUp = GetCurrentPos().y > 210;
             auto [groupIndex, variantIndex] = findVariant(config.preset);
@@ -2097,15 +2241,22 @@ struct Database::Private
             if (i == 0) {
                 GuiDisable();
             }
-            SetNextWidth(40);
-            if (Button("Up")) {
+            SetNextWidth(20);
+            if (Button(IconText(ICON_ARROW_UP, ""))) {
                 moveUp = i;
             }
+            SetTooltip("MOVE UP");
             GuiEnable();
-            SetNextWidth(40);
-            if (Button("Del")) {
+            SetNextWidth(20);
+            if (Button(IconText(ICON_FILE_COPY, ""))) {
+                duplicate = i;
+            }
+            SetTooltip("DUPLICATE");
+            SetNextWidth(20);
+            if (Button(IconText(ICON_BIN, ""))) {
                 remove = i;
             }
+            SetTooltip("REMOVE");
             // a ROM only known from metadata has nothing to load
             if (!binaries.at(edit.binaryId).data) {
                 GuiDisable();
@@ -2127,6 +2278,12 @@ struct Database::Private
         }
         if (moveUp) {
             std::swap((*configs)[*moveUp], (*configs)[*moveUp - 1]);
+        }
+        if (duplicate) {
+            // the copy follows the original, to change its variant or properties
+            auto copy = (*configs)[*duplicate];
+            copy.id = 0;
+            configs->insert(configs->begin() + static_cast<long>(*duplicate) + 1, copy);
         }
         if (remove) {
             configs->erase(configs->begin() + static_cast<long>(*remove));
@@ -2484,6 +2641,9 @@ void Database::refreshBadges()
             else if (fuzzyCompare(tag.name, "new")) {
                 _badges.emplace(tag.name, BadgeInfo{BadgeInfo::NEW_TAG, tag.name, DARKGRAY, {col.r, col.g, col.b, 0xFF}});
             }
+            else if (id == _pimpl->badTagId) {
+                _badges.emplace(tag.name, BadgeInfo{BadgeInfo::USER_TAG, tag.name, LIGHTGRAY, {col.r, col.g, col.b, 0xFF}});
+            }
             else {
                 _badges.emplace(tag.name, BadgeInfo{BadgeInfo::USER_TAG, tag.name, DARKGRAY, {col.r, col.g, col.b, 0xFF}});
             }
@@ -2510,6 +2670,8 @@ void Database::fetchProgramInfo()
             }
             _pimpl->newTagId = session.select(db::col(&DBTags::id)).where(db::like(db::col(&DBTags::name), "new")).valueOrDefault(0);
             _pimpl->unclassifiedTagId = session.select(db::col(&DBTags::id)).where(db::like(db::col(&DBTags::name), "???")).valueOrDefault(0);
+            auto badTag = _pimpl->findTag(BAD_TAG_NAME);
+            _pimpl->badTagId = badTag != _pimpl->tags.end() && !badTag->second.query ? badTag->first : 0;
         }
 
         {
@@ -3097,6 +3259,10 @@ Database::Action Database::render(Font& font)
                         DrawTextClipped(font, fmt::format("{}", _pimpl->binaries[program.binaries[i]].sha1.substr(0,8)).c_str(), {itemRect.x, itemRect.y + (i+1) * 9}, isSelected ? selectedCol : (binary.data ? grayCol : missingCol));
                         //DrawTextEx(font, fmt::format("{} ", badges).c_str(), {itemRect.x + 9*6, itemRect.y + (i+1) * 9}, 8, 0, WHITE);
                         Vector2 pos = {itemRect.x + 9*6, itemRect.y + (i+1) * 9};
+                        if (_pimpl->isBad(binary)) {
+                            const auto& badge = _badges[BAD_TAG_NAME];
+                            pos.x += drawBadge(font, badge.text, pos, badge.textCol, badge.badgeCol).x + 1;
+                        }
                         for (const auto& bincfg : binary.configs) {
                             auto size = drawBadge(font, bincfg.preset, pos, DARKGRAY, {0x00, 0xE0, 0x00, 0xFF});
                             pos.x += size.x + 1;
@@ -3190,6 +3356,10 @@ Database::Action Database::render(Font& font)
         //DrawTexturePro(*texture, {0,0,128,64}, {pos.x + area.width - 130, pos.y + 1, 128, 64}, {0,0}, 0, WHITE);
         //DrawText(fmt::format("{}x{}", mx, my).c_str(), area.x + 2, area.y + 2, 8, RED);
         if (_pimpl->editorOpen && _pimpl->renderEditor()) {
+            refreshBadges();
+            updatePreview();
+        }
+        if (std::exchange(_pimpl->romTagsChanged, false)) {
             refreshBadges();
             updatePreview();
         }

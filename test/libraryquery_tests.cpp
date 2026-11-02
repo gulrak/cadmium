@@ -214,3 +214,39 @@ TEST_CASE("Library query: combined queries")
     CHECK(matches("tag = " + LibraryQuery::quoted("???"), tagged));
     CHECK_THROWS_AS(LibraryQuery::quoted("say \"hi\""), LibraryQuery::Error);
 }
+
+TEST_CASE("Library query: tags of ROMs")
+{
+    auto splash = program("Splash Screen");
+    splash.tags = {"demo"};
+    RomFacts good{.sha1 = "fb8d0807a00353ae8071238a2eb7f1e555afe525", .present = true};
+    RomFacts broken{.sha1 = "4333eff4cbb49e57f8c0fb12f1e4cd0ac1dedd56", .present = true};
+    broken.tags = {"bad"};
+    splash.roms = {broken, good};
+    CHECK(LibraryQuery::parse("tag = bad").usesRomFields());
+    // a tag of a ROM only counts for that ROM, the other one is still a match for a negation
+    CHECK(LibraryQuery::parse("tag = bad").matchingRoms(splash) == std::vector<size_t>{0});
+    CHECK(LibraryQuery::parse("-tag = bad").matchingRoms(splash) == std::vector<size_t>{1});
+    CHECK(matches("tag = bad", splash));
+    CHECK(matches("-tag = bad", splash));
+    CHECK_FALSE(matches("tag = bad sha1 = fb8d0807", splash));
+    CHECK(matches("tag = bad sha1 = 4333eff4", splash));
+    // a tag of the program counts for all of its ROMs
+    CHECK(LibraryQuery::parse("tag = demo").matchingRoms(splash) == std::vector<size_t>{0, 1});
+    CHECK_FALSE(matches("-tag = demo", splash));
+    CHECK_FALSE(matches("tag = none", splash));
+    // all ROMs bad: the program is gone with the negation
+    auto onlyBad = program("Only Bad");
+    onlyBad.roms = {broken};
+    CHECK(matches("tag = bad", onlyBad));
+    CHECK_FALSE(matches("-tag = bad", onlyBad));
+    CHECK_FALSE(matches("tag = none", onlyBad));
+    // an untagged ROM of an untagged program has no tag
+    auto untagged = program("Untagged");
+    untagged.roms = {good};
+    CHECK(matches("tag = none", untagged));
+    // without ROMs only the tags of the program are known
+    auto noRoms = program("No ROMs");
+    noRoms.tags = {"bad"};
+    CHECK(matches("tag = bad", noRoms));
+}

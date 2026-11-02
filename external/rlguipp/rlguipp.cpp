@@ -447,7 +447,15 @@ struct GuiContext
                 GuiContext::tooltipTimer -= GetFrameTime();
             }
             if(GuiContext::tooltipTimer >= 0.0f) {
+                // SetTooltip() only takes tooltips of unlocked widgets, the root stays locked while the mouse is over a popup
+                const bool locked = GuiIsLocked();
+                if (locked) {
+                    GuiUnlock();
+                }
                 drawTooltip(tooltipParentRect, tooltipText.c_str());
+                if (locked) {
+                    GuiLock();
+                }
             }
         }
     }
@@ -790,8 +798,9 @@ void EndGui()
     }
     detail::repairStacks(g_contextStack.back());
     GuiContext::handleDeferredDropBoxes(0);
-    GuiContext::drawDeferredTooltip();
     PopupContext::renderPopups();
+    // after the popups, so the tooltips of their widgets are not covered by them
+    GuiContext::drawDeferredTooltip();
     GuiContext::popup.render();
     g_contextStack.clear();
 #if !defined(PLATFORM_WEB) && !defined(NDEBUG) && defined(RLGUIPP_DEBUG_CURSOR)
@@ -1554,7 +1563,13 @@ Rectangle GetLastWidgetRect()
 void SetTooltip(const std::string& tooltip)
 {
     auto rect = GetLastWidgetRect();
-    if(CheckCollisionPointRec(GetMousePosition(), rect)) {
+    if(!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), rect)) {
+        // the tooltip is drawn at the end of the frame on the root, a widget in a popup is relative to the popup
+        if (const auto* root = GuiContext::rootContext) {
+            const auto& ctx = detail::context();
+            rect.x += (root->mouseOffset.x - ctx.mouseOffset.x) / GuiContext::guiScale.x;
+            rect.y += (root->mouseOffset.y - ctx.mouseOffset.y) / GuiContext::guiScale.y;
+        }
         GuiContext::tooltipText = tooltip;
         GuiContext::tooltipParentRect = rect;
     }

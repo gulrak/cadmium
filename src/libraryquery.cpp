@@ -65,7 +65,7 @@ constexpr std::array FIELDS = {
     FieldInfo{"license", Field::LICENSE, FieldType::TEXT},
     FieldInfo{"copyright", Field::COPYRIGHT, FieldType::TEXT},
     FieldInfo{"url", Field::URL, FieldType::TEXT},
-    FieldInfo{"tag", Field::TAG, FieldType::SET},
+    FieldInfo{"tag", Field::TAG, FieldType::SET, Level::ROM},
     FieldInfo{"variant", Field::VARIANT, FieldType::TEXT, Level::CONFIG},
     FieldInfo{"preset", Field::VARIANT, FieldType::TEXT, Level::CONFIG},
     FieldInfo{"size", Field::SIZE, FieldType::NUMBER, Level::ROM},
@@ -626,7 +626,12 @@ bool LibraryQuery::Node::matchesField(const ProgramFacts& program, const RomFact
         case Field::LICENSE: values = {program.license}; break;
         case Field::COPYRIGHT: values = {program.copyright}; break;
         case Field::URL: values = {program.url}; break;
-        case Field::TAG: values.assign(program.tags.begin(), program.tags.end()); break;
+        case Field::TAG:
+            values.assign(program.tags.begin(), program.tags.end());
+            if (rom) {
+                values.insert(values.end(), rom->tags.begin(), rom->tags.end());
+            }
+            break;
         case Field::SHA1:
             if (rom) {
                 values = {rom->sha1};

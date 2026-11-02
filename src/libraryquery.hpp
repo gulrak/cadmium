@@ -48,6 +48,7 @@ struct RomFacts
     std::string sha1;
     int size{0};
     std::vector<std::string> files;
+    std::vector<std::string> tags;  // its own, not the ones of its program
     bool present{false};  // found in the library folders, not only known from metadata
     bool analyzed{false};  // its opcodes are known, from its data or from the starter metadata
     std::vector<uint16_t> opcodes;  // the distinct opcodes on its execution paths, sorted
@@ -66,7 +67,7 @@ struct ProgramFacts
     std::string license;
     std::string copyright;
     std::string url;
-    std::vector<std::string> tags;
+    std::vector<std::string> tags;  // its own, not the ones of its ROMs
     bool present{false};  // at least one of its ROMs was found in the library folders, used without ROMs
     std::vector<RomFacts> roms;
 };
@@ -86,14 +87,15 @@ struct ProgramFacts
 //   not a, -a, ( ... )          negation and grouping
 //
 // Fields of a program: name (title), description (desc), author (by), release (year, date), origin, jam (ref,
-// reference), license, copyright, url, tag. Fields of a ROM: size (with k for 1024 bytes), sha1 (a prefix with =),
-// file. Fields of a config of a ROM: variant (preset) and the properties of the cores by their name (like
+// reference), license, copyright, url. Fields of a ROM: size (with k for 1024 bytes), sha1 (a prefix with =), file,
+// tag (the tags of the ROM together with the ones of its program). Fields of a config of a ROM: variant (preset) and the properties of the cores by their name (like
 // wrapSprites or instructionsPerFrame), which the caller passes to parse(), with the quirk names of the
 // chip-8-database as aliases where it adds them.
 //
 // A query is evaluated for each ROM of a program and each config of the ROM, a program matches if one of these
 // combinations does. So "variant = xo-chip and wrapSprites = false" needs one config with both, and a negation
-// like "-variant = xo-chip" matches a program that has another variant too. matchingRoms() tells which ROMs match.
+// like "-variant = xo-chip" matches a program that has another variant too, and "-tag = bad" one with another ROM
+// that isn't bad. matchingRoms() tells which ROMs match.
 //
 // Partial dates are ranges, 197x is 1970 to 1979. A comparison holds only if it holds for the whole range of
 // the release, so "release < 1980" doesn't match 198x. Programs without a release match none of them.
