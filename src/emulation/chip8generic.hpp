@@ -279,7 +279,9 @@ public:
     void opFx65_loadStoreIncIByX(uint16_t opcode);
     void opFx65_loadStoreDontIncI(uint16_t opcode);
     void opFx75(uint16_t opcode);
+    void opFx75_atMost8(uint16_t opcode);
     void opFx85(uint16_t opcode);
+    void opFx85_atMost8(uint16_t opcode);
     void opFxF8_c8x(uint16_t opcode);
     void opFxFB_c8x(uint16_t opcode);
 
@@ -484,8 +486,8 @@ public:
                     }
                     else {
                         if constexpr (quirks&SChip11Collisions) {
-                            //if (hires)
-                            //    ++collision;
+                            if (hires)
+                                ++collision;
                         }
                         if(width == 16)
                             ++data;

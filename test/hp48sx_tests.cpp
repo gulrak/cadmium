@@ -270,6 +270,43 @@ TEST_CASE("HP48 SCHIP 1.0 beta selects the large font through Fx29")
     CHECK(fontAddress("hp-48-schip-1-0", 0x05, 0x30) == 0x82);
 }
 
+TEST_CASE("HP48 interpreters see every host key under its own CHIP-8 key number")
+{
+    // Scans all keys in a loop, on a pressed one it sets I to its font digit.
+    const std::array<uint8_t, 18> program{
+        0x60, 0x00,  // 200: v0 := 0
+        0xe0, 0x9e,  // 202: skip if key v0 is pressed
+        0x12, 0x08,  // 204: jump 208
+        0xf0, 0x29,  // 206: i := hex v0
+        0x70, 0x01,  // 208: v0 += 1
+        0x40, 0x10,  // 20A: skip if v0 != 16
+        0x60, 0x00,  // 20C: v0 := 0
+        0x12, 0x02,  // 20E: jump 202
+        0x00, 0x00,
+    };
+    for (const auto* preset : {"hp-48-chip-48", "hp-48-schip-1-0-beta", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
+        CAPTURE(preset);
+        Hp48Fixture fixture(preset);
+        auto& core = fixture.core;
+        REQUIRE(core.loadData(program, {}));
+        const auto runFrames = [&](int frames) {
+            for (int frame = 0; frame < frames; ++frame) {
+                core.setExecMode(emu::GenericCpu::eRUNNING);
+                core.executeFrame();
+                REQUIRE_FALSE(core.inErrorState());
+            }
+        };
+        for (uint8_t key = 0; key < 16; ++key) {
+            CAPTURE(static_cast<int>(key));
+            fixture.host.keyDown(key);
+            runFrames(12);
+            CHECK(core.getI() == key * 5);
+            fixture.host.keyUp(key);
+            runFrames(4);
+        }
+    }
+}
+
 TEST_CASE("HP48 raw preset reset restores a ready calculator and loaded object")
 {
     Hp48Fixture fixture("hp-48-none");

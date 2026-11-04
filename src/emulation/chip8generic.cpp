@@ -319,7 +319,7 @@ Chip8GenericSetupInfo genericPresets[] = {
         "SUPER-CHIP compatibility fix for the HP-48SX by Chromatophore, 2017",
         ".scc",
         chip8::Variant::SCHIPC,
-        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is8x16 = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
+        {.behaviorBase = Chip8GenericOptions::eSCHPC, .optDontResetVf = true, .optLoresDxy0Is8x16 = true, .optSCLoresDrawing = true, .optHalfPixelScroll = true, .optModeChangeClear = true, .optAllowHires = true, .instructionsPerFrame = 30, .frameRate = 64, .fontStyle5 = Chip8GenericOptions::FontStyle5px::SCHIP, .fontStyle10 = Chip8GenericOptions::FontStyle10px::SCHIP11}
     },
     {
         "SCHIP-MODERN",
@@ -345,17 +345,6 @@ Chip8GenericSetupInfo genericPresets[] = {
         chip8::Variant::XO_CHIP,
         {.behaviorBase = Chip8GenericOptions::eXOCHIP, .ramSize = 0x10000, .optDontResetVf = true, .optWrapSprites = true, .optInstantDxyn = true, .optLoresDxy0Is16x16 = true, .optModeChangeClear = true, .optAllowHires = true, .optAllowColors = true, .optHas16BitAddr = true, .optXOChipSound = true, .instructionsPerFrame = 1000, .fontStyle5 = Chip8GenericOptions::FontStyle5px::OCTO, .fontStyle10 = Chip8GenericOptions::FontStyle10px::OCTO}
     }
-    /*{Opts::eCHIP10, R"({"optAllowHires":true,"optOnlyHires":true})"},
-    {Opts::eCHIP8E, R"({})"},
-    {Opts::eCHIP8X, R"({"startAddress":768,"instructionsPerFrame":18,"advanced":{"palette":["#000080","#000000","#008000","#800000","#181818","#FF0000","#0000FF","#FF00FF","#00FF00","#FFFF00","#00FFFF","#FFFFFF","#000000","#000000","#000000","#000000"]}})"},
-    {Opts::eCHIP48, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optJump0Bxnn":true,"instructionsPerFrame":15,"frameRate":64})"},
-    {Opts::eSCHIP10, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreIncIByX":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":15,"frameRate":64})"},
-    {Opts::eSCHIP11, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":false,"optLoresDxy0Is8x16":true,"optSCLoresDrawing":true,"optSC11Collision":true,"optHalfPixelScroll":true,"optJump0Bxnn":true,"optAllowHires":true,"instructionsPerFrame":30,"frameRate":64})"},
-    {Opts::eSCHPC, R"({"optDontResetVf":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
-    {Opts::eSCHIP_MODERN, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optJump0Bxnn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"instructionsPerFrame":30})"},
-    {Opts::eMEGACHIP, R"({"optJustShiftVx":true,"optDontResetVf":true,"optLoadStoreDontIncI":true,"optInstantDxyn":true,"optLoresDxy0Is8x16":true,"optSC11Collision":true,"optModeChangeClear":true,"optAllowHires":true,"optHas16BitAddr":true,"instructionsPerFrame":3000,"frameRate":50})"},
-    {Opts::eXOCHIP, R"({"optDontResetVf":true,"optWrapSprites":true,"optInstantDxyn":true,"optLoresDxy0Is16x16":true,"optModeChangeClear":true,"optAllowHires":true,"optAllowColors":true,"optHas16BitAddr":true,"optXOChipSound":true,"instructionsPerFrame":1000})"},
-*/
 };
 // clang-format on
 
@@ -812,8 +801,8 @@ void Chip8GenericEmulator::setHandler()
             if(!_options.optSCPreviewFx29) {
                 on(0xF0FF, 0xF030, handler<&Chip8GenericEmulator::opFx30>);
             }
-            on(0xF0FF, 0xF075, handler<&Chip8GenericEmulator::opFx75>);
-            on(0xF0FF, 0xF085, handler<&Chip8GenericEmulator::opFx85>);
+            on(0xF0FF, 0xF075, handler<&Chip8GenericEmulator::opFx75_atMost8>);
+            on(0xF0FF, 0xF085, handler<&Chip8GenericEmulator::opFx85_atMost8>);
             break;
         case Chip8GenericOptions::eCHIP8E:
             on(0xFFFF, 0x00ED, handler<&Chip8GenericEmulator::op00ED_c8e>);
@@ -858,8 +847,9 @@ void Chip8GenericEmulator::setHandler()
                 on(0xFFFF, 0x00FF, handler<&Chip8GenericEmulator::op00FF>);
             }
             on(0xF0FF, 0xF030, handler<&Chip8GenericEmulator::opFx30>);
-            on(0xF0FF, 0xF075, handler<&Chip8GenericEmulator::opFx75>);
-            on(0xF0FF, 0xF085, handler<&Chip8GenericEmulator::opFx85>);
+            // SCHIP-MODERN follows Octo, which saves and restores all 16 registers.
+            on(0xF0FF, 0xF075, _options.behaviorBase == Chip8GenericOptions::eSCHIP_MODERN ? handler<&Chip8GenericEmulator::opFx75> : handler<&Chip8GenericEmulator::opFx75_atMost8>);
+            on(0xF0FF, 0xF085, _options.behaviorBase == Chip8GenericOptions::eSCHIP_MODERN ? handler<&Chip8GenericEmulator::opFx85> : handler<&Chip8GenericEmulator::opFx85_atMost8>);
             break;
         case Chip8GenericOptions::eMEGACHIP:
             on(0xFFFF, 0x0010, handler<&Chip8GenericEmulator::op0010>);
@@ -2314,6 +2304,22 @@ void Chip8GenericEmulator::opFx75(uint16_t opcode)
 void Chip8GenericEmulator::opFx85(uint16_t opcode)
 {
     uint8_t upto = (opcode >> 8) & 0xF;
+    for (int i = 0; i <= upto; ++i) {
+        _rV[i] = registerSpace[i];
+    }
+}
+
+void Chip8GenericEmulator::opFx75_atMost8(uint16_t opcode)
+{ // The HP-48SX interpreters have eight flags and clamp x to 7
+    uint8_t upto = std::min((opcode >> 8) & 0xF, 7);
+    for (int i = 0; i <= upto; ++i) {
+        registerSpace[i] = _rV[i];
+    }
+}
+
+void Chip8GenericEmulator::opFx85_atMost8(uint16_t opcode)
+{ // The HP-48SX interpreters have eight flags and clamp x to 7
+    uint8_t upto = std::min((opcode >> 8) & 0xF, 7);
     for (int i = 0; i <= upto; ++i) {
         _rV[i] = registerSpace[i];
     }

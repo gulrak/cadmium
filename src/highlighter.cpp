@@ -129,7 +129,7 @@ const char* Highlighter::nextModeChange(const char* text, const char* end, LineS
             ++text;
             continue;
         }
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+        if (static_cast<unsigned char>(c) <= ' ') {
             ++text;
             continue;
         }
