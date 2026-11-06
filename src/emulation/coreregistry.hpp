@@ -285,6 +285,7 @@ public:
 
     static Properties propertiesFromOctoOptions(const OctoOptions& options);
     static OctoOptions octoOptionsFromProperties(const Properties& properties);
+    static bool supportsCartridge(const Properties& properties);
 
     Iterator begin() const
     {

@@ -1,0 +1,1550 @@
+; Comments added in 2026:
+; CHIP-48 2.25 source for the ASAP assembler (Alonzo Gariepy's mnemonics) as used by Cadmium.
+; This is a modified version: the object type letter in the download preamble was changed from
+; 'A' to 'J' (marked with @gulrak). Modification by Steffen "Gulrak" Schuemann, 2026.
+;
+; Original content:
+;
+; @(#) chip.asap 2.25 9/15/90
+;
+; chip.asap -- a CHIP-8 interpreter for the HP48SX
+;
+; (C) Copyright 1990 Andreas Gustafsson
+;
+;     Noncommercial distribution allowed, provided that this
+;     copyright message is preserved, and any modified versions
+;     are clearly marked as such.
+;
+;     The program makes use of undocumented low-level features of
+;     the HP48SX calculator, and may or may not cause loss of data,
+;     excessive battery drainage, and/or damage to the calculator
+;     hardware.  The Author takes no responsibility whatsoever for
+;     any damage caused by the use of this program.
+;
+;     THIS SOFTWARE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR
+;     IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+;     WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+;
+
+;
+; Register usage:
+;
+; d0 = general pointing
+; d1 = points to chip-8 instruction (physical)
+;
+; r0 = CHIP-8 I register
+; r1 = last time value
+; r2 = physical address of virtual zero
+; r3 = CHIP-8 PC
+;
+
+; standard preamble for Kermit download
+        data.b        'H'
+        data.b        'P'
+        data.b        'H'
+        data.b        'P'
+        data.b        '4'
+        data.b        '8'
+        data.b        '-'
+        data.b        'J'           ; @gulrak was 'A'
+        data.a        #2dcc         ; machine code object
+begin:        data.a        end-begin   ; length of object
+; end of preamble
+
+
+; HP48SX ROM locations
+; These are for the Revision A ROM, they may need to be changed for
+; other revisions.
+
+        flush_kbd=#00d57            ; flush keyboard buffer
+        do_in_c=#01160              ; perform "in.4 c" instruction
+        alloc_str=#05b7d            ; allocate string
+        push_r0_shortint=#06537     ; push r0 as short integer, restore regs
+        save_rpl_regs=#0679b        ; save d0, d1, b, d
+        restore_rpl_regs=#067d2     ; restore d0, d1, b, d
+        check_1_arg=#18abf          ; make sure stack isn't empty
+
+; HP48SX RAM locations
+
+        crcval=#00104               ; hardware CRC register
+        hwtimer=#00138              ; hardware timer
+        stackdisp_ptr=#7055B        ; contains address of stack display
+        menudisp_ptr=#70551         ; contains address of menu display
+        flags_37=#706ce             ; flags -37 to -40
+
+; data area layout (with a smarter assembler these offsets could be
+; calculated automatically).
+; Don't rearrange; in particular, the variables must be first and
+; the order of the  "V10".."V15" pseudovariables is important.
+
+        ofs_vars=0                  ; CHIP-8 variables, 16 vars * 2 nibbles = 32
+        ofs_timer=32                ; delay timer "V10", size = 2
+        ofs_sound=34                ; sound timer "V11", size = 2
+        ofs_sndon=36                ; sound on/off flag "V12.0", size = 1
+        ofs_sdata=37                ; speaker data "V12.1", "V13", size = 3
+        ofs_ckeys=40                ; control key status "V14-15", size=4
+        ofs_csp=44                  ; CHIP-8 stack pointer, size 5
+        ofs_cstack=49               ; CHIP-8 stack, size "stacknibbles" = 64
+        ofs_linetab=113             ; display row table, size 64 * 5 = 320
+        ofs_regsave=433             ; r0..r3 temporary save location, size = 20
+        ofs_end=453                 ; end of data area
+
+; don't change these without updating the offsets above also
+
+        stacklevels=16              ; size of CHIP-8 stack
+        stacknibbles=64             ; 4*stacklevels
+
+; execution begins here
+
+        call.a        check_1_arg   ; check that stack is not empty
+
+        call.a        save_rpl_regs ; call ROM routine to save d0, d1, b, d
+
+; if flag -40 (clock display) is set, clear it and exit.
+; This is because the clock display interrupt (or whatever)
+; causes problems, and doesn't get turned off just by clearing
+; the flag.  However, it does get turned off when the screen is
+; redrawn after we exit, so the next time this program is started
+; it will run normally.
+        move.p5        flags_37,c
+        move.a        c,d0          ; point to flags -37..-40
+        move.p        @d0,a         ; get old flags
+        brbc        3,a,noclock     ; jump if flag -40 clear
+        clrb        3,a             ; clear flag -40
+        move.p        a,@d0         ; store updated flags
+        jump.3        exit          ; don't continue just yet
+noclock:
+
+; allocate a string for temporary data storage
+
+        clrb        #a,st           ; no garbage collection done
+        move.p5        ofs_end,c    ; size of uninitialized data area
+        call.a        alloc_str     ; call ROM routine to allocate a string
+        swap.a        c,d0
+        move.a        c,r4          ; now R4 points to the string
+
+; clear the CHIP-8 variables and initialize some pseudovariables
+
+        move.a        c,d0          ; point to variables (uses c value set above)
+        clr.w        c
+        move.w        c,@d0         ; clear V0..V7
+        add.a        16,d0
+        move.w        c,@d0         ; clear V8..VF
+        add.a        16,d0
+        move.p8        #40010000,c  ; set timers to #00, sndon to #1,
+                                    ; and sdata to #400
+        move.8        c,@d0
+
+; fill "linetab" with pointers to the display rows
+
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_linetab,c
+        add.a        a,c
+        move.a        c,d0          ; d0 points to linetab
+
+        move.p5        stackdisp_ptr,c  ; pointer to address of stack display
+        move.p2        56,a         ; 56 rows
+        call.3        ltfill
+        move.p5        menudisp_ptr,c   ; pointer to address of menu display
+        move.p2        8,a          ; 8 rows
+        call.3        ltfill
+
+; allocate a 4 kB string for the CHIP-8 virtual memory
+
+        clrb        #a,st           ; no garbage collection done
+        move.p5        #2000,c      ; 4 kB in nibbles
+        call.a        alloc_str     ; call ROM routine to allocate a string
+
+; now r0 points to the header of the newly allocated string
+; object, and d0 points to the data part
+
+        swap.a        d0,c
+        move.a        c,r2          ; virtual zero in r2
+
+; hate nondeterministic bugs...
+        clr.w        a
+        clr.w        b
+        clr.w        c
+        clr.w        d
+
+chipmain:
+; copy the chip-8 program from the argument string to the virtual
+; chip-8 memory
+
+        move.a        r2,a          ; get virtual zero
+        move.p5        #0400,c      ; virtual #0200 bytes
+        add.a        a,c
+        move.a        c,d0          ; now d0 points to virtual 0200
+
+        move.a        @d1,c         ; point to the argument object
+        move.a        c,d1          ; (presumably a string)
+        move.a        @d1,a         ; get the object type
+        move.p5        #02a2c,c     ; string type prefix
+        brne.a        c,a,doerror   ; exit if it isn't a string
+        add.a        5,d1           ; skip the type
+        move.a        @d1,a         ; get the object length
+        sub.a        5,a            ; subtract length of length
+        move.p5        #01c00,c     ; this is #1000 - #0200 bytes in nibbles
+        brgt.a        c,a,nottoolong
+doerror:
+        jump.3        errexit       ; string will not fit in 4 k
+nottoolong:
+        add.a        5,d1           ; point to the object itself
+        call.3        copynibbles
+
+; pop the argument string off the stack
+        call.a        restore_rpl_regs
+        add.a        5,d1
+        inc.a        d
+        call.a        save_rpl_regs
+
+; copy the hexadecimal character font to the virtual chip-8 memory,
+; unpacking it on-the-fly
+
+        move.a        r2,c          ; get virtual zero
+        move.a        c,d0          ; now d0 points to 0000 virtual
+        move.a        pc,a
+ref17:        move.p5        hexfont-ref17,c
+        add.a        a,c
+        move.a        c,d1          ; now d1 points to the hex patterns
+        move.p2        hexfontend-hexfont,a ; length (8 bits are enough)
+fontcopylo:
+        move.1        @d1,c         ; read a nibble
+        sln.a        c              ; shift to high nibble in byte
+        add.a        1,d1
+        move.2        c,@d0         ; store byte
+        add.a        2,d0
+        dec.a        a
+        brnz.b        a,fontcopylo
+
+        intoff
+
+; jump here when the "restart" key is pressed
+restart:
+
+; initialize PC and I
+        clr.a        c
+        move.a        c,r0          ; I=0000 in r0
+        move.p3        #200,c       ; relies on c being cleared
+        move.a        c,r3          ; PC=0200 in r3
+
+; initialize stack pointer
+
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_csp,c
+        add.a        a,c
+        move.a        c,d0          ; d0 now points to csp
+
+        clr.a        c
+        move.a        c,@d0         ; csp cleared
+
+        call.3        i00e0         ; erase display
+
+; initialize the time value
+
+        clr.a        c              ; must clear all of c for comparison below
+        move.p3        hwtimer,c
+        move.a        c,d0          ; point to hardware timer
+        move.a        @d0,c
+retry1:        move.a        c,a
+        move.a        @d0,c
+        brne.a        c,a,retry1    ; loop until we get same value twice
+
+        move.p5        #00F80,a     ; mask away 7 low bits of time value
+        and.a        a,c
+        move.a        a,r1
+
+nextinstr:
+        call.3        realtime      ; do real-time chores
+        brcc        nocarry
+rtcarry:
+        brbs        4,a,restart     ; ENTER was pressed
+; otherwise, the abort key was pressed; make a clean exit
+
+exit:
+        call.a        restore_rpl_regs
+
+        move.a        @d0,a         ; dispatch next RPL instruction
+        add.a        5,d0
+        jump.a        @a
+
+nocarry:
+; There appears to be some kind of interrupt that
+; checks the keyboard status, and that doesn't get
+; turned off by "intoff".  Not knowing how to turn it off, we
+; try to live with it by flushing the keyboard buffer ever so
+; often, and trying to keep the "out" register zeroed most of
+; the time (so that the keyboard will appear inactive when
+; the interrupt checks it, even if keys really are being pressed).
+
+        intoff                      ; just in case someone turned them on again
+
+        call.a        flush_kbd     ; flush keyboard buffer (trashes d1 and c)
+
+dispatch:
+; dispatch a CHIP-8 instruction
+        move.a        r3,c          ; get cpc
+        move.a        c,a           ; keep unincremented value
+        add.a        2,a            ; increment cpc by 2 bytes
+        move.a        a,r3          ; store incremented cpc
+        call.3        virtophy      ; unincremented value is in c
+        move.a        c,d1          ; store virtual pc in d1
+
+        clr.a         c
+        add.a        1,d1           ; point to MSN
+        move.p        @d1,c         ; get MSN of first byte of CHIP-8 instruction
+        sub.a        1,d1           ; back to beginning of instruction
+        add.a        c,c
+        add.a        c,c            ; now c = nibble * 4
+
+        move.a        pc,a
+ref6:        add.a        c,a
+        move.p5        jumptab-ref6,c
+        add.a        a,c            ; now c = jumptab + nibble * 4
+        move.a        c,d0
+        clr.a        c              ; clear the 5th nibble
+        move.4        @d0,c         ; now c = jumptab entry
+
+        move.a        pc,a
+jtref:        add.a        c,a      ; now a = jump address
+
+        move.a         pc,c
+retref:        add.a        retloc-retref,c
+        push.a        c             ; push return address on stack
+        jump.a        a             ; jump to instruction routine
+
+retloc:
+        brcs        errexit         ; if carry is set, an error has occurred
+        jump.3        nextinstr
+
+errexit:
+        move.w        r3,c          ; get the current CHIP-8 PC value
+        move.w        c,r0          ; move to R0
+        call.a        push_r0_shortint  ; ROM routine: push short integer from R0
+                                    ; (this also restores saved d0, d1, b, d)
+        call.a        save_rpl_regs ; save the registers again (redundant?)
+        jump.3        exit
+
+
+; ltfill -- fill a part of "linetab"
+ltfill:
+        move.a        c,d1
+        move.a        @d1,c         ; get display address
+        add.a        16,c           ; increment past the GROB header (20 nibbles)
+        add.a        4,c
+ltfill_loop:
+        move.a        c,@d0
+        add.a        16,c           ; increment to next row (34 nibbles)
+        add.a        16,c
+        add.a        2,c
+        add.a        5,d0
+        dec.b        a
+        brnz.b        a,ltfill_loop
+        ret
+
+
+; copynibbles -- copy a memory block
+;
+; d1 points to source, d0 to destination, and
+; a contains the number of nibbles to copy
+copynibbles:
+copylo:
+        brz.a        a,copyend
+        move.1        @d1,c
+        move.1        c,@d0
+        add.a        1,d0
+        add.a        1,d1
+        dec.a        a
+        jump.3        copylo
+copyend:
+        ret
+
+; realtime -- do various timer-driven real-time processing
+;
+; In: nothing
+; Out: carry set iff real-time keypress detected; key code is in a
+; Uses: all 16 nibbles of a and c; d0
+;       but neither b nor d
+;
+realtime:
+
+; flip the speaker if the sound is on
+        call.3        soundpd0      ; point to sound timer
+        move.b        @d0,c
+        brz.b        c,silent
+        add.a        2,d0           ; point to sound on/off flag
+        move.p        @d0,c
+        brz.p        c,silent
+        add.a        1,d0           ; point to speaker data
+        move.3        @d0,c
+        out.x        c
+        not.x        c              ; turn #400 into #800 and vice versa
+        move.p3        #c00,a
+        and.x        a,c
+        move.3        c,@d0
+silent:
+
+; check the hardware timer register to see if it is time for
+; a 64 Hz realtime clock tick
+
+        clr.a        c              ; must clear all of c for comparison below
+        move.p3        hwtimer,c
+        move.a        c,d0
+        move.a        @d0,c
+retry2:        move.a        c,a
+        move.a        @d0,c
+        brne.a        c,a,retry2    ; loop until we get same value twice
+
+        move.p5        #00F80,a     ; mask away 7 low bits of time value
+        and.a        a,c
+
+        move.a        r1,a          ; now a is old value, c is new value
+        brne.a        c,a,dotick
+        jump.3        notick        ; code at notick depends on c.0 being zero
+
+dotick:                             ; handle a 64 Hz tick
+
+        clr.a        c              ; decrement r1 by #80
+        move.p2        #80,c
+        sub.a        c,a
+        move.p5        #00F80,c     ; mask
+        and.a        c,a
+        move.a        a,r1
+
+        call.3        timerpd0      ; point to delay timer
+        move.b        @d0,c
+        brz.b        c,timerzero
+        dec.b        c
+        move.b        c,@d0
+timerzero:
+
+        add.a        2,d0           ; point to sound timer
+        move.b        @d0,c
+        brz.b        c,soundzero
+        dec.b        c
+        move.b        c,@d0
+soundzero:
+
+; check for various control keys
+
+        call.3        ckeyspd0      ; point d0 to key status
+
+        move.p3        #010,c       ; row ENTER..backstep
+        out.x        c
+        call.a        do_in_c
+        move.a        c,a           ; save "in" data in a
+        clr.a        c
+        out.x        c              ; zero "out" port as fast as possible
+
+        move.4        @d0,c         ; get previous key status
+        move.4        a,@d0         ; save current key status
+        not.a        a              ; get keys that are not pressed
+        and.a        c,a            ; ..but were..
+        retbs        4,a            ; return with carry set if ENTER pressed
+        retbs        0,a            ; same for the backstep key
+        brbs        3,a,togglesound ; +/-
+noabort:
+        move.p1        #1,c         ; set flag to indicate that a tick took place
+notick:
+        retclrc                     ; return tick flag in c.0
+
+
+; toggle the sound flag (this is jumped to when the +/- key is pressed)
+togglesound:
+        call.3        sndonpd0
+        move.p        @d0,c
+        not.a        c
+        move.p1        #1,a
+        and.a        a,c
+        move.p        c,@d0
+        jump.3        noabort
+
+
+; nnnc - get NNN field of current instruction to c register
+;
+; In:        d1 pointing to chip-8 instruction
+; Out:        NNN field of instruction in c (5 valid nibbles)
+; Uses: none
+nnnc:
+        clr.a         c             ; clear nibbles 3..4
+        move.1        2,p
+        move.p        @d1,c         ; set nibble 2
+        move.1        0,p
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,c         ; set nibbles 0 and 1
+        sub.a        2,d1           ; restore d1
+        ret
+
+
+; virtophy -- convert virtual address to physical address
+;
+; In:   virtual address in c
+; Out:  physical address in c
+; Uses: a
+virtophy:
+        add.a        c,c            ; convert bytes to nibbles
+        move.a        r2,a          ; convert virtual to physical
+        add.a        a,c
+        ret
+
+
+; varpd0 - get pointer to variable to d0
+;
+; In:        d1 points to nibble containing variable number
+; Out:        d0 points to variable
+; Uses: a,c
+varpd0:
+        clr.a         c
+        move.p        @d1,c         ; get nibble with variable number
+cvarpd0:
+        add.a        c,c            ; convert bytes to nibbles
+        move.a        r4,a
+        add.a        a,c
+        move.a        c,d0
+        ret
+
+
+; var0pd0 -- load d0 with pointer to V0
+;
+; In:        none
+; Out:        d0 points to variable 0
+; Uses: a,c
+var0pd0:
+        clr.a         c
+        move.p1        #0,c
+        jump.3        cvarpd0
+
+
+; varfpd0 -- load d0 with pointer to VF
+;
+; In:        none
+; Out:        d0 points to variable F
+; Uses: a,c
+varfpd0:
+        clr.a         c
+        move.p1        #f,c
+        jump.3        cvarpd0
+
+timerpd0:
+        clr.a        c
+        move.p2        #10,c
+        jump.3        cvarpd0       ; point d0 to timer
+
+soundpd0:
+        clr.a        c
+        move.p2        #11,c
+        jump.3        cvarpd0       ; point d0 to sound timer
+
+sndonpd0:
+        clr.a        c
+        move.p2        #12,c
+        jump.3        cvarpd0       ; point d0 to sound on/off flag
+
+ckeyspd0:
+        clr.a        c
+        move.p2        #14,c
+        jump.3        cvarpd0       ; point d0 to control key status
+
+
+; varxcvarya -- get values of X and Y variables
+; In:        d1 points to instruction
+; Out:        c contains VX, zero padded to .a field
+;        a contains VY, zero padded to .a field
+; Uses:        d0
+varxcvarya:
+        call.3        varpd0        ; get pointer to X
+        clr.a        c
+        move.b        @d0,c         ; get X value
+        push.a        c
+        add.a        3,d1           ; point to Y nibble in instruction
+        call.3        varpd0        ; get pointer to Y
+        clr.a        a
+        move.b        @d0,a         ; get Y value
+        pop.a        c
+        sub.a        3,d1           ; back to beginning of instruction
+        ret
+
+
+; In:        d1 points to beginning instruction
+; Out:        c contains VX (5 nibbles valid)
+;        a contains VY (5 nibbles valid)
+;        d0 points to VX
+; Uses: none
+alusetup:
+        add.a        3,d1           ; point to Y nibble in instruction
+        call.3        varpd0
+        sub.a        3,d1
+        clr.a        c
+        move.2        @d0,c         ; VY in c
+        push.a        c
+        call.3        varpd0        ; d0 is pointer to VX
+        clr.a        a
+        move.2        @d0,a         ; VX in a
+        pop.a        c              ; VY in c
+        swap.a        a,c           ; now VX in c and VY in a
+        ret
+
+savecarry:
+        srn.a        c              ; extract the carry byte
+        srn.a        c
+lsbcarry:
+        move.p2        #01,a        ; use low bit only
+        and.b        a,c
+        push.a        c
+        call.3        varfpd0       ; get a pointer to VF
+        pop.a        c
+        move.b        c,@d0         ; store the carry byte
+        retclrc
+
+
+; testkey -- check whether a given hex key is pressed
+;
+; In: key number in c (5 low nibbles must be valid)
+; Out: low nibble of c is nonzero iff key is pressed
+; Uses: a,d0
+testkey:
+        add.a        c,c            ; index into keytab
+        move.a        pc,a
+ref16:        add.a        c,a
+        move.p5        keytab-ref16,c
+        add.a        a,c
+        move.a        c,d0          ; now d0 points to keytab
+        clr.a        c
+        move.1        @d0,c         ; get "out" data
+        out.x        c
+        call.a        do_in_c
+        move.a        c,a           ; store the input value in a
+        clr.a        c
+        out.x        c              ; zero "out" port as fast as possible
+        add.a        1,d0
+        move.1        @d0,c         ; get "in" mask
+        and.a        a,c
+        ret
+
+; setup subroutine for fx55 or fx65 instruction
+;
+; In: d0 points to VX
+; Out: d0 points to to V0, a points to VX, and d1 points to MI
+varcopysetup:
+        swap.a        c,d0          ; copy d0 to c
+        move.a        c,d0
+        push.a        c             ; save pointer to the last variable
+        call.3        var0pd0       ; point d0 to first variable (v0)
+        move.a        r0,c          ; get I
+        call.3        virtophy
+        move.a        c,d1          ; point d1 to data at I
+        pop.a        c
+        move.a        c,a           ; now a contains pointer to last var.
+        ret
+
+
+i0:                                 ; mcode call
+        call.3        nnnc
+        move.a        c,a           ; routine address is now in a
+        clr.a        c
+        move.p2        #e0,c
+        breq.a        c,a,i00e0
+        move.p2        #ee,c
+        breq.a        c,a,i00ee
+        retsetc                     ; illegal mcode call
+
+i00e0:                              ; erase screen
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_linetab,c
+        add.a        c,a
+
+; a contains linetab pointer
+; b counts down from 64
+        move.p2        64,c
+        move.a        c,b
+eraselo:
+        move.a        a,d0
+        move.a        @d0,c
+        move.a        c,d0          ; d0 now points to display memory
+        clr.w        c
+        move.w        c,@d0         ; erase 16 nibbles
+        add.a        16,d0
+        move.w        c,@d0         ; and 16 more
+        add.a        16,d0
+        move.b        c,@d0         ; and 2 more, total 34
+        add.a        5,a
+        dec.b        b
+        brnz.b        b,eraselo
+        retclrc
+
+
+i00ee:                              ; subroutine return
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_csp,c
+        add.a        a,c
+        move.a        c,d0          ; c and d0 both point to csp
+        move.a        @d0,a         ; now a contains the chip-8 stack pointer (0..4n-4)
+        retz.a        a             ; return with carry set if stack underflow
+        sub.a        4,a            ; drop one level
+        move.a        a,@d0         ; save new csp
+        add.a        5,c            ; point c at stack[0]
+        add.a        a,c            ; point c at popped level
+        move.a        c,d0          ; point d0 at popped level
+        clr.a        c
+        move.4        @d0,c
+        move.a        c,r3          ; set pc
+        retclrc
+
+i1:                                 ; 1NNN, jump
+dojmp:        call.3        nnnc
+        move.a        c,r3          ; assign to pc
+        retclrc
+
+i2:                                 ; 2NNN, subroutine call
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_csp,c
+        add.a        a,c
+
+        move.a        c,d0          ; d0 and c both point to csp
+        move.a        @d0,a         ; now a contains the chip-8 stack pointer (0..4n-4)
+                                    ; c still points at csp
+        add.a        5,c            ; point c at stack[0]
+        add.a        a,c            ; point c at first free stack level
+        swap.a        c,d0          ; now d0 points to free stack and c points to csp
+        move.a        r3,a          ; get pc
+        move.4        a,@d0         ; store pc in stack
+        swap.a        c,d0          ; now d0 points to cpc again
+        move.a        @d0,a         ; now a contains the chip-8 stack pointer (0..4n-4)
+        add.a        4,a
+        move.p5        stacknibbles,c
+        retlt.a        c,a          ; return with carry set if stack overflow
+        move.a        a,@d0         ; store incremented sp
+        jump.3        dojmp         ; the reset is like 1nnn
+
+
+i3:                                 ; 3XKK, skip if X==KK
+        call.3        varpd0        ; get pointer to X
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a         ; now a = KK
+        move.b        @d0,c         ; now c = VX
+skipeq:
+        brne.b        c,a,noskip
+doskip:        swap.a        c,r3   ; increment cpc by 2
+        add.a        2,c
+        swap.a        c,r3
+noskip:
+        retclrc
+
+i4:                                 ; 4XKK, skip if X<>KK
+        call.3        varpd0        ; get pointer to X
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a         ; now a = KK
+        move.b        @d0,c         ; now c = VX
+skipne:
+        breq.b        c,a,noskip
+        jump.3        doskip
+
+i5:                                 ; 5XY0, skip if X==Y
+        call.3        varxcvarya    ; get VX to c, VY to a
+        jump.3        skipeq
+
+i9:                                 ; 9XY0, skip if X!=Y
+        call.3        varxcvarya    ; get VX to c, VY to a
+        jump.3        skipne
+
+i6:                                 ; 6XKK, load variable by constant
+        call.3        varpd0        ; get pointer to X
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a         ; now a = KK
+        move.b        a,@d0         ; store in variable
+        retclrc
+
+i7:                                 ; 7XKK, add constant to variable
+        call.3        varpd0        ; get pointer to X
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a         ; now a = KK
+        move.b        @d0,c         ; get old value
+        add.b        a,c            ; add KK
+        move.b        c,@d0         ; store new value
+        retclrc
+
+
+i8:                                 ; arithmetic and logic operations
+        add.a        2,d1           ; point to last nibble of instruction
+        move.1        @d1,a
+        sub.a        2,d1
+
+        move.p1        #0,c
+        brne.p        c,a,noti8xy0
+i8xy0:                              ; VX := VY
+        call.3        alusetup
+        move.b        a,@d0         ; store result
+        retclrc
+noti8xy0:
+
+        move.p1        #1,c
+        brne.p        c,a,noti8xy1
+i8xy1:                              ; VX := VX or VY
+        call.3        alusetup
+        or.b        a,c
+        move.2        c,@d0         ; store result
+        retclrc
+noti8xy1:
+
+        move.p1        #2,c
+        brne.p        c,a,noti8xy2
+i8xy2:                              ; VX := VX and VY
+        call.3        alusetup
+        and.b        a,c
+        move.2        c,@d0         ; store result
+        retclrc
+noti8xy2:
+
+        move.p1        #3,c
+        brne.p        c,a,noti8xy3
+i8xy3:                              ; VX := VX xor VY
+        call.3        alusetup
+        move.b        a,b
+        or.b        c,b             ; (x or y) in b
+        and.b        a,c            ; (x and y) in c
+        not.b        c
+        and.b        b,c            ; (x xor y) in c
+        move.b        c,@d0         ; store result
+        retclrc
+noti8xy3:
+
+        move.p1        #4,c
+        brne.p        c,a,noti8xy4
+i8xy4:                              ; VX := VX + VY; carry in VF
+        call.3        alusetup
+        add.a        a,c
+        move.2        c,@d0
+        jump.3        savecarry
+noti8xy4:
+
+        move.p1        #5,c
+        brne.p        c,a,noti8xy5
+i8xy5:                              ; VX := VX - VY; carry in VF
+        call.3        alusetup
+subcommon:
+        not.b        a              ; do monkey business to get inverted carry
+        add.a        a,c
+        inc.a        c
+        move.2        c,@d0
+        jump.3        savecarry
+noti8xy5:
+
+        move.p1        #6,c
+        brne.p        c,a,noti8xy6
+i8xy6:                              ; VX := VX >> 1; carry in VF
+        call.3        alusetup
+        move.b        c,a
+        srb.b        c
+        move.2        c,@d0         ; store result
+        move.b        a,c           ; use low bit of original byte for carry
+        jump.3        lsbcarry
+noti8xy6:
+        move.p1        #7,c
+        brne.p        c,a,noti8xy7
+i8xy7:                              ; VX := VY - VX; carry in VF
+        call.3        alusetup
+        swap.a        a,c
+        jump.3        subcommon
+
+noti8xy7:
+        move.p1        #e,c
+        brne.p        c,a,noti8xye
+i8xye:                              ; VX := VX << 1; carry in VF
+        call.3        alusetup
+        add.a        c,c
+        move.2        c,@d0
+        jump.3        savecarry
+noti8xye:
+        retsetc
+
+
+ia:                                 ; ANNN, set I
+        call.3        nnnc
+        move.a        c,r0          ; assign to I
+        retclrc
+
+ib:                                 ; parametric jump to NNN+V0
+        call.3        varpd0
+        call.3        nnnc
+        clr.a        a
+        move.b        @d0,a
+        add.a        a,c
+        move.a        c,r3          ; assign to pc
+        retclrc
+
+
+ic:                                 ; pseudo-random number
+
+        call.3        varpd0        ; now d0 points to VX
+        move.p5        crcval,c
+        swap.a        c,d0          ; point d0 to hardware crc
+        move.2        @d0,a         ; read the low byte of the crc
+        swap.a        c,d0          ; now d0 points to VX again
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,c         ; get mask
+        sub.a        2,d1           ; restore d1
+        and.b        a,c            ; mask
+        move.b        c,@d0         ; store result
+        retclrc
+
+
+id_abort:
+        jump.3        fx0a_abort
+
+
+id:                                 ; DXYN, show N-byte sprite at MI at screen coordinates (X,Y)
+;       I doesn't change
+
+; synchronize with 64 Hz tick
+tickwait:
+        call.3        realtime
+        brcs        id_abort        ; a realtime key was pressed
+        brz.p        c,tickwait     ; wait until a tick occus
+
+        call.3        save_rregs    ; save r0..r3
+
+        move.a        r0,c          ; get I
+        call.3        virtophy
+        move.a        c,r0          ; now r0 points to sprite
+
+        call.3        varxcvarya
+        move.a        c,d           ; save X in d
+        move.p2        #1f,c
+        and.b        c,a            ; mask Y to range 0..31, leave in a
+        move.p2        #3f,c
+        and.b        c,d            ; mask X to range 0..63, save in d
+
+; get the number of bytes in the sprite (preserving a and d)
+        add.a        2,d1           ; point to N field
+
+        clr.b        c
+        move.1        @d1,c
+        add.b        a,c            ; now c contains Y + sprite length
+        move.b        c,b
+        move.p2        #20,c
+        sub.b        c,b            ; now b contains no. of overshoot lines
+        brcc        oshoot
+        clr.b        b              ; no overshoot
+oshoot:
+        clr.b        c              ; get sprite length again
+        move.1        @d1,c
+        sub.b        b,c            ; subtract overshoot
+        move.1        c,0,p         ; now p contains adjusted length
+        move.1        p,c,15        ; byte counter in nibble 15 of c
+        move.1        14,p
+        clr.p        c              ; collision flag in nibble 14 of c
+        move.1        0,p
+        sub.a        2,d1           ; back to beginning of instruction
+
+        call.3        sprite        ; do it
+
+        call.3        restore_rregs
+
+        call.4        varfpd0       ; d0 points to VF
+        clr.b        c
+        move.1        14,p
+        brz.p        c,nocolls
+        inc.b        c
+nocolls:
+        move.b        c,@d0         ; store collision flag
+        move.1        0,p
+
+        retclrc                     ; id
+
+
+ie:                                 ; skip on key pressed / not pressed
+        call.3        varpd0
+        clr.a        c
+        move.b        @d0,c         ; Telmac key number
+        call.3        testkey
+        clr.b        d
+        move.p        c,d           ; now d.b is nonzero iff key was pressed
+
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a
+        sub.a        2,d1
+        move.p2        #9e,c
+        breq.b        c,a,doex9e
+        move.p2        #a1,c
+        breq.b        c,a,doexa1
+        retsetc
+
+doex9e:        move.b        d,c
+        clr.b        a
+        jump.3        skipne        ; skip iff d!=0 (key was pressed)
+
+doexa1:        move.b        d,c
+        clr.b        a
+        jump.3        skipeq        ; skip iff d==0 (key was not pressed)
+
+
+; kwait -- wait for key, return it in low byte of c
+; In: none
+; Out: key code in low byte of c
+; Uses: most everything except d0
+;
+; The beep-and-wait-until-released behaviour may seem a bit crummy,
+; but we're just trying to emulate the original Telmac PROM monitor
+; keyboard input routine as closely as possible.
+kwait:
+        swap.a        c,d0
+        push.a        c             ; save d0 value
+
+        clr.a        d              ; low nibble of d used for key code
+kwalo:        move.a        d,c
+        call.3        testkey
+        brnz.p        c,pressed
+        call.3        realtime      ; preserves d
+        brcs        kwabort
+        inc.p        d              ; loop through keys 0..15
+        jump.3        kwalo
+
+pressed:
+        call.3        soundpd0
+        move.p2        #04,c
+        move.2        c,@d0         ; set sound timer to #04
+        call.3        realtime      ; make some noise
+        brcs        kwabort
+        move.a        d,c
+        call.3        testkey
+        brnz.p        c,pressed     ; wait until key is released
+
+        pop.a        c              ; restore d0 value
+        move.a        c,d0
+        move.b        d,c
+        retclrc
+
+kwabort:
+        pop.a        c              ; adjust stack
+        retsetc
+
+if:                                 ; misc. functions using VX
+; d0 is set up to point to VX
+
+        call.3        varpd0
+        add.a        2,d1           ; point to second byte of instruction
+        move.b        @d1,a
+        sub.a        2,d1
+
+        move.p2        #07,c
+        brne.b        c,a,notifx07
+ifx07:                              ; read timer
+        swap.a        c,d0
+        push.a        c
+        call.3        timerpd0
+        move.b        @d0,a
+        pop.a        c
+        swap.a        c,d0
+        move.b        a,@d0
+        retclrc
+notifx07:
+
+        move.p2        #0a,c
+        brne.b        c,a,notifx0a
+ifx0a:        call.3        kwait
+        brcs        fx0a_abort
+        move.b        c,@d0
+        retclrc
+fx0a_abort:
+        pop.a        c              ; adjust stack for forced return
+        jump.3        rtcarry
+
+notifx0a:
+
+         move.p2        #15,c
+        brne.b        c,a,notifx15
+ifx15:                              ; set timer
+        move.b        @d0,c
+        push.a        c
+        call.3        timerpd0
+        pop.a        c
+        move.b        c,@d0
+        retclrc
+notifx15:
+
+         move.p2        #18,c
+        brne.b        c,a,notifx18
+ifx18:                              ; set sound
+        move.b        @d0,c
+        push.a        c
+        call.3        soundpd0
+        pop.a        c
+        move.b        c,@d0
+        retclrc
+notifx18:
+
+         move.p2        #1e,c
+        brne.b        c,a,notifx1e
+ifx1e:                              ; increment I by VX
+        clr.a        c
+        move.b        @d0,c
+        move.a        r0,a          ; get old I
+        add.x        c,a            ; increment, modifying only 3 low nibbles
+        retcs                       ; it wrapped around #1000
+        move.a        a,r0          ; save new I
+        retclrc
+notifx1e:
+
+         move.p2        #29,c
+        brne.b        c,a,notifx29
+ifx29:                              ; point to hex display pattern
+; assumes that the hex patterns are at virtual 0000
+        clr.a        c
+        move.1        @d0,c         ; use low nibble of variable
+        move.a        c,a
+        add.a        c,c            ; * 2
+        add.a        c,c            ; * 4
+        add.a        a,c            ; * 5
+        move.a        c,r0          ; this is the new I
+        retclrc
+notifx29:
+
+         move.p2        #33,c
+        breq.b        c,a,ifx33
+        jump.3        notifx33
+ifx33:                              ; 8-bit binary to decimal conversion
+        move.b        @d0,c
+        move.b        c,d           ; d contains the byte to convert
+
+        move.a        pc,a
+ref12:        move.p5        dectab-ref12,c
+        add.a        a,c
+        move.a        c,d0          ; d0 points to the conversion table
+
+        clr.a        a              ; a accumulates decimal result
+cnvbit:        brz.b        d,cnvend
+        move.b        d,c
+        brbc        0,c,skpbit      ; jump if low-order bit is zero
+        move.3        @d0,c
+        setdec
+        add.a        c,a            ; only 3 low nibbles contain real data
+        sethex
+skpbit:        add.a        3,d0
+        srb.b        d
+        jump.3        cnvbit
+
+cnvabort:
+        retsetc
+
+cnvend:
+        move.a        a,b           ; save the decimal value
+        move.a        r0,c          ; get I
+        move.p5        #00ffd,a     ; is I > 0FFD hex?
+        retgt.a        c,a          ; protect memory above 0FFF
+        call.3        virtophy
+        move.a        c,d0          ; virtual I in d0
+        move.a        b,a           ; restore the decimal value
+
+        clr.a        c
+        move.1        2,p
+        move.p        a,@d0         ; most significant digit first
+        add.a        1,d0
+        move.p        c,@d0         ; zero
+        add.a        1,d0
+        move.1        1,p
+        move.p        a,@d0         ; middle digit
+        add.a        1,d0
+        move.p        c,@d0         ; zero
+        add.a        1,d0
+        move.1        0,p
+        move.p        a,@d0         ; least significant digit
+        add.a        1,d0
+        move.p        c,@d0         ; zero
+; I doesn't change
+        retclrc
+notifx33:
+
+         move.p2        #55,c
+        brne.b        c,a,notifx55
+ifx55:                              ; save vars in memory
+        call.3        varcopysetup
+savelo:
+        move.b        @d0,c         ; read a byte from variable
+        move.b        c,@d1         ; store in MI
+        swap.a        c,d0          ; get d0 to c
+        move.a        c,d0
+        brge.a        c,a,doret1    ; are we ready yet?
+        add.a        2,d1
+        add.a        2,d0
+        move.a        r0,c          ; get I value
+        inc.x        c              ; increment 3 low nibbles
+        retcs                       ; if carry, we might overwrite #1000
+        move.a        c,r0          ; I changes permanently
+        jump.3        savelo
+doret1:
+        retclrc
+
+notifx55:
+
+         move.p2        #65,c
+        brne.b        c,a,notifx65
+ifx65:                              ; restore vars from memory
+        call.3        varcopysetup
+restolo:
+        move.b        @d1,c         ; read a byte at MI
+        move.b        c,@d0         ; store in variable
+        swap.a        c,d0          ; get d0 to c
+        move.a        c,d0
+        brge.a        c,a,doret1    ; are we ready yet?
+        add.a        2,d1
+        add.a        2,d0
+        move.a        r0,c          ; get I value
+        inc.x        c              ; increment 3 low nibbles
+        retcs                       ; if carry, we wrapped around #1000
+        move.a        c,r0          ; I changes permanently
+        jump.3        restolo
+notifx65:
+; unknown FxNN instruction
+        retsetc
+
+
+; save registers r0..r3
+save_rregs:
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_regsave,c
+        add.a        a,c
+        move.a        c,d0
+
+        move.a        r0,c
+        move.a        c,@d0
+        add.a        5,d0
+        move.a        r1,c
+        move.a        c,@d0
+        add.a        5,d0
+        move.a        r2,c
+        move.a        c,@d0
+        add.a        5,d0
+        move.a        r3,c
+        move.a        c,@d0
+        add.a        5,d0
+        ret
+
+
+; restore registers r0..r3
+restore_rregs:
+        move.a        r4,a          ; get start of data area
+        move.p5        ofs_regsave,c
+        add.a        a,c
+        move.a        c,d0
+
+        move.a        @d0,c
+        move.a        c,r0
+        add.a        5,d0
+        move.a        @d0,c
+        move.a        c,r1
+        add.a        5,d0
+        move.a        @d0,c
+        move.a        c,r2
+        add.a        5,d0
+        move.a        @d0,c
+        move.a        c,r3
+        add.a        5,d0
+        ret
+
+
+; sprite: draw a CHIP-8 "sprite", 8 pixels wide by 1..15 pixels high
+;
+; in: r0.a  points to sprite data
+;     a.a   contains x coordinate
+;     d.a   contains y coordinate
+;     c.14  zero initial value for collision flag
+;     c.15  number of lines in sprite
+; out: c.14 collision flag
+;
+; register usage:
+; a,c used for scratch
+;  c.15 contains sprite byte (line) count
+;  c.14 contains collision flag
+;  c.13 is used as temporary save location for p
+;  c.12 is nonzero in "short mode" (2x1 pixels)
+; b contains the byte to display
+; d contains the 32-bit pixel string
+; r0 points to sprite data
+; r1 points to linetab
+; r2 contains the X offset in nibbles from the beginning of the lcd line
+; r3 contains entry point to pixel alignment shifts
+
+sprite:
+        move.1        12,p
+        move.p1        0,c          ; set "short flag"
+        move.1        0,p
+
+        move.1        12,p
+        brnz.p        c,short1      ; "short mode"?
+        add.a        a,a            ; 2Y (the chip-8 pixels are 2 lines high)
+short1:        move.1        0,p    ; (but not in "short mode"
+
+        move.a        a,c           ; multiply by 5 to get index into linetab
+        add.a        a,a
+        add.a        a,a
+        add.a        a,c            ; now c contains index to linetab
+
+        move.a        r4,a          ; get start of data area
+        add.a        c,a
+        move.p5        ofs_linetab,c
+        add.a        a,c
+
+        move.a        c,r1          ; r1 is the linetab pointer
+
+; calculate X offset in nibbles from the beginning of the lcd line
+        move.a        d,c           ; c = X
+        srb.a        c              ; convert pixels to pixel octets
+        srb.a        c
+        srb.a        c
+        add.a        c,c            ; convert pixel octets to nibbles
+        add.a        c,c
+        move.a        c,r2          ; r2 contains offset from beginning of line
+
+; calculate entry point to alignment shifts
+        move.p2        #07,c        ; d should still contain X
+        and.b        c,d            ; mask out 3 low bits
+        add.a        d,d            ; the shift instructions are 2 nibbles each
+        move.a        pc,a
+ref11:        move.p5        shifts-ref11,c
+        add.a        a,c
+        add.a        d,c
+        move.a        c,r3          ; r3 now contains entry point to shifts
+
+linelo:
+        move.a        r0,c          ; get sprite pointer
+        move.a        c,d0
+        move.2        @d0,c         ; byte to display
+        clr.a        b
+        move.b        c,b           ; ..to low byte of b; next byte is clear
+        swap.a        c,d0
+        add.a        2,c            ; advance to next sprite byte
+        move.a        c,r0          ; save sprite pointer
+
+; the low byte of b now contains the sprite byte
+
+        move.a        r3,c          ; get shift entry point
+        jump.a        c             ; jump to the appropriate shift instruction
+
+
+shifts:        add.a        b,b     ; two-nibble instructions
+        add.a        b,b
+        add.a        b,b
+        add.a        b,b
+        add.a        b,b
+        add.a        b,b
+        add.a        b,b
+        add.a        b,b
+
+        move.a        pc,a
+ref2:        move.p5        pixtab-ref2,c
+        add.a        c,a            ; beginning of pixtab is in a
+
+; keep &pixtab[0] in a at all times
+        clr.a        c
+        move.p        b,c           ; extract a nibble from b
+        add.a        c,c            ; times two
+        add.a        a,c            ; add beginning of pixtab
+        move.a        c,d0          ; point d0 to pixtab byte
+        move.b        @d0,c
+        move.b        c,d           ; now 8 more pixels in d
+
+        sln.w        d
+        sln.w        d
+        srn.a        b
+
+        clr.a        c
+        move.p        b,c           ; extract a nibble from b
+        add.a        c,c            ; times two
+        add.a        a,c
+        move.a        c,d0          ; point d0 to pixtab byte
+        move.b        @d0,c
+        move.b        c,d           ; now 8 more pixels in d
+
+        sln.w        d
+        sln.w        d
+        srn.a        b
+
+        clr.a        c
+        move.p        b,c           ; extract a nibble from b
+        add.a        c,c            ; times two
+        add.a        a,c
+        move.a        c,d0          ; point d0 to pixtab byte
+        move.b        @d0,c
+        move.b        c,d           ; now 8 more pixels in d
+
+        sln.w        d
+        sln.w        d
+        srn.a        b
+
+        clr.a        c
+        move.p        b,c           ; extract a nibble from b
+        add.a        c,c            ; times two
+        add.a        a,c
+        move.a        c,d0          ; point d0 to pixtab byte
+        move.b        @d0,c
+        move.b        c,d           ; now 8 more pixels in d
+
+; now d contains 32 pixels
+
+        move.a        r1,a          ; get linetab pointer
+        move.a        a,d0          ; ..to d0
+        move.a        @d0,c         ; address of current line to c
+
+        move.1        12,p
+        brnz.p        c,short2
+        add.a        5,a            ; point 1 line ahead if "short mode",
+short2:        add.a        5,a     ; point 2 lines ahead otherwise
+        move.1        0,p
+
+        move.a        a,r1          ; this is the new linetab pointer
+
+        move.a        r2,a          ; X offset in nibbles
+        add.a        a,c            ; add beginning of lcd line
+        move.a        c,d0          ; now d0 points to display buffer
+
+; now we operate on the display buffer with a word length
+; that is normally 32 bits, but near the right end we
+; must decrease it to avoid wrapping around and messing up
+; the left part of the display.  Therefore the word length
+; should be min(8, 32-xoff) nibbles.
+
+        move.p2        32,c
+        sub.b        a,c            ; now c = 32-xoff
+        move.p2        8,a
+        brlt.b        c,a,clip      ; if (32-xoff) is < 8, use that, else 8
+        move.b        a,c
+clip:        dec.b        c         ; .wp field is (p+1) nibbles; compensate
+        move.1        c,0,p         ; set field size
+
+        move.wp        @d0,c        ; get old display buffer contents
+        move.wp        c,a          ; make a copy in a
+        and.wp        d,c           ; now c = (old and new), a = old, d = new
+        brz.wp        c,nocoll
+
+; there has been a collision; set nibble 14 in c
+        swap.1        p,c,13        ; save p in nibble 13 of c
+        move.1        14,p
+        move.p1        1,c          ; set collision flag in nibble 13 of c
+        swap.1        p,c,13        ; restore p
+nocoll:
+        swap.wp        d,c          ; now d = (old and new), a = old, c = new
+        or.wp        a,c            ; now c = (old or new)
+        not.wp        d
+        and.wp        d,c           ; now c = (old or new) and not(old and new)
+
+        swap.1        p,c,13
+        move.1        12,p
+        brnz.p        c,short3
+        swap.1        p,c,13
+
+        move.wp        c,@d0        ; store once
+        add.a        16,d0          ; advance by 34 to next scan line
+        add.a        16,d0
+        add.a        2,d0
+        move.wp        c,@d0        ; store again
+        jump.3        noshort3
+short3:
+        swap.1        p,c,13
+        move.wp        c,@d0        ; store just once
+noshort3:
+        move.1        0,p
+
+        dec.s        c
+        brz.s        c,lineexit
+        jump.3        linelo
+lineexit:
+
+        ret                         ; sprite
+
+
+; this lookup table serves a dual purpose: it swaps the bits in a nibble
+; to convert from big-endian to little-endian format, and doubles each bit
+; to lower the resolution to 64 pixels horizontally.
+pixtab:
+        data.b        !00000000
+        data.b        !11000000
+        data.b        !00110000
+        data.b        !11110000
+        data.b        !00001100
+        data.b        !11001100
+        data.b        !00111100
+        data.b        !11111100
+        data.b        !00000011
+        data.b        !11000011
+        data.b        !00110011
+        data.b        !11110011
+        data.b        !00001111
+        data.b        !11001111
+        data.b        !00111111
+        data.b        !11111111
+
+
+; 4x5 pixel hexadecimal character font patterns
+hexfont:
+        data.5 #F999F
+        data.5 #72262
+        data.5 #F8F1F
+        data.5 #F1F1F
+        data.5 #11F99
+        data.5 #F1F8F
+        data.5 #F9F8F
+        data.5 #4421F
+        data.5 #F9F9F
+        data.5 #F1F9F
+        data.5 #99F9F
+        data.5 #E9E9E
+        data.5 #F888F
+        data.5 #E999E
+        data.5 #F8F8F
+        data.5 #88F8F
+hexfontend:
+
+; powers of two in BCD, for binary-to-decimal conversion
+dectab:        data.3 #001
+        data.3 #002
+        data.3 #004
+        data.3 #008
+        data.3 #016
+        data.3 #032
+        data.3 #064
+        data.3 #128
+
+; table mapping Telmac hex key locations to HP48SX key codes
+; lsn is bit mask to output, lsn is bit mask to mask input with
+keytab:
+        data.2        #41
+        data.2        #88
+        data.2        #48
+        data.2        #28
+        data.2        #84
+        data.2        #44
+        data.2        #24
+        data.2        #82
+        data.2        #42
+        data.2        #22
+        data.2        #81
+        data.2        #21
+        data.2        #18
+        data.2        #14
+        data.2        #12
+        data.2        #11
+
+; jump table for CHIP-8 instruction dispatching based on the first nibble
+
+jumptab:
+        data.4        i0-jtref
+        data.4        i1-jtref
+        data.4        i2-jtref
+        data.4        i3-jtref
+        data.4        i4-jtref
+        data.4        i5-jtref
+        data.4        i6-jtref
+        data.4        i7-jtref
+        data.4        i8-jtref
+        data.4        i9-jtref
+        data.4        ia-jtref
+        data.4        ib-jtref
+        data.4        ic-jtref
+        data.4        id-jtref
+        data.4        ie-jtref
+        data.4        if-jtref
+
+regsave:
+        even                        ; pad to even number of nibbles
+
+end:                                ; don't add stuff after this line.

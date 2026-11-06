@@ -40,6 +40,8 @@ available as a standalone command line tool:
 
 Generic CHIP-8 emulation:
   * CHIP-8
+  * CHIP-8 TPD (64x64)
+  * CHIP-8 FPD (64x128)
   * CHIP-10
   * CHIP-8E
   * CHIP-8X
@@ -54,6 +56,7 @@ Generic CHIP-8 emulation:
 
 Other interpreter emulation:
   * STRICT-CHIP-8 (cycle exact HLE VIP CHIP-8)
+  * STRICT-SCHIP-1.1 (cycle exact HLE HP-48SX SUPER-CHIP 1.1)
   * RS-MEGACHIP (original RS-M8001 MegaChip interpreter)
 
 COSMAC VIP hardware emulation:
@@ -112,6 +115,7 @@ preset depending on the file extension:
   '*.mc8'     - MEGACHIP
   '*.xo8'     - XO-CHIP
   '*.c8vip'   - STRICT-CHIP-8
+  '*.sc11s'   - STRICT-SCHIP-1.1
   '*.hc8'     - VIP-CHIP-8, Hybrid CHIP-8 (including 1802 code)
   '*.c10'     - VIP-CHIP-10
   '*.c8rb'    - VIP-CHIP-8 RB

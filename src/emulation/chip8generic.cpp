@@ -119,7 +119,7 @@ Properties Chip8GenericOptions::asProperties() const
     result[PROP_CUBECHIP_TONE].setBool(optCubeChipTone);
     result[PROP_SCREEN_ROTATION].setSelectedIndex(int(rotation));
     result[PROP_CRT_EFFECT].setBool(crtEffect);
-    result[PROP_TOUCH_INPUT_MODE].setSelectedIndex(int(touchInputMode));
+    result[PROP_TOUCH_INPUT_MODE].setSelectedIndex(std::max(0, int(touchInputMode)));
     result[PROP_FONT_5PX].setSelectedIndex(int(fontStyle5));
     result[PROP_FONT_10PX].setSelectedIndex(int(fontStyle10));
     result.palette() = palette;
@@ -184,7 +184,7 @@ Properties& Chip8GenericOptions::registeredPrototype()
     using namespace std::string_literals;
     auto& prototype = Properties::getProperties(PROP_CLASS);
     if(!prototype) {
-        prototype.registerProperty({PROP_BEHAVIOR_BASE, "Behavior Base", Property::Combo{"CHIP-8"s, "CHIP-10"s, "CHIP-8E"s, "CHIP-8X"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHIPC"s, "SCHIP-MODERN"s, "MEGACHIP"s, "XO-CHIP"s}, "CHIP-8 variant", PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_BEHAVIOR_BASE, "Behavior Base", Property::Combo{"CHIP-8"s, "CHIP-8 TPD"s, "CHIP-8 FPD"s, "CHIP-10"s, "CHIP-8E"s, "CHIP-8X"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHIPC"s, "SCHIP-MODERN"s, "MEGACHIP"s, "XO-CHIP"s}, "CHIP-8 variant", PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_TRACE_LOG, "Trace Log", false, "Enable trace log", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_TRACE_FILE, "Trace File", std::string{}, "Trace log file", PropertyFlags::eWritable});
         prototype.registerProperty({PROP_INSTRUCTIONS_PER_FRAME, "Instructions per frame", Property::Integer{11, 0, 1'000'000}, "Number of instructions per frame, default depends on variant", PropertyFlags::eWritable});
@@ -219,8 +219,8 @@ Properties& Chip8GenericOptions::registeredPrototype()
         prototype.registerProperty({PROP_Q_XO_CHIP_SOUND, "XO-CHIP sound engine", false, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_CUBECHIP_TONE, "CubeChip contextual tone", false, PropertyFlags::eWritable});
         prototype.registerProperty({PROP_Q_PAL_VIDEO, "PAL video format", false, PropertyFlags::eInvisible});
-        prototype.registerProperty({PROP_TOUCH_INPUT_MODE, "Touch input mode", Property::Combo{"SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, PropertyFlags::eInvisible});
-        prototype.registerProperty({PROP_FONT_5PX, "Font 5px", Property::Combo{"DEFAULT"s, "VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_TOUCH_INPUT_MODE, "Touch input mode", Property::Combo{"NONE"s, "SWIPE"s, "SEG16"s, "SEG16FILL"s, "GAMEPAD"s, "VIP"s}, PropertyFlags::eInvisible});
+        prototype.registerProperty({PROP_FONT_5PX, "Font 5px", Property::Combo{"VIP"s, "DREAM6800"s, "ETI660"s, "SCHIP"s, "FISH"s, "OCTO"s, "AKOUZ1"s}, PropertyFlags::eInvisible});
         prototype.registerProperty({PROP_FONT_10PX, "Font 10px", Property::Combo{"DEFAULT"s, "SCHIP10"s, "SCHIP11"s, "FISH"s, "MEGACHIP"s, "OCTO"s, "AUCHIP"s}, PropertyFlags::eInvisible});
     }
     return prototype;
@@ -230,6 +230,8 @@ chip8::Variant Chip8GenericOptions::variant() const
 {
     switch(behaviorBase) {
         case eCHIP8: return chip8::Variant::CHIP_8;
+        case eCHIP8TPD: return chip8::Variant::CHIP_8_TPD;
+        case eCHIP8FPD: return chip8::Variant::HI_RES_CHIP_8;
         case eCHIP10: return chip8::Variant::CHIP_10;
         case eCHIP8E: return chip8::Variant::CHIP_8E;
         case eCHIP8X: return chip8::Variant::CHIP_8X;
@@ -262,6 +264,20 @@ Chip8GenericSetupInfo genericPresets[] = {
         ".ch8",
         chip8::Variant::CHIP_8,
         {.behaviorBase = Chip8GenericOptions::eCHIP8, .optExtendedVBlank = true}
+    },
+    {
+        "CHIP-8 TPD",
+        "CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979",
+        "",
+        chip8::Variant::CHIP_8_TPD,
+        {.behaviorBase = Chip8GenericOptions::eCHIP8TPD, .startAddress = 0x260, .optExtendedVBlank = true}
+    },
+    {
+        "CHIP-8 FPD",
+        "CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980",
+        "",
+        chip8::Variant::HI_RES_CHIP_8,
+        {.behaviorBase = Chip8GenericOptions::eCHIP8FPD, .startAddress = 0x244, .instructionsPerFrame = 21}
     },
     {
         "CHIP-10",
@@ -487,7 +503,7 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
     }
     ADDRESS_MASK = _options.ramSize - 1; //_options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 0xFFFFFF : _options.ramSize>4096 ? 0xFFFF : 0xFFF;
     SCREEN_WIDTH = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : (_options.optAllowHires ? 128 : 64);
-    SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32));
+    SCREEN_HEIGHT = _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : (_options.optAllowHires ? 64 : (_options.optPalVideo ? 48 : 32 * _options.displayPages()));
     _memory.resize(_options.ramSize, 0);
     if(!_options.cleanRam) {
         bool isSCHIP = (_options.behaviorBase == Chip8GenericOptions::eSCHIP09)
@@ -497,7 +513,15 @@ Chip8GenericEmulator::Chip8GenericEmulator(EmulatorHost& host, Properties& props
         std::generate(_memory.begin(), _memory.end(), rnd);
     }
     _rV = _rVData.data();
-    _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
+    // Fitted to draw rates measured on the VIP core, see test/display_wait_tests.cpp. CHIP-8X times like CHIP-8,
+    // it just runs 18 instead of 15 instructions per frame by default.
+    if(_options.behaviorBase == Chip8GenericOptions::eCHIP8TPD)
+        _extendedWait = {1740, 1275, 66};
+    else if(_options.behaviorBase == Chip8GenericOptions::eCHIP8E)
+        _extendedWait = {1740, 1050, 46};
+    else if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X)
+        _extendedWait = {1740, 1530, 54};
+    _screen.setMode(SCREEN_WIDTH, SCREEN_HEIGHT, _options.displayPages() > 1 ? _options.displayPages() : -1);
     _screenRGBA1.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     _screenRGBA2.setMode(SCREEN_WIDTH, SCREEN_HEIGHT);
     if(!props.palette().empty()) {
@@ -583,6 +607,10 @@ void Chip8GenericEmulator::handleReset(bool cold)
     _clearCounter = 0;
     _waitCycles = 0;
     _waitFrames = 0;
+    _fpdClearPages = 4;
+    _dxynExtraFrames = -1;
+    _dxynDrawCycles = 0;
+    _dxynDrawFrame = -1;
     _systemTime.reset();
     if(_options.cleanRam)
         std::memset(_memory.data(), 0, _memory.size());
@@ -728,6 +756,12 @@ void Chip8GenericEmulator::setHandler()
         else
             on(0xF000, 0xD000, handler<&Chip8GenericEmulator::opDxyn_displayWait<0>>);
     }
+    else if(_options.behaviorBase == Chip8GenericOptions::eCHIP8TPD) {
+        setMultiPageDxyn<TwoPageDisplay>();
+    }
+    else if(_options.behaviorBase == Chip8GenericOptions::eCHIP8FPD) {
+        setMultiPageDxyn<FourPageDisplay|SpillRightEdge>();
+    }
     else if(_options.optAllowHires) {
         if(_options.optAllowColors) {
             if (_options.optWrapSprites)
@@ -803,6 +837,17 @@ void Chip8GenericEmulator::setHandler()
             }
             on(0xF0FF, 0xF075, handler<&Chip8GenericEmulator::opFx75_atMost8>);
             on(0xF0FF, 0xF085, handler<&Chip8GenericEmulator::opFx85_atMost8>);
+            break;
+        case Chip8GenericOptions::eCHIP8TPD:
+            on(0xFFFF, 0x00E0, handler<&Chip8GenericEmulator::opInvalid>);
+            on(0xFFFF, 0x004B, handler<&Chip8GenericEmulator::opNop>);  // display on, it is always on here
+            on(0xFFFF, 0x0230, handler<&Chip8GenericEmulator::op00E0>);
+            break;
+        case Chip8GenericOptions::eCHIP8FPD:
+            on(0xFFFF, 0x00E0, handler<&Chip8GenericEmulator::opInvalid>);
+            on(0xFFFF, 0x004B, handler<&Chip8GenericEmulator::op0200_fpd>);  // display on and clear
+            on(0xFFFF, 0x0200, handler<&Chip8GenericEmulator::op0200_fpd>);
+            on(0xFFFF, 0x0216, handler<&Chip8GenericEmulator::op0216_fpd>);
             break;
         case Chip8GenericOptions::eCHIP8E:
             on(0xFFFF, 0x00ED, handler<&Chip8GenericEmulator::op00ED_c8e>);
@@ -937,7 +982,7 @@ void Chip8GenericEmulator::executeFrame()
         do {
             executeInstructions(4870);
         }
-        // REVIEW: 15.5ms instead of 16ms leaves about 1.2ms of the 16.67ms frame for the UI.
+        // 15.5ms instead of 16ms leaves about 1.2ms of the 16.67ms frame for the UI.
         while(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count() < 15500);
     }
     else {
@@ -1302,6 +1347,27 @@ void Chip8GenericEmulator::op00E0_megachip(uint16_t opcode)
     // Without a fixed instruction count there is no frame end to skip to (and calcNextFrame() would divide by zero).
     if(_options.instructionsPerFrame)
         _cycleCounter = calcNextFrame() - 1;
+}
+
+void Chip8GenericEmulator::op0200_fpd(uint16_t opcode)
+{
+    _host.preClear();
+    if (_fpdClearPages == 0 || _fpdClearPages > 4)
+        errorHalt("Invalid FPD clear page count");
+    const int firstLine = (4 - _fpdClearPages) * 32;
+    for (int y = firstLine; y < SCREEN_HEIGHT; ++y) {
+        for (int x = 0; x < SCREEN_WIDTH; ++x) {
+            _screen.setPixel(x, y, 0);
+        }
+    }
+    _screenNeedsUpdate = true;
+    ++_clearCounter;
+}
+
+void Chip8GenericEmulator::op0216_fpd(uint16_t opcode)
+{
+    // The original patches the page count of the 0200 routine with V0, it counts from the bottom of the screen.
+    _fpdClearPages = _rV[0];
 }
 
 void Chip8GenericEmulator::op00ED_c8e(uint16_t opcode)

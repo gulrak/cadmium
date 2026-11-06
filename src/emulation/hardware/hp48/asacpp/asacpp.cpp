@@ -1196,6 +1196,21 @@ public:
         return packNibbles(assembledNibbles());
     }
 
+    std::vector<std::uint8_t> placedCode(std::uint32_t nibbleCount) const
+    {
+        std::vector<std::uint8_t> nibbles(nibbleCount, 0);
+        for (const auto& line : _assembled) {
+            for (std::size_t i = 0; i < line.nibbles.size(); ++i) {
+                const std::size_t address = line.source.address + i;
+                if (address >= nibbleCount) {
+                    throw std::runtime_error(line.source.file + ":" + std::to_string(line.source.line) + ": code outside the image");
+                }
+                nibbles[address] = line.nibbles[i];
+            }
+        }
+        return packNibbles(nibbles);
+    }
+
     std::optional<std::int64_t> symbolValue(std::string_view name) const
     {
         const auto found = _symbols.find(std::string(name));
@@ -2096,6 +2111,11 @@ std::uint32_t AsaCpp::codeSize() const
 std::span<const std::uint8_t> AsaCpp::code() const
 {
     return _impl->code;
+}
+
+std::vector<std::uint8_t> AsaCpp::placedCode(std::uint32_t nibbleCount) const
+{
+    return _impl->assembler.placedCode(nibbleCount);
 }
 
 const Sha1::Digest& AsaCpp::sha1() const

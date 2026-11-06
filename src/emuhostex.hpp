@@ -95,6 +95,11 @@ public:
     //virtual void updatePalette(const std::array<uint8_t, 16>& palette) = 0;
     //virtual void updatePalette(const std::vector<uint32_t>& palette, size_t offset) = 0;
     virtual bool loadRom(std::string_view filename, LoadOptions loadOpt);
+    // Writes an Octo cartridge of the given source with the current options. Includes are resolved
+    // against sourcePath. If expectedImage isn't empty, the assembled source has to match it. Returns
+    // an error message, empty on success. With binaryOnly, the cartridge only holds a hex dump of the
+    // program. That program is expectedImage if there is one, so the source isn't needed then.
+    std::string saveCartridge(const std::string& file, const std::string& source, const std::string& sourcePath, const std::vector<uint8_t>& expectedImage, const std::string& label, bool originalImage, bool binaryOnly = false);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt);
     virtual bool loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, const Properties& props, bool isKnown);
     virtual void updateEmulatorOptions(const Properties& properties);

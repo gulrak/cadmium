@@ -49,9 +49,29 @@ if (NEED_HOST_TOOLS)
     set(RESOURCER_RUNNER     ${CMAKE_CURRENT_BINARY_DIR}/resourcer_host)
     set(ICONGENERATOR_RUNNER ${CMAKE_CURRENT_BINARY_DIR}/icongenerator_host)
 
-    # Build host resourcer, as a small project of its own, as it needs zstd to pack resources
+    # Build host resourcer, as a small project of its own, as it needs zstd to pack resources. With the
+    # HP-48SX core, the same project builds the assembler of the replacement ROM.
+    set(HOST_TOOL_OUTPUTS resourcer_host)
+    set(HOST_TOOL_TARGETS resourcer)
+    set(HOST_TOOL_ARGS)
+    set(HOST_TOOL_DEPENDS ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp)
+    if(CADMIUM_WITH_HP48)
+        set(HP48ROMASM_RUNNER ${CMAKE_CURRENT_BINARY_DIR}/hp48romasm_host)
+        FetchContent_GetProperties(fmtlib)
+        list(APPEND HOST_TOOL_OUTPUTS hp48romasm_host)
+        list(APPEND HOST_TOOL_TARGETS hp48romasm)
+        list(APPEND HOST_TOOL_ARGS
+                -DCADMIUM_HOST_HP48ROMASM_OUTPUT=${HP48ROMASM_RUNNER}
+                -DCADMIUM_FMT_INCLUDE_DIR=${fmtlib_SOURCE_DIR}/include
+                -DCADMIUM_CHIPLET_INCLUDE_DIR=${chiplet_SOURCE_DIR}/include)
+        file(GLOB HP48ROMASM_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/asacpp/*)
+        list(APPEND HOST_TOOL_DEPENDS ${PROJECT_SOURCE_DIR}/tools/hp48romasm.cpp ${HP48ROMASM_SOURCES}
+                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturndecoder.cpp
+                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturndecoder.hpp
+                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturninstructions.cpp)
+    endif()
     add_custom_command(
-            OUTPUT resourcer_host
+            OUTPUT ${HOST_TOOL_OUTPUTS}
             COMMAND ${CMAKE_COMMAND}
             -S ${PROJECT_SOURCE_DIR}/cmake/host-resourcer
             -B ${CMAKE_CURRENT_BINARY_DIR}/host-resourcer-build
@@ -62,8 +82,9 @@ if (NEED_HOST_TOOLS)
             -DCADMIUM_GHC_FILESYSTEM_INCLUDE_DIR=${PROJECT_BINARY_DIR}/_deps/ghcfilesystem-src/include
             -DCADMIUM_ZSTD_SOURCE_DIR=${zstd_SOURCE_DIR}
             -DCADMIUM_HOST_RESOURCER_OUTPUT=${RESOURCER_RUNNER}
-            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR}/host-resourcer-build --target resourcer --config Release
-            DEPENDS ${PROJECT_SOURCE_DIR}/tools/resourcer.cpp ${PROJECT_SOURCE_DIR}/cmake/host-resourcer/CMakeLists.txt
+            ${HOST_TOOL_ARGS}
+            COMMAND ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR}/host-resourcer-build --target ${HOST_TOOL_TARGETS} --config Release
+            DEPENDS ${HOST_TOOL_DEPENDS} ${PROJECT_SOURCE_DIR}/cmake/host-resourcer/CMakeLists.txt
             VERBATIM
     )
 
@@ -79,6 +100,10 @@ if (NEED_HOST_TOOLS)
     # Convenient phony targets for dependencies
     add_custom_target(resourcer_tool     DEPENDS resourcer_host)
     set(RESOURCER_DEPENDS ${RESOURCER_RUNNER})
+    if(CADMIUM_WITH_HP48)
+        add_custom_target(hp48romasm_tool DEPENDS hp48romasm_host)
+        set(HP48ROMASM_DEPENDS ${HP48ROMASM_RUNNER})
+    endif()
     add_custom_target(icongenerator_tool DEPENDS icongenerator_host)
 else()
     # Native case: use the normal targets you already have elsewhere
@@ -87,6 +112,11 @@ else()
 
     add_custom_target(resourcer_tool     DEPENDS resourcer)
     set(RESOURCER_DEPENDS resourcer)
+    if(CADMIUM_WITH_HP48)
+        set(HP48ROMASM_RUNNER hp48romasm)
+        add_custom_target(hp48romasm_tool DEPENDS hp48romasm)
+        set(HP48ROMASM_DEPENDS hp48romasm)
+    endif()
     add_custom_target(icongenerator_tool DEPENDS icongenerator)
 endif()
 
@@ -121,11 +151,29 @@ endif()
 # ------------------------------------------------------------
 # Resource data generation (now works for native, Web, and mingw cross)
 # ------------------------------------------------------------
-# The HP-48SX ROM may lie in files/ while the core is disabled, then neither it nor the interpreter
-# sources are compiled in.
+# The HP-48SX ROM may lie in files/ while the core is disabled or only the replacement ROM is wanted,
+# then it isn't compiled in. The replacement ROM is assembled from its source in
+# src/emulation/hardware/hp48 and compiled in as cadmium-hp48sx-rom.
 set(RESOURCE_EXCLUDES)
+set(RESOURCE_ADDS)
+set(RESOURCE_GENERATED)
 if(NOT CADMIUM_WITH_HP48)
-    set(RESOURCE_EXCLUDES --exclude sxrom-rev-e --exclude hp-chip8)
+    list(APPEND RESOURCE_EXCLUDES --exclude hp-chip8)
+endif()
+if(NOT CADMIUM_WITH_HP48_ORIGINAL_ROM)
+    list(APPEND RESOURCE_EXCLUDES --exclude sxrom-rev-e)
+endif()
+if(CADMIUM_WITH_HP48)
+    set(HP48_REPLACEMENT_ROM_SOURCE ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/cadmium-hp48sx-rom.asap)
+    set(HP48_REPLACEMENT_ROM ${CMAKE_CURRENT_BINARY_DIR}/cadmium-hp48sx-rom)
+    add_custom_command(
+            OUTPUT cadmium-hp48sx-rom
+            COMMAND ${HP48ROMASM_RUNNER} ${HP48_REPLACEMENT_ROM_SOURCE} ${HP48_REPLACEMENT_ROM}
+            DEPENDS hp48romasm_tool ${HP48ROMASM_DEPENDS} ${HP48_REPLACEMENT_ROM_SOURCE}
+            VERBATIM
+    )
+    list(APPEND RESOURCE_ADDS --add cadmium-hp48sx-rom ${HP48_REPLACEMENT_ROM})
+    list(APPEND RESOURCE_GENERATED ${HP48_REPLACEMENT_ROM})
 endif()
 # The starter metadata of the library is only of use with the database (not on the web).
 if(NOT CADMIUM_WITH_DATABASE)
@@ -137,8 +185,9 @@ add_custom_command(
         ${CMAKE_CURRENT_BINARY_DIR}/resourcedata.c
         ${CMAKE_CURRENT_SOURCE_DIR}/files/
         ${RESOURCE_EXCLUDES}
+        ${RESOURCE_ADDS}
         # the resourcer itself, not only its target, so a changed resource format regenerates the data
-        DEPENDS resourcer_tool ${RESOURCER_DEPENDS} ${RESOURCE_FILES}
+        DEPENDS resourcer_tool ${RESOURCER_DEPENDS} ${RESOURCE_FILES} ${RESOURCE_GENERATED}
         VERBATIM
 )
 

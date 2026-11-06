@@ -220,13 +220,19 @@ int main(int argc, char* argv[])
     int storedTotalSize = 0;
     int filenamesSize = 0;
     if (argc < 3) {
-        puts("USAGE: resourcer <outputfile> <directory> [--exclude <relative file or folder>]...");
+        puts("USAGE: resourcer <outputfile> <directory> [--exclude <relative file or folder>]... [--add <name> <file>]...");
         exit(-1);
     }
     std::set<std::string> excluded;
+    // Generated files (e.g. the assembled HP-48SX replacement ROM) under a resource name of their own
+    std::map<std::string, fs::path> added;
     for (int argIdx = 3; argIdx < argc; ++argIdx) {
         if (std::string(argv[argIdx]) == "--exclude" && argIdx + 1 < argc) {
             excluded.insert(argv[++argIdx]);
+        }
+        else if (std::string(argv[argIdx]) == "--add" && argIdx + 2 < argc) {
+            const std::string name = argv[++argIdx];
+            added[name] = argv[++argIdx];
         }
         else {
             std::cerr << "ERROR: unexpected argument '" << argv[argIdx] << "'" << std::endl;
@@ -263,6 +269,21 @@ int main(int argc, char* argv[])
             }
         }
     //}
+    for (const auto& [name, path] : added) {
+        if (!fs::is_regular_file(path)) {
+            std::cerr << "ERROR: file '" << path.string() << "' for resource '" << name << "' not found" << std::endl;
+            exit(-1);
+        }
+        std::clog << "Adding '" << path.string() << "' as '" << name << "'" << std::endl;
+        ResourceFile resource;
+        resource.path = name;
+        resource.data = readFile(path);
+        prepareStoredData(resource);
+        totalSize += static_cast<int>(resource.originalSize());
+        storedTotalSize += static_cast<int>(resource.storedSize());
+        filenamesSize += name.length();
+        files[name] = std::move(resource);
+    }
 
     std::clog << "Found " << files.size() << " files with " << totalSize
               << " bytes of data, storing " << storedTotalSize << " bytes, processing..." << std::endl;

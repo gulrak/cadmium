@@ -103,6 +103,6 @@ protected:
 //---------------------------------------------------------------------------------------
 // Sprite drawing related quirk flags for templating
 //---------------------------------------------------------------------------------------
-enum Chip8Quirks { HiresSupport = 1, MultiColor = 2, WrapSprite = 4, SChip11Collisions = 8, SChip1xLoresDraw = 16 };
+enum Chip8Quirks { HiresSupport = 1, MultiColor = 2, WrapSprite = 4, SChip11Collisions = 8, SChip1xLoresDraw = 16, TwoPageDisplay = 32, FourPageDisplay = 64, SpillRightEdge = 128 };
 
 } // emu

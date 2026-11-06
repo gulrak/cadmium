@@ -13,6 +13,8 @@ set(CHIP8_EMU_SOURCE
     chip8rsm8k1tables.cpp
     chip8strict.cpp
     chip8strict.hpp
+    schipstrict.cpp
+    schipstrict.hpp
     coreregistry.cpp
     coreregistry.hpp
     cosmacvip.cpp

@@ -2414,7 +2414,7 @@ public:
         SetRowHeight(16);
         auto area = GetContentAvailable();
 #ifdef PLATFORM_WEB
-        Space(area.height - 54);
+        Space(area.height - ((mode != eLOAD && _saveFileType == 2) ? 73 : 54));
 #else
         TextBox("currentDirectory", _currentDirectory, 4096);
         if (IsLastWidgetEditFinished()) {
@@ -2423,7 +2423,7 @@ public:
         }
         Space(1);
         auto tabPos = GetCurrentPos();
-        BeginTableView(area.height - 135, "library", {TableColumn::Fixed(24), TableColumn::Stretch(0.66f), TableColumn::Stretch(0.145f), TableColumn::Stretch(0.13f)}, &scroll);
+        BeginTableView(area.height - ((mode != eLOAD && _saveFileType == 2) ? 154 : 135), "library", {TableColumn::Fixed(24), TableColumn::Stretch(0.66f), TableColumn::Stretch(0.145f), TableColumn::Stretch(0.13f)}, &scroll);
         for(int i = 0; i < _librarian.numEntries(); ++i) {
             const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};
@@ -2551,12 +2551,27 @@ public:
                 SetNextWidth(110);
                 Label("Select file type:");
                 SetNextWidth(70);
-                ToggleGroup("ROM File;Source Code", &_saveFileType);
+                if(ToggleGroup("ROM File;Source Code;Cartridge", &_saveFileType))
+                    _saveError.clear();
                 EndColumns();
+                if(_saveFileType == 2) {
+                    Space(3);
+                    BeginColumns();
+                    SetNextWidth(110);
+                    Label("Cartridge label:");
+                    SetNextWidth(190);
+                    TextBox("cartridgeLabel", _cartridgeLabel, 256);
+                    Space(8);
+                    SetNextWidth(150);
+                    CheckBox("Original Octo image", &_cartridgeOriginalImage);
+                    CheckBox("Binary only", &_cartridgeBinaryOnly);
+                    SetTooltip("Store only a hex dump of the program instead of its source");
+                    EndColumns();
+                }
                 Space(3);
                 SetNextWidth(80);
                 SetIndent(32);
-                if(_currentFileName.empty() && ((_saveFileType == 0 && _romImage.empty()) || (_saveFileType == 1 && _editor.getText().empty()))) GuiDisable();
+                if(_currentFileName.empty() && ((_saveFileType == 0 && _romImage.empty()) || (_saveFileType != 0 && _editor.getText().empty()))) GuiDisable();
                 if(Button("Save") && !_currentFileName.empty()) {
                     // TODO: Fix this
                     std::string romExtension = ".ch8";
@@ -2572,6 +2587,13 @@ public:
                         else
                             _currentFileName += ".8o";
                     }
+                    else if (_saveFileType == 2 && fs::path(_currentFileName).extension() != ".gif") {
+                        if (fs::path(_currentFileName).has_extension())
+                            _currentFileName = fs::path(_currentFileName).replace_extension(".gif").string();
+                        else
+                            _currentFileName += ".gif";
+                    }
+                    _saveError.clear();
 #ifndef PLATFORM_WEB
                     auto targetFile = _librarian.fullPath(_currentFileName);
                     std::error_code ec;
@@ -2582,22 +2604,32 @@ public:
                         _confirmOverwrite.clear();
                         if(_saveFileType == 0)
                             writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
-                        else
+                        else if(_saveFileType == 1)
                             saveSource(targetFile);
-                        _mainView = _lastView;
+                        else
+                            saveCartridgeFile(targetFile);
+                        if(_saveError.empty())
+                            _mainView = _lastView;
                     }
 #else
                     if(_saveFileType == 0)
                         webDownloadFile(_currentFileName.c_str(), _romImage.data(), _romImage.size(), "application/octet-stream");
-                    else
+                    else if(_saveFileType == 1)
                         saveSource(_currentFileName);
-                    _mainView = _lastView;
+                    else
+                        saveCartridgeFile(_currentFileName);
+                    if(_saveError.empty())
+                        _mainView = _lastView;
 #endif
                 }
                 GuiEnable();
                 if (!_confirmOverwrite.empty()) {
                     SetIndent(32);
                     Label(fmt::format("'{}' exists, press Save again to replace it.", fs::path(_confirmOverwrite).filename().string()).c_str());
+                }
+                if (!_saveError.empty()) {
+                    SetIndent(32);
+                    Label(_saveError.c_str());
                 }
                 break;
             }
@@ -2734,6 +2766,9 @@ public:
                 _currentFileName = fs::path(romPath.filename()).replace_extension(".8o").string();
         }
         _confirmOverwrite.clear();
+        _saveError.clear();
+        if (_cartridgeLabel.empty() && !_romName.empty())
+            _cartridgeLabel = fs::path(_romName).stem().string();
         _mainView = eROM_EXPORT;
 #ifndef PLATFORM_WEB
         _librarian.fetchDir(_currentDirectory);
@@ -2751,6 +2786,33 @@ public:
 #endif
         TraceLog(LOG_INFO, "Saved source to %s", path.c_str());
         _sourcePath = path;
+    }
+
+    void saveCartridgeFile(const std::string& path)
+    {
+        // A binary only cartridge of the loaded program needs no disassembly.
+        if (!_cartridgeBinaryOnly)
+            updateEditorDisassembly(true);
+        // Source that was changed in the editor is what the user wants, also if the program
+        // isn't updated from it yet. Otherwise, it has to be the program that is loaded.
+        static const std::vector<uint8_t> noImage;
+        const auto& expected = _editor.contentRevision() == _loadedSourceRevision ? _romImage : noImage;
+#ifndef PLATFORM_WEB
+        _saveError = saveCartridge(path, _editor.getText(), _editor.getFilename(), expected, _cartridgeLabel, _cartridgeOriginalImage, _cartridgeBinaryOnly);
+#else
+        const std::string memoryFile = "/tmp/cadmium-cartridge.gif";
+        _saveError = saveCartridge(memoryFile, _editor.getText(), _editor.getFilename(), expected, _cartridgeLabel, _cartridgeOriginalImage, _cartridgeBinaryOnly);
+        if (_saveError.empty()) {
+            if (auto data = loadFile(memoryFile, Librarian::MAX_ROM_SIZE))
+                webDownloadFile(fs::path(path).filename().string().c_str(), data->data(), data->size(), "image/gif");
+            else
+                _saveError = "Couldn't read the generated cartridge.";
+            std::error_code ec;
+            fs::remove(memoryFile, ec);
+        }
+#endif
+        if (_saveError.empty())
+            TraceLog(LOG_INFO, "Saved cartridge to %s", path.c_str());
     }
 
     struct EditorDisassembly
@@ -2819,7 +2881,11 @@ private:
     Sha1::Digest _screenShotSha1;
     uint32_t _loadedSourceRevision{};
     std::string _sourcePath;      // the file the editor's source is saved to, empty if there is none yet
-    int _saveFileType{0};         // save page: 0 = ROM file, 1 = source code
+    int _saveFileType{0};         // save page: 0 = ROM file, 1 = source code, 2 = cartridge
+    std::string _cartridgeLabel;
+    bool _cartridgeOriginalImage{false};
+    bool _cartridgeBinaryOnly{false};
+    std::string _saveError;
     std::string _confirmOverwrite;
     static constexpr const char* DISASSEMBLY_PLACEHOLDER = "# Disassembling, please wait...\n";
 #ifndef PLATFORM_WEB
@@ -3247,6 +3313,7 @@ int main(int argc, char* argv[])
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName;
+    std::string customPalette;
     int64_t testSuiteMenuVal = 0;
     cli.category("General Options");
 #ifndef PLATFORM_WEB
@@ -3261,6 +3328,7 @@ int main(int argc, char* argv[])
                [&headlessLimitSpecified](std::string) { headlessLimitSpecified = true; }).range(1, INT64_MAX);
     cli.option({"--dump-screen"}, headlessOptions.dumpScreen, "Export the last headless presentation as an image");
     cli.option({"--dump-state"}, headlessOptions.dumpState, "Export headless machine state as JSON");
+    cli.option({"--custom-palette"}, customPalette, "Set the colors of the palette, as comma separated list like \"#000000,#FFFFFF,...\"");
     cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
     cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
@@ -3414,6 +3482,19 @@ int main(int argc, char* argv[])
     // No preset given and no configuration yet (e.g. first start), use a default.
     if (!coreProperties) {
         coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
+    }
+    if (!customPalette.empty()) {
+        emu::Palette palette;
+        for (const auto& color : split(customPalette, ',')) {
+            const auto hex = trim(color);
+            if (!std::regex_match(hex, std::regex("#[0-9a-fA-F]{6}"))) {
+                std::cerr << "ERROR: --custom-palette expects colors like #rrggbb, got '" << hex << "'" << std::endl;
+                exit(1);
+            }
+            palette.colors.emplace_back(hex);
+        }
+        palette.numColors = palette.colors.size();
+        coreProperties.palette() = palette;
     }
 #ifndef PLATFORM_WEB
     if(opcodeTable) {

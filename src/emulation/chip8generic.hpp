@@ -51,9 +51,12 @@ struct Chip8GenericOptions
     static Chip8GenericOptions fromProperties(const Properties& props);
     static Properties& registeredPrototype();
     chip8::Variant variant() const;
-    enum SupportedPreset { eCHIP8, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP09, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
+    // The order has to match the behaviorBase combo and genericPresets[].
+    enum SupportedPreset { eCHIP8, eCHIP8TPD, eCHIP8FPD, eCHIP10, eCHIP8E, eCHIP8X, eCHIP48, eSCHIP09, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
     //enum SupportedPreset { eCHIP8, eCHIP8TPD, eCHIP8FPD, eCHIP10, eCHIP8E, eCHIP8X, eCHIP8XTPD, eCHIP8XFPD, eCHIP48, eSCHIP10, eSCHIP11, eSCHPC, eSCHIP_MODERN, eMEGACHIP, eXOCHIP, eNUM_PRESETS };
     SupportedPreset behaviorBase{ eCHIP8 };
+    // Number of 256 byte display pages of the VIP two and four page interpreters, one line of 64 pixel per 8 bytes.
+    int displayPages() const { return behaviorBase == eCHIP8TPD ? 2 : behaviorBase == eCHIP8FPD ? 4 : 1; }
     enum class ScreenRotation { NONE=0, CW0=NONE, CW90, CW180, CW270 };
     enum class TouchInputMode { UNKNOWN=-1, NONE=0, SWIPE, SEG16, SEG16FILL, GAMEPAD, VIP };
     enum class FontStyle5px { VIP, DREAM6800, ETI660, SCHIP, FISH, OCTO, AKOUZ1 };
@@ -136,9 +139,9 @@ public:
     void handleTimer() override;
     bool needsScreenUpdate() override { bool rc = _screenNeedsUpdate; _screenNeedsUpdate = false; return _isMegaChipMode ? false : rc; }
     uint16_t getCurrentScreenWidth() const override { return _isMegaChipMode ? 256 : _options.optAllowHires ? 128 : 64; }
-    uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : 32; }
+    uint16_t getCurrentScreenHeight() const override { return _isMegaChipMode ? 192 : _options.optAllowHires ? 64 : SCREEN_HEIGHT; }
     uint16_t getMaxScreenWidth() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 256 : 128; }
-    uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : 64; }
+    uint16_t getMaxScreenHeight() const override { return _options.behaviorBase == Chip8GenericOptions::eMEGACHIP ? 192 : std::max(SCREEN_HEIGHT, 64); }
     const VideoType* getScreen() const override { return _isMegaChipMode ? nullptr : &_screen; }
     const VideoRGBAType* getScreenRGBA() const override { return _isMegaChipMode ? _screenRGBA : nullptr; }
     ghc::span2d<const uint32_t> getRGBASpan(ghc::span2d<uint32_t>) const override;
@@ -282,6 +285,8 @@ public:
     void opFx75_atMost8(uint16_t opcode);
     void opFx85(uint16_t opcode);
     void opFx85_atMost8(uint16_t opcode);
+    void op0200_fpd(uint16_t opcode);
+    void op0216_fpd(uint16_t opcode);
     void opFxF8_c8x(uint16_t opcode);
     void opFxFB_c8x(uint16_t opcode);
 
@@ -382,24 +387,28 @@ public:
             }
         }
         else {
-            if(_options.instructionsPerFrame && _cycleCounter % _options.instructionsPerFrame != 0) {
-                _rPC -= 2;
-                return;
-            }
             int x = _rV[(opcode >> 8) & 0xF] % SCREEN_WIDTH;
             int y = _rV[(opcode >> 4) & 0xF] % SCREEN_HEIGHT;
             int lines = opcode & 0xF;
-            if(!_isInstantDxyn && _options.optExtendedVBlank && _cpuState != eWAIT) {
-                auto s = lines + (x & 7);
-                if(lines > 4 && s > 9) {
+            if(_options.instructionsPerFrame) {
+                const auto slot = static_cast<int>(_cycleCounter % _options.instructionsPerFrame);
+                if(_dxynExtraFrames < 0)
+                    _dxynExtraFrames = !_isInstantDxyn && _options.optExtendedVBlank ? extendedWaitFrames(slot, lines, x) : 0;
+                if(slot != 0) {
+                    _rPC -= 2;
+                    return;
+                }
+                if(_dxynExtraFrames > 0) {
+                    --_dxynExtraFrames;
                     _rPC -= 2;
                     _cpuState = eWAIT;
                     return;
                 }
+                _dxynExtraFrames = -1;
+                _dxynDrawFrame = _cycleCounter / _options.instructionsPerFrame;
+                _dxynDrawCycles = lines * _extendedWait.lineCycles;
             }
-            else {
-                _cpuState = eNORMAL;
-            }
+            _cpuState = eNORMAL;
             if(_options.optPalVideo)
                 _rV[15] = drawSprite<quirks,128,96>(x, y, &_memory[_rI & ADDRESS_MASK], lines, false) ? 1 : 0;
             else
@@ -427,7 +436,7 @@ public:
     {
         int collision = 0;
         constexpr int scrWidth = quirks&HiresSupport ? MAX_WIDTH : MAX_WIDTH/2;
-        constexpr int scrHeight = quirks&HiresSupport ? MAX_HEIGHT : MAX_HEIGHT/2;
+        constexpr int scrHeight = quirks&FourPageDisplay ? 128 : quirks&TwoPageDisplay ? 64 : quirks&HiresSupport ? MAX_HEIGHT : MAX_HEIGHT/2;
         int scale = quirks&HiresSupport ? (hires ? 1 : 2) : 1;
         int width = 8;
         //x %= scrWidth;
@@ -464,7 +473,14 @@ public:
                         for (unsigned b = 0; b < width; ++b, value <<= 1) {
                             if (b == 8)
                                 value = *data++;
-                            if constexpr ((quirks&SChip1xLoresDraw) != 0) {
+                            if constexpr ((quirks&SpillRightEdge) != 0) {
+                                if (value & 0x80) {
+                                    const int spill = x + b >= scrWidth ? 1 : 0;
+                                    if (y + l + spill < scrHeight && drawSpritePixelEx<quirks>(x + b - spill * scrWidth, y + l + spill, plane, hires))
+                                        lineCol = 1;
+                                }
+                            }
+                            else if constexpr ((quirks&SChip1xLoresDraw) != 0) {
                                 if (x + b * scale < scrWidth && drawSpritePixelEx<quirks>(x + b * scale, y + l * scale, value & 0x80 ? plane : 0, hires))
                                     lineCol = 1;
                             }
@@ -508,6 +524,33 @@ protected:
 
 private:
     virtual int64_t calcNextFrame() const { return ((_cycleCounter + _options.instructionsPerFrame) / _options.instructionsPerFrame) * _options.instructionsPerFrame; }
+    // The VIP interpreters prepare a sprite before they wait for the interrupt and combine it with the screen
+    // after it. If that, the previous draw and the opcodes in between don't fit between two interrupts, the
+    // interrupt is missed and the sprite comes a frame later. Line cost of the preparation is from chip8strict.
+    struct ExtendedWaitTiming
+    {
+        int frameCycles;       // time for opcodes and drawing between two interrupts
+        int opcodeFrameCycles; // what the opcodes of a whole frame take of that, independent of the instructions per frame
+        int lineCycles;        // combining one sprite line with the screen
+    };
+    int extendedWaitFrames(int slot, int lines, int x) const
+    {
+        const int instructions = _options.instructionsPerFrame;
+        const int opcodes = (slot ? slot : instructions) - 1;
+        const auto frame = (_cycleCounter - (slot ? 0 : 1)) / instructions;
+        const int previousDraw = frame == _dxynDrawFrame ? _dxynDrawCycles : 0;
+        return (previousDraw + opcodes * _extendedWait.opcodeFrameCycles / instructions + 68 + lines * (46 + 20 * (x & 7))) / _extendedWait.frameCycles;
+    }
+    template<uint16_t displayQuirks>
+    void setMultiPageDxyn()
+    {
+        if(_options.optWrapSprites)
+            on(0xF000, 0xD000, handler<&Chip8GenericEmulator::opDxyn<WrapSprite|displayQuirks>>);
+        else if(_options.optInstantDxyn)
+            on(0xF000, 0xD000, handler<&Chip8GenericEmulator::opDxyn<displayQuirks>>);
+        else
+            on(0xF000, 0xD000, handler<&Chip8GenericEmulator::opDxyn_displayWait<displayQuirks>>);
+    }
     void swapMegaSchreens() {
         std::swap(_screenRGBA, _workRGBA);
     }
@@ -591,6 +634,11 @@ private:
     uint32_t _simpleRandState{12345};
     int _chip8xBackgroundColor{0};
     uint8_t _vp595Frequency{0x80};
+    uint8_t _fpdClearPages{4};
+    ExtendedWaitTiming _extendedWait{1740, 1275, 54};
+    int _dxynExtraFrames{-1};
+    int _dxynDrawCycles{0};
+    int64_t _dxynDrawFrame{-1};
     int64_t _waitCycles{0};
     int _waitFrames{0};
     mutable std::array<uint8_t,1088> _hp48Framebuffer{};

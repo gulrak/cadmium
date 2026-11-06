@@ -28,6 +28,7 @@
 
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/octocartridge.hpp>
+#include <sstream>
 #include <chiplet/utility.hpp>
 #include <configuration.hpp>
 #include <emulation/c8bfile.hpp>
@@ -470,6 +471,93 @@ void EmuHostEx::syncPalette()
         //_debugger.updateCore(_chipEmu.get());
     }
 #endif
+
+static std::string compileErrorText(const CompileResult& result)
+{
+    if(!result.locations.empty() && result.locations.front().line) {
+        return fmt::format("Line {}: {}", result.locations.front().line, result.errorMessage);
+    }
+    return result.errorMessage;
+}
+
+std::string EmuHostEx::saveCartridge(const std::string& file, const std::string& source, const std::string& sourcePath, const std::vector<uint8_t>& expectedImage, const std::string& label, bool originalImage, bool binaryOnly)
+{
+    if(!_properties || !CoreRegistry::supportsCartridge(*_properties)) {
+        return "Cartridges need a generic CHIP-8, SCHIP or XO-CHIP preset.";
+    }
+    std::vector<uint8_t> code;
+    std::string program;
+    if(binaryOnly && !expectedImage.empty()) {
+        const auto* startAddress = _properties->find(propid::START_ADDRESS);
+        if(startAddress && startAddress->getInt() != 0x200) {
+            return "A binary only cartridge is always loaded at address 0x200.";
+        }
+        code = expectedImage;
+    }
+    else {
+        auto text = source;
+        if(text.empty() || text.back() != '\n') {
+            text += '\n';
+        }
+        // A cartridge has to stand on its own, so includes get resolved, no local paths are stored.
+        OctoCompiler preprocessor;
+        preprocessor.generateLineInfos(false);
+        if(preprocessor.preprocessFile(sourcePath, text.data(), text.data() + text.size() + 1).resultType != CompileResult::eOK) {
+            return compileErrorText(preprocessor.compileResult());
+        }
+        std::ostringstream preprocessed;
+        preprocessor.dumpSegments(preprocessed);
+        program = preprocessed.str();
+        // Assembled just like loading the cartridge will do it.
+        OctoCompiler assembler;
+        if(assembler.compile(file, program).resultType != CompileResult::eOK) {
+            return compileErrorText(assembler.compileResult());
+        }
+        code.assign(assembler.code(), assembler.code() + assembler.codeSize());
+        if(!expectedImage.empty() && code != expectedImage) {
+            return "This source doesn't assemble to the loaded program, a cartridge would change it.";
+        }
+    }
+    if(binaryOnly) {
+        program = OctoCartridge::binarySource(code);
+        OctoCompiler assembler;
+        if(assembler.compile(file, program).resultType != CompileResult::eOK) {
+            return compileErrorText(assembler.compileResult());
+        }
+        if(!std::equal(code.begin(), code.end(), assembler.code(), assembler.code() + assembler.codeSize())) {
+            return "The hex dump doesn't assemble to the program, it can't be stored as binary only.";
+        }
+    }
+    auto properties = *_properties;
+    if(!_colorPalette.empty()) {
+        properties.palette() = _colorPalette;
+    }
+    auto options = CoreRegistry::octoOptionsFromProperties(properties);
+    // The palette only goes into the cartridge when colors 4 and up are not Cadmium's defaults,
+    // so cartridges of programs with two planes stay as they always were.
+    bool ownColors = false;
+    for(size_t i = 4; i < options.palette.size(); ++i) {
+        if(i >= _defaultPalette.colors.size() || Palette::Color::fromRGB(options.palette[i]).toRGBInt() != _defaultPalette.colors[i].toRGBInt())
+            ownColors = true;
+    }
+    if(!ownColors)
+        options.palette.clear();
+    for(int limit : {3232, 3583, 3584, 65024}) {
+        if(limit >= options.maxRom && limit >= static_cast<int>(code.size())) {
+            options.maxRom = limit;
+            break;
+        }
+    }
+    if(static_cast<int>(code.size()) > options.maxRom) {
+        return "This program is too big for a cartridge.";
+    }
+    OctoCartridge cart(file);
+    cart.setOptions(options);
+    if(!cart.saveCartridge(program, label, {}, originalImage ? OctoCartridge::BaseImage::OCTO : OctoCartridge::BaseImage::CD48)) {
+        return fmt::format("Couldn't write '{}'.", file);
+    }
+    return {};
+}
 
 bool EmuHostEx::loadRom(std::string_view filename, LoadOptions loadOpt)
 {

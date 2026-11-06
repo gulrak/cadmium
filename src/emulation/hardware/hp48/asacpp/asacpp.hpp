@@ -95,6 +95,7 @@ public:
 
     std::uint32_t codeSize() const;
     std::span<const std::uint8_t> code() const;
+    std::vector<std::uint8_t> placedCode(std::uint32_t nibbleCount) const;
     const Sha1::Digest& sha1() const;
 
     std::pair<std::uint32_t, std::uint32_t> addrForLine(std::uint32_t line) const;

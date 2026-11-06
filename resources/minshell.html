@@ -94,7 +94,12 @@
     canvas: (function() {
       let canvas = document.getElementById('canvas');
       return canvas;
-    })()
+    })(),
+    locateFile: function(path, prefix) {
+      let script = document.querySelector('script[src*="index.js"]');
+      let query = script ? new URL(script.src).search : '';
+      return prefix + path + query;
+    }
   };
   function disableBrowserShortcuts(event) {
     if (event.key.startsWith('F') && Number(event.key.substring(1)) >= 1 && Number(event.key.substring(1)) <= 12) {

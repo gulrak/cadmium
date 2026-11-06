@@ -47,6 +47,11 @@ target_include_directories(libraryquery-tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libraryquery-tests PRIVATE doctest fmt::fmt)
 doctest_discover_tests(libraryquery-tests)
 
+add_executable(schip-strict-tests main.cpp schip_strict_tests.cpp)
+target_compile_definitions(schip-strict-tests PRIVATE WITHOUT_STB_IMAGE)
+target_link_libraries(schip-strict-tests PRIVATE doctest emulation)
+doctest_discover_tests(schip-strict-tests)
+
 add_executable(studio2-tests main.cpp studio2_tests.cpp)
 target_compile_definitions(studio2-tests PRIVATE WITHOUT_STB_IMAGE)
 target_link_libraries(studio2-tests PRIVATE doctest emulation)
@@ -59,7 +64,12 @@ if(CADMIUM_WITH_HP48)
     doctest_discover_tests(hp48sx-tests PROPERTIES TIMEOUT 300)
 endif()
 
-add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp host_lifecycle_tests.cpp property_ids_tests.cpp property_rules_tests.cpp
+add_executable(highlighter-tests main.cpp highlighter_tests.cpp ../src/highlighter.cpp)
+target_compile_definitions(highlighter-tests PRIVATE WITHOUT_STB_IMAGE)
+target_link_libraries(highlighter-tests PRIVATE doctest emulation rlguipp)
+doctest_discover_tests(highlighter-tests PROPERTIES TIMEOUT 30)
+
+add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp cartridge_tests.cpp display_wait_tests.cpp host_lifecycle_tests.cpp multipage_display_tests.cpp property_ids_tests.cpp property_rules_tests.cpp
     ../src/emuhostex.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/systemtools.cpp)
 target_compile_definitions(hex-rom-tests PRIVATE WITHOUT_STB_IMAGE CADMIUM_VERSION="${PROJECT_VERSION}")
 if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/docs/ETI-660/Chip-8 ETI660 Hybrids")

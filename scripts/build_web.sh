@@ -52,6 +52,21 @@ for artifact in index.html index.js index.wasm; do
     cmake -E copy_if_different "${source_file}" "${DIST_DIR}/${artifact}"
 done
 
+# Browsers may keep using a cached index.js/index.wasm after a deploy, so the
+# page loads them with a query made from their content. The shell page passes
+# the query of index.js on to index.wasm (see Module.locateFile in minshell.html).
+js_hash="$(cmake -E sha256sum "${DIST_DIR}/index.js" | cut -c1-8)"
+wasm_hash="$(cmake -E sha256sum "${DIST_DIR}/index.wasm" | cut -c1-8)"
+build_id="${js_hash}${wasm_hash}"
+sed 's/src="\{0,1\}index\.js"\{0,1\}>/src="index.js?v='"${build_id}"'">/' \
+    "${DIST_DIR}/index.html" > "${DIST_DIR}/index.html.tmp"
+cmake -E rename "${DIST_DIR}/index.html.tmp" "${DIST_DIR}/index.html"
+if ! grep -q "index.js?v=${build_id}" "${DIST_DIR}/index.html"; then
+    echo "Could not add the build id to the index.js script tag in index.html." >&2
+    exit 1
+fi
+echo "Build id: ${build_id}"
+
 cmake -E rm -f "${ARCHIVE}"
 (
     cd "${DIST_DIR}"

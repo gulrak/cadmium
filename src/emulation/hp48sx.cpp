@@ -31,7 +31,10 @@
 #include <emulation/hardware/hp48/asacpp/asacpp.hpp>
 #include <resourcemanager.hpp>
 
+#include <fmt/format.h>
+
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <span>
 #include <stdexcept>
@@ -64,6 +67,17 @@ enum class Interpreter {
 };
 
 constexpr std::string_view INTERPRETER_FOLDER = "hp-chip8";
+constexpr std::string_view ORIGINAL_ROM = "sxrom-rev-e";
+constexpr std::string_view REPLACEMENT_ROM = "cadmium-hp48sx-rom";
+constexpr uint32_t REPLACEMENT_SYSTEM_CODE = 0x20000;
+constexpr uint32_t REPLACEMENT_SYSTEM_CODE_END = 0x30000;
+// RPL words and object prologs, docs/HP48-Replacement-ROM-Spec.md
+constexpr uint32_t SX_DSKTOP = 0x70579;
+constexpr uint32_t SX_EDITLINE = 0x7057E;
+constexpr uint32_t STRING_PROLOG = 0x02A2C;
+constexpr uint32_t SYSTEM_BINARY_PROLOG = 0x02911;
+constexpr uint32_t REAL_PROLOG = 0x02933;
+constexpr uint32_t CODE_PROLOG = 0x02DCC;
 
 std::vector<uint8_t> readFile(const std::string& path)
 {
@@ -85,6 +99,27 @@ std::vector<uint8_t> loadAsset(const std::string& name, std::string_view folder 
         }
     }
     return readFile(name);
+}
+
+bool originalRomAvailable()
+{
+    static const bool available = ResourceManager::instance().resourceAvailable(std::string(ORIGINAL_ROM));
+    return available;
+}
+
+std::vector<uint8_t> loadRom(const std::string& name, bool& replacement)
+{
+    replacement = name == REPLACEMENT_ROM;
+    try {
+        return loadAsset(name);
+    }
+    catch (const std::runtime_error&) {
+        if (replacement) {
+            throw;
+        }
+        replacement = true;
+        return loadAsset(std::string(REPLACEMENT_ROM));
+    }
 }
 
 chip8::VariantSet variantFor(Interpreter interpreter)
@@ -109,7 +144,7 @@ chip8::VariantSet variantFor(Interpreter interpreter)
 struct Hp48sxOptions
 {
     Interpreter interpreter{Interpreter::NONE};
-    std::string rom{"sxrom-rev-e"};
+    std::string rom{ORIGINAL_ROM};  // the replacement ROM when HP's ROM isn't compiled in, see asProperties()
     std::string source;
     std::string fetchSymbol{"dispatch"};
     int symbolAddressBias{-16};
@@ -127,8 +162,10 @@ struct Hp48sxOptions
         auto& prototype = Properties::getProperties(PROPERTY_CLASS);
         if (!prototype) {
             prototype.registerProperty({std::string(PROP_INTERPRETER), "Interpreter", Property::Combo{"NONE"s, "CHIP-48"s, "SCHIP-1.0-BETA"s, "SCHIP-1.0"s, "SCHIP-1.1"s, "SCHPC"s}, "HP-48 interpreter preset"});
-            prototype.registerProperty({std::string(PROP_ROM), "ROM", "sxrom-rev-e"s, "HP-48SX ROM asset"});
-            // The calculator settings (ON + [+]/[-]) can't be reached without its keyboard, so this replaces them
+            if (originalRomAvailable())
+                prototype.registerProperty({std::string(PROP_ROM), "ROM", Property::Combo{std::string(ORIGINAL_ROM), std::string(REPLACEMENT_ROM)}, "HP-48SX ROM asset", PropertyFlags::eWritable});
+            else
+                prototype.registerProperty({std::string(PROP_ROM), "ROM", std::string(REPLACEMENT_ROM), "HP-48SX ROM asset"});
             prototype.registerProperty({std::string(PROP_FIXED_CONTRAST), "Fixed contrast", false, "Use the Contrast setting instead of the contrast the calculator sets", PropertyFlags::eWritable});
             prototype.registerProperty({std::string(PROP_CONTRAST), "Contrast", Property::Integer{hp48::Hp48Display::DEFAULT_CONTRAST, hp48::Hp48Display::MIN_CONTRAST, hp48::Hp48Display::MAX_CONTRAST}, "Display contrast (0-31, the calculator default is 11)", PropertyFlags::eWritable});
             prototype.registerProperty({std::string(PROP_SOURCE), "Interpreter Source", ""s, "ASAP source asset", PropertyFlags::eInvisible});
@@ -147,7 +184,10 @@ struct Hp48sxOptions
     {
         auto properties = registeredPrototype();
         properties[std::string(PROP_INTERPRETER)].setSelectedIndex(static_cast<size_t>(interpreter));
-        properties[std::string(PROP_ROM)].setString(rom);
+        if (originalRomAvailable())
+            properties[std::string(PROP_ROM)].setSelectedText(rom);
+        else
+            properties[std::string(PROP_ROM)].setString(std::string(REPLACEMENT_ROM));
         properties[std::string(PROP_SOURCE)].setString(source);
         properties[std::string(PROP_FETCH)].setString(fetchSymbol);
         properties[std::string(PROP_SYMBOL_BIAS)].setInt(symbolAddressBias);
@@ -165,7 +205,7 @@ struct Hp48sxOptions
     {
         Hp48sxOptions options;
         options.interpreter = static_cast<Interpreter>(properties[std::string(PROP_INTERPRETER)].getSelectedIndex());
-        options.rom = properties[std::string(PROP_ROM)].getString();
+        options.rom = originalRomAvailable() ? properties[std::string(PROP_ROM)].getSelectedText() : std::string(REPLACEMENT_ROM);
         options.source = properties[std::string(PROP_SOURCE)].getString();
         options.fetchSymbol = properties[std::string(PROP_FETCH)].getString();
         options.symbolAddressBias = properties[std::string(PROP_SYMBOL_BIAS)].getInt();
@@ -210,17 +250,25 @@ const std::array<SetupInfo, 6> PRESETS{{
      {.interpreter = Interpreter::SCHPC, .source = "hp-chip8/schpc.asap", .symbolAddressBias = 10, .timerSymbol = "o_timer", .soundSymbol = "o_sound", .stackPointerSymbol = "o_csp", .stackSymbol = "o_cstack"}},
 }};
 
+size_t hiddenPresets()
+{
+    return originalRomAvailable() ? 0 : 1;
+}
+
 struct Factory final : CoreRegistry::FactoryInfo<Hp48sxEmulationCore, SetupInfo, Hp48sxOptions>
 {
     Factory()
-        : FactoryInfo(140, PRESETS, "Hardware emulation of an HP-48SX")
+        : FactoryInfo(140, ghc::span<const SetupInfo>(PRESETS).subspan(hiddenPresets()), "Hardware emulation of an HP-48SX")
     {
     }
     std::string prefix() const override { return "HP48"; }
     VariantIndex variantIndex(const Properties& properties) const override
     {
         const auto index = properties[std::string(PROP_INTERPRETER)].getSelectedIndex();
-        return {index, PRESETS[index].options.asProperties() == properties};
+        if (index < hiddenPresets()) {
+            return {0, true};
+        }
+        return {index - hiddenPresets(), PRESETS[index].options.asProperties() == properties};
     }
     void applyRules(Properties& props, std::string_view) const override
     {
@@ -250,7 +298,7 @@ struct Hp48sxEmulationCore::Private
         , syncedMemory(4096)
     {
         (void)REGISTERED;
-        auto rom = loadAsset(options.rom);
+        auto rom = loadRom(options.rom, replacementRom);
         machine = std::make_unique<hp48::G48sxMachine>(hp48::G48SX_RECOVERY_RESET_KEY_HOLD_INSTRUCTIONS, std::move(rom), "Cadmium HP-48SX", hp48::G48sxTimingProfile::COMPARE);
         powerOnState = machine->saveStateBytes(false);
         idleStack.push(std::string("No program loaded"));
@@ -262,6 +310,58 @@ struct Hp48sxEmulationCore::Private
         const auto fixed = options.fixedContrast ? std::optional<int>(options.contrast) : std::nullopt;
         machine->setFixedContrast(fixed);
         idleDisplay.setContrast(fixed.value_or(hp48::Hp48Display::DEFAULT_CONTRAST));
+        stackDisplay.setContrast(fixed.value_or(hp48::Hp48Display::DEFAULT_CONTRAST));
+    }
+
+    bool replacementRomIdles() const
+    {
+        const auto pc = machine->cpu().getPC();
+        return replacementRom && pc >= REPLACEMENT_SYSTEM_CODE && pc < REPLACEMENT_SYSTEM_CODE_END;
+    }
+
+    // The RPL stack from RAM (spec section 5.2): levels between DSKTOP and EDITLINE, top four only
+    void updateCalculatorStack()
+    {
+        calculatorStack = {};
+        const uint32_t dskTop = readPacked(*machine, SX_DSKTOP, 5);
+        const uint32_t editLine = readPacked(*machine, SX_EDITLINE, 5);
+        if (editLine <= dskTop || editLine - dskTop > 0x10000 || (editLine - dskTop) % 5 != 0)
+            return;
+        const auto depth = (editLine - dskTop) / 5 - 1;
+        for (auto level = std::min<uint32_t>(depth, 4); level > 0; --level)
+            calculatorStack.push(stackObject(readPacked(*machine, dskTop + (level - 1) * 5, 5)));
+    }
+
+    // How the stack display shows the object, like the calculator for the objects the interpreters leave
+    hp48::Object stackObject(uint32_t address) const
+    {
+        const uint32_t prolog = readPacked(*machine, address, 5);
+        if (prolog == STRING_PROLOG) {
+            const uint32_t length = readPacked(*machine, address + 5, 5);
+            const uint32_t bytes = std::min<uint32_t>(length >= 5 ? (length - 5) / 2 : 0, 32);
+            std::vector<uint8_t> data(bytes);
+            for (uint32_t i = 0; i < bytes; ++i)
+                data[i] = static_cast<uint8_t>(readPacked(*machine, address + 10 + i * 2, 2));
+            return hp48::Blob::from_vector(std::move(data));
+        }
+        if (prolog == SYSTEM_BINARY_PROLOG)
+            return hp48::Symbol{fmt::format("<{:X}h>", readPacked(*machine, address + 5, 5))};
+        if (prolog == REAL_PROLOG) {
+            // BCD: 3 exponent digits (tens complement), 12 mantissa digits, the sign (9 negative)
+            const uint32_t exponentDigits = readPacked(*machine, address + 5, 3);
+            int exponent = static_cast<int>((exponentDigits >> 8) * 100 + ((exponentDigits >> 4) & 0xf) * 10 + (exponentDigits & 0xf));
+            if (exponent >= 500)
+                exponent -= 1000;
+            double mantissa = 0;
+            for (int digit = 11; digit >= 0; --digit)
+                mantissa = mantissa * 10 + machine->readNibble(address + 8 + static_cast<uint32_t>(digit));
+            mantissa /= 1e11;
+            const double value = mantissa * std::pow(10.0, exponent);
+            return machine->readNibble(address + 20) == 9 ? -value : value;
+        }
+        if (prolog == CODE_PROLOG)
+            return hp48::Symbol{"Code"};
+        return hp48::Symbol{"External"};
     }
 
     Properties& properties;
@@ -288,6 +388,10 @@ struct Hp48sxEmulationCore::Private
     hp48::ObjectStack idleStack;
     std::vector<std::string> idleMenu{"EDIT", "VIEW", "RCL", "STO", "PURGE", "CLEAR"};
     hp48::Hp48Display idleDisplay{{idleFrameBuffer.data(), idleFrameBuffer.size()}, idleStack, idleMenu};
+    bool replacementRom{};
+    std::array<uint8_t, 64 * 17> stackFrameBuffer{};
+    hp48::ObjectStack calculatorStack;
+    hp48::Hp48Display stackDisplay{{stackFrameBuffer.data(), stackFrameBuffer.size()}, calculatorStack, idleMenu};
 };
 
 Hp48sxEmulationCore::Hp48sxEmulationCore(EmulatorHost& host, Properties& properties, IEmulationCore* other)
@@ -794,6 +898,10 @@ ghc::span2d<const uint32_t> Hp48sxEmulationCore::getRGBASpan(ghc::span2d<uint32_
     auto result = target.subspan(0, 0, getCurrentScreenWidth(), getCurrentScreenHeight());
     if (!_impl->loaded && _impl->options.interpreter != Interpreter::NONE)
         _impl->idleDisplay.render(result, hp48::Hp48Display::Mode::Stack);
+    else if (_impl->replacementRomIdles()) {
+        _impl->updateCalculatorStack();
+        _impl->stackDisplay.render(result, hp48::Hp48Display::Mode::Stack);
+    }
     else
         _impl->machine->render(result);
     std::ranges::transform(result, result.begin(), argb8888ToRgba8888);

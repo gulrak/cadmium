@@ -3,6 +3,8 @@
 #include <emulation/hp48sx.hpp>
 #include <emulation/hardware/hp48/g48statefile.hpp>
 #include <emulation/hardware/hp48/g48sxmachine.hpp>
+#include <emulation/hardware/hp48/display.hpp>
+#include <emulation/videoscreen.hpp>
 #include <resourcemanager.hpp>
 #include "chip8headless.hpp"
 
@@ -11,7 +13,9 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iterator>
+#include <vector>
 
 namespace {
 
@@ -45,11 +49,19 @@ private:
 
 struct Hp48Fixture
 {
-    explicit Hp48Fixture(const char* preset)
-        : properties(emu::CoreRegistry::propertiesForPreset(preset))
+    explicit Hp48Fixture(const char* preset, const std::function<void(emu::Properties&)>& setup = {})
+        : properties(prepared(preset, setup))
         , host(properties)
         , core(host, properties)
     {
+    }
+
+    static emu::Properties prepared(const char* preset, const std::function<void(emu::Properties&)>& setup)
+    {
+        auto properties = emu::CoreRegistry::propertiesForPreset(preset);
+        if (setup)
+            setup(properties);
+        return properties;
     }
 
     std::vector<uint32_t> screen()
@@ -309,6 +321,11 @@ TEST_CASE("HP48 interpreters see every host key under its own CHIP-8 key number"
 
 TEST_CASE("HP48 raw preset reset restores a ready calculator and loaded object")
 {
+    // The replacement ROM only runs the CHIP-8 interpreters, without HP's ROM the preset is hidden.
+    if (!ResourceManager::instance().resourceAvailable("sxrom-rev-e")) {
+        CHECK(emu::CoreRegistry::propertiesForPreset("hp-48-none").propertyClass().empty());
+        return;
+    }
     Hp48Fixture fixture("hp-48-none");
     auto& core = fixture.core;
     core.IEmulationCore::reset();
@@ -364,8 +381,13 @@ TEST_CASE("HP48 SCHIP reset restarts a supplied ROM")
 
 TEST_CASE("HP48 fixed contrast replaces the calculator contrast live")
 {
-    // hp-48-none renders the emulated LCD, hp-48-schip-1-1 the static stack of the unloaded interpreter
-    for (const auto preset : {"hp-48-none", "hp-48-schip-1-1"}) {
+    // hp-48-none renders the emulated LCD, hp-48-schip-1-1 the static stack of the unloaded interpreter.
+    // Without HP's ROM there is no hp-48-none preset.
+    std::vector<const char*> presets{"hp-48-schip-1-1"};
+    if (ResourceManager::instance().resourceAvailable("sxrom-rev-e")) {
+        presets.insert(presets.begin(), "hp-48-none");
+    }
+    for (const auto preset : presets) {
         INFO(std::string(preset));
         Hp48Fixture fixture(preset);
         auto& core = fixture.core;
@@ -400,7 +422,8 @@ TEST_CASE("HP48 fixed contrast replaces the calculator contrast live")
 
 TEST_CASE("HP48 state files with the removed HDW stall fields still load")
 {
-    const auto rom = ResourceManager::instance().resourceForName("sxrom-rev-e");
+    auto& resources = ResourceManager::instance();
+    const auto rom = resources.resourceForName(resources.resourceAvailable("sxrom-rev-e") ? "sxrom-rev-e" : "cadmium-hp48sx-rom");
     hp48::G48sxMachine machine(hp48::G48SX_RECOVERY_RESET_KEY_HOLD_INSTRUCTIONS, {rom.data(), rom.data() + rom.size()});
     const auto stateBytes = machine.saveStateBytes(false);
     auto state = hp48::g48statefile::stateJsonFromBytes(stateBytes);
@@ -413,4 +436,89 @@ TEST_CASE("HP48 state files with the removed HDW stall fields still load")
     hdw["waitPenaltyCycles"] = 16;
     REQUIRE_NOTHROW(machine.loadState(hp48::g48statefile::encodeStateJson(state, false)));
     CHECK(machine.saveStateBytes(false) == stateBytes);
+}
+
+namespace {
+
+bool originalRomAvailable()
+{
+    return ResourceManager::instance().resourceAvailable("sxrom-rev-e");
+}
+
+void useReplacementRom(emu::Properties& properties)
+{
+    if (originalRomAvailable())
+        properties.at("rom").setSelectedText("cadmium-hp48sx-rom");
+}
+
+std::vector<uint32_t> stackScreen(const hp48::ObjectStack& stack, uint16_t width, uint16_t height)
+{
+    std::array<uint8_t, 64 * 17> frameBuffer{};
+    const std::vector<std::string> menu{"EDIT", "VIEW", "RCL", "STO", "PURGE", "CLEAR"};
+    hp48::Hp48Display display{{frameBuffer.data(), frameBuffer.size()}, stack, menu};
+    std::vector<uint32_t> pixels(width * height);
+    display.render({pixels.data(), width, height}, hp48::Hp48Display::Mode::Stack);
+    std::ranges::transform(pixels, pixels.begin(), emu::argb8888ToRgba8888);
+    return pixels;
+}
+
+}
+
+TEST_CASE("HP48 ROM property offers the replacement ROM")
+{
+    Hp48Fixture fixture("hp-48-schip-1-1");
+    const auto& rom = fixture.properties.at("rom");
+    if (originalRomAvailable()) {
+        REQUIRE(std::holds_alternative<emu::Property::Combo>(rom.getValue()));
+        CHECK(rom.hasFlags(emu::PropertyFlags::eWritable));
+        CHECK(std::get<emu::Property::Combo>(rom.getValue()).options == std::vector<std::string>{"sxrom-rev-e", "cadmium-hp48sx-rom"});
+        CHECK(rom.getSelectedText() == "sxrom-rev-e");
+    }
+    else {
+        REQUIRE(std::holds_alternative<std::string>(rom.getValue()));
+        CHECK_FALSE(rom.hasFlags(emu::PropertyFlags::eWritable));
+        CHECK(rom.getString() == "cadmium-hp48sx-rom");
+    }
+}
+
+TEST_CASE("HP48 replacement ROM shows the calculator stack after the program ends")
+{
+    const auto runToIdle = [](Hp48Fixture& fixture, std::span<const uint8_t> program) {
+        auto& core = fixture.core;
+        REQUIRE(core.loadData(program, {}));
+        for (int frame = 0; frame < 30; ++frame) {
+            core.setExecMode(emu::GenericCpu::eRUNNING);
+            core.executeFrame();
+            REQUIRE_FALSE(core.inErrorState());
+        }
+        // The replacement ROM idles in #20000-#2FFFF (spec section 4), the core shows its stack display there
+        const auto pc = core.getBackendCpu().getPC();
+        CHECK(pc >= 0x20000);
+        CHECK(pc < 0x30000);
+        return fixture.screen();
+    };
+    for (const auto* preset : {"hp-48-chip-48", "hp-48-schip-1-0-beta", "hp-48-schip-1-0", "hp-48-schip-1-1", "hp-48-schpc"}) {
+        CAPTURE(preset);
+        // 00FD ends the program and drops the program string, the stack of the entry frame is empty
+        Hp48Fixture exitFixture(preset, useReplacementRom);
+        const std::array<uint8_t, 2> exitProgram{0x00, 0xFD};
+        const auto exitScreen = runToIdle(exitFixture, exitProgram);
+        if (std::string_view(preset) == "hp-48-chip-48") {
+            // CHIP-48 treats 00FD as an unknown opcode: its error exit drops the program string and
+            // pushes the CHIP-8 PC as a system binary
+            hp48::ObjectStack stack;
+            stack.push(hp48::Symbol{"<202h>"});
+            CHECK(exitScreen == stackScreen(stack, exitFixture.core.getCurrentScreenWidth(), exitFixture.core.getCurrentScreenHeight()));
+        }
+        else {
+            CHECK(exitScreen == stackScreen({}, exitFixture.core.getCurrentScreenWidth(), exitFixture.core.getCurrentScreenHeight()));
+            Hp48Fixture errorFixture(preset, useReplacementRom);
+            const std::array<uint8_t, 2> errorProgram{0x00, 0xC0};
+            const auto errorScreen = runToIdle(errorFixture, errorProgram);
+            // 00C0 is an error exit in SCHIP: the program string is dropped, the CHIP-8 PC pushed
+            hp48::ObjectStack stack;
+            stack.push(hp48::Symbol{"<202h>"});
+            CHECK(errorScreen == stackScreen(stack, errorFixture.core.getCurrentScreenWidth(), errorFixture.core.getCurrentScreenHeight()));
+        }
+    }
 }

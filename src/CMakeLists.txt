@@ -105,7 +105,8 @@ if (${PLATFORM} MATCHES "Web")
         -sFETCH
         -sEXPORTED_RUNTIME_METHODS=['HEAPF32']
         --shell-file=${PROJECT_SOURCE_DIR}/resources/minshell.html)
-    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
+    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index" SUFFIX ".html"
+        LINK_DEPENDS ${PROJECT_SOURCE_DIR}/resources/minshell.html)
 endif ()
 
 if(APPLE)

@@ -68,6 +68,7 @@ public:
     }
 #endif
     void setFilename(std::string filename) { _filename = filename; }
+    const std::string& getFilename() const { return _filename; }
     bool isEmpty() const { return _text.empty(); }
     const std::string& getText() const { return _text; }
     void setText(std::string text)

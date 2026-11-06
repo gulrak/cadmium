@@ -331,8 +331,6 @@ public:
     }
     // Draws an 8 pixel wide sprite into plane 1, clipped at clipWidth/clipHeight, with one 64-bit
     // access per row instead of one access per pixel. Returns true on a collision.
-    // REVIEW: Only opDxyn<0> uses this: 16% of the 1dcell instructions are draws, it adds about 10%.
-    // REVIEW: Multi plane, wrapping, hires and MegaChip drawing stay with their own code paths.
     bool drawSpriteWidth8(int x, int y, const uint8_t* data, int lines, int clipWidth, int clipHeight)
     {
         static_assert(sizeof(PixelType) == 1);
