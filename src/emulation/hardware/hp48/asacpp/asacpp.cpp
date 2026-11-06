@@ -27,7 +27,7 @@
 #include "asacpp.hpp"
 
 #include <emulation/hardware/hp48/saturndecoder.hpp>
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <chiplet/sha1.hpp>
 
 #include <algorithm>

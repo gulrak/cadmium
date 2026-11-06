@@ -37,7 +37,7 @@
 #include <string_view>
 #include <vector>
 
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <ghc/span2d.hpp>
 
 #include <emulation/ringbuffer.hpp>

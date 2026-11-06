@@ -31,7 +31,7 @@
 #include <string>
 #include <vector>
 
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <nlohmann/json.hpp>
 
 namespace hp48::g48statefile {

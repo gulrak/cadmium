@@ -32,6 +32,7 @@
 //
 //---------------------------------------------------------------------------------------
 
+#include <ghc/fs_impl.hpp>
 #include <emulation/hardware/hp48/asacpp/asacpp.hpp>
 
 #include <fstream>

@@ -26,7 +26,7 @@
 
 #pragma once
 
-#include <ghc/filesystem.hpp>
+#include <ghc/fs_fwd.hpp>
 #include <chiplet/sha1.hpp>
 
 #include <cstdint>
