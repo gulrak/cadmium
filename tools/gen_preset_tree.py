@@ -8,13 +8,14 @@ the variants derived from it (children). Edit those and run:
 
     python3 tools/gen_preset_tree.py
 
-This writes media/cadmium_preset_tree.svg (use -o to write elsewhere). With
---cadmium <binary> the presets of the tree are compared to the ones listed by
-"<binary> --help", so a new or renamed preset is not forgotten.
+This writes media/cadmium_preset_tree.svg and media/cadmium_preset_tree_dark.svg
+(use -o to write elsewhere). With --cadmium <binary> the presets of the tree are
+compared to the ones listed by "<binary> --help", so a new or renamed preset is
+not forgotten.
 
-The SVG adapts to light and dark mode via prefers-color-scheme, so it follows
-the GitHub theme. Chip widths are estimated from the name length, as the SVG
-uses the system font stack and has no text measuring.
+The README shows the light or dark file with a <picture> element, so the tree
+follows the GitHub theme. Chip widths are estimated from the name length, as the
+SVG uses the system font stack and has no text measuring.
 """
 
 import argparse
@@ -90,15 +91,38 @@ LABEL_CHAR_WIDTH = 8.2   # estimated width per char of a 14px bold label
 CHIP_CHAR_WIDTH = 6.6    # estimated width per char of a 12px chip text
 CHIP_PADDING = 18
 
-STYLE = """<style>
-text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;font-size:12px}
-.n{font-size:14px;font-weight:600;fill:#2C2C2A}.s{fill:#5F5E5A}
-.l{fill:none;stroke:#888780;stroke-width:0.75}.sep{stroke:#D3D1C7;stroke-width:0.75}
-.h{fill:#EEEDFE;stroke:#534AB7;stroke-width:0.75}.ht{fill:#3C3489}
-.v{fill:#E1F5EE;stroke:#0F6E56;stroke-width:0.75}.vt{fill:#085041}
-@media (prefers-color-scheme:dark){.n{fill:#F1EFE8}.s{fill:#B4B2A9}.sep{stroke:#5F5E5A}
-.h{fill:#3C3489;stroke:#AFA9EC}.ht{fill:#EEEDFE}.v{fill:#085041;stroke:#5DCAA5}.vt{fill:#E1F5EE}}
-</style>"""
+# Colors per theme. GitHub picks the file matching its theme via a <picture>
+# element in the README; a prefers-color-scheme rule inside the SVG would follow
+# the OS setting instead, and break when GitHub and OS theme differ.
+THEMES = {
+    "light": {
+        "label": "#2C2C2A", "secondary": "#5F5E5A", "line": "#888780", "separator": "#D3D1C7",
+        "hle_fill": "#EEEDFE", "hle_stroke": "#534AB7", "hle_text": "#3C3489",
+        "hw_fill": "#E1F5EE", "hw_stroke": "#0F6E56", "hw_text": "#085041",
+    },
+    "dark": {
+        "label": "#F0F6FC", "secondary": "#9198A1", "line": "#6E7681", "separator": "#3D444D",
+        "hle_fill": "#3C3489", "hle_stroke": "#AFA9EC", "hle_text": "#EEEDFE",
+        "hw_fill": "#085041", "hw_stroke": "#5DCAA5", "hw_text": "#E1F5EE",
+    },
+}
+
+
+def style(theme):
+    c = THEMES[theme]
+    return "\n".join([
+        "<style>",
+        'text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,'
+        "sans-serif;font-size:12px}",
+        f".n{{font-size:14px;font-weight:600;fill:{c['label']}}}.s{{fill:{c['secondary']}}}",
+        f".l{{fill:none;stroke:{c['line']};stroke-width:0.75}}"
+        f".sep{{stroke:{c['separator']};stroke-width:0.75}}",
+        f".h{{fill:{c['hle_fill']};stroke:{c['hle_stroke']};stroke-width:0.75}}"
+        f".ht{{fill:{c['hle_text']}}}",
+        f".v{{fill:{c['hw_fill']};stroke:{c['hw_stroke']};stroke-width:0.75}}"
+        f".vt{{fill:{c['hw_text']}}}",
+        "</style>",
+    ])
 
 # Chip kind -> (css class, corner radius); hle chips are boxes, hw chips pills,
 # so the kinds also differ without color.
@@ -176,7 +200,7 @@ class SvgWriter:
         return next_y
 
 
-def render():
+def render(theme):
     svg = SvgWriter()
     svg.legend()
     svg.separator(42)
@@ -194,7 +218,7 @@ def render():
         "<title>Cadmium preset family tree</title>",
         f"<desc>The {len(tree_presets())} Cadmium presets grouped under the CHIP-8 variant they "
         "implement, from CHIP-8 (1977) to XO-CHIP, plus the bare machine presets.</desc>",
-        STYLE,
+        style(theme),
     ]
     return "\n".join(head + svg.out + ["</svg>"]) + "\n"
 
@@ -256,14 +280,17 @@ def main():
     parser = argparse.ArgumentParser(description="Generate the Cadmium preset family tree SVG.")
     parser.add_argument("-o", "--output", type=Path,
                         default=root / "media" / "cadmium_preset_tree.svg",
-                        help="SVG file to write (default: media/cadmium_preset_tree.svg)")
+                        help="light SVG file to write, the dark one gets a '_dark' suffix "
+                             "(default: media/cadmium_preset_tree.svg)")
     parser.add_argument("--cadmium", metavar="BINARY",
                         help="check the tree against the presets listed by this cadmium binary")
     args = parser.parse_args()
     if args.cadmium and not check_presets(args.cadmium):
         return 1
-    args.output.write_text(render())
-    print(f"wrote {args.output}")
+    for theme, path in (("light", args.output),
+                        ("dark", args.output.with_name(args.output.stem + "_dark.svg"))):
+        path.write_text(render(theme))
+        print(f"wrote {path}")
     return 0
 
 

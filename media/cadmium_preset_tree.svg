@@ -7,8 +7,6 @@ text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,san
 .l{fill:none;stroke:#888780;stroke-width:0.75}.sep{stroke:#D3D1C7;stroke-width:0.75}
 .h{fill:#EEEDFE;stroke:#534AB7;stroke-width:0.75}.ht{fill:#3C3489}
 .v{fill:#E1F5EE;stroke:#0F6E56;stroke-width:0.75}.vt{fill:#085041}
-@media (prefers-color-scheme:dark){.n{fill:#F1EFE8}.s{fill:#B4B2A9}.sep{stroke:#5F5E5A}
-.h{fill:#3C3489;stroke:#AFA9EC}.ht{fill:#EEEDFE}.v{fill:#085041;stroke:#5DCAA5}.vt{fill:#E1F5EE}}
 </style>
 <rect class="h" x="20" y="10" width="22" height="16" rx="4"/>
 <text class="s" x="50" y="22">High level emulation</text>

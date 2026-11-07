@@ -198,7 +198,10 @@ The family tree below shows where the variants came from and which presets imple
 each of them, either as high level emulation or as the original interpreter running on
 the emulated hardware:
 
-<p align="center"><img src="media/cadmium_preset_tree.svg" alt="Family tree of the Cadmium presets"></p>
+<p align="center"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/cadmium_preset_tree_dark.svg">
+  <img src="media/cadmium_preset_tree.svg" alt="Family tree of the Cadmium presets">
+</picture></p>
 
 ### Roadmap of upcoming variants that are currently in development (no promises on a date):
 
