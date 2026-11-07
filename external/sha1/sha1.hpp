@@ -375,7 +375,7 @@ public:
 };
 
 
-constexpr Sha1::Digest operator"" _sha1(const char* str, std::size_t len) { return {str, len}; }
+constexpr Sha1::Digest operator""_sha1(const char* str, std::size_t len) { return {str, len}; }
 
 template <>
 struct std::hash<Sha1::Digest>
