@@ -40,3 +40,13 @@
 *~
 .DS_Store
 arch
+
+# patched on-the-fly files
+**/zxorm-src/CMakeLists.txt
+
+CMakeUserPresets.json
+
+rcore_desktop_glfw.c
+
+# HP's HP-48SX ROM, it is not redistributed with Cadmium. If it is put there locally, the HP-48SX core is built.
+/resources/files/sxrom-rev-e

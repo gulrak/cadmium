@@ -24,36 +24,42 @@
 //
 //---------------------------------------------------------------------------------------
 #include <raylib.h>
-#include "icons.h"  // Custom icons set provided, generated with rGuiIcons tool
-
-#include <rlguipp/rlguipp4.hpp>
+#include <rlgl.h>
+#include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp_filedialog.hpp>
+#include <rlguipp/rlguipp_font.hpp>
 #include <stylemanager.hpp>
 #include "configuration.hpp"
+#include "crtrenderer.hpp"
 
-extern "C" {
 #include <raymath.h>
-};
 
 #include <date/date.h>
 #include <fmt/format.h>
 #include <stdendian/stdendian.h>
 #include <about.hpp>
-#include <emulation/c8bfile.hpp>
 #include <chiplet/chip8decompiler.hpp>
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8dream.hpp>
-#include <emulation/time.hpp>
-#include <emulation/timecontrol.hpp>
 #include <chiplet/utility.hpp>
-#include <ghc/cli.hpp>
-#include <chip8emuhostex.hpp>
-#include <systemtools.hpp>
-#include <resourcemanager.hpp>
 #include <circularbuffer.hpp>
 #include <debugger.hpp>
+#include <emuhostex.hpp>
+#include <emulation/c8bfile.hpp>
+//#include <emulation/chip8generic.hpp>
+#include <emulation/coreregistry.hpp>
+//#include <emulation/dream6800.hpp>
+#include <c8db/database.hpp>
+#include <emulation/time.hpp>
+#include <emulation/timecontrol.hpp>
+#include <ghc/cli.hpp>
+#include <ghc/utf8.hpp>
+#include <headlessrun.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
+#include <resourcemanager.hpp>
+#include <systemtools.hpp>
+#include <texturescaler.hpp>
 
+#include <cmath>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -61,21 +67,133 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <list>
 #include <memory>
-#include <regex>
-#include <thread>
 #include <mutex>
 #include <new>
+#include <regex>
+#include <thread>
+
+#include "emulation/chip8strict.hpp"
 
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
-extern "C" void openFileCallbackC(const char* str) __attribute__((used));
-static std::function<void(const std::string&)> openFileCallback;
-void openFileCallbackC(const char* str)
+#include <emscripten/html5.h>
+
+extern "C" EMSCRIPTEN_KEEPALIVE void openFileCallbackC(const char* name, const uint8_t* data, size_t size);
+extern "C" EMSCRIPTEN_KEEPALIVE void webPasteCallbackC(const char* text, size_t size);
+static std::function<void(std::string_view, ghc::span<const uint8_t>)> openFileCallback;
+static std::string webClip;
+static bool webPastePending = false;
+
+void openFileCallbackC(const char* name, const uint8_t* data, size_t size)
 {
     if (openFileCallback)
-        openFileCallback(str);
+        openFileCallback(name, {data, size});
 }
+
+void webPasteCallbackC(const char* text, size_t size)
+{
+    webClip.assign(text, size);
+    webPastePending = true;
+}
+
+EM_JS(void, webInitClipboard, (), {
+    if (Module.cadmiumClipboardInitialized) return;
+    Module.cadmiumClipboardInitialized = true;
+    document.addEventListener('paste', function(event) {
+        if (document.activeElement !== Module.canvas) return;
+        const text = event.clipboardData.getData('text/plain');
+        const size = lengthBytesUTF8(text);
+        const data = _malloc(size + 1);
+        stringToUTF8(text, data, size + 1);
+        Module._webPasteCallbackC(data, size);
+        _free(data);
+        event.preventDefault();
+    });
+});
+
+EM_JS(void, webWriteClipboard, (const char* text), {
+    const value = UTF8ToString(text);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).catch(function(error) {
+            console.warn('Cadmium could not write to the clipboard:', error);
+        });
+        return;
+    }
+    const input = document.createElement('textarea');
+    input.value = value;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+    Module.canvas.focus();
+});
+
+EM_JS(void, webRequestOpenFile, (const char* accept), {
+    if (Module.cadmiumFileInput) {
+        Module.cadmiumFileInput.value = "";
+        Module.cadmiumFileInput.accept = UTF8ToString(accept);
+        Module.cadmiumFileInput.click();
+    }
+});
+
+EM_JS(void, webInitFilePicker, (const char* accept, int logicalWidth, int logicalHeight), {
+    const acceptedTypes = UTF8ToString(accept);
+    if (!Module.cadmiumFilePickerInitialized) {
+        Module.cadmiumFilePickerInitialized = true;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.hidden = true;
+        input.addEventListener('change', async function() {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            try {
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const nameSize = lengthBytesUTF8(file.name);
+                const name = _malloc(nameSize + 1);
+                const data = _malloc(bytes.length || 1);
+                stringToUTF8(file.name, name, nameSize + 1);
+                HEAPU8.set(bytes, data);
+                Module._openFileCallbackC(name, data, bytes.length);
+                _free(data);
+                _free(name);
+            } catch (error) {
+                console.error('Cadmium could not open the selected file:', error);
+            } finally {
+                Module.canvas.focus();
+            }
+        });
+        document.body.appendChild(input);
+        Module.cadmiumFileInput = input;
+        Module.canvas.addEventListener('pointerdown', function(event) {
+            const bounds = Module.canvas.getBoundingClientRect();
+            const x = (event.clientX - bounds.left) * logicalWidth / bounds.width;
+            const y = (event.clientY - bounds.top) * logicalHeight / bounds.height;
+            if (x >= 20 && x < 40 && y >= 0 && y < 20) {
+                Module.cadmiumFileInput.value = "";
+                Module.cadmiumFileInput.accept = acceptedTypes;
+                Module.cadmiumFileInput.click();
+            }
+        });
+    }
+});
+
+EM_JS(void, webDownloadFile, (const char* name, const uint8_t* data, size_t size, const char* mimeType), {
+    const bytes = HEAPU8.slice(data, data + size);
+    const blob = new Blob([bytes], {type: UTF8ToString(mimeType)});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = UTF8ToString(name);
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+});
 #ifdef WEB_WITH_FETCHING
 #include <emscripten/fetch.h>
 extern "C" void loadBinaryCallbackC(emscripten_fetch_t *fetch) __attribute__((used));
@@ -95,7 +213,6 @@ void downloadFailedCallbackC(emscripten_fetch_t *fetch)
     emscripten_fetch_close(fetch);
 }
 #endif
-#define RESIZABLE_GUI
 #else
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -121,7 +238,17 @@ extern "C" {
 #endif
 
 #include <editor.hpp>
+#include <backgroundjob.hpp>
 
+inline Color toRaylibColor(const emu::Palette::Color& col)
+{
+    return {col.r, col.g, col.b, col.a};
+}
+
+inline emu::Palette::Color toEmuColor(const Color& col)
+{
+    return {col.r, col.g, col.b, col.a};
+}
 
 #define CHIP8_STYLE_PROPS_COUNT 16
 static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
@@ -144,256 +271,22 @@ static const GuiStyleProp chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 19, 0x00222bff},  // DEFAULT_BACKGROUND_COLOR
 };
 
-struct FontCharInfo {
-    uint16_t codepoint;
-    uint8_t data[5];
-};
-static FontCharInfo fontRom[] = {
-    {32,0,0,0,0,0},
-    {33,0,0,95,0,0},
-    {34,0,7,0,7,0},
-    {35,20,62,20,62,20},
-    {36,36,42,127,42,18},
-    {37,35,19,8,100,98},
-    {38,54,73,85,34,80},
-    {39,0,0,11,7,0},
-    {40,0,28,34,65,0},
-    {41,0,65,34,28,0},
-    {42,42,28,127,28,42},
-    {43,8,8,62,8,8},
-    {44,0,0,176,112,0},
-    {45,8,8,8,8,8},
-    {46,0,96,96,0,0},
-    {47,32,16,8,4,2},
-    {48,62,65,65,62,0},
-    {49,0,2,127,0,0},
-    {50,98,81,73,73,70},
-    {51,65,65,73,77,51},
-    {52,15,8,8,127,8},
-    {53,71,69,69,69,57},
-    {54,60,74,73,73,48},
-    {55,97,17,9,5,3},
-    {56,54,73,73,73,54},
-    {57,6,73,73,41,30},
-    {58,0,54,54,0,0},
-    {59,0,182,118,0,0},
-    {60,8,20,34,65,0},
-    {61,20,20,20,20,20},
-    {62,0,65,34,20,8},
-    {63,2,1,81,9,6},
-    {64,62,65,93,85,94},
-    {65,126,9,9,9,126},
-    {66,127,73,73,73,54},
-    {67,62,65,65,65,34},
-    {68,127,65,65,65,62},
-    {69,127,73,73,73,65},
-    {70,127,9,9,9,1},
-    {71,62,65,73,73,122},
-    {72,127,8,8,8,127},
-    {73,0,65,127,65,0},
-    {74,32,64,64,64,63},
-    {75,127,8,20,34,65},
-    {76,127,64,64,64,64},
-    {77,127,2,12,2,127},
-    {78,127,2,4,8,127},
-    {79,62,65,65,65,62},
-    {80,127,9,9,9,6},
-    {81,62,65,81,33,94},
-    {82,127,9,25,41,70},
-    {83,38,73,73,73,50},
-    {84,1,1,127,1,1},
-    {85,63,64,64,64,63},
-    {86,31,32,64,32,31},
-    {87,127,32,24,32,127},
-    {88,99,20,8,20,99},
-    {89,7,8,112,8,7},
-    {90,97,81,73,69,67},
-    {91,0,127,65,65,0},
-    {92,2,4,8,16,32},
-    {93,0,65,65,127,0},
-    {94,4,2,1,2,4},
-    {95,128,128,128,128,128},
-    {96,0,7,11,0,0},
-    {97,112,84,84,120,64},
-    {98,64,127,68,68,60},
-    {99,0,56,68,68,72},
-    {100,56,68,68,127,64},
-    {101,0,56,84,84,72},
-    {102,0,8,124,10,2},
-    {103,0,140,146,146,126},
-    {104,0,127,4,4,120},
-    {105,0,0,122,0,0},
-    {106,0,64,128,116,0},
-    {107,0,126,16,40,68},
-    {108,0,2,126,64,0},
-    {109,124,4,124,4,120},
-    {110,0,124,4,4,120},
-    {111,0,56,68,68,56},
-    {112,0,252,36,36,24},
-    {113,24,36,36,252,128},
-    {114,0,124,8,4,4},
-    {115,0,72,84,84,36},
-    {116,0,4,62,68,32},
-    {117,60,64,64,124,64},
-    {118,12,48,64,48,12},
-    {119,60,64,48,64,60},
-    {120,68,36,56,72,68},
-    {121,0,28,32,160,252},
-    {122,64,100,84,76,4},
-    {123,0,8,54,65,65},
-    {124,0,0,119,0,0},
-    {125,0,65,65,54,8},
-    {126,2,1,2,2,1},
-    {127,85,42,85,42,85},
-    {160,0,0,0,0,0},
-    {161,0,0,125,0,0},
-    {162,56,68,254,68,40},
-    {163,72,126,73,73,66},
-    {164,93,34,34,34,93},
-    {165,41,42,124,42,41},
-    {166,0,0,119,0,0},
-    {167,74,85,85,85,41},
-    {168,0,3,0,3,0},
-    {169,62,73,85,85,62},
-    {170,92,85,85,94,80},
-    {171,16,40,84,40,68},
-    {172,8,8,8,8,56},
-    {173,0,8,8,8,0},
-    {174,62,93,77,89,62},
-    {175,1,1,1,1,1},
-    {176,6,9,9,6,0},
-    {177,68,68,95,68,68},
-    {178,9,12,10,9,0},
-    {179,17,21,23,9,0},
-    {180,0,4,2,1,0},
-    {181,252,64,64,60,64},
-    {182,6,127,1,127,1},
-    {183,0,24,24,0,0},
-    {184,0,128,128,64,0},
-    {185,2,31,0,0,0},
-    {186,38,41,41,38,0},
-    {187,68,40,84,40,16},
-    {188,34,23,104,244,66},
-    {189,34,23,168,212,162},
-    {190,41,19,109,244,66},
-    {191,32,64,69,72,48},
-    {192,120,21,22,20,120},
-    {193,120,20,22,21,120},
-    {194,120,22,21,22,120},
-    {195,122,21,22,22,121},
-    {196,120,21,20,21,120},
-    {197,122,21,21,21,122},
-    {198,126,9,127,73,73},
-    {199,30,161,225,33,18},
-    {200,124,85,86,84,68},
-    {201,124,84,86,85,68},
-    {202,124,86,85,86,68},
-    {203,124,85,84,85,68},
-    {204,0,68,125,70,0},
-    {205,0,70,125,68,0},
-    {206,0,70,125,70,0},
-    {207,0,68,125,70,0},
-    {208,8,127,73,65,62},
-    {209,126,9,18,34,125},
-    {210,56,69,70,68,56},
-    {211,56,68,70,69,56},
-    {212,56,70,69,70,56},
-    {213,58,69,70,70,57},
-    {214,56,69,68,69,56},
-    {215,0,40,16,40,0},
-    {216,94,33,93,66,61},
-    {217,60,65,66,64,60},
-    {218,60,64,66,65,60},
-    {219,60,66,65,66,60},
-    {220,60,65,64,65,60},
-    {222,12,16,98,17,12},
-    {222,127,20,20,20,8},
-    {223,126,1,73,78,48},
-    {224,112,85,86,120,64},
-    {225,112,86,85,120,64},
-    {226,112,86,85,122,64},
-    {227,114,85,86,122,65},
-    {228,112,85,84,121,64},
-    {229,114,85,85,122,64},
-    {230,116,84,124,84,88},
-    {231,0,28,162,98,36},
-    {232,0,56,85,86,72},
-    {233,0,56,86,85,72},
-    {234,0,58,85,86,72},
-    {235,0,57,84,84,73},
-    {236,0,1,122,0,0},
-    {237,0,0,122,1,0},
-    {238,0,2,121,2,0},
-    {239,0,1,120,1,0},
-    {240,53,73,74,77,56},
-    {241,2,125,6,6,121},
-    {242,0,56,69,70,56},
-    {243,0,56,70,69,56},
-    {244,0,58,69,70,56},
-    {245,2,57,70,70,57},
-    {246,0,57,68,68,57},
-    {247,8,8,42,8,8},
-    {248,0,120,116,76,60},
-    {249,60,65,66,124,64},
-    {250,60,66,65,124,64},
-    {251,62,65,66,124,64},
-    {252,61,64,64,125,64},
-    {253,0,28,34,161,252},
-    {254,254,40,68,68,56},
-    {255,0,29,32,160,253},
-    {10240,0,0,0,0,0},
-    {10495,85,85,0,85,85},
-    {65103,64,128,128,128,64},
-    {65533,126,251,173,243,126}
-};
-
-#ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-#include <jsct/JsClipboardTricks.h>
-#if 0
-EM_ASYNC_JS(void, copyClip, (const char* str), {
-    document.getElementById("clipping").focus();
-    const rtn = await navigator.clipboard.writeText(UTF8ToString(str));
-    document.getElementById("canvas").focus();
-});
-
-EM_ASYNC_JS(char*, pasteClip, (), {
-    document.getElementById("clipping").focus();
-    const str = await navigator.clipboard.readText();
-    document.getElementById("canvas").focus();
-    const size = lengthBytesUTF8(str) + 1;
-    const rtn = _malloc(size);
-    stringToUTF8(str, rtn, size);
-    return rtn;
-});
-#endif
-#else
-static std::string webClip;
-#endif
-#endif
 
 std::string GetClipboardTextX()
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    return JsClipboard_getClipText();//pasteClip();
-#else
+    webPastePending = false;
     return webClip;
-#endif
 #else
     return GetClipboardText();
 #endif
 }
 
-void SetClipboardTextX(std::string text)
+void SetClipboardTextX(const std::string& text)
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    //copyClip(text.c_str());
-    JsClipboard_SetClipboardText(text.c_str());
-#else
     webClip = text;
-#endif
+    webWriteClipboard(text.c_str());
 #else
     SetClipboardText(text.c_str());
 #endif
@@ -402,39 +295,10 @@ void SetClipboardTextX(std::string text)
 bool isClipboardPaste()
 {
 #ifdef PLATFORM_WEB
-#ifdef WEB_WITH_CLIPBOARD
-    return JsClipboard_hasClipText();
+    return webPastePending;
 #else
     return false;
 #endif
-#else
-    return false;
-#endif
-}
-
-inline bool getFontPixel(uint32_t c, unsigned x, unsigned y)
-{
-    if (c > 0xffff) c = '?';
-    const FontCharInfo* info = &fontRom['?' - ' '];
-    for(const auto& fci : fontRom) {
-        if(fci.codepoint == c) {
-            info = &fci;
-            break;
-        }
-    }
-    uint8_t data = info->data[x];
-    return (data & (1u << y)) != 0;
-}
-
-void drawChar(Image& image, uint32_t c, int xPos, int yPos, Color col)
-{
-    for (auto y = 0; y < 8; ++y) {
-        for (auto x = 0; x < 5; ++x) {
-            if (getFontPixel(c, x, y)) {
-                ImageDrawPixel(&image, xPos + x, yPos + y, col);
-            }
-        }
-    }
 }
 
 void CenterWindow(int width, int height)
@@ -446,96 +310,81 @@ void CenterWindow(int width, int height)
 void LogHandler(int msgType, const char *text, va_list args)
 {
     static char buffer[4096];
-#ifndef PLATFORM_WEB
-    static std::ofstream ofs((fs::path(dataPath())/"logfile.txt").string().c_str());
-    ofs << date::format("[%FT%TZ]", std::chrono::floor<std::chrono::milliseconds>(std::chrono::system_clock::now()));
-    switch (msgType)
-    {
-        case LOG_INFO: ofs << "[INFO] : "; break;
-        case LOG_ERROR: ofs << "[ERROR]: "; break;
-        case LOG_WARNING: ofs << "[WARN] : "; break;
-        case LOG_DEBUG: ofs << "[DEBUG]: "; break;
-        default: break;
-    }
-#endif
     vsnprintf(buffer, 4095, text, args);
-#ifndef PLATFORM_WEB
-    ofs << buffer << std::endl;
-#endif
-    emu::Logger::log(emu::Logger::eHOST, 0, {0,0}, buffer);
+    emu::Logger::log((emu::LogLevel)msgType, buffer);
 }
-
-template <size_t N, typename ValueType = uint64_t, typename SumType = uint64_t>
-class SMA
-{
-public:
-    void reset()
-    {
-        _fill = _index = 0;
-        _sum = 0;
-    }
-    void add(ValueType nextVal)
-    {
-        if(_fill < N)
-            ++_fill;
-        else
-            _sum -= _history[_index];
-        _sum += nextVal;
-        _history[_index] = nextVal;
-        if (++_index == N)
-            _index = 0;
-    }
-    double get() const { return _fill ? double(_sum) / _fill : 0.0; }
-private:
-    size_t _fill{0};
-    size_t _index{0};
-    ValueType _history[N]{};
-    SumType _sum{0};
-};
 
 std::atomic_uint8_t g_soundTimer{0};
 std::atomic_int g_frameBoost{1};
 
-class Cadmium : public emu::Chip8EmuHostEx
+class Cadmium : public emu::EmuHostEx
 {
 public:
     using ExecMode = emu::IChip8Emulator::ExecMode;
     using CpuState = emu::IChip8Emulator::CpuState;
     enum MemFlags { eNONE = 0, eBREAKPOINT = 1, eWATCHPOINT = 2 };
-    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT };
+    enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT, eLIBRARY };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
+    enum VideoRenderMode { eFAST, eHIRES };
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
-    static constexpr int MIN_SCREEN_WIDTH = 512;
-    static constexpr int MIN_SCREEN_HEIGHT = 192*2+36;
-    Cadmium(const emu::Chip8EmulatorOptions* chip8options = nullptr)
-        : _audioBuffer(44100)
+    static constexpr int MIN_SCREEN_WIDTH = 640; // 512;
+    static constexpr int MIN_SCREEN_HEIGHT = 480; // 192*2+36;
+    explicit Cadmium(CadmiumConfiguration& cfg, emu::Properties& props)
+        : EmuHostEx(cfg)
+        , _audioBuffer(44100)
         , _screenWidth(MIN_SCREEN_WIDTH)
         , _screenHeight(MIN_SCREEN_HEIGHT)
+#ifndef PLATFORM_WEB
+        , _editor(_threadPool)
+#endif
     {
         SetTraceLogCallback(LogHandler);
-#ifdef WITH_FLAG_COCOA_GRAPHICS_SWITCHING
-    #ifdef RESIZABLE_GUI
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_COCOA_GRAPHICS_SWITCHING);
-    #else
-        //SetConfigFlags(FLAG_COCOA_GRAPHICS_SWITCHING/*|FLAG_VSYNC_HINT*/);
-    #endif
+#ifdef NDEBUG
+        SetTraceLogLevel(LOG_INFO);
 #else
+        SetTraceLogLevel(LOG_DEBUG);
+#endif
+
     #ifdef RESIZABLE_GUI
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     #else
         // SetConfigFlags(FLAG_VSYNC_HINT);
+        SetConfigFlags(FLAG_WINDOW_HIDDEN);
+        _windowInvisible = true;
+        if (cfg.scaleMode) {
+            _scaleMode = cfg.scaleMode;
+        }
+        if (!_scaleMode) {
+            _scaleMode = (GetMonitorWidth(_currentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) ? 2 : 1;
+        }
     #endif
-#endif
 
-        InitWindow(_screenWidth, _screenHeight, "Cadmium - A CHIP-8 variant environment");
+        InitWindow(_screenWidth * _scaleMode, _screenHeight * _scaleMode, "Cadmium - A CHIP-8 variant environment");
+        SetMouseScale(1.0f/_scaleMode, 1.0f/_scaleMode);
+        _appliedScaleMode = _scaleMode;
+        auto winPos = GetWindowPosition();
+        if (cfg.windowPosX != 0xFFFF) {
+            winPos.x = cfg.windowPosX;
+        }
+        if (cfg.windowPosY != 0xFFFF) {
+            winPos.y = cfg.windowPosY;
+        }
+        SetWindowPosition(winPos.x, winPos.y);
+        _currentMonitor = GetCurrentMonitor();
+        _recentFiles = cfg.recentFiles;
 #ifdef RESIZABLE_GUI
-        if(GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f) {
+        if(GetMonitorWidth(_curentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) {
             SetWindowSize(_screenWidth * 2, _screenHeight * 2);
             CenterWindow(_screenWidth * 2, _screenHeight * 2);
         }
 #else
-        _scaleBy2 = GetMonitorWidth(GetCurrentMonitor()) > 1680 || GetWindowScaleDPI().x > 1.0f;
+        auto scale2d = GetWindowScaleDPI();
+        auto monitorResolutionX = GetMonitorWidth(_currentMonitor);
+        auto monitorResolutionY = GetMonitorHeight(_currentMonitor);
+        TRACELOG(LOG_INFO, fmt::format("WindowScaleDPI: {}x{}", scale2d.x, scale2d.y).c_str());
 #endif
+        _textureScaler = std::make_unique<TextureScaler>(MIN_SCREEN_WIDTH, MIN_SCREEN_HEIGHT);
+        _textureScaler->setOutputSize(_screenWidth * _scaleMode, _screenHeight * _scaleMode);
 
         SetExitKey(0);
 
@@ -545,62 +394,50 @@ public:
         _audioStream = LoadAudioStream(44100, 16, 1);
         SetAudioStreamCallback(_audioStream, Cadmium::audioInputCallback);
         PlayAudioStream(_audioStream);
+#ifndef PLATFORM_WEB
+        // In a browser requestAnimationFrame paces the loop already. The wait of raylib would be a
+        // busy-wait on the main thread there, keeping it at 100% load on a 120Hz display, at any IPF.
         SetTargetFPS(60);
+#endif
 
-        _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
-        SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+        //_renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+        //if (GetWindowScaleDPI().x != std::trunc(GetWindowScaleDPI().x))
+        //    SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_BILINEAR);
+        //else
+        //    SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+
+        if (!_crtRenderer.load()) {
+            TraceLog(LOG_WARNING, "CRT shader could not be compiled, the CRT effect is not available");
+        }
 
 //        _styleManager.setDefaultTheme();
         _styleManager.addTheme("dark", 235.0f, 0.1, false);
 
+        _microFont = LoadImage("micro-font.png");
         generateFont();
-        if(chip8options) {
-            _options = *chip8options;
-            setPalette({_defaultPalette.begin(), _defaultPalette.end()});
+        if (props) {
+            if (props.palette().empty())
+                setPalette(_defaultPalette);
+            else
+                setPalette(props.palette());
         }
         else
             _mainView = eSETTINGS;
-        _presetMapping = {
-            {{0,0}, emu::Chip8EmulatorOptions::eCHIP8},
-            {{1,0}, emu::Chip8EmulatorOptions::eCHIP8TE},
-            {{2,0}, emu::Chip8EmulatorOptions::eCHIP10},
-            {{3,0}, emu::Chip8EmulatorOptions::eCHIP8E},
-            {{4,0}, emu::Chip8EmulatorOptions::eCHIP8X},
-            {{5,0}, emu::Chip8EmulatorOptions::eCHIP48},
-            {{6,0}, emu::Chip8EmulatorOptions::eSCHIP10},
-            {{7,0}, emu::Chip8EmulatorOptions::eSCHIP11},
-            {{8,0}, emu::Chip8EmulatorOptions::eSCHPC},
-            {{9,0}, emu::Chip8EmulatorOptions::eSCHIP_MODERN},
-            {{10,0}, emu::Chip8EmulatorOptions::eMEGACHIP},
-            {{11,0}, emu::Chip8EmulatorOptions::eXOCHIP},
-            {{12,0}, emu::Chip8EmulatorOptions::eCHIP8VIP},
-            {{12,1}, emu::Chip8EmulatorOptions::eCHIP8VIP_TPD},
-            {{12,2}, emu::Chip8EmulatorOptions::eCHIP8VIP_FPD},
-            {{12,3}, emu::Chip8EmulatorOptions::eCHIP8EVIP},
-            {{12,4}, emu::Chip8EmulatorOptions::eCHIP8XVIP},
-            {{12,5}, emu::Chip8EmulatorOptions::eCHIP8XVIP_TPD},
-            {{12,6}, emu::Chip8EmulatorOptions::eCHIP8XVIP_FPD},
-            {{12,7}, emu::Chip8EmulatorOptions::eRAWVIP},
-            {{13,0}, emu::Chip8EmulatorOptions::eCHIP8DREAM},
-            {{13,1}, emu::Chip8EmulatorOptions::eC8D68CHIPOSLO}
-        };
-        updateEmulatorOptions(_options);
-        whenEmuChanged(*_chipEmu);
-        _debugger.updateCore(_chipEmu.get());
-        _screen = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
+        EmuHostEx::updateEmulatorOptions(props);
+        _screen = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
+        _overlayTexture = LoadRenderTexture(emu::SUPPORTED_SCREEN_WIDTH,emu::SUPPORTED_SCREEN_HEIGHT);
         _screenTexture = LoadTextureFromImage(_screen);
         _crt = GenImageColor(256,512,BLACK);
         _crtTexture = LoadTextureFromImage(_crt);
-        _screenShot = GenImageColor(emu::Chip8EmulatorBase::MAX_SCREEN_WIDTH, emu::Chip8EmulatorBase::MAX_SCREEN_HEIGHT, BLACK);
+        _screenShot = GenImageColor(emu::SUPPORTED_SCREEN_WIDTH, emu::SUPPORTED_SCREEN_HEIGHT, BLACK);
         _screenShotTexture = LoadTextureFromImage(_screen);
         SetTextureFilter(_crtTexture, TEXTURE_FILTER_BILINEAR);
         SetTextureFilter(_screenShotTexture, TEXTURE_FILTER_POINT);
         _titleImage = LoadImage("cadmium-title.png");
-        _microFont = LoadImage("micro-font.png");
         _keyboardOverlay = LoadRenderTexture(40,40);
-        _chipEmu->reset();
+        updateScreen();
         std::string versionStr(CADMIUM_VERSION);
-        drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91 - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
+        drawMicroText(_titleImage, "v" CADMIUM_VERSION, 91u - std::strlen("v" CADMIUM_VERSION)*4, 6, WHITE);
         if(!versionStr.empty() && (versionStr.back() & 1))
             drawMicroText(_titleImage, "WIP", 38, 53, WHITE);
         std::string buildDate = __DATE__;
@@ -655,30 +492,57 @@ public:
             0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
         });
 */
-#ifdef PLATFORM_WEB
-        JsClipboard_AddJsHook();
-#else
+#ifndef PLATFORM_WEB
+        _cfgPath = (fs::path(dataPath())/"config.json").string();
         _volume = _volumeSlider = _cfg.volume;
         _styleManager.updateStyle(_cfg.guiHue, _cfg.guiSat, false);
+#else
+        webInitClipboard();
+        openFileCallback = [this](std::string_view filename, ghc::span<const uint8_t> data) {
+            loadBinary(filename, data, LoadOptions::None);
+        };
+        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
+        webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
+#endif
+        // the text widgets use the clipboard of the editor, on the web the text arrives with the browser's paste event
+#ifdef PLATFORM_WEB
+        gui::SetClipboardHandler(GetClipboardTextX, SetClipboardTextX, isClipboardPaste);
+#else
+        gui::SetClipboardHandler(GetClipboardTextX, SetClipboardTextX);
 #endif
         if(_volume > 1.0f)
             _volume = _volumeSlider = 1.0f;
+        updateKeyboardOverlay();
+        updateMainMenu();
         SetMasterVolume(_volume);
     }
 
     ~Cadmium() override
     {
+        if(!_cfgPath.empty()) {
+            _cfg.workingDirectory = _currentDirectory;
+            _cfg.guiHue = _styleManager.getGuiHue();
+            _cfg.guiSat = _styleManager.getGuiSaturation();
+            saveConfig();
+        }
         gui::UnloadGui();
+#ifndef PLATFORM_WEB
+        if (_database)
+            _database.reset();
+#endif
+        _textureScaler.reset();
         UnloadFont(_font);
         UnloadImage(_fontImage);
         UnloadImage(_microFont);
-        UnloadRenderTexture(_renderTexture);
+        //UnloadRenderTexture(_renderTexture);
+        UnloadRenderTexture(_overlayTexture);
         UnloadRenderTexture(_keyboardOverlay);
         UnloadImage(_titleImage);
         UnloadTexture(_titleTexture);
         UnloadTexture(_screenShotTexture);
         UnloadTexture(_crtTexture);
         UnloadTexture(_screenTexture);
+        _crtRenderer.unload();
         UnloadAudioStream(_audioStream);
         CloseAudioDevice();
         UnloadImage(_screenShot);
@@ -687,41 +551,125 @@ public:
         UnloadImage(_icon);
         _instance = nullptr;
         CloseWindow();
-        if(!_cfgPath.empty()) {
-            _cfg.workingDirectory = _currentDirectory;
-            _cfg.guiHue = _styleManager.getGuiHue();
-            _cfg.guiSat = _styleManager.getGuiSaturation();
-            saveConfig();
-        }
     }
 
     void updateResolution()
     {
-#ifdef RESIZABLE_GUI
-        auto width = std::max(GetScreenWidth(), _screenWidth);
-        auto height = std::max(GetScreenHeight(), _screenHeight);
+        static unsigned counter = 0;
+        if (++counter > 120) {
+            counter = 0;
+            _currentMonitor = GetCurrentMonitor(); // surprisingly expensive call
+        }
+        if (_windowInvisible) {
+            ClearWindowState(FLAG_WINDOW_HIDDEN);
+            _windowInvisible = false;
+        }
+        if (!_scaleMode || GetMonitorWidth(_currentMonitor) <= _screenWidth * _scaleMode) {
+            _scaleMode = 1;
+        }
 
-//        if(GetScreenWidth() < width || GetScreenHeight() < height)
-//            SetWindowSize(width, height);
+#if defined(PLATFORM_WEB) && !defined(RESIZABLE_GUI)
+        // CSS controls the displayed size, not the WebGL backing resolution.
+        // Keep the GUI logical size fixed, but let the video overlay use all
+        // available device pixels instead of enlarging a 640x480 canvas.
+        double cssWidth = 0.0, cssHeight = 0.0;
+        if (emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS &&
+            cssWidth > 0.0 && cssHeight > 0.0) {
+            const double pixelRatio = emscripten_get_device_pixel_ratio();
+            const int width = std::max(1, static_cast<int>(std::round(cssWidth * pixelRatio)));
+            const int height = std::max(1, static_cast<int>(std::round(cssHeight * pixelRatio)));
+            if (GetScreenWidth() != width || GetScreenHeight() != height) {
+                SetWindowSize(width, height);
+                SetMouseScale(static_cast<float>(_screenWidth) / width, static_cast<float>(_screenHeight) / height);
+                _textureScaler->setOutputSize(width, height);
+            }
+        }
+#elif defined(RESIZABLE_GUI)
+        static int resizeCount = 0;
+        if (IsWindowResized()) {
+            int width{0}, height{0};
+            resizeCount++;
+#if defined(PLATFORM_WEB)
+            double devicePixelRatio = emscripten_get_device_pixel_ratio();
+            width = GetScreenWidth() * devicePixelRatio;
+            height = GetScreenHeight() * devicePixelRatio;
 #else
-        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH) {
+            // TODO: glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+#endif
+            TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
+        }
+
+        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
+        SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
+
+        auto width = std::max(GetScreenWidth(), _screenWidth) / (_scaleBy2 ? 2 : 1);
+        auto height = std::max(GetScreenHeight(), _screenHeight) / (_scaleBy2 ? 2 : 1);
+
+        if(GetScreenWidth() < width || GetScreenHeight() < height)
+            SetWindowSize(width, height);
+        if(width != _screenWidth || height != _screenHeight) {
             UnloadRenderTexture(_renderTexture);
-            _screenWidth = MIN_SCREEN_WIDTH;
-            _screenHeight = MIN_SCREEN_HEIGHT;
+            _screenWidth = width;
+            _screenHeight = height;
             _renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
             SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
-            SetWindowSize(_screenWidth * (_scaleBy2 ? 2 : 1), _screenHeight * (_scaleBy2 ? 2 : 1));
         }
+#else
+        // What the host applied is remembered instead of asking raylib for the size, see setupWindowViewport().
+        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH || _scaleMode != _appliedScaleMode) {
+            _appliedScaleMode = _scaleMode;
+            //UnloadRenderTexture(_renderTexture);
+            _screenWidth = MIN_SCREEN_WIDTH;
+            _screenHeight = MIN_SCREEN_HEIGHT;
+            //_renderTexture = LoadRenderTexture(_screenWidth, _screenHeight);
+            //SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
+            Vector2 scale2d{1.0f, 1.0f};// GetWindowScaleDPI();
+            SetWindowSize(_screenWidth * _scaleMode / scale2d.x, _screenHeight * _scaleMode / scale2d.y);
+            SetMouseScale(1.0f/_scaleMode*scale2d.x, 1.0f/_scaleMode*scale2d.y);
+            _textureScaler->setOutputSize(_screenWidth * _scaleMode / scale2d.x, _screenHeight * _scaleMode / scale2d.y);
+        }
+#endif
+    }
+
+    // compensate for raylob 6.0 framebuffer scale issues
+    void setupWindowViewport() const
+    {
+#if defined(__APPLE__) && !defined(PLATFORM_WEB) && !defined(RESIZABLE_GUI) && RAYLIB_VERSION_MAJOR >= 6
+        const auto width = _screenWidth * _scaleMode;
+        const auto height = _screenHeight * _scaleMode;
+        rlViewport(0, 0, width, height);
+        rlMatrixMode(RL_PROJECTION);
+        rlLoadIdentity();
+        rlOrtho(0, width, height, 0, 0.0, 1.0);
+        rlMatrixMode(RL_MODELVIEW);
+        rlLoadIdentity();
 #endif
     }
 
     bool isHeadless() const override { return false; }
 
-    void drawMicroText(Image& dest, std::string text, int x, int y, Color tint)
+    void drawMicroText(Image& dest, const std::string& text, int x, int y, Color tint) const
     {
         for(auto c : text) {
-            if((uint8_t)c < 128)
+            if (static_cast<uint8_t>(c) < 128)
                 ImageDraw(&dest, _microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
+            x += 4;
+        }
+    }
+
+    void drawMicroText2(Image& dest, const std::string& text, int x, int y, Color tint) const
+    {
+        for(auto c : text) {
+            if (static_cast<uint8_t>(c) < 128) {
+                for (int yy = 0; yy < 6; ++yy) {
+                    for (int xx = 0; xx < 4; ++xx) {
+                        if (GetImageColor(_microFont, (c%32)*4.0f + xx, (c/32)*6.0f + yy).r > 128) {
+                            ImageDrawPixel(&dest, (float)x + xx, (float)y + yy, tint);
+                        }
+                    }
+                }
+                //ImageDraw(&dest, _microFont, {(c%32)*4.0f, (c/32)*6.0f, 4, 6}, {(float)x, (float)y, 4, 6}, tint);
+            }
             x += 4;
         }
     }
@@ -730,8 +678,7 @@ public:
 
     static void audioInputCallback(void *buffer, unsigned int frames)
     {
-        auto* inst = Cadmium::instance();
-        if(inst) {
+        if (auto* inst = Cadmium::instance()) {
             inst->renderAudio(static_cast<int16_t*>(buffer), frames);
         }
     }
@@ -739,10 +686,10 @@ public:
     void renderAudio(int16_t *samples, unsigned int frames)
     {
         std::scoped_lock lock(_audioMutex);
-        _audioCallbackAvgFrames = _audioCallbackAvgFrames ? (_audioCallbackAvgFrames + frames)/2 : frames;
+        _audioCallbackAvgFrames = _audioCallbackAvgFrames ? (_audioCallbackAvgFrames + frames)/2u : frames;
         if(_chipEmu) {
-            if(_chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
-                auto len = _audioBuffer.read(samples, frames);
+            if(_chipEmu->execMode() == emu::GenericCpu::eRUNNING) {
+                const auto len = _audioBuffer.read(samples, frames);
                 if(!len) {
                     while(frames--) {
                         *samples++ = 0;
@@ -765,7 +712,7 @@ public:
     void pushAudio(int frames)
     {
         static int16_t sampleBuffer[44100];
-        if(_chipEmu->getExecMode() == emu::IChip8Emulator::eRUNNING) {
+        if(_chipEmu->execMode() == emu::IChip8Emulator::eRUNNING) {
             //if(_audioBuffer.dataAvailable() < _audioCallbackAvgFrames) ++frames;
             if(frames > _audioBuffer.spaceAvailable()) frames = _audioBuffer.spaceAvailable();
             _chipEmu->renderAudio(sampleBuffer, frames, 44100);
@@ -775,18 +722,58 @@ public:
 
     void vblank() override
     {
-        if(_chipEmu)
-            pushAudio(44100 / _options.frameRate);
+        if(_chipEmu) {
+            // Keep the fraction, a whole number of samples per frame would run short at 64Hz or 50.75Hz.
+            _audioSamplesDue += 44100.0 / _chipEmu->frameRate();
+            const auto samples = static_cast<int>(_audioSamplesDue);
+            _audioSamplesDue -= samples;
+            pushAudio(samples);
+        }
     }
 
     int getKeyPressed() override
     {
+#if 1
         static uint32_t instruction = 0;
         static int waitKeyUp = 0;
         static int keyId = 0;
         auto now = GetTime();
         for(int i = 0; i < 16; ++i)
             _keyScanTime[i] = now;
+        if(waitKeyUp && instruction == _chipEmu->focussedExecutionUnit()->getPC()) {
+            if(IsKeyUp(waitKeyUp)) {
+                waitKeyUp = 0;
+                instruction = 0;
+                return keyId;
+            }
+            return -1;
+        }
+        waitKeyUp = 0;
+        auto key = GetKeyPressed();
+        if (!gui::IsSysKeyDown() && key) {
+            for (int i = 0; i < 16; ++i) {
+                if (key == _keyMapping[i]) {
+                    instruction = _chipEmu->focussedExecutionUnit()->getPC();
+                    waitKeyUp = key;
+                    keyId = i + 1;
+                    return 0;
+                }
+            }
+        }
+        return waitKeyUp ? -1 : 0;
+#else
+        //static uint32_t instruction = 0;
+        //static int waitKeyUp = 0;
+        //static int keyId = 0;
+        auto now = GetTime();
+        int keyId = -1;
+        for(int i = 0; i < 16; ++i) {
+            _keyScanTime[i] = now;
+            if(IsKeyReleased(_keyMapping[i]))
+                keyId = i;
+        }
+        return keyId;
+        /*
         if(waitKeyUp && instruction == _chipEmu->getPC()) {
             if(IsKeyUp(waitKeyUp)) {
                 waitKeyUp = 0;
@@ -808,10 +795,16 @@ public:
             }
         }
         return waitKeyUp ? -1 : 0;
+        */
+#endif
     }
 
     bool isKeyDown(uint8_t key) override
     {
+        if (key == emu::EmulatorHost::KEY_ETI_STEP)
+            return !gui::IsSysKeyDown() && IsKeyDown(KEY_SPACE);
+        if (key >= 16)
+            return false;
         _keyScanTime[key & 0xF] = GetTime();
         return !gui::IsSysKeyDown() && IsKeyDown(_keyMapping[key & 0xF]);
     }
@@ -830,6 +823,9 @@ public:
         for(int i = 0; i < 4; ++i) {
             for(int j = 0; j < 4; ++j) {
                 DrawRectangleRec({j*10.0f, i*10.0f, 9.0f, 9.0f}, now - _keyScanTime[_keyPosition[i*4+j]] < 0.2 ? WHITE : GRAY);
+                if(IsKeyDown(_keyMapping[_keyPosition[i*4+j]])) {
+                    DrawRectangleLines(j*10.0f, i*10.0f, 9.0f, 9.0f, {0x80, 0x80, 0x80, 0xff});
+                }
                 DrawTextEx(_font, &keys[i*8+j*2], {j*10.0f + 2.0f, i*10.0f + 1.0f}, 8.0f, 0, BLACK);
             }
         }
@@ -896,7 +892,7 @@ public:
         return Vector3Distance(labC1, labC2);;
     }
 
-    static inline uint32_t rgb332To888(uint8_t c)
+    static uint32_t rgb332To888(uint8_t c)
     {
         static uint8_t b3[] = {0, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xff};
         static uint8_t b2[] = {0, 0x60, 0xA0, 0xff};
@@ -905,12 +901,14 @@ public:
 
     void updatePalette(const std::array<uint8_t,16>& palette) override
     {
+        /*
+         * TODO: Fix this
         if(!_customPalette) {
             for (int i = 0; i < palette.size(); ++i) {
                 _colorPalette[i] = ((rgb332To888(palette[i]) << 8) | 0xff);
             }
             _updateScreen = true;
-        }
+        }*/
     }
 
     void updatePalette(const std::vector<uint32_t>& palette, size_t offset) override
@@ -920,16 +918,71 @@ public:
 
     void generateFont()
     {
-        _fontImage = GenImageColor(256, 256, {0, 0, 0, 0});
+        int imageWidth = 256;
+        int imageHeight = 256;
+        _fontImage = GenImageColor(imageWidth, imageHeight, {0, 0, 0, 0});
         int glyphCount = 0;
-        for(const auto& fci : fontRom) {
+        std::vector<Rectangle> rectangles;
+        std::vector<GlyphInfo> glyphs;
+        float glyphX = 0, glyphY = 0;
+        for(int fi = 0; fi < gui::fontRomCount; ++fi) {
+            const auto& fci = gui::fontRom[fi];
             auto c = fci.codepoint;
-            drawChar(_fontImage, c, (glyphCount % 32) * 6, (glyphCount / 32) * 8, WHITE);
+            if (glyphX + fci.width + 1 > imageWidth) {
+                glyphX = 0;
+                glyphY += 8;
+            }
+            gui::drawFontChar(_fontImage, c, glyphX, glyphY, WHITE);
+            rectangles.push_back(Rectangle{glyphX, glyphY, fci.width + 1.0f, 8.0f});
+            glyphs.push_back(GlyphInfo{c, 0, 0, fci.width+1});
+            glyphX += fci.width + 1;
             ++glyphCount;
         }
-#if !defined(NDEBUG) && defined(EXPORT_FONT)
+        float badgeX = 0;
+        float badgeY = glyphX < 1 ? glyphY : glyphY + 8;
+        int badgeCount = 0;
+        struct BadgeInfo {
+            std::string text;
+            Color badgeColor, textColor;
+        };
+        std::vector<BadgeInfo> badges;
+        auto textColor = DARKGRAY;
+        for(const auto& [name, info] : _cores) {
+            //std::cout << toOptionName(name) << std::endl;
+            //coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
+            //presetsDescription += fmt::format("        {}:\n", info->description);
+            for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+                std::string presetName;
+                if(info->prefix().empty())
+                    presetName = toOptionName(info->variantName(i));
+                else
+                    presetName = toOptionName(info->prefix() + '-' + info->variantName(i));
+                badges.push_back(BadgeInfo{presetName, {0x00, 0xE0, 0x00, 0xFF}, textColor});
+            }
+        }
+        badges.push_back(BadgeInfo{"GENERIC-CHIP-8", {0xE0, 0xC0, 0x00, 0xFF}, textColor});
+        badges.push_back(BadgeInfo{"???", {0xE0, 0x40, 0x40, 0xFF}, LIGHTGRAY});
+        badges.push_back(BadgeInfo{"NEW", {0x00, 0xC0, 0xE0, 0xFF}, textColor});
+        for(uint16_t i = 0; i < badges.size(); ++i) {
+            auto& [label, badgeCol, textCol] = badges[i];
+            float width = label.length() * 4 + 3;
+            if (badgeX + width > imageWidth) {
+                badgeX = 0;
+                badgeY += 8;
+            }
+            ImageDrawRectangle(&_fontImage, badgeX, badgeY+1, width, 5,badgeCol);
+            ImageDrawRectangle(&_fontImage, badgeX+1, badgeY, width-2, 7, badgeCol);
+            drawMicroText2(_fontImage, toUpper(label), badgeX + 2, badgeY + 1, textCol);
+            rectangles.push_back(Rectangle{badgeX, badgeY, width, 7});
+            glyphs.push_back(GlyphInfo{0xE100 + i, 0, 0, (int)width + 1});
+            std::string badgeUtf8;
+            fs::detail::appendUTF8(badgeUtf8, 0xE100 + i);
+            _badges[toLower(label)] = badgeUtf8;
+            badgeX += width + 1;
+        }
+#if !defined(NDEBUG) // && defined(EXPORT_FONT)
         ExportImage(_fontImage, "Test.png");
-        {
+        /*{
             std::ofstream fos("font.txt");
             for (uint8_t c = 32; c < 128; ++c) {
                 fos << "char: " << fmt::format("0x{:04x}", c) << " " << c << std::endl;
@@ -941,26 +994,15 @@ public:
                 }
             }
             fos << std::endl;
-        }
+        }*/
 #endif
         _font.baseSize = 8;
-        _font.glyphCount = glyphCount;
+        _font.glyphCount = glyphs.size();
         _font.texture = LoadTextureFromImage(_fontImage);
-        _font.recs = (Rectangle*)std::calloc(_font.glyphCount, sizeof(Rectangle));
-        _font.glyphs = (GlyphInfo*)std::calloc(_font.glyphCount, sizeof(GlyphInfo));
-        int idx = 0;
-        for(const auto& fci : fontRom) {
-            int i = fci.codepoint;
-            _font.recs[idx].x = (idx % 32) * 6;
-            _font.recs[idx].y = (idx / 32) * 8;
-            _font.recs[idx].width = 6;
-            _font.recs[idx].height = 8;
-            _font.glyphs[idx].value = i;
-            _font.glyphs[idx].offsetX = 0;
-            _font.glyphs[idx].offsetY = 0;
-            _font.glyphs[idx].advanceX = 6;
-            ++idx;
-        }
+        _font.recs = static_cast<Rectangle*>(std::calloc(_font.glyphCount, sizeof(Rectangle)));
+        _font.glyphs = static_cast<GlyphInfo*>(std::calloc(_font.glyphCount, sizeof(GlyphInfo)));
+        std::ranges::copy(rectangles, _font.recs);
+        std::ranges::copy(glyphs, _font.glyphs);
         GuiSetFont(_font);
     }
 
@@ -969,27 +1011,49 @@ public:
         return _updateScreen;
     }
 
-    int getInstrPerFrame() const { return _options.instructionsPerFrame>=0 ? _options.instructionsPerFrame : 0; }
-    int getFrameBoost() const { return _frameBoost > 0 && getInstrPerFrame() > 0 ? _frameBoost : 1; }
+    int getFrameBoost() const { return _chipEmu->supportsFrameBoost() && _frameBoost > 0 ? _frameBoost : 1; }
 
     void updateScreen() override
     {
         auto* pixel = (uint32_t*)_screen.data;
         if(pixel) {
-            const auto* screen = _chipEmu->getScreen();
-            if (screen) {
-                if (!_renderCrt) {
-                    screen->convert(pixel, _screen.width, 255, nullptr);
-                    UpdateTexture(_screenTexture, _screen.data);
+            auto rgbaSpan = _chipEmu->getRGBASpan(
+                {static_cast<uint32_t*>(_screen.data), static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)}
+                );
+            // The pre-rendered HP LCD (including the generic core's HP display
+            // option) contains a fine grid, not bare CHIP-8 pixels.
+            _screenIsPreRendered = !rgbaSpan.empty();
+            SetTextureFilter(_screenTexture, _screenIsPreRendered ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT);
+            if(!rgbaSpan.empty()) {
+                auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
+                for (size_t y = 0; y < rgbaSpan.height(); ++y) {
+                    std::memmove(textureSpan.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
                 }
-                else {
-                }
+                UpdateTexture(_screenTexture, _screen.data);
+                _screenRatio = 1;
+                _screenSize = {static_cast<float>(rgbaSpan.width()), static_cast<float>(rgbaSpan.height())};
+                _screenBorderColor = {0,0,0,255};
             }
             else {
-                // TraceLog(LOG_INFO, "Updating MC8 screen!");
-                const auto* screen = _chipEmu->getScreenRGBA();
-                screen->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                UpdateTexture(_screenTexture, _screen.data);
+                const auto* screen = _chipEmu->getScreen();
+                if (screen) {
+                    screen->convert(pixel, _screen.width, 255, nullptr);
+                    UpdateTexture(_screenTexture, _screen.data);
+                    _screenRatio = screen->ratio();
+                    _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
+                    _screenBorderColor = GetColor(be32(screen->getBorderColor()));
+                }
+                else {
+                    // TraceLog(LOG_INFO, "Updating MC8 screen!");
+                    const auto* screenRgb = _chipEmu->getScreenRGBA();
+                    if(screenRgb) {
+                        screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
+                        UpdateTexture(_screenTexture, _screen.data);
+                        _screenRatio = screenRgb->ratio();
+                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
+                        _screenBorderColor = GetColor(be32(screenRgb->getBorderColor()));
+                    }
+                }
             }
         }
     }
@@ -1006,63 +1070,35 @@ public:
         double deltaTC = std::chrono::duration<double>(now - lastFrameTime).count();
         lastFrameTime = now;
         float deltaT = GetFrameTime();
-#ifdef RESIZABLE_GUI
-#if 0
-        static int resizeCount = 0;
-        if (IsWindowResized()) {
-            int width{0}, height{0};
-            resizeCount++;
-#if defined(PLATFORM_WEB)
-            double devicePixelRatio = emscripten_get_device_pixel_ratio();
-            width = GetScreenWidth() * devicePixelRatio;
-            height = GetScreenHeight() * devicePixelRatio;
-#else
-            glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
-#endif
-            TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
-        }
-#endif
-        auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
-        SetMouseScale(1.0f/screenScale, 1.0f/screenScale);
-#else
-        if (_scaleBy2) {
-            // Screen size x2
-            if (GetScreenWidth() < _screenWidth * 2) {
-                SetWindowSize(_screenWidth * 2, _screenHeight * 2);
-                //CenterWindow(_screenWidth * 2, _screenHeight * 2);
-                SetMouseScale(0.5f, 0.5f);
-            }
-        }
-        else {
-            // Screen size x1
-            if (_screenWidth < GetScreenWidth()) {
-                SetWindowSize(_screenWidth, _screenHeight);
-                //CenterWindow(_screenWidth, _screenHeight);
-                SetMouseScale(1.0f, 1.0f);
-            }
-        }
-#endif
+        bool breakpointTriggered = false;
 
         updateResolution();
 
-        _librarian.update(_options); // allows librarian to complete background tasks
+        _librarian.update(*_properties); // allows librarian to complete background tasks
 
         if (IsFileDropped()) {
             auto files = LoadDroppedFiles();
             if (files.count > 0) {
                 //TraceLog(LOG_INFO, "About to load one of %d dropped files.", (int)files.count);
+#ifndef PLATFORM_WEB
+                // files dropped on the library are added to it instead of being loaded
+                if (_mainView == eLIBRARY && _database) {
+                    TraceLog(LOG_INFO, "%s", _database->addFiles({files.paths, files.paths + files.count}).c_str());
+                }
+                else
+#endif
                 loadRom(files.paths[0], LoadOptions::None);
             }
             UnloadDroppedFiles(files);
         }
 
+        updateEditorDisassembly();
         if(_mainView == eEDITOR) {
             _editor.update();
-            if(!_editor.compiler().isError() && _editor.compiler().sha1().to_hex() != _romSha1Hex) {
-                _romImage.assign(_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize());
-                _romSha1Hex = _editor.compiler().sha1().to_hex();
-                _debugger.updateOctoBreakpoints(_editor.compiler());
-                reloadRom();
+            if(_editor.contentRevision() != _loadedSourceRevision && _editor.isCompiledUpToDate() &&
+               !_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
+                _debugger.updateOctoDebugInfo(_editor.compiler());
+                replaceProgramFromEditor({_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize()}, _editor.compiler().sha1());
             }
         }
 
@@ -1070,34 +1106,57 @@ public:
             _keyMatrix[key] = IsKeyDown(_keyMapping[key & 0xF]);
         }
 
-        if(_chipEmu->getExecMode() != ExecMode::ePAUSED) {
+        if (_traceFrame) {
+            _chipEmu->traceNextFrame();
+            _traceFrame = false;
+        }
+        if(_chipEmu->execMode() != ExecMode::ePAUSED) {
             _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
             if(_partialFrameTime > 10000) {
                 _fps.reset();
                 _partialFrameTime = 1000;
             }
+            // A time boxed frame takes as long as a display frame, so catching up would only lock the
+            // loop at half the rate. Keep the fraction though, or frame rates below 60Hz would run too slow.
+            if(!_chipEmu->supportsFrameBoost() && _partialFrameTime >= 2000)
+                _partialFrameTime = 1999;
             if(_partialFrameTime >= 1000) {
                 while (_partialFrameTime >= 1000) {
                     _partialFrameTime -= 1000;
                     for(int i = 0; i < getFrameBoost(); ++i) {
-                        _chipEmu->tick(getInstrPerFrame());
-                        if(_chipEmu->isBreakpointTriggered())
-                            _mainView = eDEBUGGER;
+                        _chipEmu->executeFrame();
+                        bool breakpoint = false;
+                        for(auto& unit : *_chipEmu) {
+                            if(unit.isBreakpointTriggered()) {
+                                _mainView = eDEBUGGER;
+                                _debugger.setBreakpointTriggered(true);
+                                breakpoint = true;
+                                break;
+                            }
+                        }
+                        if (!breakpoint)
+                            _debugger.setBreakpointTriggered(false);
                     }
                     _fps.add(GetTime()*1000);
                 }
             }
             if(_chipEmu->needsScreenUpdate())
                 updateScreen();
-            if(_showKeyMap)
-                updateKeyboardOverlay();
+            updateKeyboardOverlay();
         }
 
-        BeginTextureMode(_renderTexture);
+        static Stopwatch guiRenderTime;
+        guiRenderTime.start();
+        _screenOverlay = {0,0,0,0};
+        BeginTextureMode(_textureScaler->getRenderTexture());
         drawGui();
         EndTextureMode();
+        _textureScaler->updateIntermediateTexture();
+        guiRenderTime.stop();
+        _avgGuiRenderTime = guiRenderTime.getElapsedAvgString();
 
         BeginDrawing();
+        setupWindowViewport();
         {
             ClearBackground(CADMIUM_VERSION_DECIMAL & 1 ? Color{16,0,0,255} : BLACK);
             //ClearBackground(BLACK);
@@ -1105,16 +1164,30 @@ public:
             Vector2 guiOffset = {(GetScreenWidth() - _screenWidth*screenScale)/2.0f, (GetScreenHeight() - _screenHeight*screenScale)/2.0f};
             if(guiOffset.x < 0) guiOffset.x = 0;
             if(guiOffset.y < 0) guiOffset.y = 0;
-            DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
-                           (Vector2){0, 0}, 0.0f, WHITE);
-#else
             if (_scaleBy2) {
+                drawScreen({_screenOverlay.x * 2, _screenOverlay.y * 2, _screenOverlay.width * 2, _screenOverlay.height * 2}, _screenScale);
                 DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * 2, (float)_renderTexture.texture.height * 2},
                                (Vector2){0, 0}, 0.0f, WHITE);
             }
             else {
+                drawScreen(_screenOverlay, _screenScale);
                 DrawTextureRec(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Vector2){0, 0}, WHITE);
             }
+            //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){guiOffset.x, guiOffset.y, (float)_renderTexture.texture.width * screenScale, (float)_renderTexture.texture.height * screenScale},
+            //               (Vector2){0, 0}, 0.0f, WHITE);
+#else
+            if (_videoRenderMode == eHIRES && _screenOverlay.width > 0 && _screenOverlay.height > 0) {
+#ifdef PLATFORM_WEB
+                const float scaleX = static_cast<float>(GetScreenWidth()) / _screenWidth;
+                const float scaleY = static_cast<float>(GetScreenHeight()) / _screenHeight;
+                drawScreen({_screenOverlay.x * scaleX, _screenOverlay.y * scaleY, _screenOverlay.width * scaleX, _screenOverlay.height * scaleY}, _screenScale);
+#else
+                drawScreen({_screenOverlay.x * _scaleMode, _screenOverlay.y * _scaleMode, _screenOverlay.width * _scaleMode, _screenOverlay.height * _scaleMode}, _screenScale);
+#endif
+            }
+            _textureScaler->draw(0, 0);
+            //DrawTexturePro(_renderTexture.texture, (Rectangle){0, 0, (float)_renderTexture.texture.width, -(float)_renderTexture.texture.height}, (Rectangle){0, 0, (float)_renderTexture.texture.width * _scaleMode / scale2d.x, (float)_renderTexture.texture.height * _scaleMode / scale2d.y},
+            //               (Vector2){0, 0}, 0.0f, WHITE);
 #endif
 #if 0
             int width{0}, height{0};
@@ -1128,44 +1201,134 @@ public:
             //TraceLog(LOG_INFO, "Window resized: %dx%d, fb: %dx%d", GetScreenWidth(), GetScreenHeight(), width, height);
             DrawText(TextFormat("Window resized: %dx%d, fb: %dx%d, rzc: %d", GetScreenWidth(), GetScreenHeight(), width, height, resizeCount), 10,30,10,GREEN);
 #endif
-            // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor())), 10, 30, 10, GREEN);
+            // DrawText(TextFormat("Res: %dx%d", GetMonitorWidth(_currentMonitor), GetMonitorHeight(_currentMonitor)), 10, 30, 10, GREEN);
             // DrawFPS(10,45);
         }
         EndDrawing();
     }
 
+    void drawScreen(Rectangle dest, int /*gridScale*/)
+    {
+        int scrWidth = _screenSize.x; //_chipEmu->getCurrentScreenWidth();
+        int scrHeight = _screenSize.y; //_chipEmu->getCurrentScreenHeight();
 
-    void drawScreen(Rectangle dest, int gridScale)
+        //int ratio = 1;
+        Color borderColor = _screenBorderColor; //{0,0,0,255};
+        //if (auto* s = _chipEmu->getScreen()) { ratio = s->ratio(); borderColor = GetColor(be32(s->getBorderColor())); }
+        //else if (auto* srgba = _chipEmu->getScreenRGBA()) { ratio = srgba->ratio(); }
+        int ratio = _screenRatio;
+        if (ratio <= 0) ratio = 1;
+
+        // Background (keep your existing look)
+        DrawRectangleRec(dest, borderColor);
+
+        if (scrWidth <= 0 || scrHeight <= 0 || dest.width <= 0.0f || dest.height <= 0.0f)
+            return;
+
+        // Logical "display" height includes the vertical stretch ratio.
+        const float contentW = static_cast<float>(scrWidth);
+        const float contentH = static_cast<float>(scrHeight / ratio);
+        // a screen rotated by 90° or 270° is fitted with its sides swapped
+        const int rotation = _chipEmu ? _chipEmu->screenRotation() : 0;
+        const bool sideways = rotation == 90 || rotation == 270;
+        const float shownW = sideways ? contentH : contentW;
+        const float shownH = sideways ? contentW : contentH;
+
+        // Bare CHIP-8 pixels retain integer scaling. Pre-rendered LCDs use
+        // filtered fractional scaling to avoid aliasing their fine pixel grid,
+        // the CRT effect draws soft beams and needs no pixel alignment either.
+        const bool crtEffect = _chipEmu && _chipEmu->crtEffect() && _crtRenderer.isLoaded() && !_screenIsPreRendered;
+        const float maxScaleX = dest.width / shownW;
+        const float maxScaleY = dest.height / shownH;
+        const float fitScale = std::min(maxScaleX, maxScaleY);
+        const float scale = _screenIsPreRendered || crtEffect ? fitScale :
+            (fitScale >= 1.0f ? std::floor(fitScale) : 1.0f / std::ceil(1.0f / fitScale));
+
+        const float dstW = contentW * static_cast<float>(scale);
+        const float dstH = contentH * static_cast<float>(scale);
+        const float boxW = shownW * static_cast<float>(scale);
+        const float boxH = shownH * static_cast<float>(scale);
+
+        // Center inside dest. Round to whole pixels to avoid subpixel wobble.
+        const float videoX = std::floor(dest.x + (dest.width - boxW) * 0.5f);
+        const float videoY = std::floor(dest.y + (dest.height - boxH) * 0.5f);
+
+        // drawn around the center of the box, so the rotation keeps it in place
+        const Rectangle srcRect{0.0f, 0.0f, static_cast<float>(scrWidth), static_cast<float>(scrHeight)};
+        const Rectangle dstRect{videoX + boxW * 0.5f, videoY + boxH * 0.5f, dstW, dstH};
+
+        if (crtEffect) {
+            _crtRenderer.draw(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation));
+        }
+        else {
+            DrawTexturePro(_screenTexture, srcRect, dstRect, {dstW * 0.5f, dstH * 0.5f}, static_cast<float>(rotation), WHITE);
+        }
+
+        if(_showKeyMap) {
+            auto s = scale / std::max(1, _screenScale);
+            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + boxW - 40.0f*s, videoY + boxH - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
+        }
+        if(GetTime() < 5 && _romImage.empty()) {
+            auto scale = dest.width / 128;
+            auto offsetX = (dest.width - 60*scale) / 2;
+            auto offsetY = (dest.height - 60*scale) / 2;
+            DrawTexturePro(_titleTexture, {34, 2, 60, 60}, {dest.x + offsetX, dest.y + offsetY, 60*scale, 60*scale}, {0, 0}, 0, {255,255,255,uint8_t(GetTime()>4 ? 255.0f*(4.0f-GetTime()) : 255.0f)});
+        }
+    }
+#if 0
+    void drawScreen(Rectangle dest, int /*gridScale*/)
     {
         const Color gridLineCol{40,40,40,255};
-        bool crt = _renderCrt;
-        int scrWidth = crt ? 130 : _chipEmu->getCurrentScreenWidth();
-        int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
-        auto videoScale = dest.width / scrWidth;
-        auto videoScaleY = _chipEmu->isGenericEmulation() ? videoScale : videoScale/4;
-        auto videoX = crt ? (dest.width - scrWidth * videoScale) / 2 + dest.x : (dest.width - _chipEmu->getCurrentScreenWidth() * videoScale) / 2 + dest.x;
-        auto videoY = crt ? (dest.height - scrHeight * videoScaleY) / 2 + dest.y : (dest.height - _chipEmu->getCurrentScreenHeight() * videoScaleY) / 2 + dest.y;
-        if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP)
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        auto videoScaleX = dest.width / as<float>(scrWidth);
+        auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
+        auto videoScaleY = ratio ? videoScaleX / as<float>(ratio) : videoScaleX;
+        auto videoX = (dest.width - as<float>(_chipEmu->getCurrentScreenWidth()) * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - as<float>(_chipEmu->getCurrentScreenHeight()) * videoScaleY) / 2 + dest.y;
+        if(_chipEmu->getMaxScreenWidth() > 128)
             DrawRectangleRec(dest, {0,0,0,255});
         else
             DrawRectangleRec(dest, {0,12,24,255});
-        if(crt)
-            DrawTexturePro(_crtTexture, {1, 1, (float)scrWidth-2, (float)scrHeight-2}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+    }
+#endif
+
+#if 0
+    void drawScreen(Rectangle dest, int gridScale)
+    {
+        const Color gridLineCol{40,40,40,255};
+        int scrWidth = _chipEmu->getCurrentScreenWidth();
+        //int scrHeight = crt ? 385 : (_chipEmu->isGenericEmulation() ? _chipEmu->getCurrentScreenHeight() : 128);
+        int scrHeight = _chipEmu->getCurrentScreenHeight();
+        auto videoScaleX = dest.width / as<float>(scrWidth);
+        auto ratio = _chipEmu->getScreen() ? _chipEmu->getScreen()->ratio() : (_chipEmu->getScreenRGBA() ? _chipEmu->getScreenRGBA()->ratio() : 1);
+        auto videoScaleY = ratio ? videoScaleX / as<float>(ratio) : videoScaleX;
+        auto videoX = (dest.width - as<float>(_chipEmu->getCurrentScreenWidth()) * videoScaleX) / 2 + dest.x;
+        auto videoY = (dest.height - as<float>(_chipEmu->getCurrentScreenHeight()) * videoScaleY) / 2 + dest.y;
+        if(_chipEmu->getMaxScreenWidth() > 128)
+            DrawRectangleRec(dest, {0,0,0,255});
         else
-            DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
-//        DrawRectangleLines(videoX, videoY, scrWidth * videoScale, scrHeight * videoScaleY, RED);
-        if (_grid && !crt) {
+            DrawRectangleRec(dest, {0,12,24,255});
+
+        //BeginShaderMode(_scanLineShader);
+        DrawTexturePro(_screenTexture, {0, 0, (float)scrWidth, (float)scrHeight}, {videoX, videoY, scrWidth * videoScaleX, scrHeight * videoScaleY}, {0, 0}, 0, WHITE);
+        //EndShaderMode();
+
+        if (_grid) {
             for (short x = 0; x < scrWidth; ++x) {
                 DrawRectangle(videoX + x * gridScale, videoY, 1, scrHeight * videoScaleY, gridLineCol);
             }
             if(_chipEmu->isGenericEmulation()) {
                 for (short y = 0; y < scrHeight; ++y) {
-                    DrawRectangle(videoX, videoY + y * gridScale, scrWidth * videoScale, 1, gridLineCol);
+                    DrawRectangle(videoX, videoY + y * gridScale, scrWidth * videoScaleX, 1, gridLineCol);
                 }
             }
         }
         if(_showKeyMap) {
-            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * videoScale - 40.0f, videoY + scrHeight * videoScaleY - 40.0f, 40.0f, 40.0f}, {0, 0}, 0.0f, {255, 255, 255, 128});
+            auto s = videoScaleX / _screenScale;
+            DrawTexturePro(_keyboardOverlay.texture, {0, 0, 40, -40}, {videoX + scrWidth * videoScaleX - 40.0f*s, videoY + scrHeight * videoScaleY - 40.0f*s, 40.0f*s, 40.0f*s}, {0, 0}, 0.0f, {255, 255, 255, 128});
         }
         if(GetTime() < 5 && _romImage.empty()) {
             auto scale = dest.width / 128;
@@ -1180,20 +1343,36 @@ public:
         rlSetBlendMode(RL_BLEND_ALPHA);
 #endif
     }
+#endif
 
     static bool iconButton(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
     {
+        using namespace gui;
         StyleManager::Scope guard;
-        auto fg = guard.getStyle(Style::TEXT_COLOR_NORMAL);
-        auto bg = guard.getStyle(Style::BASE_COLOR_NORMAL);
+        auto fg = guard.getStyle(gui::Style::TEXT_COLOR_NORMAL);
+        auto bg = guard.getStyle(gui::Style::BASE_COLOR_NORMAL);
         if(isPressed) {
-            guard.setStyle(Style::BASE_COLOR_NORMAL, fg);
-            guard.setStyle(Style::TEXT_COLOR_NORMAL, bg);
+            guard.setStyle(gui::Style::BASE_COLOR_NORMAL, fg);
+            guard.setStyle(gui::Style::TEXT_COLOR_NORMAL, bg);
         }
         //guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
         gui::SetNextWidth(20);
         auto result = gui::Button(GuiIconText(iconId, ""));
         return result;
+    }
+    static std::optional<MouseButton> iconButtonDual(int iconId, bool isPressed = false, Color color = {3, 127, 161}, Color foreground = {0x51, 0xbf, 0xd3, 0xff})
+    {
+        using namespace gui;
+        StyleManager::Scope guard;
+        auto fg = guard.getStyle(gui::Style::TEXT_COLOR_NORMAL);
+        auto bg = guard.getStyle(gui::Style::BASE_COLOR_NORMAL);
+        if(isPressed) {
+            guard.setStyle(gui::Style::BASE_COLOR_NORMAL, fg);
+            guard.setStyle(gui::Style::TEXT_COLOR_NORMAL, bg);
+        }
+        //guard.setStyle(Style::TEXT_COLOR_NORMAL, foreground);
+        SetNextWidth(20);
+        return ButtonMulti(GuiIconText(iconId, ""));
     }
 
     const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(uint32_t addr, int n)
@@ -1215,6 +1394,71 @@ public:
         return disassembly;
     }
 
+    void updateMainMenu()
+    {
+        using namespace gui;
+        PopupMenu::Close();
+        PopupMenu::Menu lruFiles;
+        for (auto& recent : _recentFiles) {
+            lruFiles.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(recent, 64), [this, recent]() {
+                loadRom(recent, LoadOptions::None);
+                _mainView = eVIDEO;
+            }));
+        }
+        if (!lruFiles.empty()) {
+            lruFiles.push_back(PopupMenu::Separator());
+            lruFiles.push_back(PopupMenu::Action("Clear recent files", [this]() { _recentFiles.clear(); updateMainMenu(); }));
+        }
+        _mainMenu = PopupMenu::Menu{
+            PopupMenu::Action("About Cadmium...", [this]() {
+                _aboutOpen = true;
+                _aboutScroll = {0, 0};
+            }),
+            PopupMenu::Separator(),
+            PopupMenu::Action("New...", [this](){
+                _mainView = eEDITOR;
+                _editor.setText(": main\n    jump main");
+                _romName = "unnamed.8o";
+                _editor.setFilename("");
+                _sourcePath.clear();
+                for(auto& unit : *_chipEmu) {
+                  unit.removeAllBreakpoints();
+                }
+            }, "⌘N"),
+            PopupMenu::Action("Open...", [this]() {
+#ifdef PLATFORM_WEB
+                loadFileWeb();
+#else
+                _mainView = eROM_SELECTOR;
+                _librarian.fetchDir(_currentDirectory);
+#endif
+            }, "⌘O")
+        };
+        if(!_recentFiles.empty()) {
+            _mainMenu.push_back(PopupMenu::Submenu("Open recent", lruFiles));
+        }
+        _mainMenu.insert(_mainMenu.end(), {
+            PopupMenu::Action("Save...", [this]() {
+                openSavePage(false);
+            }, "⌘S"),
+        });
+#ifndef PLATFORM_WEB
+        // captures the current emulation settings as config of the ROM in the library
+        auto storeSettings = PopupMenu::Action("Save settings to library", [this]() {
+            TraceLog(LOG_INFO, "%s", _database->storeSettings(_romSha1, *_properties).c_str());
+        });
+        _mainMenu.push_back(_database && _properties && _database->containsBinary(_romSha1) ? storeSettings : PopupMenu::Disabled(storeSettings));
+#endif
+        _mainMenu.insert(_mainMenu.end(), {
+            PopupMenu::Separator(),
+            PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
+#ifndef PLATFORM_WEB
+            PopupMenu::Separator(),
+            PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, "⌘Q")
+#endif
+        });
+    }
+
     void drawGui()
     {
         using namespace gui;
@@ -1223,28 +1467,37 @@ public:
         int gridScale = 4;
         static int64_t lastInstructionCount = 0;
         static int64_t lastFrameCount = 0;
+        static bool selectorOpen = false;
 
         static std::chrono::steady_clock::time_point volumeClick{};
 
 #ifdef RESIZABLE_GUI
+        //auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
         auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
-        Vector2 mouseOffset = {-(GetScreenWidth() - _screenWidth*screenScale)/2.0f, -(GetScreenHeight() - _screenHeight*screenScale)/2.0f};
-        if(mouseOffset.x > 0) mouseOffset.x = 0;
-        if(mouseOffset.y > 0) mouseOffset.y = 0;
+        Vector2 mouseOffset = {-(GetScreenWidth() - _screenWidth * screenScale) / 2.0f, -(GetScreenHeight() - _screenHeight * screenScale) / 2.0f};
+        if (mouseOffset.x > 0)
+            mouseOffset.x = 0;
+        if (mouseOffset.y > 0)
+            mouseOffset.y = 0;
         BeginGui({}, &_renderTexture, mouseOffset, {(float)screenScale, (float)screenScale});
+//        BeginGui({}, &_renderTexture, {0, 0}, {_scaleBy2 ? 2.0f : 1.0f, _scaleBy2 ? 2.0f : 1.0f});
+#elif defined(PLATFORM_WEB)
+        BeginGui({}, &_textureScaler->getRenderTexture(), {0, 0},
+                 {static_cast<float>(GetScreenWidth()) / _screenWidth, static_cast<float>(GetScreenHeight()) / _screenHeight});
 #else
-        BeginGui({}, &_renderTexture, {0,0}, {_scaleBy2?2.0f:1.0f, _scaleBy2?2.0f:1.0f});
+        BeginGui({}, &_textureScaler->getRenderTexture(), {0, 0}, {static_cast<float>(_scaleMode), static_cast<float>(_scaleMode)});
 #endif
         {
             SetStyle(STATUSBAR, TEXT_PADDING, 4);
             SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 6);
             SetStyle(DROPDOWNBOX, DROPDOWN_ITEMS_SPACING, 0);
+            SetStyle(SPINNER, TEXT_PADDING, 4);
 
             SetRowHeight(16);
             SetSpacing(0);
-            auto instructionsThisUpdate = _chipEmu->getCycles() - lastInstructionCount;
+            auto instructionsThisUpdate = _chipEmu->executedInstructions() - lastInstructionCount;
             auto framesThisUpdate = _chipEmu->frames() - lastFrameCount;
-            if(_chipEmu->getExecMode() == emu::GenericCpu::eRUNNING) {
+            if (_chipEmu->execMode() == emu::GenericCpu::eRUNNING) {
                 _ipfAverage.add(instructionsThisUpdate);
                 _frameTimeAverage_us.add(GetFrameTime() * 1000000);
                 _frameDelta.add(framesThisUpdate);
@@ -1255,127 +1508,100 @@ public:
             auto ips = instructionsThisUpdate / GetFrameTime();
 
             auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
-            if(_mainView == eEDITOR) {
-                StatusBar({{0.55f, ""},
-                           {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()},
-                           {0.15f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()},
-                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+            if (_mainView == eEDITOR) {
+                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
             }
-            else if(_chipEmu->cpuState() == emu::IChip8Emulator::eERROR) {
-                StatusBar({{0.55f, _chipEmu->errorMessage().c_str()},
-                           {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
-                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+            else if (_chipEmu->coreState() == emu::IEmulationCore::ECS_ERROR) {
+                StatusBar({{0.55f, fmt::format("{}, UI:{}", _chipEmu->errorMessage(), _avgGuiRenderTime).c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
             }
-            else if(getFrameBoost() > 1) {
-                StatusBar({{0.5f, fmt::format("Instruction cycles: {}", _chipEmu->getCycles()).c_str()},
-                           {0.2f, formatUnit(ipsAvg, "IPS").c_str()},
-                           {0.15f, formatUnit(_fps.getFps() * getFrameBoost(), "eFPS").c_str()},
-                           {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+            else if (getFrameBoost() > 1) {
+                StatusBar({{0.5f, fmt::format("Cycles: {}, UI:{}", _chipEmu->cycles(), _avgGuiRenderTime).c_str()}, {0.2f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps() * getFrameBoost(), "eFPS").c_str()}, {0.15f, _variantName.c_str()}});
             }
             else {
-                if(_chipEmu->getCycles() != _chipEmu->getMachineCycles()) {
-                    StatusBar({{0.55f, fmt::format("Instruction cycles: {}/{} [{}]", _chipEmu->getCycles(), _chipEmu->getMachineCycles(), _chipEmu->frames()).c_str()},
+                if (_chipEmu->cycles() != _chipEmu->machineCycles()) {
+                    StatusBar({{0.55f, fmt::format("Cycles: {}/{} [{}], UI:{}", _chipEmu->cycles(), _chipEmu->machineCycles(), _chipEmu->frames(), _avgGuiRenderTime).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
-                               {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
-                               {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+                               {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()},
+                               {0.15f, _variantName.c_str()}});
                 }
                 else {
-                    StatusBar({{0.55f, fmt::format("Instruction cycles: {} [{}]", _chipEmu->getCycles(), _chipEmu->frames()).c_str()},
+                    StatusBar({{0.55f, fmt::format("Cycles: {} [{}], UI:{}", _chipEmu->cycles(), _chipEmu->frames(), _avgGuiRenderTime).c_str()},
                                {0.15f, formatUnit(ipsAvg, "IPS").c_str()},
                                //{0.15f, formatUnit((double)getFrameBoost() * GetFPS(), "FPS").c_str()},
-                               {0.15f, formatUnit(_fps.getFps(), "FPS").c_str()},
-                               {0.1f, emu::Chip8EmulatorOptions::shortNameOfPreset(_options.behaviorBase)}});
+                               {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()},
+                               {0.15f, _variantName.c_str()}});
                 }
             }
-            lastInstructionCount = _chipEmu->getCycles();
+            lastInstructionCount = _chipEmu->executedInstructions();
             lastFrameCount = _chipEmu->frames();
             BeginColumns();
             {
                 SetRowHeight(20);
                 SetSpacing(0);
                 SetNextWidth(20);
-                static bool menuOpen = false;
-                static bool aboutOpen = false;
                 static Vector2 aboutScroll{};
-                if(Button(GuiIconText(ICON_BURGER_MENU, "")))
-                    menuOpen = true;
-                if(menuOpen || (IsSysKeyDown() && (IsKeyDown(KEY_N) || IsKeyDown(KEY_O) ||IsKeyDown(KEY_S) || IsKeyDown(KEY_K) || IsKeyDown(KEY_Q)))) {
-#ifndef PLATFORM_WEB
-                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 84};
-#else
-                    Rectangle menuRect = {1, GetCurrentPos().y + 20, 110, 69};
-#endif
-                    BeginPopup(menuRect, &menuOpen);
-                    SetRowHeight(12);
-                    Space(3);
-                    if(LabelButton(" About Cadmium..."))
-                        aboutOpen = true, aboutScroll = {0,0}, menuOpen = false;
-                    Space(3);
-                    if(LabelButton(" New...  [^N]") || (IsSysKeyDown() && IsKeyPressed(KEY_N))) {
+                if (iconButton(ICON_BURGER_MENU, PopupMenu::IsMenuOpen(_mainMenu)) && !PopupMenu::IsOpen())
+                    PopupMenu::Open({1.0f, GetCurrentPos().y + 20}, _mainMenu);
+                if (IsSysKeyDown()) {
+                    if (IsKeyPressed(KEY_N)) {
+                        PopupMenu::Close();
                         _mainView = eEDITOR;
-                        menuOpen = false;
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
-                        _chipEmu->removeAllBreakpoints();
+                        _sourcePath.clear();
+                        for(auto& unit : *_chipEmu) {
+                            unit.removeAllBreakpoints();
+                        }
                     }
-                    if(LabelButton(" Open... [^O]") || (IsSysKeyDown() && IsKeyPressed(KEY_O))) {
+                    if (IsKeyPressed(KEY_O)) {
+                        PopupMenu::Close();
 #ifdef PLATFORM_WEB
                         loadFileWeb();
 #else
                         _mainView = eROM_SELECTOR;
                         _librarian.fetchDir(_currentDirectory);
 #endif
-                        menuOpen = false;
                     }
-                    if(LabelButton(" Save... [^S]") || (IsSysKeyDown() && IsKeyPressed(KEY_S))) {
-                        _mainView = eROM_EXPORT;
-#ifndef PLATFORM_WEB
-                        _librarian.fetchDir(_currentDirectory);
-#endif
-                        menuOpen = false;
+                    if (IsKeyPressed(KEY_S)) {
+                        PopupMenu::Close();
+                        saveShortcut();
                     }
-                    if(LabelButton(" Key Map [^M]") || (IsSysKeyDown() && IsKeyPressed(KEY_K))) {
+                    if (IsKeyPressed(KEY_K)) {
+                        PopupMenu::Close();
                         _showKeyMap = !_showKeyMap;
-                        menuOpen = false;
                     }
 #ifndef PLATFORM_WEB
-                    Space(3);
-                    if(LabelButton(" Quit    [^Q]") || (IsSysKeyDown() && IsKeyPressed(KEY_Q)))
-                        menuOpen = false, _shouldClose = true;
+                    if (IsKeyPressed(KEY_Q)) {
+                        PopupMenu::Close();
+                        _shouldClose = true;
+                    }
 #endif
-                    EndPopup();
-                    if(IsKeyPressed(KEY_ESCAPE) || (IsMouseButtonPressed(0) && !CheckCollisionPointRec(GetMousePosition(), menuRect)))
-                        menuOpen = false;
                 }
-                if(aboutOpen) {
-                    aboutOpen = !BeginWindowBox({-1,-1,460,300}, "About Cadmium", &aboutOpen, WindowBoxFlags(WBF_MOVABLE|WBF_MODAL));
+                if (BeginWindowBox({-1, -1, 460, 300}, "About Cadmium", &_aboutOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL))) {
                     SetStyle(DEFAULT, BORDER_WIDTH, 0);
-                    static size_t newlines = std::count_if( aboutText.begin(), aboutText.end(), [](char c){ return c =='\n'; });
-                    BeginScrollPanel(-1, {0,0,445,newlines*10.0f + 100}, &aboutScroll);
+                    static size_t newlines = std::count_if(aboutText.begin(), aboutText.end(), [](char c) { return c ==        '\n'; });
+                    BeginScrollPanel(-1, {0, 0, 445, newlines * 10.0f + 100}, &aboutScroll);
                     SetRowHeight(10);
-                    DrawTextureRec(_titleTexture, {34,2,60,60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
+                    DrawTextureRec(_titleTexture, {34, 2, 60, 60}, {aboutScroll.x + 8.0f, aboutScroll.y + 31.0f}, WHITE);
                     auto styleColor = GetStyle(LABEL, TEXT_COLOR_NORMAL);
                     SetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(WHITE));
-                    Label("           Cadmium v" CADMIUM_VERSION);
+                    Label("           Cadmium v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH);
                     SetStyle(LABEL, TEXT_COLOR_NORMAL, styleColor);
                     Space(4);
                     Label("           (c) 2022 by Steffen 'Gulrak' Schümann");
-                    if(LabelButton("           https://github.com/gulrak/cadmium")) {
+                    if (LabelButton("           https://github.com/gulrak/cadmium")) {
                         OpenURL("https://github.com/gulrak/cadmium");
                     }
                     Space(8);
                     std::istringstream iss(aboutText);
-                    for (std::string line; std::getline(iss, line); )
-                    {
+                    for (std::string line; std::getline(iss, line);) {
                         auto trimmedLine = trim(line);
-                        if(startsWith(trimmedLine, "http")) {
-                            if(LabelButton(line.c_str()))
+                        if (startsWith(trimmedLine, "http")) {
+                            if (LabelButton(line.c_str()))
                                 OpenURL(trimmedLine.c_str());
                         }
-                        else if(startsWith(line, "# "))
-                        {
+                        else if (startsWith(line, "# ")) {
                             SetStyle(LABEL, TEXT_COLOR_NORMAL, ColorToInt(WHITE));
                             Label(line.substr(2).c_str());
                             SetStyle(LABEL, TEXT_COLOR_NORMAL, styleColor);
@@ -1386,8 +1612,8 @@ public:
                     EndScrollPanel();
                     SetStyle(DEFAULT, BORDER_WIDTH, 1);
                     EndWindowBox();
-                    if(IsKeyPressed(KEY_ESCAPE))
-                        aboutOpen = false;
+                    if (IsKeyPressed(KEY_ESCAPE))
+                        _aboutOpen = false;
                 }
                 SetNextWidth(20);
                 if (iconButton(ICON_ROM, _mainView == eROM_SELECTOR)) {
@@ -1398,81 +1624,114 @@ public:
                     _librarian.fetchDir(_currentDirectory);
 #endif
                 }
-                SetNextWidth(130);
-                SetStyle(TEXTBOX, BORDER_WIDTH, 1);
-                TextBox(_romName, 4095);
+                SetTooltip("OPEN PROGRAM");
+#if !defined(PLATFORM_WEB) || defined(CADMIUM_WITH_DATABASE)
+                if (iconButton(ICON_NOTEBOOK, _mainView == eLIBRARY)) {
+                    _mainView = eLIBRARY, _chipEmu->setExecMode(ExecMode::ePAUSED);
+                }
+                SetTooltip("OPEN LIBRARY");
+#endif
+                if (iconButton(ICON_FILE_SAVE_CLASSIC)) {
+                    openSavePage(false);
+                }
+                SetTooltip("SAVE PROGRAM");
+                //SetNextWidth(130);
+                //SetStyle(TEXTBOX, BORDER_WIDTH, 1);
+                //TextBox(_romName, 4095);
+                Space(64);
 
                 bool chip8Control = _debugger.isControllingChip8();
                 Color controlBack = {3, 127, 161};
-                Color controlColor = Color{0x51, 0xbf, 0xd3, 0xff}; //chip8Control ? Color{0x51, 0xbf, 0xd3, 0xff} : Color{0x51, 0xff, 0xbf, 0xff};
-                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->getExecMode() == ExecMode::ePAUSED/*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F5))) {
-                    _chipEmu->setExecMode(ExecMode::ePAUSED);
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                Color controlColor = Color{0x51, 0xbf, 0xd3, 0xff};  // chip8Control ? Color{0x51, 0xbf, 0xd3, 0xff} : Color{0x51, 0xff, 0xbf, 0xff};
+                if (iconButton(ICON_PLAYER_PAUSE, _chipEmu->execMode() == ExecMode::ePAUSED /*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F5))) {
+                    _chipEmu->focussedExecutionUnit()->setExecMode(ExecMode::ePAUSED);
+                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eVIDEO;
                     }
                 }
                 SetTooltip("PAUSE [Shift+F5]");
-                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->getExecMode() == ExecMode::eRUNNING/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F5))) {
+                if (iconButton(ICON_PLAYER_PLAY, _chipEmu->execMode() == ExecMode::eRUNNING /*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F5))) {
                     _debugger.setExecMode(ExecMode::eRUNNING);
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = _lastRunView;
                     }
                 }
                 SetTooltip("RUN [F5]");
-                if(!_debugger.supportsStepOver())
+                if (!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OVER, _chipEmu->getExecMode() == ExecMode::eSTEPOVER/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F8))) {
+                if (iconButton(ICON_STEP_OVER, _chipEmu->execMode() == ExecMode::eSTEPOVER /*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F8))) {
                     _debugger.setExecMode(ExecMode::eSTEPOVER);
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
                 GuiEnable();
                 SetTooltip("STEP OVER [F8]");
-                if (iconButton(ICON_STEP_INTO, _chipEmu->getExecMode() == ExecMode::eSTEP/*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F7))) {
+                if (iconButton(ICON_STEP_INTO, _chipEmu->execMode() == ExecMode::eSTEP /*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F7))) {
                     _debugger.setExecMode(ExecMode::eSTEP);
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
                 SetTooltip("STEP INTO [F7]");
-                if(!_debugger.supportsStepOver())
+                if (!_debugger.supportsStepOver())
                     GuiDisable();
-                if (iconButton(ICON_STEP_OUT, _chipEmu->getExecMode() == ExecMode::eSTEPOUT/*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F7))) {
+                if (iconButton(ICON_STEP_OUT, _chipEmu->execMode() == ExecMode::eSTEPOUT /*, controlBack, controlColor*/) || ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) && IsKeyPressed(KEY_F7))) {
                     _debugger.setExecMode(ExecMode::eSTEPOUT);
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
+                    if (_mainView == eEDITOR || _mainView == eSETTINGS) {
                         _mainView = eDEBUGGER;
                     }
                 }
                 GuiEnable();
                 SetTooltip("STEP OUT [Shift+F7]");
-                if (iconButton(ICON_RESTART)) {
-                    reloadRom();
-                    resetStats();
-                    if(_mainView == eEDITOR || _mainView == eSETTINGS) {
-                        _mainView = _lastRunView;
+                if (const auto button = iconButtonDual(ICON_RESTART); button.has_value()) {
+                    if (button == MOUSE_BUTTON_LEFT) {
+                        reloadProgram();
+                        resetStats();
+                        if (_mainView == eEDITOR || _mainView == eSETTINGS) {
+                            _mainView = _lastRunView;
+                        }
+                    }
+                    if (button == MOUSE_BUTTON_RIGHT) {
+                        auto oldMode = _chipEmu->execMode();
+                        _chipEmu->reset(false);
+                        _audioBuffer.reset();
+                        updateScreen();
+                        if (oldMode == ExecMode::eRUNNING) {
+                            _debugger.setExecMode(ExecMode::eRUNNING);
+                        }
+                        resetStats();
+                        if (_mainView == eEDITOR || _mainView == eSETTINGS) {
+                            _mainView = _lastRunView;
+                        }
                     }
                 }
-                SetTooltip("RESTART");
-                int buttonsRight = 7;
+                SetTooltip("RESTART/RESET");
+                int buttonsRight = 8;
                 ++buttonsRight;
-                int avail = 202;
-#ifdef RESIZABLE_GUI
+                int avail = _screenWidth - GetCurrentPos().x;
+#ifdef PLATFORM_WEB
                 --buttonsRight;
                 avail += 10;
 #endif
                 auto spacePos = GetCurrentPos();
                 auto spaceWidth = avail - buttonsRight * 20;
                 Space(spaceWidth);
-                if(_options.behaviorBase == emu::Chip8EmulatorOptions::eMEGACHIP)
+                if (_chipEmu->getMaxScreenWidth() > 128)
                     GuiDisable();
                 if (iconButton(ICON_BOX_GRID, _grid))
                     _grid = !_grid;
                 GuiEnable();
                 SetTooltip("TOGGLE GRID");
                 Space(10);
-                if (iconButton(ICON_ZOOM_ALL, _mainView == eVIDEO))
-                    _mainView = eVIDEO;
+                if (const auto button = iconButtonDual(ICON_ZOOM_ALL, _mainView == eVIDEO); button.has_value()) {
+                    if (button == MOUSE_BUTTON_LEFT) {
+                        _mainView = eVIDEO;
+                    }
+                    if (button == MOUSE_BUTTON_RIGHT) {
+                        _traceFrame = true;
+                    }
+                }
                 SetTooltip("FULL VIDEO");
                 if (iconButton(ICON_CPU, _mainView == eDEBUGGER))
                     _mainView = eDEBUGGER;
@@ -1490,13 +1749,14 @@ public:
                     volumeClick = std::chrono::steady_clock::now();
                 SetTooltip("VOLUME");
 
-                static Vector2 versionSize = MeasureTextEx(GuiGetFont(), "v" CADMIUM_VERSION, 8, 0);
-                DrawTextEx(GuiGetFont(), "v" CADMIUM_VERSION, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
-#ifndef RESIZABLE_GUI
+                static const char* titleString = "v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH;
+                static Vector2 versionSize = MeasureTextEx(GuiGetFont(), titleString, 8, 0);
+                DrawTextEx(GuiGetFont(), titleString, {spacePos.x + (spaceWidth - versionSize.x) / 2, spacePos.y + 6}, 8, 0, WHITE);
+#ifndef PLATFORM_WEB
                 Space(10);
-                if (iconButton(ICON_HIDPI, _scaleBy2))
-                    _scaleBy2 = !_scaleBy2;
-                SetTooltip("TOGGLE ZOOM    ");
+                if (iconButton(ICON_HIDPI, _scaleMode != 1))
+                    _scaleMode = _scaleMode >= 3 ? 1 : _scaleMode + 1;
+                SetTooltip("TOGGLE ZOOM");
 #endif
             }
             EndColumns();
@@ -1504,23 +1764,44 @@ public:
             switch (_mainView) {
                 case eDEBUGGER: {
                     _lastView = _lastRunView = _mainView;
-                    _debugger.render(_font, [this](Rectangle video, int scale){ drawScreen(video, scale); });
+                    _debugger.render(_font, [this](Rectangle video, int scale) {
+                        _screenOverlay = video;
+                        _screenScale = scale;
+                        if (_videoRenderMode == eHIRES) {
+                            rlSetBlendFactorsSeparate(RL_ZERO, RL_ONE, RL_ZERO, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+                            BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+                            DrawRectangleRec(_screenOverlay, {0,0,0,255});
+                            rlSetBlendMode(RL_BLEND_ALPHA);
+                        }
+                    });
+                    if (_videoRenderMode == eFAST) {
+                        drawScreen(_screenOverlay, _screenScale);
+                    }
                     break;
                 }
                 case eVIDEO: {
                     _lastView = _lastRunView = _mainView;
                     gridScale = _screenWidth / _chipEmu->getCurrentScreenWidth();
-                    video = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
-                    drawScreen(video, gridScale);
+                    _screenOverlay = {0, 20, (float)_screenWidth, (float)_screenHeight - 36};
+                    _screenScale = gridScale;
+                    if (_videoRenderMode == eHIRES) {
+                        rlSetBlendFactorsSeparate(RL_ZERO, RL_ONE, RL_ZERO, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
+                        BeginBlendMode(BLEND_CUSTOM_SEPARATE);
+                        DrawRectangleRec(_screenOverlay, {0,0,0,255});
+                        rlSetBlendMode(RL_BLEND_ALPHA);
+                    }
+                    else {
+                        drawScreen(_screenOverlay, _screenScale);
+                    }
                     break;
                 }
                 case eEDITOR:
-                    if(_lastView != eEDITOR)
+                    if (_lastView != eEDITOR)
                         _editor.setFocus();
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
-                    BeginPanel("Editor", {1,1});
+                    BeginPanel("Editor", {1, 1});
                     {
                         auto rect = GetContentAvailable();
                         _editor.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
@@ -1532,7 +1813,7 @@ public:
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
-                    BeginPanel("Trace-Log", {1,1});
+                    BeginPanel("Trace-Log", {1, 1});
                     {
                         auto rect = GetContentAvailable();
                         _logView.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
@@ -1542,6 +1823,9 @@ public:
                     break;
                 }
                 case eSETTINGS: {
+                    static FileDialogInfo fdi{FileDialogInfo::SelectFolder, "Select Directory", fs::current_path().string()};
+                    static Vector2 scrollPos = {};
+                    static int activeEntry = -1;
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
@@ -1549,26 +1833,71 @@ public:
                     {
                         static int activeTab = 0;
                         BeginTabView(&activeTab);
-                        if(BeginTab("Emulation", {5, 0})) {
+                        if (BeginTab("Emulation", {5, 0})) {
                             renderEmulationSettings();
                             EndTab();
                         }
-                        if(BeginTab("Appearance", {5, 0})) {
+                        if (BeginTab("Appearance", {5, 0})) {
                             _styleManager.renderAppearanceEditor();
                             auto pos = GetCurrentPos();
                             Space(_screenHeight - pos.y - 20 - 1);
                             EndTab();
                         }
-                        if(BeginTab("Misc", {5, 0})) {
+                        if (BeginTab("Misc", {5, 0})) {
                             Space(3);
-                            Label("Config directory:");
+                            SetSpacing(0);
+                            Label("Config Directory:");
                             GuiDisable();
-                            TextBox(_cfgPath, 4096);
+                            TextBox("cfgPath", _cfgPath, 4096);
                             GuiEnable();
-                            Label("CHIP-8 database directory:");
-                            if(TextBox(_databaseDirectory, 4096)) {
+                            Space(4);
+                            BeginColumns();
+                            SetSpacing(0);
+                            SetNextWidth(GetContentAvailable().width - 20*5);
+                            Label("CHIP-8 Library Directories:");
+                            SetDefaultWidth(20);
+                            if (Button("+")) {
+                                selectorOpen = true;
+                                activeEntry = -1;
+                            }
+                            if (activeEntry < 0) GuiDisable();
+                            if (Button("-")) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size()) {
+                                    _cfg.libraryPath.erase(_cfg.libraryPath.begin() + activeEntry);
+                                    activeEntry = -1;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_PENCIL, ""))) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size()) {
+                                    fdi.path = _cfg.libraryPath[activeEntry];
+                                    selectorOpen = true;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_ARROW_UP, ""))) {
+                                if (activeEntry > 0) {
+                                    std::swap(_cfg.libraryPath[activeEntry], _cfg.libraryPath[activeEntry - 1]);
+                                    activeEntry--;
+                                }
+                            }
+                            if (Button(GuiIconText(ICON_ARROW_DOWN, ""))) {
+                                if (activeEntry >= 0 && activeEntry < _cfg.libraryPath.size() - 1) {
+                                    std::swap(_cfg.libraryPath[activeEntry], _cfg.libraryPath[activeEntry + 1]);
+                                    activeEntry++;
+                                }
+                            }
+                            GuiEnable();
+                            EndColumns();
+                            SimpleListView(15*5+4, "libraryPath", _cfg.libraryPath, &scrollPos, &activeEntry);
+                            Space(4);
+                            /*
+                            if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
                             }
+                            Space(4);
+                            if (Button("File Dialog")) {
+                                selectorOpen = true;
+                            }
+                            */
                             auto pos = GetCurrentPos();
                             Space(_screenHeight - pos.y - 20 - 1);
                             EndTab();
@@ -1577,6 +1906,19 @@ public:
                     }
                     EndPanel();
                     End();
+                    if (selectorOpen) {
+                        if (ModalFileDialog(fdi, &selectorOpen)) {
+                            selectorOpen = false;
+                            if (fdi.action == FileDialogInfo::CloseAction::Okay) {
+                                if (!fdi.path.empty()) {
+                                    if (activeEntry == -1 || activeEntry >= _cfg.libraryPath.size())
+                                        _cfg.libraryPath.push_back(fdi.path);
+                                    else
+                                        _cfg.libraryPath[activeEntry] = fdi.path;
+                                }
+                            }
+                        }
+                    }
                     break;
                 }
 #ifndef PLATFORM_WEB
@@ -1589,14 +1931,14 @@ public:
                     }
                     EndPanel();
                     End();
-                    if(IsKeyPressed(KEY_ESCAPE))
+                    if (IsKeyPressed(KEY_ESCAPE))
                         _mainView = _lastView;
                     break;
                 }
 #else
                 case eROM_SELECTOR:
                     break;
-#endif // !PLATFORM_WEB
+#endif  // !PLATFORM_WEB
                 case eROM_EXPORT: {
                     SetSpacing(0);
                     Begin();
@@ -1610,52 +1952,85 @@ public:
                     }
                     EndPanel();
                     End();
-                    if(IsKeyPressed(KEY_ESCAPE))
+                    if (IsKeyPressed(KEY_ESCAPE))
                         _mainView = _lastView;
                     break;
                 }
+#if !defined(PLATFORM_WEB) || defined(CADMIUM_WITH_DATABASE)
+                case eLIBRARY: {
+                    _lastView = _mainView;
+                    SetSpacing(0);
+                    Begin();
+                    BeginPanel("Library / Research");
+                    if (auto action = _database ? _database->render(_font) : Database::Action::NONE; action != Database::Action::NONE) {
+                        if (auto program = _database->getSelectedProgram()) {
+                            loadBinary(program->name, program->data, program->properties, true);
+                            if (action == Database::Action::RUN) {
+                                // like the PLAY button of the tool bar
+                                _debugger.setExecMode(ExecMode::eRUNNING);
+                                _lastRunView = _mainView = eVIDEO;
+                            }
+                            else {
+                                _lastRunView = _mainView = eDEBUGGER;
+                            }
+                        }
+                    }
+                    Space(_screenHeight - GetCurrentPos().y - 20 - 1);
+                    EndPanel();
+                    End();
+                    break;
+                }
+#endif
             }
 
-            if(_colorSelectOpen) {
-                _colorSelectOpen = !BeginWindowBox({-1, -1, 200, 250}, "Select Color", &_colorSelectOpen, WindowBoxFlags(WBF_MOVABLE | WBF_MODAL));
-                uint32_t prevCol = *_selectedColor;
-                *_selectedColor = ColorToInt(ColorPicker(GetColor(*_selectedColor)));
-                if(*_selectedColor != prevCol) {
-                    _colorText = fmt::format("{:06x}", *_selectedColor>>8);
-                }
-                Space(5);
-                BeginColumns();
-                SetNextWidth(40);
-                Label("Color:");
-                SetNextWidth(60);
-                if(TextBox(_colorText, 7)) {
-                    *_selectedColor = (std::strtoul(_colorText.c_str(), nullptr, 16)<<8)+255;
-                }
-                EndColumns();
-                Space(5);
-                BeginColumns();
-                Space(30);
-                SetNextWidth(60);
-                if(Button("Ok")) {
-                    _defaultPalette = _colorPalette;
-                    _selectedColor = nullptr;
-                    _colorSelectOpen = false;
-                }
-                SetNextWidth(60);
-                if(Button("Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+            if (_colorSelectOpen) {
+                if (!BeginWindowBox({-1, -1, 200, 250}, "Select Color", &_colorSelectOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MOVABLE | WBF_MODAL))) {
                     *_selectedColor = _previousColor;
                     _selectedColor = nullptr;
-                    _colorSelectOpen = false;
                 }
-                EndColumns();
-                EndWindowBox();
+                else {
+                    auto pickedColor = toRaylibColor(*_selectedColor);
+                    if (ColorPicker(&pickedColor)) {
+                        *_selectedColor = toEmuColor(pickedColor);
+                        _colorText = fmt::format("{:06x}", _selectedColor->toRGBInt());
+                    }
+                    Space(5);
+                    BeginColumns();
+                    SetNextWidth(40);
+                    Label("Color:");
+                    SetNextWidth(60);
+                    TextBox("colorText", _colorText, 6);
+                    if (IsLastWidgetEditFinished()) {
+                        *_selectedColor = emu::Palette::Color("#"+_colorText);
+                    }
+                    EndColumns();
+                    Space(5);
+                    BeginColumns();
+                    Space(30);
+                    SetNextWidth(60);
+                    if (Button("Ok")) {
+                        _defaultPalette = _colorPalette;
+                        setPalette(_defaultPalette);
+                        _chipEmu->setPalette(_defaultPalette);
+                        _selectedColor = nullptr;
+                        _colorSelectOpen = false;
+                    }
+                    SetNextWidth(60);
+                    if (Button("Cancel") || IsKeyPressed(KEY_ESCAPE)) {
+                        *_selectedColor = _previousColor;
+                        _selectedColor = nullptr;
+                        _colorSelectOpen = false;
+                    }
+                    EndColumns();
+                    EndWindowBox();
+                }
             }
-            if(IsKeyDown(KEY_ESCAPE))
+            if (IsKeyDown(KEY_ESCAPE))
                 volumeClick = std::chrono::steady_clock::time_point{};
-            if(volumeClick != std::chrono::steady_clock::time_point{}) {
+            if (volumeClick != std::chrono::steady_clock::time_point{}) {
                 if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
                     Rectangle bounds{430.0, 21.0f, 80.0f, 14.0f};
-                    DrawRectangleRec({bounds.x-56, bounds.y-2, bounds.width+58, bounds.height+4}, {0,0,0,128});
+                    DrawRectangleRec({bounds.x - 56, bounds.y - 2, bounds.width + 58, bounds.height + 4}, {0, 0, 0, 128});
                     GuiSliderBar(bounds, "Volume: ", "", &_volumeSlider, 0.0001f, 1.0f);
                     if (_volumeSlider != _volume)
                         SetMasterVolume(_volumeSlider);
@@ -1673,48 +2048,121 @@ public:
             }
             EndGui();
         }
-        static auto lastExecMode = _chipEmu->getExecMode();
-        if(_chipEmu->getExecMode() == ExecMode::eRUNNING || (_chipEmu->getExecMode() != ExecMode::ePAUSED && lastExecMode == ExecMode::ePAUSED)) {
-            _instructionOffset = -1;
+        static auto lastExecMode = _chipEmu->execMode();
+        if (_chipEmu->execMode() == ExecMode::eRUNNING || (_chipEmu->execMode() != ExecMode::ePAUSED && lastExecMode == ExecMode::ePAUSED)) {
             _debugger.captureStates();
         }
-        lastExecMode = _chipEmu->getExecMode();
+        lastExecMode = _chipEmu->execMode();
+    }
+
+    enum PropertyAlign { PA_LEFT, PA_RIGHT };
+
+    static int editProperty(emu::Property& prop, bool forceUpdate, PropertyAlign pa = PA_RIGHT)
+    {
+        // the widgets of different properties can have the same label (or none), the property id keeps their ids apart
+        gui::PushId(prop.getId().c_str());
+        auto prevTextAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
+        if(pa == PA_RIGHT) {
+            gui::BeginColumns();
+            gui::SetSpacing(4);
+            gui::SetNextWidth(90);
+            gui::SetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
+            gui::Label(fmt::format("{}", prop.getLabel()).c_str());
+            gui::SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
+        }
+        //gui::SetNextWidth(150);
+        // inactive properties keep their value, but changing it has no effect
+        const bool disabled = !prop.hasFlags(emu::PropertyFlags::eWritable) || !prop.isActive();
+        if (disabled)
+            GuiDisable();
+        const auto rc = std::visit(emu::visitor{
+                                [](std::nullptr_t) -> int { gui::Label(""); return 0; },
+                                [pa, &prop](bool& val) -> int { gui::CheckBox(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), &val); return val ? 1 : 0; },
+                                [pa, &prop](emu::Property::Integer& val) -> int { gui::Spinner(pa == PA_RIGHT ? "" : prop.getLabel().c_str(), &val.intValue, val.minValue, val.maxValue); return val.intValue; },
+                                [](std::string& val) -> int {
+                                    auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
+                                    gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
+                                    gui::TextBox("value", val, 4096);
+                                    gui::SetStyle(TEXTBOX, TEXT_ALIGNMENT, prevTextAlignment);
+                                    return 0;
+                                },
+                                [&forceUpdate](emu::Property::Combo& val) -> int {
+                                    if (gui::DropdownBox(val.rgCombo.c_str(), &val.index))
+                                        forceUpdate = true;
+                                    return val.index;
+                                }},
+                   prop.getValue());
+        if (disabled)
+            GuiEnable();
+        if(pa == PA_RIGHT) {
+            gui::EndColumns();
+        }
+        gui::PopId();
+        return rc;
+    }
+
+    // Shows a disabled placeholder with the given label if the core has no such property.
+    int editPropertySpinner(std::string_view id, const char* label, bool forceUpdate, int defaultValue = 0)
+    {
+        if(auto* prop = _properties->find(id)) {
+            return editProperty(*prop, forceUpdate, PA_LEFT);
+        }
+        static int dummyInt = defaultValue;
+        GuiDisable();
+        gui::Spinner(label, &dummyInt, defaultValue, defaultValue);
+        GuiEnable();
+        return -1;
+    }
+
+    void renderColorField(Vector2 pos, emu::Palette::Color& color)
+    {
+        using namespace gui;
+        bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x, pos.y, 16, 16});
+        DrawRectangle(pos.x, pos.y, 16, 16, StyleManager::getStyleColor(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL));
+        DrawRectangle(pos.x + 1, pos.y + 1 , 14, 14, StyleManager::getStyleColor(Style::BACKGROUND_COLOR));
+        DrawRectangle(pos.x + 2, pos.y + 2 , 12, 12, toRaylibColor(color));
+        if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
+            _selectedColor = &color;
+            _previousColor = color;
+            _colorText = fmt::format("{:06x}", color.toRGBInt());
+            _colorSelectOpen = true;
+        }
     }
 
     void renderEmulationSettings()
     {
         using namespace gui;
-        emu::Chip8EmulatorOptions oldOptions = _options;
         bool forceUpdate = false;
         BeginColumns();
-        SetNextWidth(0.42f);
+        SetNextRelativeWidth(0.42f);
         BeginGroupBox("CHIP-8 variant / Core");
         Space(5);
-        if(DropdownBox("CHIP-8;CHIP-8-STRICT;CHIP-10;CHIP-8E;CHIP-8X;CHIP-48;SCHIP 1.0;SCHIP 1.1;SCHIP-COMP;SCHIP-MODERN;MEGACHIP8;XO-CHIP;COSMAC VIP (CDP1802 based);DREAM6800 (M6800 based)", &_behaviorSel)) {
-            _subBehaviorSel = _subBehaviorSel2 = 0;
-            auto preset = _presetMapping[{_behaviorSel, _subBehaviorSel}];
+        SetSpacing(2);
+        if(DropdownBox(_cores.getCoresCombo().c_str(), &_behaviorSel)) {
+            _subBehaviorSel = 0;
+            auto preset = _cores[_behaviorSel].variantProperties(0);
             _frameBoost = 1;
-            updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
+            updateEmulatorOptions(preset);
         }
-        if(_behaviorSel == 12) {
-            Space(2);
-            if(DropdownBox("CHIP-8;CHIP-8 64x64;HI-RES-CHIP-8;CHIP-8E;CHIP-8X;CHIP-8X-64x64;HI-RES-CHIP-8X;NONE", &_subBehaviorSel)) {
-                auto preset = _presetMapping[{_behaviorSel, _subBehaviorSel}];
-                _frameBoost = 1;
-                updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
-            }
+        if(DropdownBox(_cores[_behaviorSel].variantsCombo.c_str(), &_subBehaviorSel)) {
+            auto preset = _cores[_behaviorSel].variantProperties(_subBehaviorSel);
+            _frameBoost = 1;
+            updateEmulatorOptions(preset);
         }
-        else if(_behaviorSel == 13) {
-            Space(2);
-            if(DropdownBox("CHIP-8;CHIPOSLO", &_subBehaviorSel2)) {
-                auto preset = _presetMapping[{_behaviorSel, _subBehaviorSel2}];
-                _frameBoost = 1;
-                updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(preset));
-            }
+        if(auto* traceLog = _properties->find(emu::propid::TRACE_LOG)) {
+            BeginColumns();
+            SetSpacing(4);
+            SetNextWidth(90);
+            editProperty(*traceLog, forceUpdate, PA_LEFT);
+            Button("File ...");
+            EndColumns();
         }
-        Space(2);
-        _options.optTraceLog = CheckBox("Trace-Log", _options.optTraceLog);
-        Space((_behaviorSel != 12 && _behaviorSel != 13) ? 20 : 2);
+        else {
+            static bool dummyTrace = false;
+            GuiDisable();
+            CheckBox("Trace-Log", &dummyTrace);
+            GuiEnable();
+        }
         EndGroupBox();
         //Space(10);
         BeginGroupBox("Emulation Speed");
@@ -1722,225 +2170,181 @@ public:
         SetIndent(150);
         //SetRowHeight(20);
         SetSpacing(2);
-        if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
-            GuiDisable();
-        Spinner("Instructions per frame ", &_options.instructionsPerFrame, 0, 10000000);
-        Spinner("Frame rate ", &_options.frameRate, 10, 120);
-        if(!_chipEmu->isGenericEmulation() || _options.behaviorBase == emu::Chip8EmulatorOptions::eCHIP8TE)
-            GuiEnable();
-        if (!_options.instructionsPerFrame) {
-            static int _fb1{1};
-            GuiDisable();
-            Spinner("Frame boost ", &_fb1, 1, 1000);
-            GuiEnable();
+        auto ipf = editPropertySpinner(emu::propid::INSTRUCTIONS_PER_FRAME, "Instructions per frame", forceUpdate);
+        editPropertySpinner(emu::propid::FRAME_RATE, "Frame rate", forceUpdate, static_cast<int>(std::lround(_chipEmu->frameRate())));
+        if(ipf != 0) {
+            Spinner("Frame boost", &_frameBoost, 1, 1000);
         }
         else {
-            Spinner("Frame boost ", &_frameBoost, 1, 1000);
+            static int _fb1{1};
+            GuiDisable();
+            Spinner("Frame boost", &_fb1, 1, 1000);
+            GuiEnable();
         }
         g_frameBoost = getFrameBoost();
         EndGroupBox();
         EndColumns();
-        Space(10);
+        Space(5);
         const int quirksHeight = 181;
-        if(_chipEmu->isGenericEmulation() && _options.behaviorBase != emu::Chip8EmulatorOptions::eCHIP8TE) {
-            BeginGroupBox("Quirks");
-            auto startY = GetCurrentPos().y;
-            Space(5);
-            BeginColumns();
-            SetNextWidth(GetContentAvailable().width/2);
-            Begin();
-            _options.optJustShiftVx = CheckBox("8xy6/8xyE just shift VX", _options.optJustShiftVx);
-            _options.optDontResetVf = CheckBox("8xy1/8xy2/8xy3 don't reset VF", _options.optDontResetVf);
-            bool oldInc = !(_options.optLoadStoreIncIByX | _options.optLoadStoreDontIncI);
-            bool newInc = CheckBox("Fx55/Fx65 increment I by X + 1", oldInc);
-            if(newInc != oldInc) {
-                _options.optLoadStoreIncIByX = !newInc;
-                _options.optLoadStoreDontIncI = false;
+        BeginGroupBox("System Configuration");
+        auto startY = GetCurrentPos().y;
+        auto colWidth1 = GetContentAvailable().width / 2 - 1;
+        auto colWidth2 = GetContentAvailable().width - colWidth1 - 1;
+        auto colHeight = GetContentAvailable().height;
+        auto rowCount = 0;
+        Space(5);
+        BeginColumns();
+        SetSpacing(2);
+        SetNextWidth(colWidth1);
+        Begin();
+        SetSpacing(2);
+        // bind only here, a core switch above can change what _properties points to
+        auto& props = *_properties;
+        for(size_t i = 0; i < props.numProperties(); ++i) {
+            auto& prop = props[i];
+            if(prop.getId().empty()) {
+                auto used = GetCurrentPos().y - startY;
+                Space(quirksHeight - used - 4);
+                End();
+                Begin();
+                SetSpacing(2);
             }
-            oldInc = _options.optLoadStoreIncIByX;
-            _options.optLoadStoreIncIByX = CheckBox("Fx55/Fx65 increment I only by X", _options.optLoadStoreIncIByX);
-            if(_options.optLoadStoreIncIByX != oldInc) {
-                _options.optLoadStoreDontIncI = false;
-            }
-            oldInc = _options.optLoadStoreDontIncI;
-            _options.optLoadStoreDontIncI = CheckBox("Fx55/Fx65 don't increment I", _options.optLoadStoreDontIncI);
-            if(_options.optLoadStoreDontIncI != oldInc) {
-                _options.optLoadStoreIncIByX = false;
-            }
-            _options.optJump0Bxnn = CheckBox("Bxnn/jump0 uses Vx", _options.optJump0Bxnn);
-            _options.optCyclicStack = CheckBox("Cyclic stack", _options.optCyclicStack);
-            _options.optXOChipSound = CheckBox("XO-CHIP sound engine", _options.optXOChipSound);
-            _options.optAllowColors = CheckBox("Multicolor support", _options.optAllowColors);
-            _options.optHas16BitAddr = CheckBox("Has 16 bit addresses", _options.optHas16BitAddr);
-            End();
-            Begin();
-            _options.optWrapSprites = CheckBox("Wrap sprite pixels", _options.optWrapSprites);
-            _options.optInstantDxyn = CheckBox("Dxyn doesn't wait for vsync", _options.optInstantDxyn);
-            bool oldLoresWidth = _options.optLoresDxy0Is8x16;
-            _options.optLoresDxy0Is8x16 = CheckBox("Lores Dxy0 draws 8 pixel width", _options.optLoresDxy0Is8x16);
-            if(!oldLoresWidth && _options.optLoresDxy0Is8x16)
-                _options.optLoresDxy0Is16x16 = false;
-            oldLoresWidth = _options.optLoresDxy0Is16x16;
-            _options.optLoresDxy0Is16x16 = CheckBox("Lores Dxy0 draws 16 pixel width", _options.optLoresDxy0Is16x16);
-            if(!oldLoresWidth && _options.optLoresDxy0Is16x16)
-                _options.optLoresDxy0Is8x16 = false;
-            bool oldVal = _options.optSC11Collision;
-            _options.optSC11Collision = CheckBox("Dxyn uses SCHIP1.1 collision", _options.optSC11Collision);
-            if(!oldVal && _options.optSC11Collision) {
-                _options.optAllowHires = true;
-            }
-            _options.optSCLoresDrawing = CheckBox("HP SuperChip lores drawing", _options.optSCLoresDrawing);
-            _options.optHalfPixelScroll = CheckBox("Half pixel scrolling", _options.optHalfPixelScroll);
-            bool oldAllowHires = _options.optAllowHires;
-            _options.optAllowHires = CheckBox("128x64 hires support", _options.optAllowHires);
-            if(!_options.optAllowHires && oldAllowHires) {
-                _options.optOnlyHires = false;
-                _options.optSC11Collision = false;
-            }
-            bool oldOnlyHires = _options.optOnlyHires;
-            _options.optOnlyHires = CheckBox("Only 128x64 mode", _options.optOnlyHires);
-            if(_options.optOnlyHires && !oldOnlyHires)
-                _options.optAllowHires = true;
-            _options.optModeChangeClear = CheckBox("Mode change clear", _options.optModeChangeClear);
-            End();
-            EndColumns();
-            auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used - 2);
-            EndGroupBox();
-            Space(4);
-        }
-        else if(!_chipEmu->isGenericEmulation()) {
-            BeginGroupBox("System Configuration");
-            auto startY = GetCurrentPos().y;
-            Space(10);
-            SetSpacing(2);
-            auto* rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
-            if(rcb) {
-                static emu::Properties propsMemento;
-                auto& props = _options.properties;
-                if(props != propsMemento)
-                    propsMemento = props;
-                for(size_t i = 0; i < props.numProperties(); ++i) {
-                    auto& prop = props[i];
-                    BeginColumns();
-                    SetSpacing(4);
-                    SetNextWidth(80);
-                    auto prevTextAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
-                    SetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
-                    Label(fmt::format("{}:", prop.getName()).c_str());
-                    SetStyle(LABEL, TEXT_ALIGNMENT, prevTextAlignment);
-                    SetNextWidth(150);
-                    if(prop.isReadonly())
-                        GuiDisable();
-                    std::visit(emu::visitor{
-                        [](std::nullptr_t) -> void { Label(""); },
-                        [](bool& val) -> void { val = CheckBox("", val); },
-                        [](emu::Property::Integer& val) -> void { Spinner("", &val.intValue, val.minValue, val.maxValue); },
-                        [](std::string& val) -> void {
-                            auto prevTextAlignment = GuiGetStyle(TEXTBOX, TEXT_ALIGNMENT);
-                            SetStyle(TEXTBOX, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
-                            TextBox(val, 4096);
-                            SetStyle(TEXTBOX, TEXT_ALIGNMENT, prevTextAlignment);
-                        },
-                        [&forceUpdate](emu::Property::Combo& val) -> void {
-                                       if(DropdownBox(val.rgCombo.c_str(), &val.index))
-                                            forceUpdate = true;
-                        }
-                    }, prop.getValue());
-                    if(prop.isReadonly())
-                        GuiEnable();
-                    EndColumns();
+            else if(!prop.hasFlags(emu::PropertyFlags::eInvisible) && prop.isApplicable() && prop.getId() != emu::propid::TRACE_LOG && prop.getId() != emu::propid::INSTRUCTIONS_PER_FRAME && prop.getId() != emu::propid::FRAME_RATE) {
+                if(props.numProperties() > 20 && std::holds_alternative<bool>(prop.getValue())) {
+                    editProperty(prop, forceUpdate, PA_LEFT);
                 }
-                /*auto* changedProp = props.changedProperty(propsMemento);
-                if(changedProp) {
-                    // on change...
-                    updateEmulatorOptions(_options);
-                    //rcb->updateProperties(*changedProp);
-                }*/
+                else {
+                    editProperty(prop, forceUpdate);
+                }
+                ++rowCount;
             }
-            auto used = GetCurrentPos().y - startY;
-            Space(quirksHeight - used - 4);
-            EndGroupBox();
         }
-        Space(14);
+        auto* changedProp = props.changedProperty(_propsMemento);
+        if(changedProp) {
+            emu::CoreRegistry::applyRules(props, changedProp->getId());
+            // on change...
+            if(_chipEmu->updateProperties(props, *changedProp)) {
+                // core asks for a cold start...
+                updateEmulatorOptions(props);
+            }
+            else {
+                // applied live, so the running core now matches props
+                _propsMemento = props;
+                _previousProperties = props;
+            }
+        }
+        auto used = GetCurrentPos().y - startY;
+        Space(quirksHeight - used - 4);
+        End();
+        EndColumns();
+        EndGroupBox();
+
+        float xOffset = 65.0f; //_colorPalette.numBackgroundColors > 1 ? 68.0f : 52.0f;
+        Space(5);
+        BeginGroupBox("Palette");
         {
+            Space(4);
             StyleManager::Scope guard;
             BeginColumns();
             auto pos = GetCurrentPos();
-            SetNextWidth(52.0f + 16*18);
-            Label("Colors:");
-            for (int i = 0; i < 16; ++i) {
-                DrawRectangle(pos.x + 52 + i * 18 + 2, pos.y + 2 , 12, 12, GetColor(_colorPalette[i]));
-                bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + 52 + i * 18, pos.y, 16, 16});
-                if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
-                    _selectedColor = &_colorPalette[i];
-                    _previousColor = _colorPalette[i];
-                    _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
-                    _colorSelectOpen = true;
-                }
-                DrawRectangleLines(pos.x + 52 + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(hover ? Style::BORDER_COLOR_FOCUSED : Style::BORDER_COLOR_NORMAL)));
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
+            SetNextWidth(xOffset + 16*18);
+            Label("    Colors");
+//#if 0 // TODO: fix this
+            auto numColors = _colorPalette.colors.size()>16 ? 2 : _colorPalette.colors.size();
+            auto prevPalette = _colorPalette.colors;
+            for (int i = 0; i < numColors; ++i) {
+                renderColorField({pos.x + xOffset + i*18, pos.y}, _colorPalette.colors[i]);
             }
-            static std::vector<uint32_t> prevPalette(_colorPalette.begin(), _colorPalette.end());
-            if(std::memcmp(prevPalette.data(), _colorPalette.data(), 16*sizeof(uint32_t)) != 0) {
-                setPalette({_colorPalette.begin(), _colorPalette.end()});
-                prevPalette.assign(_colorPalette.begin(), _colorPalette.end());
+            if(prevPalette != _colorPalette.colors) {
+                setPalette(_colorPalette);
             }
-            static int sel = 5;
-
-            if(DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;Custom", &sel, true)) {
+//#endif
+            static constexpr int customSel = 8;
+            static int sel = customSel;
+            if(_colorPalette.numBackgroundColors <= 1 && DropdownBox("Cadmium;Silicon-8;Pico-8;Octo Classic;LCD;C64;Intellivision;CGA;Custom", &sel, true)) {
+                const bool presetChosen = sel != customSel;
                 switch(sel) {
-                    case 0:
+                    case 0: // Cadmium
                         setPalette({
                             0x1a1c2cff, 0xf4f4f4ff, 0x94b0c2ff, 0x333c57ff,
                             0xb13e53ff, 0xa7f070ff, 0x3b5dc9ff, 0xffcd75ff,
                             0x5d275dff, 0x38b764ff, 0x29366fff, 0x566c86ff,
                             0xef7d57ff, 0x73eff7ff, 0x41a6f6ff, 0x257179ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
-                    case 1:
+                    case 1: // Silicon-8
                         setPalette({
                             0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
                             0xff0000ff, 0x00ff00ff, 0x0000ffff, 0xffff00ff,
                             0x880000ff, 0x008800ff, 0x000088ff, 0x888800ff,
                             0xff00ffff, 0x00ffffff, 0x880088ff, 0x008888ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
-                    case 2:
+                    case 2: // Pico-8
                         setPalette({
                             0x000000ff, 0xfff1e8ff, 0xc2c3c7ff, 0x5f574fff,
                             0xef7d57ff, 0x00e436ff, 0x29adffff, 0xffec27ff,
                             0xab5236ff, 0x008751ff, 0x1d2b53ff, 0xffa300ff,
                             0xff77a8ff, 0xffccaaff, 0x7e2553ff, 0x83769cff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
-                    case 3:
+                    case 3: // Octo Classic
                         setPalette({
                             0x996600ff, 0xFFCC00ff, 0xFF6600ff, 0x662200ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
                         break;
-                    case 4:
+                    case 4: // LCD
                         setPalette({
                             0xf2fff2ff, 0x5b8c7cff, 0xadd9bcff, 0x0d1a1aff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff,
                             0x000000ff, 0x000000ff, 0x000000ff, 0x000000ff
-                        });
-                        _defaultPalette = _colorPalette;
-                        sel = 5;
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 5: // C64
+                        setPalette({
+                            0x000000ff, 0xffffffff, 0xadadadff, 0x626262ff,
+                            0xa1683cff, 0x9ae29bff, 0x887ecbff, 0xc9d487ff,
+                            0x9f4e44ff, 0x5cab5eff, 0x50459bff, 0x6d5412ff,
+                            0xcb7e75ff, 0x6abfc6ff, 0xa057a3ff, 0x898989ff
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 6: // Intellivision
+                        setPalette({
+                            0x0c0005ff, 0xfffcffff, 0xa7a8a8ff, 0x3c5800ff,
+                            0xff3e00ff, 0x6ccd30ff, 0x002dffff, 0xfaea27ff,
+                            0xffa600ff, 0x00a720ff, 0xbd95ffff, 0xc9d464ff,
+                            0xff3276ff, 0x5acbffff, 0xc81a7dff, 0x00780fff
+                        }, 0, true);
+                        sel = customSel;
+                        break;
+                    case 7: // CGA
+                        setPalette({
+                            0x000000ff, 0xffffffff, 0xaaaaaaff, 0x555555ff,
+                            0xff5555ff, 0x55ff55ff, 0x5555ffff, 0xffff55ff,
+                            0xaa0000ff, 0x00aa00ff, 0x0000aaff, 0xaa5500ff,
+                            0xff55ffff, 0x55ffffff, 0xaa00aaff, 0x00aaaaff
+                        }, 0, true);
+                        sel = customSel;
                         break;
                     default:
                         break;
+                }
+                // a chosen preset belongs to the ROM's settings like an edited color, so "Save settings to library"
+                // stores it (the vector setPalette doesn't touch the properties, emulators use it at runtime)
+                if (presetChosen && _properties) {
+                    _properties->palette() = _colorPalette;
                 }
                 // SWEETIE-16:
                 // {0x1a1c2c, 0xf4f4f4, 0x94b0c2, 0x333c57,  0xef7d57, 0xa7f070, 0x3b5dc9, 0xffcd75,  0xb13e53, 0x38b764, 0x29366f, 0x566c86,  0x41a6f6, 0x73eff7, 0x5d275d, 0x257179}
@@ -1966,28 +2370,56 @@ public:
             }
             EndColumns();
         }
-        Space(8);
-        if(forceUpdate || oldOptions != _options) {
-            updateEmulatorOptions(_options);
-            saveConfig();
+        if (_colorPalette.numBackgroundColors > 1) {
+            Space(2);
+            StyleManager::Scope guard;
+            BeginColumns();
+            auto pos = GetCurrentPos();
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
+            //SetNextWidth(52.0f + 16*18);
+            Label("Background");
+            //#if 0 // TODO: fix this
+            for (int i = 0; i < _colorPalette.backgroundColors.size(); ++i) {
+                renderColorField({pos.x + xOffset + i * 18, pos.y}, _colorPalette.backgroundColors[i]);
+            }
+            EndColumns();
         }
+        {
+            Space(2);
+            StyleManager::Scope guard;
+            BeginColumns();
+            SetSpacing(0);
+            auto pos = GetCurrentPos();
+            pos.x = std::ceil(pos.x);
+            pos.y = std::ceil(pos.y);
+            SetNextWidth(xOffset + 18*2 + 2);
+            Label("    Border");
+            renderColorField({pos.x + xOffset, pos.y}, _colorPalette.borderColor ? _colorPalette.borderColor.value() : _colorPalette.colors[0]);
+            renderColorField({pos.x + xOffset + 18, pos.y}, _colorPalette.signalColor ? _colorPalette.signalColor.value() : _colorPalette.colors[1]);
+            Label("Signal");
+            EndColumns();
+        }
+        Space(4);
+        EndGroupBox();
+        Space(8);
         BeginColumns();
-        Space(100);
-        SetNextWidth(0.21f);
-        bool romRemembered = _cfg.romConfigs.count(_romSha1Hex) > 0;
-        if((romRemembered && _options == _cfg.romConfigs[_romSha1Hex]) || (_romIsWellKnown && _options == _romWellKnownOptions)) {
+        Space(150);
+        SetNextRelativeWidth(0.21f);
+        bool romRemembered = _cfg.romConfigs.contains(_romSha1);
+        if((romRemembered && matchesSettings(_cfg.romConfigs[_romSha1])) || (_romIsWellKnown && matchesSettings(_romWellKnownProperties))) {
             GuiDisable();
         }
         if (Button(!romRemembered ? "Remember for ROM" : "Update for ROM")) {
-            _cfg.romConfigs[_romSha1Hex] = _options;
+            _cfg.romConfigs[_romSha1] = *_properties;
             saveConfig();
         }
         GuiEnable();
         if(!romRemembered)
             GuiDisable();
-        SetNextWidth(0.21f);
+        SetNextRelativeWidth(0.21f);
         if(Button("Forget ROM")) {
-            _cfg.romConfigs.erase(_romSha1Hex);
+            _cfg.romConfigs.erase(_romSha1);
             saveConfig();
         }
         GuiEnable();
@@ -1999,39 +2431,6 @@ public:
 
     }
 
-    void showGenericRegs(const int lineSpacing, const Vector2& pos) const
-    {
-        auto* rcb = dynamic_cast<emu::Chip8RealCoreBase*>(_chipEmu.get());
-        auto& cpu = rcb->getBackendCpu();
-        int i, line = 0, lastSize = 0;
-        for (i = 0; i < cpu.getNumRegisters(); ++i, ++line) {
-            auto reg = cpu.getRegister(i);
-            if(i && reg.size != lastSize)
-                ++line;
-            switch(reg.size) {
-                case 1:
-                case 4:
-                    DrawTextEx(_font, TextFormat("%2s: %X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
-                    break;
-                case 8:
-                    DrawTextEx(_font, TextFormat("%2s: %02X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
-                    break;
-                case 12:
-                    DrawTextEx(_font, TextFormat("%2s: %03X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
-                    break;
-                case 16:
-                    DrawTextEx(_font, TextFormat("%2s:%04X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
-                    break;
-                default:
-                    DrawTextEx(_font, TextFormat("%2s:%X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
-                    break;
-            }
-            lastSize = reg.size;
-        }
-        ++line;
-        DrawTextEx(_font, TextFormat("Scr: %s", rcb->isDisplayEnabled() ? "ON" : "OFF"), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
-    }
-
     void renderFileBrowser(FileBrowserMode mode)
     {
         using namespace gui;
@@ -2040,15 +2439,16 @@ public:
         SetRowHeight(16);
         auto area = GetContentAvailable();
 #ifdef PLATFORM_WEB
-        Space(area.height - 54);
+        Space(area.height - ((mode != eLOAD && _saveFileType == 2) ? 73 : 54));
 #else
-        if(TextBox(_currentDirectory, 4096)) {
+        TextBox("currentDirectory", _currentDirectory, 4096);
+        if (IsLastWidgetEditFinished()) {
             _librarian.fetchDir(_currentDirectory);
             _currentDirectory = _librarian.currentDirectory();
         }
         Space(1);
         auto tabPos = GetCurrentPos();
-        BeginTableView(area.height - 135, 4, &scroll);
+        BeginTableView(area.height - ((mode != eLOAD && _saveFileType == 2) ? 154 : 135), "library", {TableColumn::Fixed(24), TableColumn::Stretch(0.66f), TableColumn::Stretch(0.145f), TableColumn::Stretch(0.13f)}, &scroll);
         for(int i = 0; i < _librarian.numEntries(); ++i) {
             const auto& info = _librarian.getInfo(i);
             auto rowCol = Color{0,0,0,0};
@@ -2062,7 +2462,7 @@ public:
             auto pos = GetCurrentPos();
             bool hover = false; //CheckCollisionPointRec(GetMousePosition(), {5, pos.y + scroll.y + tabPos.y, area.width, 16.0f});
             TableNextRow(16, hover ? _styleManager.getStyleColor(Style::BASE_COLOR_NORMAL) : rowCol);
-            if(TableNextColumn(24)) {
+            if(TableNextColumn()) {
                 int icon = ICON_HELP2;
                 switch (info.type) {
                     case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
@@ -2070,17 +2470,14 @@ public:
                     case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
                     default: icon = ICON_FILE_DELETE; break;
                 }
-                auto oldFG = gui::GetStyle(LABEL, TEXT_COLOR_NORMAL);
                 {
                     StyleManager::Scope guard;
                     if (info.type == Librarian::Info::eROM_FILE)
                         guard.setStyle(Style::TEXT_COLOR_NORMAL, info.isKnown ? GREEN : YELLOW);
-                    //    gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, info.isKnown ? ColorToInt(GREEN) : ColorToInt(YELLOW));
                     Label(GuiIconText(icon, ""));
-                    //gui::SetStyle(LABEL, TEXT_COLOR_NORMAL, oldFG);
                 }
             }
-            if(TableNextColumn(.66f)) {
+            if(TableNextColumn()) {
                 if(info.filePath.size() > 50 ? LabelButton(info.filePath.substr(0,50).c_str()) : LabelButton(info.filePath.c_str())) {
                     if(info.type == Librarian::Info::eDIRECTORY) {
                         if(info.filePath != "..") {
@@ -2109,34 +2506,35 @@ public:
                     }
                 }
             }
-            if(TableNextColumn(.145f))
+            if(TableNextColumn())
                 Label(info.type == Librarian::Info::eDIRECTORY ? "" : fmt::format("{:>8s}", formatUnit(info.fileSize, "")).c_str());
-            if(TableNextColumn(.13f) && info.filePath != "..")
+            if(TableNextColumn() && info.filePath != "..")
                 Label(date::format("%F", date::floor<std::chrono::seconds>(info.changeDate)).c_str());
         }
         EndTableView();
 #endif
         Space(1);
         BeginColumns();
-        SetNextWidth(25);
+        SetNextWidth(36);
         Label("File:");
-        TextBox(_currentFileName, 4096);
+        TextBox("currentFileName", _currentFileName, 4096);
         EndColumns();
         Space(2);
         switch(mode) {
             case eLOAD: {
                 auto infoPos = GetCurrentPos();
-                Label(fmt::format("SHA1:  {}", selectedInfo.analyzed ? selectedInfo.sha1sum : "").c_str());
+                Label(fmt::format("SHA1:    {}", selectedInfo.analyzed ? selectedInfo.sha1sum.to_hex() : "").c_str());
                 if(!selectedInfo.analyzed || selectedInfo.isKnown) {
-                    Label(fmt::format("Type:  {}", selectedInfo.analyzed ? emu::Chip8EmulatorOptions::nameOfPreset(selectedInfo.variant) : "").c_str());
+                    Label(fmt::format("Type:    {}", selectedInfo.analyzed ?selectedInfo.variant : "").c_str());
                 }
                 else {
-                    Label(fmt::format("Type:  {} (estimated)", selectedInfo.minimumOpcodeProfile()).c_str());
+                    Label(fmt::format("Type:    {} (estimated)", selectedInfo.minimumOpcodeProfile()).c_str());
                 }
                 if(selectedInfo.analyzed) {
-                    if(_screenShotSha1sum != selectedInfo.sha1sum) {
-                        _screenshotData = _librarian.genScreenshot(selectedInfo, _defaultPalette);
-                        _screenShotSha1sum = selectedInfo.sha1sum;
+                    if(_screenShotSha1 != selectedInfo.sha1sum) {
+                        // TODO: Fix this
+                        _screenshotData = {}; //_librarian.genScreenshot(selectedInfo, _defaultPalette);
+                        _screenShotSha1 = selectedInfo.sha1sum;
                         if(_screenshotData.width && _screenshotData.pixel.size() == _screenshotData.width * _screenshotData.height) {
                             auto* image = (uint32_t*)_screenShot.data;
                             for(int y = 0; y < _screenshotData.height; ++y) {
@@ -2147,7 +2545,7 @@ public:
                             UpdateTexture(_screenShotTexture, _screenShot.data);
                         }
                     }
-                    if(_screenShotSha1sum == selectedInfo.sha1sum && _screenshotData.width) {
+                    if(_screenShotSha1 == selectedInfo.sha1sum && _screenshotData.width) {
                         DrawTexturePro(_screenShotTexture, {0, 0, (float)_screenshotData.width, (float)_screenshotData.height}, {300, infoPos.y + 2, 192, 96}, {0,0}, 0, WHITE);
                         DrawRectangleLinesEx({299, infoPos.y + 1, 194, 98}, 1, GetColor(GetStyle(DEFAULT, BORDER_COLOR_NORMAL)));
                     }
@@ -2158,9 +2556,6 @@ public:
                 SetNextWidth(80);
                 if(!selectedInfo.analyzed) GuiDisable();
                 if(Button("Load") && selectedInfo.analyzed) {
-                    //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
-                    //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
-                    //}
                     auto mainView = _mainView;
                     loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::None);
                     if(_mainView == mainView)
@@ -2168,12 +2563,7 @@ public:
                 }
                 SetNextWidth(110);
                 if(Button("Load w/o Config") && selectedInfo.analyzed) {
-                    //if(selectedInfo.variant != _options.behaviorBase && selectedInfo.variant != emu::Chip8EmulatorOptions::eCHIP8) {
-                    //    updateEmulatorOptions(emu::Chip8EmulatorOptions::optionsOfPreset(selectedInfo.variant));
-                    //}
-                    auto options = _options;
-                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::None);
-                    updateEmulatorOptions(options);
+                    loadRom(_librarian.fullPath(selectedInfo.filePath).c_str(), LoadOptions::DontChangeOptions);
                     _mainView = _lastView;
                 }
                 GuiEnable();
@@ -2183,47 +2573,89 @@ public:
             case eWEB_SAVE:
             case eSAVE: {
                 BeginColumns();
-                SetNextWidth(100);
+                SetNextWidth(110);
                 Label("Select file type:");
-                static int activeType = 0;
                 SetNextWidth(70);
-                activeType = ToggleGroup("ROM File;Source Code", activeType);
+                if(ToggleGroup("ROM File;Source Code;Cartridge", &_saveFileType))
+                    _saveError.clear();
                 EndColumns();
+                if(_saveFileType == 2) {
+                    Space(3);
+                    BeginColumns();
+                    SetNextWidth(110);
+                    Label("Cartridge label:");
+                    SetNextWidth(190);
+                    TextBox("cartridgeLabel", _cartridgeLabel, 256);
+                    Space(8);
+                    SetNextWidth(150);
+                    CheckBox("Original Octo image", &_cartridgeOriginalImage);
+                    CheckBox("Binary only", &_cartridgeBinaryOnly);
+                    SetTooltip("Store only a hex dump of the program instead of its source");
+                    EndColumns();
+                }
                 Space(3);
                 SetNextWidth(80);
                 SetIndent(32);
-                if(_currentFileName.empty() && ((activeType == 0 && _romImage.empty()) || (activeType == 1 && _editor.getText().empty()))) GuiDisable();
+                if(_currentFileName.empty() && ((_saveFileType == 0 && _romImage.empty()) || (_saveFileType != 0 && _editor.getText().empty()))) GuiDisable();
                 if(Button("Save") && !_currentFileName.empty()) {
-                    if (activeType == 0 && fs::path(_currentFileName).extension() != romExtension()) {
+                    // TODO: Fix this
+                    std::string romExtension = ".ch8";
+                    if (_saveFileType == 0 && fs::path(_currentFileName).extension() != romExtension) {
                         if (fs::path(_currentFileName).has_extension())
-                            _currentFileName = fs::path(_currentFileName).replace_extension(romExtension()).string();
+                            _currentFileName = fs::path(_currentFileName).replace_extension(romExtension).string();
                         else
-                            _currentFileName += romExtension();
+                            _currentFileName += romExtension;
                     }
-                    else if (activeType == 1 && fs::path(_currentFileName).extension() != ".8o") {
+                    else if (_saveFileType == 1 && fs::path(_currentFileName).extension() != ".8o") {
                         if (fs::path(_currentFileName).has_extension())
                             _currentFileName = fs::path(_currentFileName).replace_extension(".8o").string();
                         else
                             _currentFileName += ".8o";
                     }
-#ifdef PLATFORM_WEB
-                    auto targetFile = _currentFileName;
-#else
+                    else if (_saveFileType == 2 && fs::path(_currentFileName).extension() != ".gif") {
+                        if (fs::path(_currentFileName).has_extension())
+                            _currentFileName = fs::path(_currentFileName).replace_extension(".gif").string();
+                        else
+                            _currentFileName += ".gif";
+                    }
+                    _saveError.clear();
+#ifndef PLATFORM_WEB
                     auto targetFile = _librarian.fullPath(_currentFileName);
-#endif
-                    if(activeType == 0) {
-                        writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
+                    std::error_code ec;
+                    if (fs::exists(targetFile, ec) && !(_saveFileType == 1 && targetFile == _sourcePath) && _confirmOverwrite != targetFile) {
+                        _confirmOverwrite = targetFile;
                     }
                     else {
-                        writeFile(targetFile, _editor.getText().data(), _editor.getText().size());
+                        _confirmOverwrite.clear();
+                        if(_saveFileType == 0)
+                            writeFile(targetFile, (const char*)_romImage.data(), _romImage.size());
+                        else if(_saveFileType == 1)
+                            saveSource(targetFile);
+                        else
+                            saveCartridgeFile(targetFile);
+                        if(_saveError.empty())
+                            _mainView = _lastView;
                     }
-#ifdef PLATFORM_WEB
-                    // can only use path-less filenames
-                    emscripten_run_script(TextFormat("saveFileFromMEMFSToDisk('%s','%s')", targetFile.c_str(), targetFile.c_str()));
+#else
+                    if(_saveFileType == 0)
+                        webDownloadFile(_currentFileName.c_str(), _romImage.data(), _romImage.size(), "application/octet-stream");
+                    else if(_saveFileType == 1)
+                        saveSource(_currentFileName);
+                    else
+                        saveCartridgeFile(_currentFileName);
+                    if(_saveError.empty())
+                        _mainView = _lastView;
 #endif
-                    _mainView = _lastView;
                 }
                 GuiEnable();
+                if (!_confirmOverwrite.empty()) {
+                    SetIndent(32);
+                    Label(fmt::format("'{}' exists, press Save again to replace it.", fs::path(_confirmOverwrite).filename().string()).c_str());
+                }
+                if (!_saveError.empty()) {
+                    SetIndent(32);
+                    Label(_saveError.c_str());
+                }
                 break;
             }
         }
@@ -2236,93 +2668,28 @@ public:
 #ifdef PLATFORM_WEB
     void loadFileWeb()
     {
-        //-------------------------------------------------------------------------------
-        // This file upload dialog is heavily inspired by MIT licensed code from
-        // https://github.com/daid/SeriousProton2 - specifically:
-        //
-        // https://github.com/daid/SeriousProton2/blob/f13f32336360230788054822183049a0153c0c07/src/io/fileSelectionDialog.cpp#L67-L102
-        //
-        // All Rights Reserved.
-        //
-        // Permission is hereby granted, free of charge, to any person obtaining a copy
-        // of this software and associated documentation files (the "Software"), to deal
-        // in the Software without restriction, including without limitation the rights
-        // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        // copies of the Software, and to permit persons to whom the Software is
-        // furnished to do so, subject to the following conditions:
-        //
-        // The above copyright notice and this permission notice shall be included in
-        // all copies or substantial portions of the Software.
-        //
-        // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-        // THE SOFTWARE.
-        //-------------------------------------------------------------------------------
-        openFileCallback = [&](const std::string& filename)
-        {
-            loadRom(filename.c_str(), LoadOptions::None);
-        };
-        EM_ASM({
-            if (typeof(open_file_element) == "undefined")
-            {
-                open_file_element = document.createElement('input');
-                open_file_element.type = "file";
-                open_file_element.style.display = "none";
-                document.body.appendChild(open_file_element);
-                open_file_element.addEventListener("change", function() {
-                    var filename = "/upload/" + this.files[0].name;
-                    var name = this.files[0].name;
-                    this.files[0].arrayBuffer().then(function(buffer) {
-                         try { FS.unlink(filename); } catch (exception) { }
-                         FS.createDataFile("/upload/", name, new Uint8Array(buffer), true, true, true);
-                         var stack = Module.stackSave();
-                         var name_ptr = Module.stackAlloc(filename.length * 4 + 1);
-                         stringToUTF8(filename, name_ptr, filename.length * 4 + 1);
-                         Module._openFileCallbackC(name_ptr);
-                         stackRestore(stack);
-                        });
-                    }, false
-                );
-                FS.mkdir("/upload");
-            }
-            open_file_element.value = "";
-            open_file_element.accept = '.ch8,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram';
-            open_file_element.click();
-        });
+        webRequestOpenFile(".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8");
     }
 #endif
-
-    const std::string& romExtension()
-    {
-        static std::string extensions[] = {".ch8", ".sc10", ".sc8", ".mc8", ".xo8", ".c8h"};
-        switch(_options.behaviorBase) {
-            case emu::Chip8EmulatorOptions::eCHIP10: return extensions[1];
-            case emu::Chip8EmulatorOptions::eSCHIP10:
-            case emu::Chip8EmulatorOptions::eSCHIP11: return extensions[2];
-            case emu::Chip8EmulatorOptions::eMEGACHIP: return extensions[3];
-            case emu::Chip8EmulatorOptions::eXOCHIP: return extensions[4];
-            case emu::Chip8EmulatorOptions::eCHIP8VIP_TPD: return extensions[5];
-            default: return extensions[0];
-        }
-    }
 
     void saveConfig()
     {
 #ifndef PLATFORM_WEB
         if(!_cfgPath.empty()) {
-            auto opt = _options.clone();
+            auto opt = _properties;
             std::vector<std::string> pal(16, "");
-            for(size_t i = 0; i < 16; ++i) {
-                pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
-            }
-            opt.advanced["palette"] = pal;
-            _cfg.emuOptions = opt;
+            // TODO. Fix this
+            //for(size_t i = 0; i < 16; ++i) {
+            //    pal[i] = fmt::format("#{:06x}", _defaultPalette[i] >> 8);
+            //}
+            // opt.advanced["palette"] = pal;
+            _cfg.emuProperties = *_properties;
             _cfg.workingDirectory = _currentDirectory;
-            _cfg.databaseDirectory = _databaseDirectory;
+            //_cfg.libraryPath = _databaseDirectory;
+            _cfg.windowPosX = GetWindowPosition().x;
+            _cfg.windowPosY = GetWindowPosition().y;
+            _cfg.scaleMode = _scaleMode;
+            _cfg.recentFiles = _recentFiles;
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -2332,25 +2699,19 @@ public:
 
     void updateBehaviorSelects()
     {
-        auto result = std::find_if(_presetMapping.begin(), _presetMapping.end(), [this](const auto& pair) {return pair.second == _options.behaviorBase; });
-        if(result != _presetMapping.end()) {
-            _behaviorSel = result->first.first;
-            if(_behaviorSel == 12)
-                _subBehaviorSel = result->first.second, _subBehaviorSel2 = 0;
-            else if(_behaviorSel == 13)
-                _subBehaviorSel2 = result->first.second, _subBehaviorSel = 0;
-            else
-                _subBehaviorSel = _subBehaviorSel2 = 0;
+        if (auto idx = _cores.classIndex(*_properties); idx >= 0) {
+            _behaviorSel = idx;
+            _subBehaviorSel = static_cast<int>(emu::CoreRegistry::variantIndex(*_properties).index);
         }
-        else
-            _behaviorSel = emu::Chip8EmulatorOptions::eXOCHIP;
     }
 
-    void whenEmuChanged(emu::IChip8Emulator& emu) override
+    void whenEmuChanged(emu::IEmulationCore& emu) override
     {
         _debugger.updateCore(&emu);
-        _editor.updateCompilerOptions(_options.startAddress);
-        reloadRom();
+        _debugger.updateOctoDebugInfo(_editor.compiler());
+        _propsMemento = *_properties;
+        auto startAddress = _chipEmu->defaultLoadAddress();
+        _editor.updateCompilerOptions(startAddress);
         updateBehaviorSelects();
         resetStats();
     }
@@ -2369,11 +2730,30 @@ public:
         _audioBuffer.reset();
         _frameBoost = 1;
         updateBehaviorSelects();
-        _editor.setText(source);
+        if (source.empty() && !compiler) {
+            // A binary program, its disassembly is created when the editor needs it.
+            _editor.setGeneratedText(DISASSEMBLY_PLACEHOLDER);
+        }
+        else {
+            _editor.setText(source);
+        }
+        _editorDisassemblyKey.reset();
+        _loadedSourceRevision = _editor.contentRevision();
         _editor.setFilename(filename);
+        _sourcePath = compiler && fs::path(filename).extension() == ".8o" ? filename : std::string{};
+        if (_romOrigin != ProgramOrigin::DATABASE)
+            _recentFiles.usingFile(filename);
+#if defined(PLATFORM_WEB) && defined(CADMIUM_WITH_DATABASE)
+        if (_database && _romOrigin != ProgramOrigin::DATABASE && !_romImage.empty()) {
+            TraceLog(LOG_INFO, "%s", _database->showRom(_romSha1, _romImage).c_str());
+        }
+#endif
+        updateMainMenu();
         resetStats();
         if(compiler)
-            _debugger.updateOctoBreakpoints(*compiler);
+            _debugger.updateOctoDebugInfo(*compiler);
+        else
+            _debugger.clearOctoDebugInfo();
         saveConfig();
         if(autoRun)
             _mainView = eVIDEO;
@@ -2381,20 +2761,129 @@ public:
             _mainView = eEDITOR;
     }
 
-    void reloadRom()
+    bool matchesSettings(const emu::Properties& reference) const
     {
-        if(!_romImage.empty()) {
-            unsigned int size = 0;
-            _chipEmu->reset();
-            _audioBuffer.reset();
-            updateScreen();
-            _instructionOffset = -1;
-            if(Librarian::isPrefixedTPDRom(_romImage.data(), _romImage.size()))
-                std::memcpy(_chipEmu->memory() + 512, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - 512)));
-            else
-                std::memcpy(_chipEmu->memory() + _options.startAddress, _romImage.data(), std::min(_romImage.size(),size_t(_chipEmu->memSize() - _options.startAddress)));
-        }
+        auto ruled = reference;
+        emu::CoreRegistry::applyRules(ruled);
+        return *_properties == ruled && _properties->palette() == completedPalette(ruled.palette());
+    }
+
+    void whenMachineReset() override
+    {
+        _audioBuffer.reset();
+        updateScreen();
         _debugger.captureStates();
+    }
+
+    void saveShortcut()
+    {
+        if (_mainView == eEDITOR && !_sourcePath.empty())
+            saveSource(_sourcePath);
+        else
+            openSavePage(_mainView == eEDITOR);
+    }
+
+    void openSavePage(bool sourceCode)
+    {
+        if (sourceCode) {
+            // Suggest a source file next to the loaded program.
+            _saveFileType = 1;
+            const auto romPath = fs::path(_romName);
+#ifndef PLATFORM_WEB
+            std::error_code ec;
+            if (romPath.has_parent_path() && fs::is_directory(romPath.parent_path(), ec))
+                _currentDirectory = romPath.parent_path().string();
+#endif
+            if (!romPath.empty())
+                _currentFileName = fs::path(romPath.filename()).replace_extension(".8o").string();
+        }
+        _confirmOverwrite.clear();
+        _saveError.clear();
+        if (_cartridgeLabel.empty() && !_romName.empty())
+            _cartridgeLabel = fs::path(_romName).stem().string();
+        _mainView = eROM_EXPORT;
+#ifndef PLATFORM_WEB
+        _librarian.fetchDir(_currentDirectory);
+#endif
+    }
+
+    void saveSource(const std::string& path)
+    {
+        updateEditorDisassembly(true);
+        const auto& source = _editor.getText();
+#ifndef PLATFORM_WEB
+        writeFile(path, source.data(), source.size());
+#else
+        webDownloadFile(fs::path(path).filename().string().c_str(), reinterpret_cast<const uint8_t*>(source.data()), source.size(), "text/plain;charset=utf-8");
+#endif
+        TraceLog(LOG_INFO, "Saved source to %s", path.c_str());
+        _sourcePath = path;
+    }
+
+    void saveCartridgeFile(const std::string& path)
+    {
+        // A binary only cartridge of the loaded program needs no disassembly.
+        if (!_cartridgeBinaryOnly)
+            updateEditorDisassembly(true);
+        // Source that was changed in the editor is what the user wants, also if the program
+        // isn't updated from it yet. Otherwise, it has to be the program that is loaded.
+        static const std::vector<uint8_t> noImage;
+        const auto& expected = _editor.contentRevision() == _loadedSourceRevision ? _romImage : noImage;
+#ifndef PLATFORM_WEB
+        _saveError = saveCartridge(path, _editor.getText(), _editor.getFilename(), expected, _cartridgeLabel, _cartridgeOriginalImage, _cartridgeBinaryOnly);
+#else
+        const std::string memoryFile = "/tmp/cadmium-cartridge.gif";
+        _saveError = saveCartridge(memoryFile, _editor.getText(), _editor.getFilename(), expected, _cartridgeLabel, _cartridgeOriginalImage, _cartridgeBinaryOnly);
+        if (_saveError.empty()) {
+            if (auto data = loadFile(memoryFile, Librarian::MAX_ROM_SIZE))
+                webDownloadFile(fs::path(path).filename().string().c_str(), data->data(), data->size(), "image/gif");
+            else
+                _saveError = "Couldn't read the generated cartridge.";
+            std::error_code ec;
+            fs::remove(memoryFile, ec);
+        }
+#endif
+        if (_saveError.empty())
+            TraceLog(LOG_INFO, "Saved cartridge to %s", path.c_str());
+    }
+
+    struct EditorDisassembly
+    {
+        DisassemblyKey key;
+        std::string source;
+    };
+
+    void updateEditorDisassembly(bool waitForResult = false)
+    {
+        if (auto result = _disassemblyJob.poll())
+            applyEditorDisassembly(std::move(*result));
+        if (_editor.contentRevision() != _loadedSourceRevision || (_mainView != eEDITOR && !waitForResult))
+            return;
+        const auto key = disassemblyKey();
+        if (!key || key == _editorDisassemblyKey)
+            return;
+        if (!_disassemblyJob.busy() || _disassemblyJobKey != key) {
+            auto request = disassemblyRequest();
+            _disassemblyJobKey = key;
+            _editor.setGeneratedText(DISASSEMBLY_PLACEHOLDER);
+            _loadedSourceRevision = _editor.contentRevision();
+            _disassemblyJob.start([request = std::move(*request)]() {
+                return EditorDisassembly{request.key, emu::EmuHostEx::disassemble(request)};
+            });
+        }
+        if (waitForResult) {
+            if (auto result = _disassemblyJob.wait())
+                applyEditorDisassembly(std::move(*result));
+        }
+    }
+
+    void applyEditorDisassembly(EditorDisassembly result)
+    {
+        if (_editor.contentRevision() != _loadedSourceRevision || result.key != disassemblyKey())
+            return;
+        _editor.setGeneratedText(std::move(result.source));
+        _loadedSourceRevision = _editor.contentRevision();
+        _editorDisassemblyKey = result.key;
     }
 
     bool windowShouldClose() const
@@ -2405,10 +2894,12 @@ public:
 private:
     std::mutex _audioMutex;
     ResourceManager _resources;
-    StyleManager _styleManager;
+    gui::StyleManager _styleManager;
+    gui::PopupMenu::Menu _mainMenu{};
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};
+    Image _overlayImage{};
     Image _icon{};
     Font _font{};
     Image _screen{};
@@ -2419,7 +2910,24 @@ private:
     Texture2D _crtTexture{};
     Texture2D _screenShotTexture{};
     Librarian::Screenshot _screenshotData;
-    std::string _screenShotSha1sum;
+    Sha1::Digest _screenShotSha1;
+    uint32_t _loadedSourceRevision{};
+    std::string _sourcePath;      // the file the editor's source is saved to, empty if there is none yet
+    int _saveFileType{0};         // save page: 0 = ROM file, 1 = source code, 2 = cartridge
+    std::string _cartridgeLabel;
+    bool _cartridgeOriginalImage{false};
+    bool _cartridgeBinaryOnly{false};
+    std::string _saveError;
+    std::string _confirmOverwrite;
+    static constexpr const char* DISASSEMBLY_PLACEHOLDER = "# Disassembling, please wait...\n";
+#ifndef PLATFORM_WEB
+    BackgroundJob<EditorDisassembly> _disassemblyJob{_threadPool};
+#else
+    BackgroundJob<EditorDisassembly> _disassemblyJob;
+#endif
+    std::optional<DisassemblyKey> _disassemblyJobKey;
+    std::optional<DisassemblyKey> _editorDisassemblyKey;
+    RenderTexture _overlayTexture{};
     RenderTexture _keyboardOverlay{};
     CircularBuffer<int16_t,1> _audioBuffer;
     int64_t _audioGaps{};
@@ -2427,7 +2935,10 @@ private:
     bool _showKeyMap{false};
     int _screenWidth{};
     int _screenHeight{};
-    RenderTexture _renderTexture{};
+    bool _windowInvisible{false};
+    VideoRenderMode _videoRenderMode{eHIRES};
+    std::unique_ptr<TextureScaler> _textureScaler;
+    //RenderTexture _renderTexture{};
     AudioStream _audioStream{};
     float _volumeSlider{0.5f};
     float _volume{0.5f};
@@ -2435,26 +2946,31 @@ private:
     SMA<120,uint32_t> _frameTimeAverage_us;
     SMA<120,int> _frameDelta;
     emu::FpsMeasure _fps;
-    int _partialFrameTime{0};
-#ifndef RESIZABLE_GUI
-    bool _scaleBy2{false};
-#endif
-    std::map<std::pair<int,int>, emu::Chip8EmulatorOptions::SupportedPreset> _presetMapping;
+    double _partialFrameTime{0};
+    double _audioSamplesDue{0};
+    int _scaleMode{1};
+    int _appliedScaleMode{0};
     int _behaviorSel{0};
     int _subBehaviorSel{0};
-    int _subBehaviorSel2{0};
     //float _messageTime{};
     std::string _timedMessage;
-    bool _renderCrt{false};
     bool _updateScreen{false};
     int _frameBoost{1};
-    int _memoryOffset{-1};
-    int _instructionOffset{-1};
-    std::atomic_int _audioCallbackAvgFrames{};
+    std::atomic_uint _audioCallbackAvgFrames{};
+    bool _traceFrame{false};
     bool _colorSelectOpen{false};
-    uint32_t* _selectedColor{nullptr};
+    emu::Palette::Color* _selectedColor{nullptr};
     std::string _colorText;
-    uint32_t _previousColor{};
+    emu::Palette::Color _previousColor{};
+    Rectangle _screenOverlay{};
+    int _currentMonitor{0};
+    int _screenScale{1};
+    int _screenRatio{1};
+    bool _screenIsPreRendered{false};
+    Vector2 _screenSize{0,0};
+    Color _screenBorderColor{0,0,0,255};
+    emu::Properties _propsMemento{};
+    std::string _avgGuiRenderTime;
 
     //std::string _romName;
     //std::vector<uint8_t> _romImage;
@@ -2462,7 +2978,7 @@ private:
     //bool _romIsWellKnown{false};
     //emu::Chip8EmulatorOptions _romWellKnownOptions;
     std::array<double,16> _keyScanTime{};
-    std::array<bool,16> _keyMatrix;
+    std::array<bool,16> _keyMatrix{};
     volatile bool _grid{false};
     MainView _mainView{eDEBUGGER};
     MainView _lastView{eDEBUGGER};
@@ -2470,6 +2986,10 @@ private:
     Debugger _debugger;
     LogView _logView;
     Editor _editor;
+    CrtRenderer _crtRenderer;
+    bool _aboutOpen{false};
+    Vector2 _aboutScroll{0,0};
+    RecentFiles _recentFiles;
 
     inline static KeyboardKey _keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
     inline static int _keyPosition[16] = {1,2,3,12, 4,5,6,13, 7,8,9,14, 10,0,11,15};
@@ -2479,14 +2999,20 @@ private:
 #ifndef PLATFORM_WEB
 std::string dumOctoStateLine(octo_emulator* octo)
 {
+    if (emu::Logger::getTraceFormat() == emu::Logger::TraceFormat::eCADMIUM2) [[likely]] {
+        return fmt::format("{:04x}:{:04x} V=[{:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}  {:02x} {:02x} {:02x} {:02x}] I={:04x} SP={:1x}", octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1],
+            octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7],
+            octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
+            octo->i, octo->rp);
+    }
     return fmt::format("V0:{:02x} V1:{:02x} V2:{:02x} V3:{:02x} V4:{:02x} V5:{:02x} V6:{:02x} V7:{:02x} V8:{:02x} V9:{:02x} VA:{:02x} VB:{:02x} VC:{:02x} VD:{:02x} VE:{:02x} VF:{:02x} I:{:04x} SP:{:1x} PC:{:04x} O:{:04x}",
-    octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7], 
-    octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
-    octo->i, octo->rp, octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1]);
+        octo->v[0], octo->v[1], octo->v[2], octo->v[3], octo->v[4], octo->v[5], octo->v[6], octo->v[7],
+        octo->v[8], octo->v[9], octo->v[10], octo->v[11], octo->v[12], octo->v[13], octo->v[14], octo->v[15],
+        octo->i, octo->rp, octo->pc, (octo->ram[octo->pc]<<8)|octo->ram[octo->pc+1]);
 }
 #endif
 
-std::string chip8EmuScreen(emu::IChip8Emulator& chip8)
+std::string chip8EmuScreen(emu::IEmulationCore& chip8)
 {
     std::string result;
     auto width = chip8.getCurrentScreenWidth();
@@ -2505,15 +3031,14 @@ std::string chip8EmuScreen(emu::IChip8Emulator& chip8)
     return result;
 }
 
-std::string chip8EmuScreenANSI(emu::IChip8Emulator& chip8)
+std::string chip8EmuScreenANSI(emu::IEmulationCore& chip8)
 {
     static int col[16] = {0,15,7,8, 9,10,12,11, 1,2,4,3, 13,14,5,6};
     std::string result;
     auto width = chip8.getCurrentScreenWidth();
     auto maxWidth = 256; //chip8.getMaxScreenWidth();
     auto height = chip8.getCurrentScreenHeight();
-    const auto* screen = chip8.getScreen();
-    if(screen) {
+    if (const auto* screen = chip8.getScreen()) {
         result.reserve(width * height * 16);
         if (chip8.isDoublePixel()) {
             for (int y = 0; y < height; y += 4) {
@@ -2591,7 +3116,7 @@ std::string formatOpcode(emu::OpcodeType type, uint16_t opcode)
     return fmt::format("<a href=\"https://chip8.gulrak.net/reference/opcodes/{}\">{}</a>", dst, opStr);
 }
 
-void dumpOpcodeTable(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Variant)0x3FFFFFFFFFFFFFFF)
+void dumpOpcodeTable(std::ostream& os, emu::chip8::VariantSet variants = emu::chip8::ALL_VARIANTS)
 {
     std::regex quirkRE(R"(\s*\[Q:([^\]]+)\])");
     std::map<std::string, size_t> quirkMap;
@@ -2612,7 +3137,10 @@ div.footer { font-size: 0.7em; }
 </style></head>
 <body><h2>CHIP-8 Variant Opcode Table</h2>
 <table class="opcodes"><tr><th class="opcodes">Opcode</th>)";
-    auto mask = static_cast<uint64_t>(variants);
+    for (auto variant : variants) {
+        os << R"(<th class="rotate"><div><span>)" << emu::Chip8Decompiler::chipVariantName(variant).first << "</span></div></th>";
+    }
+    /*
     while(mask) {
         auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
         mask &= mask - 1;
@@ -2658,11 +3186,12 @@ div.footer { font-size: 0.7em; }
         os << "<li id=\"quirk" << qidx << "\"> Quirk " << qidx << ": " << quirk << "</li>\n";
         ++qidx;
     }
+    */
     auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     os << "</ul><div class=\"footer\">Generated by Cadmium v" << CADMIUM_VERSION << ", on " << std::put_time( std::gmtime( &t ), "%F" ) << "</div></body></html>";
 }
 
-void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Variant)0x3FFFFFFFFFFFFFFF)
+void dumpOpcodeJSON(std::ostream& os, emu::chip8::VariantSet variants = emu::chip8::ALL_VARIANTS)
 {
     using namespace nlohmann;
     ordered_json root = ordered_json::object({});
@@ -2671,7 +3200,7 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
     std::map<std::string, size_t> quirkMap;
     std::vector<std::string> quirkList;
     for(const auto& info : emu::detail::opcodes) {
-        if(uint64_t(info.variants & variants) != 0) {
+        if(info.variants.containsAny(variants)) {
             auto obj = ordered_json::object({});
             obj["opcode"] = formatOpcodeString(info.type, info.opcode);
             obj["mask"] = emu::detail::opcodeMasks[info.type];
@@ -2685,12 +3214,16 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
                 obj["chipper"] = info.mnemonic;
             }
             obj["platforms"] = json::array();
+            for (auto variant : variants) {
+                obj["platforms"].push_back(emu::Chip8Decompiler::chipVariantName(variant).first);
+            }
+            /*
             auto mask = static_cast<uint64_t>(variants & info.variants);
             while(mask) {
                 auto cv = static_cast<emu::Chip8Variant>(mask & -mask);
                 mask &= mask - 1;
                 obj["platforms"].push_back(emu::Chip8Decompiler::chipVariantName(cv).first);
-            }
+            }*/
             auto desc = info.description;
             std::smatch m;
             size_t qidx = 0;
@@ -2726,6 +3259,7 @@ void dumpOpcodeJSON(std::ostream& os, emu::Chip8Variant variants = (emu::Chip8Va
 
 void dumpLibraryNickel()
 {
+#if 0
     std::set<std::pair<std::string,std::string>> variantSet;
     size_t romCount = 0;
     for(size_t i = 0; i < Librarian::numKnownRoms(); ++i) {
@@ -2771,65 +3305,155 @@ void dumpLibraryNickel()
         }
     }
     std::cout << "------ " << variantSet.size() << " variants in " << romCount << " roms" << std::endl;
-    for(auto vari : variantSet) {
+    for(const auto& vari : variantSet) {
         std::cout << "VARIANT(" << vari.first << ", " << (vari.first == "XOCHIP" ? 65536 : 4096) << ", " << vari.second << ")" << std::endl;
     }
+#endif
 }
 
 int main(int argc, char* argv[])
 {
-    auto preset = emu::Chip8EmulatorOptions::eXOCHIP;
-#ifndef PLATFORM_WEB
+    static emu::Properties coreProperties;
+    static std::list<ghc::CLI::Combo> coreComboOptions; // stable storage, the CLI keeps pointers into it
+    static std::vector<std::string> cliChangedProperties; // for the warning about options without effect
+    static auto cliPropertyChanged = [](const std::string& id) {
+        // the last option of an exclusive group given wins
+        emu::CoreRegistry::applyRules(coreProperties, id);
+        cliChangedProperties.push_back(id);
+    };
     ghc::CLI cli(argc, argv);
     int64_t traceLines = -1;
     bool compareRun = false;
     int64_t benchmark= 0;
     bool showHelp = false;
+    bool showVersion = false;
     bool opcodeTable = false;
     bool opcodeJSON = false;
     bool dumpLibNickel = false;
     bool startRom = false;
     bool screenDump = false;
     bool drawDump = false;
+    bool headless = false;
+    bool headlessLimitSpecified = false;
+    HeadlessRunOptions headlessOptions;
     std::string dumpInterpreter;
-    emu::Chip8EmulatorOptions options;
+    std::string updateProgramDatabase;
+    std::string exportMetadataDb;
+    bool opcodeStats = false;
     int64_t execSpeed = -1;
     std::string randomGen;
+    std::string emulationCore;
     int64_t randomSeed = 12345;
     std::vector<std::string> romFile;
     std::string presetName;
+    std::string customPalette;
     int64_t testSuiteMenuVal = 0;
     cli.category("General Options");
-    cli.option({"-h", "--help"}, showHelp, "Show this help text");
+#ifndef PLATFORM_WEB
+    cli.optionEnable({"-h", "--help"}, showHelp, "Show this help text");
+    cli.optionEnable({"-v", "--version"}, showVersion, "Show version information");
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
-    cli.option({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
-    cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
+    cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8", [&](){
-        if(!presetName.empty()) {
-            try {
-                preset = emu::Chip8EmulatorOptions::presetForName(presetName);
-                options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-            }
-            catch(std::runtime_error e) {
-                std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-                presetName = "";
+    cli.optionEnable({"--headless"}, headless, "Run a binary ROM deterministically without a window (generic CHIP-8 core)");
+    cli.option({"--until-presentations"}, headlessOptions.untilPresentations, "Stop after this many display updates; requires --headless").range(1, INT64_MAX);
+    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps (default 3000000)",
+               [&headlessLimitSpecified](std::string) { headlessLimitSpecified = true; }).range(1, INT64_MAX);
+    cli.option({"--dump-screen"}, headlessOptions.dumpScreen, "Export the last headless presentation as an image");
+    cli.option({"--dump-state"}, headlessOptions.dumpState, "Export headless machine state as JSON");
+    cli.option({"--custom-palette"}, customPalette, "Set the colors of the palette, as comma separated list like \"#000000,#FFFFFF,...\"");
+    cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
+    cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
+    cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
+    cli.optionEnable({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
+#ifdef CADMIUM_WITH_DATABASE
+    cli.option({"--update-program-database"}, updateProgramDatabase, "Compare the library with the given programs.json of the chip-8-database and write programs_<timestamp>.json with the missing programs added");
+#endif
+#ifndef NDEBUG
+#ifdef CADMIUM_WITH_DATABASE
+    cli.option({"--export-metadata-db"}, exportMetadataDb, "Write the library without ROM data and file names to the given file, as starter library for the resources");
+    cli.optionEnable({"--opcode-stats"}, opcodeStats, "Print the opcode statistics of the given ROM files as JSON, analyzed like the library does");
+#endif
+    cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
+    cli.optionEnable({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
+#endif
+#else
+#ifdef WEB_WITH_FETCHING
+    std::string urlLoad;
+    cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
+#endif
+#endif
+    cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
+    emu::CoreRegistry reg{};
+    std::string coresAvailable;
+    std::string presetsDescription;
+    for(const auto& [name, info] : reg) {
+        //std::cout << toOptionName(name) << std::endl;
+        coresAvailable += fmt::format("        {} - {}\n", toOptionName(name), info->description);
+        presetsDescription += fmt::format("        {}:\n", info->description);
+        for(size_t i = 0; i < info->numberOfVariants(); ++i) {
+            if(info->prefix().empty())
+                presetsDescription += fmt::format("            {} - {} ({})\n", toOptionName(info->variantName(i)), info->variantDescription(i), info->variantExtensions(i));
+            else
+                presetsDescription += fmt::format("            {} - {} ({})\n", toOptionName(info->prefix() + '-' + info->variantName(i)), info->variantDescription(i), info->variantExtensions(i));
+        }
+        auto proto = info->propertiesPrototype();
+        auto oldCat = cli.category(fmt::format("{} Options (only available if preset uses {} core)", name, info->prefix().empty() ? "default" : toOptionName(info->prefix())));
+        for(size_t i = 0; i < proto.numProperties(); ++i) {
+            auto& prop = proto[i];
+            if(prop.hasFlags(emu::PropertyFlags::eWritable)) {
+                auto dependencyCheck = [&presetName, info, id = prop.getId()]() {
+                    const auto* current = coreProperties.find(id);
+                    return info->hasVariant(presetName) && current && current->isApplicable();
+                };
+                std::visit(emu::visitor{
+                   [](std::nullptr_t) -> void {  },
+                   [dependencyCheck,&prop,&cli](bool& val) -> void { cli.option<bool>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const bool& value) {
+                       coreProperties.at(id).setBool(value);
+                       cliPropertyChanged(id);
+                   }, prop.getDescription()).dependsOn(dependencyCheck); },
+                   [dependencyCheck,&prop,&cli](emu::Property::Integer& val) -> void { cli.option<int>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const int& value) {
+                       coreProperties.at(id).setInt(value);
+                       cliPropertyChanged(id);
+                   }, prop.getDescription()).dependsOn(dependencyCheck).range(prop.getIntMin(), prop.getIntMax()); },
+                   [dependencyCheck,&prop,&cli](std::string& val) -> void { cli.option<std::string>({fmt::format("--{}", prop.getOptionName())}, [id = prop.getId()](const std::string&, const std::string& value) {
+                       coreProperties.at(id).setString(value);
+                       cliPropertyChanged(id);
+                   }, prop.getDescription()).dependsOn(dependencyCheck); },
+                   [dependencyCheck,&prop,&cli](emu::Property::Combo& val) -> void {
+                       std::ostringstream optionList;
+                       for (auto i = val.options.begin(); i != val.options.end(); ++i) {
+                           if (i != val.options.begin()) {
+                               optionList << ", ";
+                           }
+                           optionList << toOptionName(*i);
+                       }
+                       // The CLI matches the argument against Combo::combinations, so they must be filled in
+                       auto& cliCombo = coreComboOptions.emplace_back(ghc::CLI::Combo{val.index, val.options});
+                       cli.option({fmt::format("--{}", prop.getOptionName())}, cliCombo, prop.getDescription() + " (" + optionList.str() +")", [&cliCombo, id = prop.getId()](const std::string&) {
+                            coreProperties.at(id).setSelectedIndex(cliCombo.index);
+                            cliPropertyChanged(id);
+                       }).dependsOn(dependencyCheck);
+                   }
+               }, prop.getValue());
             }
         }
+        cli.category(oldCat);
+    }
+    cli.option({"-p", "--preset"}, presetName, "Select one of the following available preset:\n" + trimRight(presetsDescription), [&presetName](std::string) {
+        // Todo: Set coreProperties to a matching instance
+        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName);
+        if(!coreProperties) {
+            throw std::runtime_error(fmt::format("Unknown preset: '{}' (use --help to see supported presets)", presetName));
+        }
+        emu::CoreRegistry::applyRules(coreProperties);
     });
+#if 0
     cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
     cli.option({"--random-gen"}, randomGen, "Select a predictable random generator used for trace log mode (rand-lgc or counting)");
     cli.option({"--random-seed"}, randomSeed, "Select a random seed for use in combination with --random-gen, default: 12345");
-    cli.option({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
-    cli.option({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
-    cli.option({"--test-suite-menu"}, testSuiteMenuVal, "Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.");
     cli.option({"--trace-log"}, options.optTraceLog, "If true, enable trace logging into log-view");
     //cli.option({"--opcode-table"}, opcodeTable, "Dump an opcode table to stdout");
-    cli.option({"--opcode-json"}, opcodeJSON, "Dump opcode information as JSON to stdout");
-#ifndef NDEBUG
-    cli.option({"--dump-interpreter"}, dumpInterpreter, "Dump the given interpreter in a local file named '<interpreter>.ram' and exit");
-    cli.option({"--dump-library-nickel"}, dumpLibNickel, "Dump library table for Nickel");
-#endif
     cli.category("Quirks");
     cli.option({"--just-shift-vx"}, options.optJustShiftVx, "If true, 8xy6/8xyE will just shift Vx and ignore Vy");
     cli.option({"--dont-reset-vf"}, options.optDontResetVf, "If true, Vf will not be reset by 8xy1/8xy2/8xy3");
@@ -2850,30 +3474,93 @@ int main(int argc, char* argv[])
     cli.option({"--has-16bit-addr"}, options.optHas16BitAddr, "If true, address space is 16bit (64k ram)");
     cli.option({"--xo-chip-sound"}, options.optXOChipSound, "If true, use XO-CHIP sound instead of buzzer");
     cli.option({"--extended-display-wait"}, options.optExtendedVBlank, "If true, Dxyn might even wait 2 screens depending on size and position");
-    cli.positional(romFile, "ROM file or source to load (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`, '.gif', or `.8o`)");
-    cli.parse();
+#endif
+    static auto supportedExtensions = reg.getSupportedExtensions();
+    auto extensions = join(supportedExtensions.begin(), supportedExtensions.end(), ", ");
+    auto icons = gui::GetDefaultFileIcons();
+    for (const auto& extension : supportedExtensions) {
+        icons[std::string_view(extension).substr(1)] = ICON_ROM;
+    }
+    gui::SetDefaultFileIcons(icons);
+    cli.positional(romFile, fmt::format("ROM file or source to load ({})", extensions));
+
+    CadmiumConfiguration config;
+#ifndef PLATFORM_WEB
+    auto cfgPath = (fs::path(dataPath())/"config.json").string();
+    if(config.load(cfgPath)) {
+        coreProperties = config.emuProperties;
+    }
+#endif
+    try {
+        cli.parse();
+    }
+    catch(std::exception& ex) {
+        std::cerr << "ERROR: " << ex.what() << std::endl;
+        exit(1);
+    }
     if(showHelp) {
         cli.usage();
         exit(0);
     }
+    for (const auto& id : cliChangedProperties) {
+        if (const auto& prop = coreProperties.at(id); !prop.isActive()) {
+            std::cerr << "WARNING: --" << prop.getOptionName() << " has no effect with the other settings of this preset" << std::endl;
+        }
+    }
+    if(showVersion) {
+        std::cout << "Cadmium v" << CADMIUM_VERSION << "-" << CADMIUM_GIT_HASH << std::endl;
+        std::cout << "(c) Copyright 2022 by Steffen 'Gulrak' Schümann" << std::endl;
+        exit(0);
+    }
+    // No preset given and no configuration yet (e.g. first start), use a default.
+    if (!coreProperties) {
+        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
+    }
+    if (!customPalette.empty()) {
+        emu::Palette palette;
+        for (const auto& color : split(customPalette, ',')) {
+            const auto hex = trim(color);
+            if (!std::regex_match(hex, std::regex("#[0-9a-fA-F]{6}"))) {
+                std::cerr << "ERROR: --custom-palette expects colors like #rrggbb, got '" << hex << "'" << std::endl;
+                exit(1);
+            }
+            palette.colors.emplace_back(hex);
+        }
+        palette.numColors = palette.colors.size();
+        coreProperties.palette() = palette;
+    }
+#ifndef PLATFORM_WEB
     if(opcodeTable) {
         dumpOpcodeTable(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_10|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
     }
     if(opcodeJSON) {
-        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_8E|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
+        dumpOpcodeJSON(std::cout, emu::C8V::CHIP_8|emu::C8V::CHIP_8_I|emu::C8V::CHIP_8X|emu::C8V::CHIP_8E|emu::C8V::CHIP_10|emu::C8V::CHIP_8_D6800|emu::C8V::CHIP_48|emu::C8V::SCHIP_1_0|emu::C8V::SCHIP_1_1|emu::C8V::SCHIPC|emu::C8V::SCHIP_MODERN|emu::C8V::MEGA_CHIP|emu::C8V::XO_CHIP);
         exit(0);
     }
     if(dumpLibNickel) {
         dumpLibraryNickel();
         exit(0);
     }
+#ifdef CADMIUM_WITH_DATABASE
+    if(!updateProgramDatabase.empty()) {
+        exit(Database::updateProgramDatabase(dataPath(), updateProgramDatabase));
+    }
+    if(!exportMetadataDb.empty()) {
+        exit(Database::exportMetadata(dataPath(), exportMetadataDb));
+    }
+    if(opcodeStats) {
+        exit(Database::printOpcodeStatistics(dataPath(), romFile));
+    }
+#endif
     if(!dumpInterpreter.empty()) {
-        auto data = emu::Chip8VIP::getInterpreterCode(toUpper(dumpInterpreter));
+        // TODO: Fix this
+        /*
+        auto data = emu::CosmacVIP::getInterpreterCode(toUpper(dumpInterpreter));
         if(!data.empty()) {
             {
                 std::ofstream os(dumpInterpreter + ".ram", std::ios::binary);
-                os.write((const char*)data.data(), data.size());
+                os.write((const char*)data.data(), static_cast<ssize_t>(data.size()));
             }
             std::cout << "Written " << data.size() << " bytes to '" << dumpInterpreter << ".ram'." << std::endl;
             exit(0);
@@ -2882,7 +3569,9 @@ int main(int argc, char* argv[])
             std::cerr << "ERROR: Unknown interpreter '" << dumpInterpreter << "'." << std::endl;
             exit(1);
         }
+        */
     }
+#endif
     if(romFile.size() > 1) {
         std::cerr << "ERROR: only one ROM/source file supported" << std::endl;
         exit(1);
@@ -2895,48 +3584,33 @@ int main(int argc, char* argv[])
         std::cerr << "ERROR: random generator must be 'rand-lgc' or 'counting' and trace must be used." << std::endl;
         exit(1);
     }
-    if(execSpeed >= 0) {
-        options.instructionsPerFrame = execSpeed;
-    }
-    if(traceLines < 0 && !compareRun && !benchmark) {
-#else
-    ghc::CLI cli(argc, argv);
-    std::string presetName = "schipc";
-#ifdef WEB_WITH_FETCHING
-    std::string urlLoad;
-#endif
-    int64_t execSpeed = -1;
-    cli.option({"-p", "--preset"}, presetName, "Select CHIP-8 preset to use: chip-8, chip-10, chip-48, schip1.0, schip1.1, megachip8, xo-chip of vip-chip-8");
-    cli.option({"-s", "--exec-speed"}, execSpeed, "Set execution speed in instructions per frame (0-500000, 0: unlimited)");
-#ifdef WEB_WITH_FETCHING
-    cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
-#endif
-    try {
-        cli.parse();
-    }
-    catch(std::exception& ex)
-    {
-        std::cerr << "ERROR: " << ex.what() << std::endl;
-        exit(1);
-    }
-    if(!presetName.empty()) {
+    //if(execSpeed >= 0) {
+    //    options.instructionsPerFrame = execSpeed;
+    //}
+#ifndef PLATFORM_WEB
+    if (headless) {
+        if (romFile.empty() || traceLines >= 0 || compareRun || benchmark) {
+            std::cerr << "ERROR: --headless requires one ROM and cannot be combined with --trace, --compare, or --benchmark" << std::endl;
+            return 1;
+        }
         try {
-            preset = emu::Chip8EmulatorOptions::presetForName(presetName);
+            return runHeadless(romFile.front(), coreProperties, headlessOptions);
         }
-        catch(std::runtime_error e) {
-            std::cerr << "ERROR: " << e.what() << ", check help for supported presets." << std::endl;
-            exit(1);
+        catch (const std::exception& ex) {
+            std::cerr << "ERROR: " << ex.what() << std::endl;
+            return 1;
         }
     }
-    auto chip8options = emu::Chip8EmulatorOptions::optionsOfPreset(preset);
-    if(execSpeed >= 0) {
-        chip8options.instructionsPerFrame = execSpeed;
+    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified ||
+        !headlessOptions.dumpScreen.empty() || !headlessOptions.dumpState.empty()) {
+        std::cerr << "ERROR: headless run options require --headless" << std::endl;
+        return 1;
     }
-    {
 #endif
+    if(traceLines < 0 && !compareRun && !benchmark) {
 
 #ifndef PLATFORM_WEB
-        Cadmium cadmium(presetName.empty() ? nullptr : &options);
+        Cadmium cadmium(config, coreProperties);
         if (!romFile.empty()) {
             Cadmium::LoadOptions loadOpt = Cadmium::LoadOptions::None;
             if(startRom)
@@ -2951,18 +3625,9 @@ int main(int argc, char* argv[])
         }
 #else
         try {
-            Cadmium cadmium(presetName.empty() ? nullptr : &chip8options);
+            Cadmium cadmium(config, coreProperties);
 #ifdef WEB_WITH_FETCHING
             if(!urlLoad.empty()) {
-                auto ri = Librarian::findKnownRom(urlLoad);
-                if(ri && ri->url) {
-                    if(startsWith(ri->url, "@GH")) {
-                        urlLoad = "https://raw.githubusercontent.com" + std::string(ri->url + 3);
-                    }
-                    else {
-                        urlLoad = ri->url;
-                    }
-                }
                 emscripten_fetch_attr_t attr;
                 emscripten_fetch_attr_init(&attr);
                 strcpy(attr.requestMethod, "GET");
@@ -2972,7 +3637,9 @@ int main(int argc, char* argv[])
                 Cadmium::LoadOptions loadOpt = Cadmium::LoadOptions::None;
                 if(!presetName.empty())
                     loadOpt |= Cadmium::LoadOptions::DontChangeOptions;
-                loadBinaryCallback = [&](std::string filename, const uint8_t* data, size_t size) { cadmium.loadBinary(filename, data, size, loadOpt); };
+                loadBinaryCallback = [&](std::string filename, const uint8_t* data, size_t size) {
+                    cadmium.loadBinary(filename, {data, size}, loadOpt);
+                };
                 emscripten_fetch(&attr, urlLoad.c_str());
             }
 #endif
@@ -2983,9 +3650,9 @@ int main(int argc, char* argv[])
         }
 #endif
     }
-#ifndef PLATFORM_WEB
+#if !defined(PLATFORM_WEB)
     else {
-        emu::Chip8HeadlessHost host;
+        emu::HeadlessHost host;
         //chip8options.optHas16BitAddr = true;
         //chip8options.optWrapSprites = true;
         //chip8options.optAllowColors = true;
@@ -2993,84 +3660,93 @@ int main(int argc, char* argv[])
         //chip8options.optLoadStoreDontIncI = false;
         //chip8options.optDontResetVf = true;
         //chip8options.optInstantDxyn = true;
-        options.optExtendedVBlank = false;
-        if(!randomGen.empty()) {
-            options.advanced = nlohmann::ordered_json::object({
-                {"random", randomGen},
-                {"seed", randomSeed}
-            });
-            options.updatedAdvanced();
+        //options.optExtendedVBlank = false;
+        //if(!randomGen.empty()) {
+        //    options.advanced = nlohmann::ordered_json::object({
+        //        {"random", randomGen},
+        //        {"seed", randomSeed}
+        //    });
+        //    options.updatedAdvanced();
+        //}
+        host.updateEmulatorOptions(coreProperties);
+        auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(host.emuCore().executionUnit(0));
+        if (!chip8) {
+            std::cerr << "Selected core is not capable of CHIP-8 control." << std::endl;
+            exit(1);
         }
-        host.updateEmulatorOptions(options);
-        auto& chip8 = host.chipEmu();
-        std::clog << "Engine1: " << chip8.name() << ", active variant: " << emu::Chip8EmulatorOptions::nameOfPreset(options.behaviorBase) << std::endl;
+        std::clog << "Engine:  " << chip8->name() << ", active variant: " << presetName << std::endl;
         octo_emulator octo;
         octo_options oopt{};
         oopt.q_clip = 1;
         //oopt.q_loadstore = 1;
 
-        chip8.reset();
+        chip8->reset();
         if(!romFile.empty()) {
             int size = 0;
             uint8_t* data = LoadFileData(romFile.front().c_str(), &size);
-            if (size < chip8.memSize() - 512) {
-                std::memcpy(chip8.memory() + 512, data, size);
+            if (size < chip8->memSize() - 512) {
+                std::memcpy(chip8->memory() + 512, data, size);
             }
             UnloadFileData(data);
             //chip8.loadRom(romFile.c_str());
         }
-        octo_emulator_init(&octo, (char*)chip8.memory() + 512, 4096 - 512, &oopt, nullptr);
         int64_t i = 0;
         if(compareRun) {
+            octo_emulator_init(&octo, (char*)chip8->memory() + 512, 4096 - 512, &oopt, nullptr);
             std::clog << "Engine2: C-Octo" << std::endl;
             do {
                 if ((i & 7) == 0) {
-                    chip8.handleTimer();
+                    chip8->handleTimer();
                     if (octo.dt)
                         --octo.dt;
                     if (octo.st)
                         --octo.st;
                 }
-                chip8.executeInstruction();
+                chip8->executeInstruction();
                 octo_emulator_instruction(&octo);
                 if (!(i % 500000)) {
-                    std::clog << i << ": " << chip8.dumpStateLine() << std::endl;
+                    std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
                     std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
                 }
                 if(!(i % 500000)) {
-                    std::cout << chip8EmuScreen(chip8);
+                    std::cout << chip8EmuScreen(host.emuCore());
                 }
                 ++i;
-            } while ((i & 0xfff) || (chip8.dumpStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(chip8) == octoScreen(octo)));
-            std::clog << i << ": " << chip8.dumpStateLine() << std::endl;
+            } while ((i & 0xfff) || (chip8->dumpStateLine() == dumOctoStateLine(&octo) && chip8EmuScreen(host.emuCore()) == octoScreen(octo)));
+            std::clog << i << ": " << chip8->dumpStateLine() << std::endl;
             std::clog << i << "| " << dumOctoStateLine(&octo) << std::endl;
-            std::cerr << chip8EmuScreen(chip8);
+            std::cerr << chip8EmuScreen(host.emuCore());
             std::cerr << "---" << std::endl;
             std::cerr << octoScreen(octo) << std::endl;
         }
         else if(benchmark > 0) {
             uint64_t instructions = benchmark;
-            std::cout << "Executing benchmark (" << options.instructionsPerFrame << "ipf)..." << std::endl;
-            auto startChip8 = std::chrono::steady_clock::now();
-            auto ticks = uint64_t(instructions / options.instructionsPerFrame);
-            for(i = 0; i < ticks; ++i) {
-                chip8.tick(options.instructionsPerFrame);
+            int ipf = 42;
+            if(coreProperties.contains(emu::propid::INSTRUCTIONS_PER_FRAME)) {
+                ipf = coreProperties.at(emu::propid::INSTRUCTIONS_PER_FRAME).getInt();
             }
-            chip8.handleTimer();
+            std::cout << "Executing benchmark (" << /*chip8->options.instructionsPerFrame*/ ipf << "ipf)..." << std::endl;
+            auto startChip8 = std::chrono::steady_clock::now();
+            auto ticks = uint64_t(instructions / ipf);
+            for(i = 0; i < ticks; ++i) {
+                host.emuCore().executeFrame();
+            }
             int64_t lastCycles = -1;
             int64_t cycles = 0;
-            while((cycles = chip8.getCycles()) < instructions && cycles != lastCycles) {
-                chip8.executeInstruction();
+            while((cycles = chip8->cycles()) < instructions && cycles != lastCycles) {
+                chip8->executeInstruction();
                 lastCycles = cycles;
             }
             auto durationChip8 = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startChip8);
             if(screenDump) {
-                std::cout << chip8EmuScreenANSI(chip8);
+                std::cout << chip8EmuScreenANSI(host.emuCore());
             }
-            std::cout << "Executed instructions: " << chip8.getCycles() << std::endl;
-            std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8.getCycles())/durationChip8.count()) << "MIPS" << std::endl;
+            std::cout << "Executed instructions: " << chip8->cycles() << std::endl;
+            std::cout << "Executed frames: " << chip8->frames() << std::endl;
+            std::cout << "Cadmium: " << durationChip8.count() << "us, " << int(double(chip8->cycles())/durationChip8.count()) << "MIPS" << std::endl;
         }
         else if(traceLines >= 0) {
+#if 0
             chip8.memory()[0x1ff] = testSuiteMenuVal & 0xff;
             size_t waits = 0;
             do {
@@ -3094,6 +3770,7 @@ int main(int argc, char* argv[])
             if(screenDump) {
                 std::cout << chip8EmuScreenANSI(chip8);
             }
+#endif
         }
     }
 #endif

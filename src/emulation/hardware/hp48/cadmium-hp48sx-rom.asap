@@ -1,0 +1,745 @@
+; Cadmium HP-48SX replacement ROM for the CHIP-8 interpreters
+;
+; Copyright (c) 2026, Steffen Schuemann <s.schuemann@pobox.com>
+; Distributed under the MIT license, see the LICENSE file of Cadmium.
+;
+; A clean-room ROM for Cadmium's HP-48SX core, written from
+; docs/HP48-Replacement-ROM-Spec.md and the black-box test hp48-rom-conformance.
+; It is not a calculator: it boots to the idle state the loader expects, enters a
+; code object on EVAL and provides the ROM routines and the TIMER1 interrupt the
+; five HP-48 CHIP-8 interpreters use, with the same register, RAM and cycle effects.
+;
+; The build assembles it with Cadmium's AsaCpp into a 256 KB image ("#xxxxx:" places
+; code) and compiles it in as the resource cadmium-hp48sx-rom. The HP-48SX core uses
+; it when HP's ROM (sxrom-rev-e) isn't available. By hand:
+;     hp48romasm cadmium-hp48sx-rom.asap cadmium-hp48sx-rom.bin
+;
+; Cycle counts in the comments are those of Cadmium's SaturnL2 model: fetch costs one
+; cycle per opcode nibble, plus the instruction's own cost. Routines assume P = 0 and
+; HEX mode, as the interpreters call them.
+; REVIEW: P = 0 and HEX mode on entry of the routines are assumptions, not in the spec.
+
+; ---------------------------------------------------------------------------------------
+; Addresses
+; ---------------------------------------------------------------------------------------
+
+; RPL words in RAM (spec section 5.2)
+        TEMPTOP=#7056F
+        RSKTOP=#70574
+        DSKTOP=#70579
+        EDITLINE=#7057E
+        SAVED_D0=#705B0
+        AVMEM=#7066E
+        MENU_GROB_PTR=#70551
+        STACK_GROB_PTR=#7055B
+        KEY_FLUSH=#704EA
+
+; boot values
+        BOOT_TEMPTOP=#71828
+        BOOT_RSKTOP=#71850
+        BOOT_DSKTOP=#7FEAE
+        BOOT_EDITLINE=#7FEB3
+        BOOT_AVMEM=#02E12
+        MENU_GROB=#70844
+        STACK_GROB=#70968
+
+; the entry frame (spec section 7)
+        ENTRY_D1=#7FE95
+        ENTRY_EDITLINE=#7FE9F
+        ENTRY_GAP=1140              ; TEMPTOP = code object end + 1141
+        ENTRY_RETURN_STACK=35
+
+; object prologs
+        CODE_PROLOG=#02DCC
+        STRING_PROLOG=#02A2C
+        GROB_PROLOG=#02B1E
+        SYSTEM_BINARY_PROLOG=#02911
+
+; HDW registers
+        HDW=#00100
+        CRC=#00104
+        TIMER1_CONTROL=#0012E
+        TIMER2_CONTROL=#0012F
+        TIMER1=#00137
+        TIMER2=#00138
+
+; private RAM of this ROM, below the system words the interpreters use
+        SV_X=#70000                 ; interrupt: C with D0 in its A field
+        SV_A=#70010                 ; interrupt: A
+        SV_S=#70020                 ; interrupt: P in nibble 5, DEC mode flag in nibble 1
+
+; ---------------------------------------------------------------------------------------
+; Reset and interrupt vector
+; ---------------------------------------------------------------------------------------
+
+#00000:
+        jump.a  boot
+
+; The TIMER1 interrupt (spec section 10). Interrupts can only be taken while the CPU's
+; interrupt enable is on, which RTI sets; the handler sets ST bit 14 first.
+; Short path (ST bit 15 clear): 23 cycles, 28 with carry set, returns with RET so the
+; interrupts stay disabled. Full path: both carry cases reach irq_common at +39 with
+; ST bit 14 holding the interrupted carry.
+; REVIEW: the full path ends with ST bit 14 clear, so it assumes bit 14 was clear
+; whenever bit 15 is set (the HP-48 convention, true for the five interpreters).
+
+#0000F:
+        setb    #e,st               ; 4
+        brcs    irq_c               ; 3, 10 taken
+        brbs    #f,st,irq_full      ; 7, 14 taken
+        ret                         ; 9: short path, carry clear (23)
+irq_c:  retbc   #f,st               ; 14 returning: short path, carry set (28), else 6
+        nop3                        ; 8
+        jump.3  irq_common          ; 11: at +39, ST bit 14 set (carry was set)
+irq_full:
+        clrb    #e,st               ; 4
+        jump.4  irq_common          ; 14: at +39, ST bit 14 clear (carry was clear)
+
+; #00100-#0013F is covered by the HDW registers, code continues after them.
+
+#00140:
+; The full path. Times are cycles after the interrupt was taken, at the end of each
+; instruction. Saves A, C, D0, P and the mode, switches TIMER1 off, then reads TIMER2's
+; low nibble at +1508 and polls it every 32 cycles from +1534 until it has counted down
+; by 5.
+; REVIEW: the spec has the reference read at +1509. At +1509 a decrement 116 cycles
+; after the interrupt is already seen, the conformance test's cost model wants it at
+; 116 not to be seen, which +1508 gives. It resumes the interrupted code 3634 cycles after the matching poll (3633 with
+; carry set). It uses one return stack level (C[A]).
+irq_common:
+        push.a  c                   ; 8     47
+        swap.a  c,d0                ; 8     55: C[A] = D0
+        move.5  SV_X,d0             ; 7     62
+        move.w  c,@d0               ; 32    94
+        add.a   16,d0               ; 7     101
+        move.w  a,@d0               ; 32    133
+        move.1  p,c,5               ; 6     139
+        move.1  0,p                 ; 2     141
+        move.p2 #09,c               ; 4     145
+        inc.a   c                   ; 7     152: C[1] = 1 in DEC mode
+        sethex                      ; 3     155
+        add.a   16,d0               ; 7     162
+        move.w  c,@d0               ; 32    194
+        move.5  TIMER1_CONTROL,d0   ; 7     201
+        move.p1 0,c                 ; 3     204
+        move.1  c,@d0               ; 17    221: no further TIMER1 interrupts
+        move.5  TIMER2,d0           ; 7     228
+        move.p1 5,c                 ; 3     231
+        move.p5 #00032,a            ; 10, then 25 per loop
+irq_wait1:
+        dec.a   a
+        brnz.a  a,irq_wait1         ;       1484
+        move.1  0,p                 ; 2     1486
+        move.1  0,p                 ; 2     1488
+        move.1  0,p                 ; 2     1490
+        move.p  @d0,a               ; 18    1508: reference read
+        sub.p   c,a                 ; 4     1512: the value after five decrements
+        move.1  0,p                 ; 2     1514
+        move.1  0,p                 ; 2     1516
+irq_poll:
+        move.p  @d0,c               ; 18    1534 + 32 i
+        brne.p  c,a,irq_poll        ; 7, 14 taken
+        move.p5 #00089,a            ; 10, then 25 per loop
+irq_wait2:
+        dec.a   a
+        brnz.a  a,irq_wait2         ;       +3435 after the poll
+        nop3                        ; 8
+        sethex                      ; 3
+        move.1  0,p                 ; 2     +3448
+        move.5  SV_S,d0             ; 7
+        move.w  @d0,c               ; 33    +3490
+        brbc    4,c,irq_hex         ; 7, 14 taken
+        setdec                      ; 3
+        move.1  0,p                 ; 2
+        move.1  0,p                 ; 2     +3504
+irq_hex:
+        move.1  c,5,p               ; 6     +3510
+        move.5  SV_A,d0             ; 7
+        move.w  @d0,a               ; 33    +3550
+        move.5  SV_X,d0             ; 7     +3557
+        brbs    #e,st,irq_carry     ; 7, 14 taken: carry = ST bit 14
+        nop3                        ; 8     +3572, +3571 with carry set
+irq_carry:
+        clrb    #e,st               ; 4
+        move.w  @d0,c               ; 33
+        move.a  c,d0                ; 8
+        pop.a   c                   ; 8
+        reti                        ; 9     +3634
+
+; ---------------------------------------------------------------------------------------
+; ROM routines at the interpreters' addresses (spec section 8)
+; ---------------------------------------------------------------------------------------
+
+; flush_kbd: 0 to #704EA-#704EE, D1 = #704EA, C[A] = 0. 72 cycles.
+#00D57:
+flush_kbd:
+        move.5  KEY_FLUSH,d1        ; 7
+        clr.a   c                   ; 7
+        move.a  c,@d1               ; 17
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        ret                         ; 9
+
+; do_in_c: C[0-3] = IN. 16 cycles.
+#01160:
+do_in_c:
+        in.4    c                   ; 7
+        ret                         ; 9
+
+; push_r0: pushes R0[A] as a system binary and leaves like the RPL exit.
+#0357F:
+push_r0:
+        call.a  push_r0_si
+        jump.a  rpl_exit
+
+; Moves the return stack area [TEMPTOP, RSKTOP) up by s nibbles, from the top in chunks
+; of 16. In: D0 = RSKTOP - 16, D1 = RSKTOP - 16 + s, C[A] = RSKTOP - TEMPTOP, B[A] = s,
+; TEMPTOP still the old value. Uses A and C.
+macro move_rs
+        sub.a   16,c
+        brcs    .small
+.chunk:
+        move.w  @d0,a
+        move.w  a,@d1
+        brz.a   c,.done
+        sub.a   16,c
+        brcs    .last
+        sub.a   16,d0
+        sub.a   16,d1
+        jump.3  .chunk
+.last:
+        move.5  TEMPTOP,d0          ; the lowest chunk starts at TEMPTOP
+        move.a  @d0,a
+        move.a  a,d0
+        move.a  a,c
+        add.a   b,c
+        move.a  c,d1
+        move.w  @d0,a
+        move.w  a,@d1
+        jump.3  .done
+.small:
+        add.a   16,c                ; fewer than 16 nibbles, one by one
+        brz.a   c,.done
+        add.a   15,d0
+        add.a   15,d1
+.nibble:
+        move.1  @d0,a
+        move.1  a,@d1
+        sub.a   1,d0
+        sub.a   1,d1
+        dec.a   c
+        brnz.a  c,.nibble
+.done:
+endmacro
+
+; C[A] = D[A] / 5 for D[A] = X < #10000 in constant time, as
+; (X - ceil(3 X * #1111 / 2^16)) / 4 rounded down (= X * #CCCD / 2^18). Uses A and C.
+macro div5
+        clr.w   c
+        move.a  d,c
+        move.w  c,a
+        add.w   a,a
+        add.w   c,a                 ; 3 X
+        move.w  a,c
+        sln.w   a
+        add.w   c,a
+        sln.w   a
+        add.w   c,a
+        sln.w   a
+        add.w   c,a                 ; Z = 3 X * #1111
+        clr.w   c
+        move.p4 #FFFF,c
+        add.w   c,a
+        srn.w   a
+        srn.w   a
+        srn.w   a
+        srn.w   a                   ; ceil(Z / 2^16)
+        move.a  d,c
+        sub.a   a,c
+        srb.a   c
+        srb.a   c
+endmacro
+
+; alloc_str: allocates a string of C[A] = n data nibbles at TEMPTOP + 1, allocation
+; s = n + 16. Returns R0[A] = object, D0 = object + 10, A = C + 5, B[A] = s,
+; C[0-14] = DSKTOP, D[A] = DSKTOP - RSKTOP, D1 = DSKTOP, carry clear. 1336 cycles.
+#05B70:
+as_full:
+        jump.a  rpl_exit            ; REVIEW: out of memory just ends idle, no error message
+
+#05B7D:
+alloc_str:
+        move.w  c,r0                ; R0 = input C
+        move.a  c,b
+        add.a   16,b                ; B[A] = s
+        move.5  TEMPTOP,d0
+        move.a  @d0,a               ; A = T
+        move.5  RSKTOP,d0
+        move.a  @d0,c
+        move.a  c,d                 ; D = R
+        move.5  DSKTOP,d0
+        move.a  @d0,c               ; C = DSKTOP
+        sub.a   d,c
+        sub.a   b,c                 ; C = X = DSKTOP - R - s
+        brcs    as_full
+        swap.a  c,d                 ; D = X, C = R
+        move.a  c,d0
+        sub.a   16,d0               ; D0 = R - 16
+        add.a   b,c
+        move.a  c,d1
+        sub.a   16,d1               ; D1 = R + s - 16
+        sub.a   b,c
+        sub.a   a,c                 ; C = R - T
+        move_rs
+        move.5  TEMPTOP,d0
+        move.a  @d0,c
+        inc.a   c
+        move.a  c,r0                ; R0[A] = object = T + 1
+        add.a   b,c
+        dec.a   c
+        move.a  c,@d0               ; TEMPTOP = T + s
+        sub.a   5,c
+        move.a  c,d0
+        move.a  b,c
+        move.a  c,@d0               ; allocation size in the last 5 nibbles
+        move.a  r0,c
+        move.a  c,d0
+        move.p5 STRING_PROLOG,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.a  b,c
+        sub.a   11,c
+        move.a  c,@d0               ; length n + 5
+        add.a   5,d0                ; D0 = object + 10
+        move.5  DSKTOP,d1
+        move.a  @d1,c
+        sub.a   d,c
+        move.5  RSKTOP,d1
+        move.a  c,@d1               ; RSKTOP += s
+        div5
+        move.5  AVMEM,d1
+        move.a  c,@d1               ; AVMEM = (DSKTOP - RSKTOP) / 5
+        move.w  r0,a
+        move.w  a,c
+        clr.m   c                   ; keeps C[15]
+        move.5  DSKTOP,d1
+        move.a  @d1,c
+        move.a  c,d1                ; C[0-14] = D1 = DSKTOP
+        move.a  b,a
+        sub.a   11,a                ; A = input C + 5
+        nop4                        ; 11: to 1336 cycles
+        retclrc
+
+; push_r0_shortint: pushes R0[A] as a system binary (allocation 16) into the slot below
+; DSKTOP, then loads the RPL registers: D1 = slot, B[A] = RSKTOP, D[A] = (D1 - B) / 5,
+; D0 = saved D0, C[A] = D0, A[A] = the new object, carry clear. A and C above the A
+; field are not kept. Also writes DSKTOP and AVMEM. 1308 cycles.
+#06530:
+ps_full:
+        jump.a  rpl_exit
+
+#06537:
+push_r0_si:
+        move.5  TEMPTOP,d0
+        move.a  @d0,a               ; A = T
+        move.5  RSKTOP,d0
+        move.a  @d0,c
+        move.a  c,d                 ; D = R
+        move.5  DSKTOP,d0
+        move.a  @d0,c
+        sub.a   d,c
+        sub.a   16,c
+        brcs    ps_full
+        sub.a   5,c                 ; C = X = DSKTOP - 5 - (R + 16)
+        brcs    ps_full
+        swap.a  c,d                 ; D = X, C = R
+        clr.a   b
+        add.a   16,b                ; B[A] = s = 16
+        move.a  c,d0
+        sub.a   16,d0               ; D0 = R - 16
+        move.a  c,d1                ; D1 = R + 16 - 16
+        sub.a   a,c                 ; C = R - T
+        move_rs
+        move.5  TEMPTOP,d0
+        move.a  @d0,c
+        inc.a   c
+        move.a  c,a                 ; A = object = T + 1
+        add.a   15,c
+        move.a  c,@d0               ; TEMPTOP = T + 16
+        sub.a   5,c
+        move.a  c,d0
+        move.a  b,c
+        move.a  c,@d0               ; allocation size
+        move.a  a,d0
+        move.p5 SYSTEM_BINARY_PROLOG,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.a  r0,c
+        move.a  c,@d0               ; value R0[A]
+        move.5  DSKTOP,d1
+        move.a  @d1,c
+        sub.a   5,c
+        move.a  c,@d1               ; DSKTOP -= 5
+        move.a  c,d1                ; D1 = the new slot
+        sub.a   d,c
+        move.a  c,b                 ; B[A] = RSKTOP + 16
+        move.a  a,c
+        move.a  c,@d1               ; level 1 = the system binary
+        move.5  RSKTOP,d0
+        move.a  b,c
+        move.a  c,@d0
+        div5
+        move.a  c,d                 ; D[A] = (D1 - B) / 5
+        move.5  AVMEM,d0
+        move.a  c,@d0
+        move.5  SAVED_D0,d0
+        move.a  @d0,c
+        move.a  c,d0
+        nop4                        ; 11
+        move.a  @d1,a               ; 18: A[A] = the new object, 1308 cycles
+        retclrc
+
+; SAVPTR: D0 -> #705B0, D1 -> DSKTOP, B[A] -> RSKTOP, D[A] -> AVMEM. Returns with
+; D0 = AVMEM and C[A] = D[A]. 143 cycles.
+#0679B:
+save_regs:
+        swap.a  c,d0                ; 8
+        move.5  SAVED_D0,d0         ; 7
+        move.a  c,@d0               ; 17
+        swap.a  c,d1                ; 8
+        move.5  DSKTOP,d0           ; 7
+        move.a  c,@d0               ; 17
+        swap.a  c,d1                ; 8
+        move.5  RSKTOP,d0           ; 7
+        move.a  b,c                 ; 7
+        move.a  c,@d0               ; 17
+        move.5  AVMEM,d0            ; 7
+        move.a  d,c                 ; 7
+        move.a  c,@d0               ; 17
+        ret                         ; 9
+
+; GETPTR: D1 <- DSKTOP, B[A] <- RSKTOP, D[A] <- AVMEM, D0 <- #705B0. Returns with
+; C[A] = D0 and carry clear. 139 cycles.
+#067D2:
+rest_regs:
+        move.5  DSKTOP,d0           ; 7
+        move.a  @d0,c               ; 18
+        move.a  c,d1                ; 8
+        move.5  RSKTOP,d0           ; 7
+        move.a  @d0,c               ; 18
+        move.a  c,b                 ; 7
+        move.5  AVMEM,d0            ; 7
+        move.a  @d0,c               ; 18
+        move.a  c,d                 ; 7
+        move.5  SAVED_D0,d0         ; 7
+        move.a  @d0,c               ; 18
+        move.a  c,d0                ; 8
+        retclrc                     ; 9
+
+; check_1: ends idle if the stack frame is empty, else A[A] = R0[A] = level 1 and
+; C[A] = D1. 334 cycles.
+#18ABF:
+check_1:
+        swap.a  c,d0                ; 8
+        move.a  c,r0                ; 11: keeps D0
+        move.5  EDITLINE,d0         ; 7
+        move.a  @d0,a               ; 18
+        sub.a   5,a                 ; 10: the address of level 1 of an empty frame
+        swap.a  c,d1                ; 8
+        breq.a  c,a,ck_empty        ; 11
+        swap.a  c,d1                ; 8
+        move.a  c,d0                ; 8
+        move.a  @d1,a               ; 18
+        move.a  a,r0                ; 11
+        swap.a  c,d1                ; 8
+        move.a  c,d1                ; 8
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop4                        ; 11
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        nop3                        ; 8
+        retclrc                     ; 9: 334 cycles
+ck_empty:
+        jump.a  rpl_exit            ; REVIEW: an empty stack just ends idle, no error message
+
+; ---------------------------------------------------------------------------------------
+; Boot, idle and EVAL
+; ---------------------------------------------------------------------------------------
+
+; Boot, idle, EVAL and the exit lie in #20000-#2FFFF: while the CPU runs here, Cadmium's
+; HP-48SX core shows its own rendering of the RPL stack instead of the LCD, as this ROM
+; doesn't draw one (src/emulation/hp48sx.cpp).
+#20000:
+boot:
+        sethex
+        move.1  0,p
+        clr.x   st
+        clrb    #f,st
+        clrb    #e,st
+        clrb    #d,st
+        clrb    #c,st
+        intoff
+        clr.a   c
+        out.x   c
+        reset                       ; unconfigure all modules
+        move.p5 HDW,c
+        config                      ; HDW at #00100
+        move.p5 #F0000,c
+        config                      ; RAM size #10000 nibbles
+        move.p5 #70000,c
+        config                      ; RAM at #70000
+        move.5  #70000,d0
+        clr.w   c
+        move.p5 #01000,a
+clear_ram:
+        move.w  c,@d0
+        add.a   16,d0
+        dec.a   a
+        brnz.a  a,clear_ram
+
+; HDW registers as measured at the entry (spec section 7.3), timers last
+        move.5  HDW,d0
+        move.p3 #0B8,c
+        move.3  c,@d0               ; display on, contrast #0B
+        move.5  #00108,d0
+        move.p8 #5C690040,c
+        move.8  c,@d0
+        move.5  #0011E,d0
+        move.p2 #73,c
+        move.2  c,@d0
+        move.5  #00120,d0
+        move.p5 STACK_GROB+20,c
+        move.5  c,@d0               ; display start
+        move.5  #00125,d0
+        move.p5 #B7000,c
+        move.5  c,@d0               ; line offset 0, line counter #37
+        move.5  #00130,d0
+        move.p5 MENU_GROB+20,c
+        move.5  c,@d0               ; menu start
+        move.5  TIMER1_CONTROL,d0
+        move.p1 0,c
+        move.1  c,@d0
+        move.5  TIMER2+1,d0
+        move.p7 #01C1FC2,c
+        move.7  c,@d0
+        move.5  TIMER2,d0
+        move.p1 9,c
+        move.1  c,@d0
+        move.5  TIMER2_CONTROL,d0
+        move.p1 7,c
+        move.1  c,@d0               ; TIMER2 running
+
+; RPL words, stack and grobs
+        move.5  TEMPTOP,d0
+        move.p5 BOOT_TEMPTOP,c
+        move.a  c,@d0
+        move.5  RSKTOP,d0
+        move.p5 BOOT_RSKTOP,c
+        move.a  c,@d0
+        move.5  DSKTOP,d0
+        move.p5 BOOT_DSKTOP,c
+        move.a  c,@d0
+        move.5  EDITLINE,d0
+        move.p5 BOOT_EDITLINE,c
+        move.a  c,@d0
+        move.5  AVMEM,d0
+        move.p5 BOOT_AVMEM,c
+        move.a  c,@d0
+        move.5  SAVED_D0,d0
+        move.p5 rpl_cont,c
+        move.a  c,@d0
+        move.5  MENU_GROB_PTR,d0
+        move.p5 MENU_GROB,c
+        move.a  c,@d0
+        move.5  STACK_GROB_PTR,d0
+        move.p5 STACK_GROB,c
+        move.a  c,@d0
+        move.5  MENU_GROB,d0
+        move.p5 GROB_PROLOG,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 #0011F,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 8,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 131,c
+        move.a  c,@d0
+        move.5  STACK_GROB,d0
+        move.p5 GROB_PROLOG,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 #0077F,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 56,c
+        move.a  c,@d0
+        add.a   5,d0
+        move.p5 131,c
+        move.a  c,@d0
+
+; Idle: wait for EVAL (keyboard row 6, IN bit 3) to be pressed and released. Other keys
+; are ignored. Interrupts are not needed here, the first key or ON interrupt takes the
+; short path and leaves them disabled.
+idle:
+        sethex
+        move.1  0,p
+        intoff
+        move.p3 #040,c
+        out.x   c
+wait_press:
+        in.4    a
+        brbc    3,a,wait_press
+wait_release:
+        in.4    a
+        brbs    3,a,wait_release
+
+; EVAL: only a code object on level 1 is evaluated.
+        move.5  DSKTOP,d0
+        move.a  @d0,c
+        move.a  c,d1                ; D1 = DSKTOP
+        move.5  EDITLINE,d0
+        move.a  @d0,a
+        sub.a   c,a                 ; A = EDITLINE - DSKTOP
+        move.p5 10,c
+        brgt.a  c,a,idle            ; depth 0
+        move.a  @d1,c
+        move.a  c,r0                ; R0[A] = the code object
+        move.a  c,d0
+        move.a  @d0,a
+        move.p5 CODE_PROLOG,c
+        brne.a  c,a,idle
+        pop.a   c                   ; empty the return stack
+        pop.a   c
+        pop.a   c
+        pop.a   c
+        pop.a   c
+        pop.a   c
+        pop.a   c
+        pop.a   c
+
+; The level 2 object becomes level 1 of a new frame (EDITLINE = D1 + 10).
+        add.a   5,d1
+        move.a  @d1,c               ; C = level 2, the program string
+        move.5  ENTRY_D1,d1
+        move.a  c,@d1
+        add.a   5,d1
+        clr.a   c
+        move.a  c,@d1               ; the frame's bottom slot
+        move.5  EDITLINE,d0
+        move.p5 ENTRY_EDITLINE,c
+        move.a  c,@d0
+        move.5  DSKTOP,d0
+        move.p5 ENTRY_D1,c
+        move.a  c,@d0
+        move.5  SAVED_D0,d0
+        move.p5 rpl_cont,c
+        move.a  c,@d0
+
+; TEMPTOP = code object end + 1141, then 35 nibbles of return stack
+; REVIEW: the 35 nibbles of return stack are zeros (the spec leaves their content open).
+        move.a  r0,c
+        add.a   5,c
+        move.a  c,d0
+        move.a  @d0,a
+        add.a   a,c                 ; C = object + 5 + length = object end + 1
+        move.p5 ENTRY_GAP,a
+        add.a   a,c
+        move.5  TEMPTOP,d0
+        move.a  c,@d0
+        move.a  c,d0
+        clr.w   a
+        move.w  a,@d0
+        add.a   16,d0
+        move.w  a,@d0
+        add.a   16,d0
+        move.3  a,@d0
+        move.a  c,b
+        move.p5 ENTRY_RETURN_STACK,a
+        add.a   a,b                 ; B[A] = TEMPTOP + 35
+        move.5  RSKTOP,d0
+        move.a  b,c
+        move.a  c,@d0
+        move.5  ENTRY_D1,d1
+        move.p5 ENTRY_D1,c
+        sub.a   b,c
+        move.a  c,d
+        div5
+        move.a  c,d                 ; D[A] = (D1 - B) / 5
+        move.5  AVMEM,d0
+        move.a  c,@d0
+        move.a  r0,a                ; A[A] = the code object
+        move.p3 #2B0,c
+        move.x  c,st
+        setb    #f,st
+        clrb    #e,st
+        setb    #d,st
+        clrb    #c,st               ; ST = #A2B0
+        move.p3 #1FF,c
+        out.x   c
+        inton
+
+; Entry timing as the original's (spec section 7.4, level B): TIMER1 = 0 written 65638
+; cycles before the entry, TIMER2 = #01C1FC29 written 46 cycles before it.
+        move.5  TIMER1,d0
+        move.p1 0,c
+        move.1  c,@d0               ; 17: the TIMER1 period starts
+        move.5  TIMER1_CONTROL,d0   ; 7
+        move.p1 6,c                 ; 3
+        move.1  c,@d0               ; 17: wake and interrupt
+        call.3  enable_irq          ; 12 + 9: interrupts on
+        move.p5 #00A3B,c            ; 25 per loop
+entry_wait:
+        dec.a   c
+        brnz.a  c,entry_wait
+        sethex                      ; 3
+        move.5  TIMER2+1,d0         ; 7
+        move.p7 #01C1FC2,c          ; 9
+        move.7  c,@d0               ; 23
+        move.5  TIMER2,d0           ; 7
+        move.p1 9,c                 ; 3
+        move.1  c,@d0               ; 17: the TIMER2 period starts
+        move.5  rpl_cont,d0         ; 7
+        move.a  a,c                 ; 7
+        add.a   10,c                ; 10: clears carry
+        move.1  0,p                 ; 2
+        move.1  0,p                 ; 2
+        move.1  0,p                 ; 2
+        jump.a  c                   ; 16: enter the code body 46 cycles later
+
+enable_irq:
+        reti
+
+; The RPL continuation: D0 at the entry points to rpl_cont, the interpreters' exit does
+; A = [D0], D0 += 5, PC = [A], which lands at rpl_exit.
+rpl_cont:
+        data.a  rpl_exit_obj
+rpl_exit_obj:
+        data.a  rpl_exit
+
+; Program end and errors: back to idle, the stack as it was left.
+rpl_exit:
+        sethex
+        move.1  0,p
+        clrb    #f,st
+        move.5  TIMER1_CONTROL,d0
+        move.p1 0,c
+        move.1  c,@d0
+        jump.a  idle

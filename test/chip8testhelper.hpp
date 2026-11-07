@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// tests/chip8testhelper.hpp
+// test/chip8testhelper.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include "chip8headless.hpp"
 #include <iostream>
 
 struct Chip8State
@@ -41,7 +42,7 @@ struct Chip8State
     inline static std::string post;
 };
 
-inline void CheckState(const std::unique_ptr<emu::IChip8Emulator>& chip8, const Chip8State& expected, std::string comment = "")
+inline void CheckState(emu::IChip8Emulator* chip8, const Chip8State& expected, std::string comment = "")
 {
     //std::cerr << "MC: " << chip8->getMachineCycles() << std::endl;
     std::string message = (comment.empty()?"":"\nAfter step #" + std::to_string(Chip8State::stepCount) + "\nCOMMENT: " + comment) + "\nPRE:  " + Chip8State::pre + "\nPOST: " + Chip8State::post;
@@ -71,11 +72,11 @@ inline void CheckState(const std::unique_ptr<emu::IChip8Emulator>& chip8, const 
 
     for (int i = 0; i < expected.sp; ++i) {
         if(expected.stack[i] >= 0)
-            CHECK(expected.stack[i] == chip8->getStackElements()[i]);
+            CHECK(expected.stack[i] == chip8->stackElement(i));
     }
 }
 
-inline void write(const std::unique_ptr<emu::IChip8Emulator>& chip8, uint32_t address, std::initializer_list<uint16_t> values)
+inline void write(emu::IChip8Emulator* chip8, uint32_t address, std::initializer_list<uint16_t> values)
 {
     size_t offset = 0;
     for(auto val : values) {
@@ -85,7 +86,7 @@ inline void write(const std::unique_ptr<emu::IChip8Emulator>& chip8, uint32_t ad
     Chip8State::stepCount = 0;
 }
 
-inline void step(const std::unique_ptr<emu::IChip8Emulator>& chip8)
+inline void step(emu::IChip8Emulator* chip8)
 {
     Chip8State::pre = chip8->dumpStateLine();
     chip8->setExecMode(emu::IChip8Emulator::eRUNNING);
@@ -93,4 +94,3 @@ inline void step(const std::unique_ptr<emu::IChip8Emulator>& chip8)
     Chip8State::stepCount++;
     Chip8State::post = chip8->dumpStateLine();
 }
-

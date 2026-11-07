@@ -48,7 +48,7 @@
     v0 >>= v1
     if v0 == 1 then jump no_sc_support
     # 3. SCHIP uses Bxnn, instead of Bnnn so SCHIP will
-    # jump to xnn + v2, while MegaCHip8 will jump to nnn + v0
+    # jump to xnn + v2, while MegaChip8 will jump to nnn + v0
     v0 := 0
     v2 := 2
     jump0 has_bnnn

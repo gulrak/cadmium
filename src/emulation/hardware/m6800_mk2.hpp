@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/m6800.hpp
+// src/emulation/hardware/m6800_mk2.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -441,9 +441,8 @@ public:
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC()))
-                _execMode = ePAUSED;
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
         }
 #endif
     }

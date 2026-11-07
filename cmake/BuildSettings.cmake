@@ -1,15 +1,25 @@
 if(NOT DEFINED CMAKE_CXX_STANDARD)
-    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD 20)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS ON)
+    add_compile_definitions(bit_CONFIG_SELECT_BIT=bit_BIT_NONSTD)
 endif()
 
-add_compile_definitions(USE_GHC_SPAN)
 # add_compile_options(-fsanitize=address)
 # add_link_options(-fsanitize=address)
 
 math(EXPR PROJECT_VERSION_DECIMAL "${PROJECT_VERSION_MAJOR} * 10000 + (${PROJECT_VERSION_MINOR} * 100) + ${PROJECT_VERSION_PATCH}")
 math(EXPR PROJECT_IS_WIP "${PROJECT_VERSION_PATCH} & 1")
+
+find_package(Git)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
 
 set(DEPENDENCY_FOLDER "external")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -37,9 +47,6 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type, available options: Debug Release RelWithDebInfo MinSizeRel" FORCE)
 endif()
 
-if(APPLE AND CMAKE_BUILD_TYPE EQUAL "Release")
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Force universal binary 2 builds" FORCE)
-endif()
 if(APPLE AND CMAKE_BUILD_TYPE EQUAL "Debug")
     execute_process(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
     set(CMAKE_OSX_ARCHITECTURES "${ARCHITECTURE}" CACHE STRING "Force universal binary 2 builds" FORCE)
@@ -49,81 +56,166 @@ if(EMSCRIPTEN)
     message(STATUS "Using emscripten, building for web...")
     set(PLATFORM "Web")
     set(USE_WEBGL2 "no" CACHE STRING "Ensure compatibility with older systems" FORCE)
-    set(GRAPHICS GRAPHICS_API_OPENGL_21 CACHE BOOL "" FORCE)
+    set(GRAPHICS GRAPHICS_API_OPENGL_ES2 CACHE STRING "WebGL 1 uses the OpenGL ES 2 shader model" FORCE)
     #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g3 -gsource-map")
     #set(CMAKE_CPP_FLAGS "${CMAKE_CPP_FLAGS} -g3 -gsource-map")
     add_compile_options(-fexceptions)
+    add_compile_definitions(WEB_WITH_FETCHING)
     add_link_options(-fexceptions)
+    set(DATABASE_DEFAULT ON)
 else()
     set(PLATFORM "Desktop")
     if(MINGW)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -static"  CACHE STRING "Linker Flags for MinGW Builds" FORCE)
     endif()
+    set(DATABASE_DEFAULT ON)
 endif()
 
+option(CADMIUM_WITH_DATABASE "Compile Cadmium with a database functionality, this links sqlite into Cadmium" ${DATABASE_DEFAULT})
+option(CADMIUM_DISABLE_HP48 "Never build the HP-48SX core" OFF)
+option(CADMIUM_HP48_REPLACEMENT_ROM_ONLY "Don't compile in HP's ROM even if it is in resources/files, the HP-48SX core then uses Cadmium's replacement ROM (for builds to redistribute, always on for the web build)" OFF)
+unset(CADMIUM_WITH_HP48 CACHE)  # was a user option, now it follows CADMIUM_DISABLE_HP48
+if(CADMIUM_DISABLE_HP48)
+    set(CADMIUM_WITH_HP48 OFF)
+    set(CADMIUM_WITH_HP48_ORIGINAL_ROM OFF)
+    message(STATUS "HP-48SX core disabled (CADMIUM_DISABLE_HP48 is set)")
+elseif(EMSCRIPTEN)
+    set(CADMIUM_WITH_HP48 ON)
+    set(CADMIUM_WITH_HP48_ORIGINAL_ROM OFF)
+    message(STATUS "HP-48SX core enabled with the replacement ROM only (web build, HP's ROM is never compiled in)")
+elseif(EXISTS "${PROJECT_SOURCE_DIR}/resources/files/sxrom-rev-e" AND NOT CADMIUM_HP48_REPLACEMENT_ROM_ONLY)
+    set(CADMIUM_WITH_HP48 ON)
+    set(CADMIUM_WITH_HP48_ORIGINAL_ROM ON)
+    message(STATUS "HP-48SX core enabled with HP's ROM from resources/files and the replacement ROM")
+else()
+    set(CADMIUM_WITH_HP48 ON)
+    set(CADMIUM_WITH_HP48_ORIGINAL_ROM OFF)
+    message(STATUS "HP-48SX core enabled with the replacement ROM only")
+endif()
 include(CheckIncludeFile)
 check_include_file(bcm_host.h HAS_BCMHOST)
 if(HAS_BCMHOST AND NOT GRAPHICS)
     set(GRAPHICS GRAPHICS_API_OPENGL_21 CACHE BOOL "" FORCE)
 endif()
 
-option(WEB_WITH_CLIPBOARD "Build emscripten version supporting real clipboard (experimental)" OFF)
-
 include(FetchContent)
 
+find_package(Threads REQUIRED)
+
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(RAYLIB_BRANCH_NAME "6.0")
 if(RAYLIB_BRANCH_NAME STREQUAL HEAD)
     set(RAYLIB_BRANCH_NAME raylib-cadmium-1.0.6)
 endif()
 FetchContent_Declare(
     raylib
     #URL https://github.com/gulrak/raylib/archive/refs/heads/master.zip
-    GIT_REPOSITORY https://github.com/gulrak/raylib.git
-    #GIT_REPOSITORY https://github.com/raysan5/raylib.git
+    #GIT_REPOSITORY https://github.com/gulrak/raylib.git
+    GIT_REPOSITORY https://github.com/raysan5/raylib.git
     GIT_TAG ${RAYLIB_BRANCH_NAME}
     GIT_SHALLOW TRUE
+    UPDATE_DISCONNECTED TRUE
+    EXCLUDE_FROM_ALL
 )
-FetchContent_GetProperties(raylib)
-if (NOT raylib_POPULATED)
-    set(FETCHCONTENT_QUIET NO)
-    FetchContent_Populate(raylib)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR} EXCLUDE_FROM_ALL)
+FetchContent_MakeAvailable(raylib)
+# Chiplet also provides stb_image; keep Raylib's decoder symbols private.
+target_compile_definitions(raylib PRIVATE STB_IMAGE_STATIC)
+
+if(PLATFORM STREQUAL "Desktop")
+    set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
+    set(LIBRESSL_APPS OFF CACHE BOOL "" FORCE)
+    if(APPLE)
+      set(ENABLE_ASM OFF CACHE BOOL "" FORCE)
+    endif()
+    FetchContent_Declare(
+        libressl
+        URL "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz"
+        URL_MD5 4775b6b187a93c527eeb95a13e6ebd64
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(libressl)
+    #target_compile_definitions(crypto PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+    #target_compile_definitions(ssl PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+    #target_compile_definitions(tls PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
+
+    if(APPLE)
+        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+    endif()
+    FetchContent_Declare(
+        CppHttplib
+        GIT_REPOSITORY "https://github.com/yhirose/cpp-httplib.git"
+        GIT_TAG "v0.18.3"
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(CppHttplib)
+    include_directories(${cpphttplib_INCLUDE_DIR})
 endif()
 
 FetchContent_Declare(
-    DocTest
-    GIT_REPOSITORY "https://github.com/doctest/doctest.git"
-    GIT_TAG "v2.4.9"
-    GIT_SHALLOW TRUE
+        DocTest
+        GIT_REPOSITORY "https://github.com/doctest/doctest.git"
+        GIT_TAG "v2.4.12"
+        GIT_SHALLOW TRUE
+        EXCLUDE_FROM_ALL
 )
-FetchContent_GetProperties(DocTest)
-if(NOT doctest_POPULATED)
-    FetchContent_Populate(doctest)
-    add_subdirectory(${doctest_SOURCE_DIR} ${doctest_BINARY_DIR} EXCLUDE_FROM_ALL)
-endif()
-
+FetchContent_MakeAvailable(DocTest)
 include_directories(${DOCTEST_INCLUDE_DIR})
 
 FetchContent_Declare(
         Chiplet
         GIT_REPOSITORY "https://github.com/gulrak/chiplet.git"
-        GIT_TAG "dev-v1.x"
+        GIT_TAG "main"
         GIT_SHALLOW TRUE
 )
-FetchContent_GetProperties(Chiplet)
-if(NOT chiplet_POPULATED)
-    FetchContent_Populate(Chiplet)
-    include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
-    add_subdirectory(${chiplet_SOURCE_DIR} ${chiplet_BINARY_DIR})
-    include_directories(${chiplet_SOURCE_DIR}/external)
+FetchContent_MakeAvailable(Chiplet)
+include_directories(${chiplet_SOURCE_DIR}/external)
+include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
+
+# zstd packs the compiled in resources and compresses the HP-48 state files
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    zstd
+    URL "https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SOURCE_SUBDIR build/cmake
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(zstd)
+
+FetchContent_Declare(
+    Chip8TestSuite
+    GIT_REPOSITORY "https://github.com/Timendus/chip8-test-suite.git"
+    GIT_TAG "v4.2"
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(Chip8TestSuite)
+
+option(BUILD_DOC "Build documentation" ON)
+
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+    set(DOXYGEN_IN ${CMAKE_CURRENT_SOURCE_DIR}/docs/Doxyfile.in)
+    set(DOXYGEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
+
+    configure_file(${DOXYGEN_IN} ${DOXYGEN_OUT} @ONLY)
+    message("Doxygen build started")
+
+    add_custom_target(doc_doxygen ALL
+        COMMAND ${DOXYGEN_EXECUTABLE} ${DOXYGEN_OUT}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating API documentation with Doxygen"
+        VERBATIM )
+else()
+    message("Doxygen need to be installed to generate the doxygen documentation")
 endif()
 
-find_package(Git)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+if (CADMIUM_WITH_DATABASE)
+    set(GHC_CUSTOM_LOGGER_PROVIDED ${PROJECT_SOURCE_DIR}/src/emulation/logger.hpp)
+    set(USE_FMTLIB_POLYFILL ON)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/ghc/sqlite)
 endif()

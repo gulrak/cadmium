@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/c8capturehost.hpp
+// src/c8capturehost.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,12 +25,12 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <chip8emuhostex.hpp>
+#include <emuhostex.hpp>
 
 #include <raylib.h>
 
 
-class C8CaptureHost : public emu::Chip8HeadlessHost
+class C8CaptureHost : public emu::HeadlessHost
 {
 public:
     C8CaptureHost();

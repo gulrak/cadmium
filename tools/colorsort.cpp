@@ -3,16 +3,14 @@
 //
 
 #include <raylib.h>
-extern "C"
-{
-#include <raymath.h>
-}
 
+#include <raymath.h>
+
+#include <cstdint>
 #include <bitset>
 #include <cmath>
 #include <iostream>
 #include <vector>
-#include <cstdint>
 
 std::vector<Color> reference = {
     {0x55, 0x55, 0x55, 0xFF},

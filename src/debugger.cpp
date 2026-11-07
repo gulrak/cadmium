@@ -24,48 +24,121 @@
 //
 //---------------------------------------------------------------------------------------
 
-#include "icons.h"
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
+#include <algorithm>
+#include <fmt/format.h>
+#include <ghc/bit.hpp>
 #include <stylemanager.hpp>
 #include "debugger.hpp"
+#include <emulation/logger.hpp>
 
 void Debugger::setExecMode(ExecMode mode)
 {
-    if(!_realCore || _visibleCpu == CHIP8_CORE)
-        _core->setExecMode(mode);
-    else {
-        _realCore->setBackendExecMode(mode);
-    }
+    _core->setExecMode(mode);
 }
 
-void Debugger::updateCore(emu::IChip8Emulator* core)
+void Debugger::updateCore(emu::IEmulationCore* core)
 {
     _core = core;
-    _realCore = dynamic_cast<emu::Chip8RealCoreBase*>(core);
-    _backend = _realCore != nullptr ? &_realCore->getBackendCpu() : nullptr;
-    _visibleCpu = CHIP8_CORE;
-    _instructionOffset[CHIP8_CORE] = -1;
-    _instructionOffset[BACKEND_CORE] = -1;
-    _activeInstructionsTab = 0;
-    // ensure cached data has the correct size by actually forcing a capture
-    _core->fetchAllRegisters(_chip8State);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendState);
-    captureStates();
+    if (_core) {
+        _realCore = dynamic_cast<emu::Chip8RealCoreBase*>(core);
+        _backend = _realCore != nullptr ? &_realCore->getBackendCpu() : nullptr;
+        _visibleExecUnit = 0;
+        _activeInstructionsTab = 0;
+        // ensure cached data has the correct size by actually forcing a capture
+        _instructionOffset.resize(_core->numberOfExecutionUnits());
+        _disassemblyViews.assign(_core->numberOfExecutionUnits(), DisassemblyView{});
+        _cpuStates.resize(_core->numberOfExecutionUnits());
+        for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+            _instructionOffset[i] = -1;
+            _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
+        }
+        captureStates();
+    }
 }
 
 void Debugger::captureStates()
 {
+    auto unit = _core->executionUnit(0);
     _memBackup.resize(_core->memSize());
     std::memcpy(_memBackup.data(), _core->memory(), _core->memSize());
-    _chip8StackBackup.resize(_core->stackSize());
-    std::memcpy(_chip8StackBackup.data(), _core->getStackElements(), sizeof(uint16_t) * _core->stackSize());
-    _core->fetchAllRegisters(_chip8StateBackup);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendStateBackup);
+    _cpuStatesBackup.resize(_core->numberOfExecutionUnits());
+    _stackBackup.resize(_core->numberOfExecutionUnits());
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        _core->executionUnit(i)->fetchAllRegisters(_cpuStatesBackup[i]);
+        auto stack = _core->executionUnit(i)->stack();
+        _stackBackup[i].assign(stack.content.begin(), stack.content.end());
+    }
 }
 
-void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
+emu::IChip8Emulator* Debugger::chip8Core()
+{
+    return dynamic_cast<emu::IChip8Emulator*>(_core->executionUnit(0));
+}
+
+template<typename T>
+T readStackEntry(const uint8_t* address, emu::GenericCpu::Endianness endianness)
+{
+    switch(endianness) {
+        case emu::GenericCpu::eNATIVE:
+            return *reinterpret_cast<const T*>(address);
+        case emu::GenericCpu::eBIG: {
+            T result = 0;
+            for (int i = 0; i < sizeof(T); ++i) {
+                result |= static_cast<T>(address[i]) << (8 * (sizeof(T) - i - 1));
+            }
+            return result;
+        }
+        case emu::GenericCpu::eLITTLE: {
+            T result = 0;
+            for (int i = 0; i < sizeof(T); ++i) {
+                result |= static_cast<T>(address[i]) << (8 * i);
+            }
+            return result;
+        }
+    }
+    return 0;
+}
+
+static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::StackContent& stack, size_t index, const std::vector<uint8_t>& backupData)
+{
+    static char buffer[64];
+    if(stack.content.empty() || stack.entrySize <= 0 || (index + 1) * stack.entrySize > stack.content.size()) {
+        buffer[0] = 0;
+        return {buffer, false};
+    }
+    auto offset = stack.stackDirection == emu::GenericCpu::eUPWARDS ? index * stack.entrySize : stack.content.size() - (index + 1) * stack.entrySize;
+    const uint8_t* entry = &stack.content[offset];
+    // the backup can be from a time with a different stack size, then nothing counts as changed
+    const uint8_t* backup = offset + stack.entrySize <= backupData.size() ? backupData.data() + offset : entry;
+    uint32_t value = 0, oldValue = 0;
+    int digits = 0;
+    switch(stack.entrySize) {
+        case 1:
+            value = readStackEntry<uint8_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint8_t>(backup, stack.endianness);
+            digits = 2;
+            break;
+        case 2:
+            value = readStackEntry<uint16_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint16_t>(backup, stack.endianness);
+            digits = 4;
+            break;
+        case 4:
+            value = readStackEntry<uint32_t>(entry, stack.endianness);
+            oldValue = readStackEntry<uint32_t>(backup, stack.endianness);
+            digits = 6;
+            break;
+        default:
+            buffer[0] = 0;
+            return {buffer, false};
+    }
+    *fmt::format_to_n(buffer, sizeof(buffer) - 1, "{:0{}X}", value, digits).out = 0;
+    const bool changed = value != oldValue;
+    return {buffer, changed};
+}
+
+void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& drawScreen)
 {
     using namespace gui;
     SetStyle(LISTVIEW, SCROLLBAR_WIDTH, 5);
@@ -78,131 +151,139 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
     auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     auto brownCol = StyleManager::mappedColor({ 203, 199, 0, 255 });
-    if(_core->getExecMode() != emu::GenericCpu::ePAUSED) {
-        _instructionOffset[CHIP8_CORE] = -1;
-        _instructionOffset[BACKEND_CORE] = -1;
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        if(_core->executionUnit(i)->execMode() != emu::GenericCpu::ePAUSED) {
+            _instructionOffset[i] = -1;
+        }
+        _core->executionUnit(i)->fetchAllRegisters(_cpuStates[i]);
     }
-    _core->fetchAllRegisters(_chip8State);
-    if(_backend)
-        _backend->fetchAllRegisters(_backendState);
     BeginColumns();
     SetSpacing(-1);
-    SetNextWidth(256 + 2);
+    SetNextWidth(270 + 2);
     Begin();
     SetSpacing(0);
     BeginPanel("Video", {1, 0});
     {
-        video = {GetCurrentPos().x, GetCurrentPos().y, (float)256, (float)(megaChipVideo ? 192 : 128)};
-        Space(megaChipVideo ? 192 + 1 : 128 + 1);
+        auto height = (float)(megaChipVideo ? 192 : 148) + 6;
+        video = {GetCurrentPos().x, GetCurrentPos().y, (float)270, (float)height};
+        Space(int(height));
     }
     EndPanel();
     drawScreen(video, debugScale);
-    if(_backend && _realCore->hybridChipMode()) {
+    if(_core->numberOfExecutionUnits() > 1) {
         if(_realCore->hasBackendStopped())
             _activeInstructionsTab = 1;
-        BeginTabView(&_activeInstructionsTab);
-        if(BeginTab("Instructions", {5, 0})) {
-            _visibleCpu = CHIP8_CORE;
-            showInstructions(*_core, font, lineSpacing);
-            EndTab();
-        }
-        if(BeginTab(_backend->getName().c_str(), {5,0})) {
-            _visibleCpu = BACKEND_CORE;
-            showInstructions(*_backend, font, lineSpacing);
-            EndTab();
-        }
-        EndTabView();
     }
-    else {
-        BeginPanel("Instructions", {5, 0});
-        if(_realCore && !_realCore->hybridChipMode()) {
-            _visibleCpu = BACKEND_CORE;
-            showInstructions(*_backend, font, lineSpacing);
+    BeginTabView(&_activeInstructionsTab);
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        if (auto exeUnit = _core->executionUnit(i); dynamic_cast<emu::IChip8Emulator*>(exeUnit)) {
+            if(BeginTab("Instructions", {5, 0})) {
+                _visibleExecUnit = i;
+                _core->setFocussedExecutionUnit(exeUnit);
+                showInstructions(*exeUnit, font, lineSpacing);
+                EndTab();
+            }
         }
         else {
-            _visibleCpu = CHIP8_CORE;
-            showInstructions(*_core, font, lineSpacing);
+            if(BeginTab(exeUnit->name().c_str(), {5,0})) {
+                _visibleExecUnit = i;
+                _core->setFocussedExecutionUnit(exeUnit);
+                showInstructions(*exeUnit, font, lineSpacing);
+                EndTab();
+            }
+        }
+    }
+    if (BeginTab("Breakpoints", {5, 0})) {
+        showBreakpoints(font, lineSpacing);
+        EndTab();
+    }
+    if (BeginTab("Watch", {5, 0})) {
+        showWatches(font, lineSpacing);
+        EndTab();
+    }
+    EndTabView();
+    End();
+    // Select CHIP-8 side-by-side or backend-CPU top/bottom display
+    auto* visibleUnit = _core->executionUnit(_visibleExecUnit);
+    if(!visibleUnit || dynamic_cast<emu::IChip8Emulator*>(visibleUnit)) {
+        auto& unit = visibleUnit ? *visibleUnit : *_core->focussedExecutionUnit();
+        SetNextWidth(44);
+        BeginPanel("Regs");
+        {
+            auto pos = GetCurrentPos();
+            auto area = GetContentAvailable();
+            Space(area.height);
+            showGenericRegs(unit, _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos);
         }
         EndPanel();
-    }
-    End();
-    SetNextWidth(50);
-    BeginPanel("Regs");
-    {
-        auto pos = GetCurrentPos();
-        auto area = GetContentAvailable();
-        pos.x += 0;
-        Space(area.height);
-        if(_visibleCpu == CHIP8_CORE) {
-            showGenericRegs(*_core, _chip8State, _chip8StateBackup, font, lineSpacing, pos);
-        }
-        else {
-            showGenericRegs(*_backend, _backendState, _backendStateBackup, font, lineSpacing, pos);
-        }
-    }
-    EndPanel();
-    SetNextWidth(44);
-    if(!_realCore || _realCore->hybridChipMode()) {
+        SetNextWidth(44);
         BeginPanel("Stack");
         {
             auto pos = GetCurrentPos();
             auto area = GetContentAvailable();
-            pos.x += 0;
             Space(area.height);
-            auto stackSize = _core->stackSize();
-            const auto* stack = _core->getStackElements();
-            bool fourDigitStack = !_core->isGenericEmulation() || _core->memSize() > 4096;
-            for (int i = 0; i < stackSize; ++i) {
-                DrawTextEx(font, fourDigitStack ? TextFormat("%X:%04X", i, stack[i]) : TextFormat("%X: %03X", i, stack[i]), {pos.x, pos.y + i * lineSpacing}, 8, 0, stack[i] == _chip8StackBackup[i] ? lightgrayCol : yellowCol);
+            auto stack = unit.stack();
+            for (unsigned i = 0; i < unit.stackSize(); ++i) {
+                auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit]);
+                DrawTextEx(font, TextFormat("%X %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
             }
         }
+        EndPanel();
     }
     else {
-        BeginPanel("X Data");
-        {
-            auto pos = GetCurrentPos();
-            auto area = GetContentAvailable();
-            pos.x += 0;
-            Space(area.height);
-            auto x = _backend->getRegisterByName("X").value;
-            auto rx = _backend->getRegister(x).value;
-            auto col = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
-            for(uint16_t offset = 0; offset < 36; ++offset) {
-                DrawTextEx(font, TextFormat("%02X: %02X", offset, _backend->getMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, col);
-            }
-        }
+        SetNextWidth(44 + 44 - 1);
+        showCpuPanels(*visibleUnit, font, lineSpacing);
     }
-    EndPanel();
     static Vector2 memScroll{0,0};
     static uint8_t memPage{0};
     BeginPanel(memPage ? TextFormat("Memory [%02X....]", memPage) : "Memory", {0,0});
     {
         auto pos = GetCurrentPos();
         auto area = GetContentAvailable();
-        GuiCheckBox({pos.x + 108, pos.y - 13, 10, 10}, "Follow", &_memViewFollow);
-        pos.x += 4;
+        GuiCheckBox({pos.x + area.width - 56, pos.y - 13, 10, 10}, "Follow", &_memViewFollow);
+        pos.x += 6;
         pos.y -= lineSpacing / 2;
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
         static auto lastExecMode = emu::GenericCpu::eRUNNING;
-        if(_memViewFollow && (_core->getExecMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
-            memScroll.y = -(float)(_core->getI() / 8) * lineSpacing;
-        lastExecMode = _core->getExecMode();
-        BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
+        if(_memViewFollow && chip8Core() && (_core->focussedExecutionUnit()->execMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
+            memScroll.y = -(float)(chip8Core()->getI() / 16) * lineSpacing;
+        lastExecMode = _core->focussedExecutionUnit()->execMode();
+        auto bytesPerLine = 16;
+        BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/bytesPerLine + 1) * lineSpacing}, &memScroll);
+#if 0
         auto addr = int(-memScroll.y / lineSpacing) * 8 - 8;
         memPage = addr < 0 ? 0 : addr >> 16;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * 8 >= 0 && addr + i * 8 < _core->memSize()) {
-                DrawTextEx(font, TextFormat("%04X", (addr + i * 8) & 0xFFFF), {pos.x, pos.y + i * lineSpacing}, 8, 0, lightgrayCol);
+                DrawTextClipped(font, TextFormat("%06X", (addr + i * 8)), {pos.x, pos.y + i * lineSpacing}, lightgrayCol);
                 for (int j = 0; j < 8; ++j) {
                     if (!showChipCPU || addr + i * 8 + j > _core->memSize() || _core->memory()[addr + i * 8 + j] == _memBackup[addr + i * 8 + j]) {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? lightgrayCol : grayCol);
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 42 + j * 16, pos.y + i * lineSpacing}, j & 1 ? lightgrayCol : grayCol);
                     }
                     else {
-                        DrawTextEx(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 30 + j * 16, pos.y + i * lineSpacing}, 8, 0, j & 1 ? yellowCol : brownCol);
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * 8 + j]), {pos.x + 42 + j * 16, pos.y + i * lineSpacing}, j & 1 ? yellowCol : brownCol);
                     }
                 }
             }
         }
+#else
+        auto addr = int(-memScroll.y / lineSpacing) * bytesPerLine - bytesPerLine;
+        memPage = addr < 0 ? 0 : addr >> 16;
+        for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
+            if(addr + i * bytesPerLine >= 0 && addr + i * bytesPerLine < _core->memSize()) {
+                DrawTextClipped(font, TextFormat("%06X", (addr + i * bytesPerLine)), {pos.x - 1, pos.y + i * lineSpacing}, lightgrayCol);
+                for (int j = 0; j < bytesPerLine; ++j) {
+                    auto offset = j >= 8 ? 49.0f : 43.0f;
+                    if (!showChipCPU || addr + i * bytesPerLine + j > _core->memSize() || _core->memory()[addr + i * bytesPerLine + j] == _memBackup[addr + i * bytesPerLine + j]) {
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * bytesPerLine + j]), {pos.x + offset + j * 14, pos.y + i * lineSpacing}, j & 1 ? lightgrayCol : grayCol);
+                    }
+                    else {
+                        DrawTextClipped(font, TextFormat("%02X", _core->memory()[addr + i * bytesPerLine + j]), {pos.x + offset + j * 14, pos.y + i * lineSpacing}, j & 1 ? yellowCol : brownCol);
+                    }
+                }
+            }
+        }
+#endif
         EndScrollPanel();
         SetStyle(DEFAULT, BORDER_WIDTH, 1);
     }
@@ -214,101 +295,497 @@ void Debugger::render(Font& font, std::function<void(Rectangle,int)> drawScreen)
 void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing)
 {
     using namespace gui;
-    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
+    auto lightgrayCol = /*StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//*/ StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     auto area = GetContentAvailable();
     Space(area.height);
     bool mouseInPanel = false;
-    auto& instructionOffset = _instructionOffset[_visibleCpu];
+    auto& instructionOffset = _instructionOffset[_visibleExecUnit];
     auto pc = cpu.getPC();
-    if(!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
+    // The Saturn has variable length instructions in nibbles, so it uses a view that
+    // keeps its line boundaries while scrolling, the other CPUs resync every frame.
+    constexpr uint32_t SATURN_CPU_ID = 471588;
+    DisassemblyView* view = nullptr;
+    if (cpu.cpuID() == SATURN_CPU_ID) {
+        view = &_disassemblyViews[_visibleExecUnit];
+        view->setConfig({.addressEnd = 0x100000, .maxInstructionSize = 24, .unitsPerLine = 6, .leadIn = 128});
+        view->setSizeFunction([&cpu](uint32_t address) {
+            int bytes = 0;
+            cpu.disassembleInstructionWithBytes(static_cast<int32_t>(address), &bytes);
+            return static_cast<uint32_t>(bytes);
+        });
+        view->setKnownStartFunction([&cpu](uint32_t address) { return cpu.isKnownInstructionStart(address); });
+        if (instructionOffset < 0)
+            view->follow(pc);
+        else if (view->empty())
+            view->follow(instructionOffset);
+    }
+    // Some hardware backends have PCs wider than 16 bits. Preserve the existing
+    // range for 16-bit cores and include the current 64K address page for wider
+    // cores, the view knows its own address space.
+    const uint32_t maxAddress = view ? 0xfffffU : pc | 0xffffU;
+    if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), GetLastWidgetRect())) {
         auto wheel = GetMouseWheelMoveV();
         mouseInPanel = true;
-        if(std::fabs(wheel.y) >= 0.5f) {
-            if(instructionOffset < 0) {
+        if (view) {
+            // Every whole wheel unit scrolls a line, fractions (trackpads) add up over
+            // the frames, a change of direction drops what was left from the other one.
+            if (wheel.y * _wheelRemainder < 0.0f)
+                _wheelRemainder = 0.0f;
+            _wheelRemainder += wheel.y;
+            if (const int lines = static_cast<int>(_wheelRemainder)) {
+                _wheelRemainder -= static_cast<float>(lines);
+                view->scroll(-lines);
+                instructionOffset = static_cast<int>(view->anchor().address);
+            }
+        }
+        else if (std::fabs(wheel.y) >= 0.5f) {
+            if (instructionOffset < 0) {
                 instructionOffset = pc;
             }
             int step = 0;
-            if(wheel.y >= 0.5f) step = 2;
-            else if(wheel.y <= 0.5f) step = -2;
-            instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? 0xFFFF : 4096 - 9*2);
+            if (wheel.y >= 0.5f)
+                step = 2;
+            else if (wheel.y <= 0.5f)
+                step = -2;
+            instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? static_cast<int>(maxAddress) : 4096 - 9 * 2);
         }
     }
+    auto dialect = Dialect::eCHIP8OCTO;
+    switch (cpu.cpuID()) {
+        case 1802: dialect = Dialect::eCDP1802; break;
+        case 6800: dialect = Dialect::eM6800; break;
+        case SATURN_CPU_ID: dialect = Dialect::eSATURN; break;
+        default: break;
+    }
+    setDialect(dialect);
     auto visibleInstructions = int(area.height / lineSpacing);
     auto extraLines = visibleInstructions / 2 + 1;
     auto insOff = instructionOffset >= 0 ? instructionOffset : pc;
     auto yposPC = area.y + int(area.height / 2) - 4;
-    const auto& prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
-    BeginScissorMode(area.x, area.y, area.width, area.height);
-    auto pcColor = cpu.inErrorState() ? RED : yellowCol;
+    std::vector<std::pair<uint32_t, std::string>> prefix;
+    if (view) {
+        view->update(extraLines, extraLines + 1);
+        insOff = view->anchor().address;
+        for (const auto& line : view->linesAbove(extraLines))
+            prefix.emplace_back(line.address, cpu.disassembleInstructionWithBytes(static_cast<int32_t>(line.address), nullptr));
+    }
+    else {
+        prefix = disassembleNLinesBackwardsGeneric(cpu, insOff, extraLines);
+    }
+    BeginClipping({area.x - 4, area.y, area.width + 8, area.height});
+    auto pcColor = cpu.inErrorState() ? RED : StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL);
     bool inIf = false;
-    for(int i = 0; i < extraLines && i < prefix.size(); ++i) {
+    auto disassemblyOffset = cpu.disassemblyPrefixSize();
+    for (int i = 0; i < extraLines && i < prefix.size(); ++i) {
         auto [addr, line] = prefix[prefix.size() - 1 - i];
-        inIf = i < prefix.size()-2 && prefix[prefix.size() - 2 - i].second.find(" if ") != std::string::npos;
-        if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC - (i+1)*lineSpacing, area.width, 8}))
+        inIf = i < prefix.size() - 2 && prefix[prefix.size() - 2 - i].second.find(" if ") != std::string::npos;
+        if (mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC - (i + 1) * lineSpacing, area.width, 8}))
             toggleBreakpoint(cpu, addr);
         const auto* bpi = cpu.findBreakpoint(addr);
-        if(inIf)
+        if (inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
-        if(bpi)
-            GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC - (i+1)*lineSpacing - 5, 1, RED);
+        if (pc == addr)
+            DrawRectangleClipped(area.x - 5, yposPC - (i + 1) * lineSpacing - 2, area.width + 10, 11, pcColor);
+        if (line.size() >= disassemblyOffset) {
+            line[disassemblyOffset - 1] = 0;
+            DrawTextClipped(font, line.c_str(), {area.x, yposPC - (i + 1) * lineSpacing}, lightgrayCol);
+            drawHighlightedTextLine(font, line.data() + disassemblyOffset, line.data() + disassemblyOffset, line.data() + line.size(), {area.x + disassemblyOffset * COLUMN_WIDTH, yposPC - (i + 1) * lineSpacing}, area.width, 0, 10);
+        }
+        // DrawTextClipped(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, pc == addr ? pcColor : lightgrayCol);
+        if (bpi)
+            GuiDrawIcon(bpi->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, area.x + 24, yposPC - (i + 1) * lineSpacing - 5, 1, RED);
     }
     inIf = !prefix.empty() && prefix.back().second.find(" if ") != std::string::npos;
     uint32_t addr = insOff;
-    for (int i = 0; i <= extraLines && addr < /*cpu.memSize()*/ 0x10000; ++i) {
-        if(mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC + i * lineSpacing, area.width, 8}))
+    for (int i = 0; i <= extraLines && addr <= maxAddress; ++i) {
+        if (mouseInPanel && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), {area.x, yposPC + i * lineSpacing, area.width, 8}))
             toggleBreakpoint(cpu, addr);
         int bytes = 0;
         auto line = cpu.disassembleInstructionWithBytes(addr, &bytes);
         const auto* bpi = cpu.findBreakpoint(addr);
-        if(inIf)
+        if (inIf)
             line.insert(_backend ? 12 : 16, "  ");
-        DrawTextEx(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, 8, 0, pc == addr ? pcColor : lightgrayCol);
-        if(bpi)
-            GuiDrawIcon(ICON_BREAKPOINT, area.x + 24, yposPC + i * lineSpacing - 5, 1, RED);
+        if (pc == addr)
+            DrawRectangleClipped(area.x - 5, yposPC + i * lineSpacing - 2, area.width + 10, 11, pcColor);
         inIf = line.find(" if ") != std::string::npos;
+        if (line.size() >= disassemblyOffset) {
+            line[disassemblyOffset - 1] = 0;
+            DrawTextClipped(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, lightgrayCol);
+            drawHighlightedTextLine(font, line.c_str() + disassemblyOffset, line.c_str() + disassemblyOffset, line.data() + line.size(), {area.x + disassemblyOffset * COLUMN_WIDTH, yposPC + i * lineSpacing}, area.width, 0, 10);
+        }
+        // DrawTextClipped(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, pc == addr ? pcColor : lightgrayCol);
+        if (bpi)
+            GuiDrawIcon(bpi->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, area.x + 24, yposPC + i * lineSpacing - 5, 1, RED);
         addr += bytes;
     }
-    EndScissorMode();
+    EndClipping();
+}
+
+void Debugger::showBreakpoints(Font& font, const int lineSpacing)
+{
+    using namespace gui;
+    static Vector2 scroll{0, 0};
+    auto area = GetContentAvailable();
+    Space(2);
+    BeginTableView(area.height - (10 * 14.0f + 6), "breakpoints", {TableColumn::Fixed(24), TableColumn::Fixed(32), TableColumn::Stretch()}, &scroll);
+    SetRowHeight(11);
+    int count = -1;
+    bool foundTriggeredBP = false;
+    for (const auto& [address, bpinfo] : _breakpointCache) {
+        auto execUnit = _core->executionUnit(bpinfo->unit);
+        auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
+        ++count;
+        //if (bpinfo->isEnabled && _triggeredBreakpointAddress == address && execUnit->getPC() == address)
+        //    _selectedBreakpoint = count;
+        TableNextRow(11.0f, count == _selectedBreakpoint ? StyleManager::getStyleColor(gui::Style::BORDER_COLOR_NORMAL): Color{0,0,0,0});
+        TableNextColumn([&](Rectangle rect){
+            GuiDrawIcon(address == _triggeredBreakpointAddress ? ICON_ARROW_RIGHT_FILL_SMALL : ICON_NONE, rect.x - 2, rect.y - 3, 1, YELLOW);
+            if (address == _triggeredBreakpointAddress && execUnit->getPC() == address)
+                foundTriggeredBP = true;
+            if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                bpinfo->isEnabled = !bpinfo->isEnabled;
+                selectBreakpoint(count);
+            }
+            GuiDrawIcon(bpinfo->isEnabled ? ICON_BREAKPOINT : ICON_BREAKPOINT_OFF, rect.x + 6, rect.y - 3, 1, RED);
+        });
+        TableNextColumn([&](Rectangle rect){
+            if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                selectBreakpoint(count);
+            }
+            DrawTextClipped(font, fmt::format("{:04x}", address).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
+        });
+        TableNextColumn([&](Rectangle rect){
+            if (!GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                selectBreakpoint(count);
+            }
+            DrawTextClipped(font, fmt::format("{} breakpoint", isChip8 ? "CHIP-8" : execUnit->name()).c_str(), {rect.x + 2, rect.y + 2}, WHITE);
+        });
+    }
+    if (!foundTriggeredBP) {
+        setBreakpointTriggered(false);
+    }
+    EndTableView();
+    SetRowHeight(14);
+    if (_selectedBreakpoint >= 0 && _selectedBreakpoint < _breakpointCache.size()) {
+        auto [address, bpinfo] = _breakpointCache[_selectedBreakpoint];
+        // a different breakpoint gets different text box ids, so a focused box doesn't stay focused when the selection changes
+        PushId(bpinfo);
+        auto execUnit = _core->executionUnit(bpinfo->unit);
+        auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
+        Label("Breakpoint Config:");
+        BeginColumns();
+        auto colNorm = GetStyle(LABEL, TEXT_COLOR_NORMAL);
+        auto colHigh = GetStyle(LABEL, TEXT_COLOR_FOCUSED);
+        SetNextWidth(9*6); Label("Address:");
+        SetStyle(LABEL, TEXT_COLOR_NORMAL, colHigh);
+        SetNextWidth(6*6); Label(fmt::format("{:04X}", address).c_str());
+        SetStyle(LABEL, TEXT_COLOR_NORMAL, colNorm);
+        SetNextWidth(6*6); Label("Unit:");
+        SetStyle(LABEL, TEXT_COLOR_NORMAL, colHigh);
+        Label(fmt::format("{}", isChip8 ? "CHIP-8" : execUnit->name()).c_str());
+        SetStyle(LABEL, TEXT_COLOR_NORMAL, colNorm);
+        EndColumns();
+        Label("Break Condition:");
+        auto colTBnorm = GetStyle(TEXTBOX, TEXT_COLOR_NORMAL);
+        auto colTBfocus = GetStyle(TEXTBOX, TEXT_COLOR_FOCUSED);
+        if (!bpinfo->condition.empty() && !bpinfo->conditionExpr.first) {
+            SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
+            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
+        }
+        if (TextBox("condition", bpinfo->condition, 256)) {
+            bpinfo->conditionExpr = execUnit->parseExpression(bpinfo->condition);
+            DEBUG_LOG("Parsing breakpoint condition result: {}", bpinfo->conditionExpr.first ? "Okay" : bpinfo->conditionExpr.second.c_str());
+        }
+        SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, colTBnorm);
+        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
+
+        Label("Log Format:");
+        TextBox("logFormat", bpinfo->label, 256);
+
+        Label("Log Condition:");
+        if (!bpinfo->logCondition.empty() && !bpinfo->logConditionExpr.first) {
+            SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, ColorToInt(RED));
+            SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, ColorToInt(RED));
+        }
+        if (TextBox("logCondition", bpinfo->logCondition, 256)) {
+            bpinfo->logConditionExpr = execUnit->parseExpression(bpinfo->logCondition);
+            DEBUG_LOG("Parsing log condition result: {}", bpinfo->logConditionExpr.first ? "Okay" : bpinfo->logConditionExpr.second.c_str());
+        }
+        SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, colTBnorm);
+        SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
+
+        Label("Hit Count:");
+        GuiDisable();
+        TextBox("hitCount", _bpHitCount, 64);
+        GuiEnable();
+        PopId();
+    }
+    Space(GetContentAvailable().height);
+}
+
+void Debugger::showWatches(Font& font, const int lineSpacing)
+{
+    // Octo `:monitor` entries of the compiled source first, then the ones added here.
+    // Values are read every frame, so they follow the running program like in Octo.
+    using namespace gui;
+    static Vector2 scroll{0, 0};
+    constexpr float LINE_HEIGHT = 11.0f;
+    auto area = GetContentAvailable();
+    Space(2);
+    BeginTableView(area.height - (2 * 14.0f + 6), "watches", {TableColumn::Fixed(12), TableColumn::Fixed(84), TableColumn::Stretch()}, &scroll);
+    SetRowHeight(LINE_HEIGHT);
+    auto showRow = [&](const std::string& name, const std::string& value, bool removable) -> bool {
+        bool remove = false;
+        const auto lines = static_cast<float>(std::ranges::count(value, '\n') + 1);
+        TableNextRow(lines * LINE_HEIGHT);
+        TableNextColumn([&](Rectangle rect) {
+            if (removable) {
+                GuiDrawIcon(ICON_CROSS_SMALL, rect.x - 2, rect.y - 3, 1, RED);
+                remove = !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect);
+            }
+        });
+        TableNextColumn([&](Rectangle rect) {
+            // DrawTextClipped only clips to the table, so a long watch text is cut to the column
+            auto shown = name;
+            const auto maxWidth = rect.width - 4;
+            if (MeasureTextEx(font, shown.c_str(), static_cast<float>(font.baseSize), 0).x > maxWidth) {
+                while (!shown.empty() && MeasureTextEx(font, (shown + "..").c_str(), static_cast<float>(font.baseSize), 0).x > maxWidth)
+                    shown.pop_back();
+                shown += "..";
+            }
+            DrawTextClipped(font, shown.c_str(), {rect.x + 2, rect.y + 2}, removable ? WHITE : YELLOW);
+        });
+        TableNextColumn([&](Rectangle rect) {
+            size_t start = 0;
+            for (int line = 0; start <= value.size(); ++line) {
+                auto end = value.find('\n', start);
+                if (end == std::string::npos)
+                    end = value.size();
+                DrawTextClipped(font, value.substr(start, end - start).c_str(), {rect.x + 2, rect.y + 2 + line * LINE_HEIGHT}, WHITE);
+                start = end + 1;
+            }
+        });
+        return remove;
+    };
+    for (const auto& monitor : _octoMonitors) {
+        showRow(monitor.name, octoMonitorValue(monitor), false);
+    }
+    for (auto iter = _userWatches.begin(); iter != _userWatches.end();) {
+        if (showRow(*iter, userWatchValue(*iter), true))
+            iter = _userWatches.erase(iter);
+        else
+            ++iter;
+    }
+    EndTableView();
+    SetRowHeight(14);
+    Label("Add Watch (expression or format):");
+    BeginColumns();
+    SetSpacing(2);
+    SetNextWidth(GetContentAvailable().width - 18);
+    TextBox("newWatch", _newWatch, 256);
+    bool add = IsLastWidgetEditFinished() && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER));
+    add = Button("+") || add;
+    EndColumns();
+    if (add && !_newWatch.empty()) {
+        _userWatches.push_back(std::move(_newWatch));
+        _newWatch.clear();
+    }
+    Space(GetContentAvailable().height);
+}
+
+std::string Debugger::octoMonitorValue(const emu::OctoCompiler::MonitorInfo& monitor)
+{
+    auto* chip8 = chip8Core();
+    if (!chip8)
+        return "-";
+    // the literal parts can have `{...}` placeholders, a Cadmium extension
+    auto text = [chip8](std::string_view literal) { return chip8->formatExpression(literal); };
+    if (monitor.source == emu::OctoCompiler::MonitorInfo::eREGISTER)
+        return monitor.render([chip8](uint32_t index) -> uint8_t { return index < 16 ? chip8->getV(static_cast<uint8_t>(index)) : 0; }, text);
+    return monitor.render([chip8](uint32_t index) -> uint8_t { return chip8->readMemoryByte(index); }, text);
+}
+
+std::string Debugger::userWatchValue(const std::string& text)
+{
+    emu::GenericCpu* unit = chip8Core();
+    if (!unit)
+        unit = _core->executionUnit(0);
+    if (!unit)
+        return "-";
+    if (text.find('{') != std::string::npos)
+        return unit->formatExpression(text);
+    auto [expr, error] = unit->parseExpression(text);
+    if (!expr)
+        return error;
+    const auto value = expr->eval();
+    return fmt::format("{} (0x{:X})", value, value);
+}
+
+void Debugger::selectBreakpoint(int idx)
+{
+    if (idx < 0 || idx >= _breakpointCache.size()) {
+        _selectedBreakpoint = -1;
+        _bpHitCount = "";
+        return;
+    }
+    _selectedBreakpoint = idx;
+    _bpHitCount = fmt::format("{}", _breakpointCache[idx].second->numHits);
 }
 
 void Debugger::showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const
 {
-    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//StyleManager::mappedColor(LIGHTGRAY);
+    using namespace gui;
+    auto lightgrayCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);  // StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
     int i, line = 0, lastSize = 0;
-    for (i = 0; i < cpu.getNumRegisters(); ++i, ++line) {
+    for (i = 0; i < cpu.numRegisters(); ++i, ++line) {
         const auto& reg = regs[i];
-        if(i && reg.size != lastSize)
+        if (i && reg.size != lastSize)
             ++line;
         auto col = reg.value == oldRegs[i].value ? lightgrayCol : yellowCol;
-        switch(reg.size) {
+        switch (reg.size) {
             case 1:
             case 4:
-                DrawTextEx(font, TextFormat("%2s: %X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 8:
-                DrawTextEx(font, TextFormat("%2s: %02X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %02X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 12:
-                DrawTextEx(font, TextFormat("%2s: %03X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s  %03X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             case 16:
-                DrawTextEx(font, TextFormat("%2s:%04X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                if (cpu.registerNames()[i].size() == 1)
+                    DrawTextEx(font, TextFormat("%s %04X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                else {
+                    DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                    DrawTextEx(font, TextFormat("  %04X", static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                }
                 break;
             case 24:
-                DrawTextEx(font, TextFormat("%2s:", cpu.getRegisterNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
-                DrawTextEx(font, TextFormat("%06X", reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%2s ", cpu.registerNames()[i].c_str()), {pos.x, pos.y + line++ * lineSpacing}, 8, 0, col);
+                DrawTextEx(font, TextFormat("%06X", static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, col);
                 break;
             default:
-                DrawTextEx(font, TextFormat("%2s:%X", cpu.getRegisterNames()[i].c_str(), reg.value), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
+                DrawTextEx(font, TextFormat("%2s %X", cpu.registerNames()[i].c_str(), static_cast<unsigned>(reg.value)), {pos.x, pos.y + line * lineSpacing}, 8, 0, MAGENTA);
                 break;
         }
         lastSize = reg.size;
     }
     ++line;
-    //DrawTextEx(font, TextFormat("Scr: %s", rcb->isDisplayEnabled() ? "ON" : "OFF"), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
+    // DrawTextEx(font, TextFormat("Scr: %s", rcb->isDisplayEnabled() ? "ON" : "OFF"), {pos.x, pos.y + line * lineSpacing}, 8, 0, LIGHTGRAY);
+}
+
+// Layout of the registers of a backend CPU in blocks of registers that are either narrow (two or more share
+// a line) or wide (one per line, values that are wider than the panel get split into chunks of 8 or 4
+// digits). Returns the number of lines used.
+int Debugger::showCpuRegisters(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos, const int maxChars) const
+{
+    using namespace gui;
+    const auto normalCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
+    const auto changedCol = StyleManager::mappedColor(YELLOW);
+    const auto charWidth = MeasureTextEx(font, "0", 8, 0).x;
+    const auto& names = cpu.registerNames();
+    const auto count = std::min({cpu.numRegisters(), names.size(), regs.size()});
+    auto digitsOf = [&regs](size_t i) { return std::max(1, (static_cast<int>(regs[i].size) + 3) / 4); };
+    auto isNarrow = [&](size_t i) { return 2 * (static_cast<int>(names[i].size()) + 1 + digitsOf(i)) + 1 <= maxChars; };
+    int line = 0;
+    for (size_t first = 0; first < count;) {
+        const bool narrow = isNarrow(first);
+        size_t end = first;
+        int nameWidth = 0, valueWidth = 0;
+        for (; end < count && isNarrow(end) == narrow; ++end) {
+            nameWidth = std::max(nameWidth, static_cast<int>(names[end].size()));
+            valueWidth = std::max(valueWidth, digitsOf(end));
+        }
+        if (first)
+            ++line;
+        const int cellWidth = nameWidth + 1 + valueWidth;
+        const int columns = narrow ? std::max(1, (maxChars + 1) / (cellWidth + 1)) : 1;
+        for (size_t i = first; i < end; ++i) {
+            const auto column = static_cast<int>(i - first) % columns;
+            if (column == 0 && i != first)
+                ++line;
+            const auto col = i < oldRegs.size() && regs[i].value == oldRegs[i].value ? normalCol : changedCol;
+            const auto value = fmt::format("{:0{}X}", regs[i].value, digitsOf(i));
+            const int available = std::max(1, maxChars - nameWidth - 1);
+            const int chunk = static_cast<int>(value.size()) <= available ? static_cast<int>(value.size()) : (available >= 8 ? 8 : (available >= 4 ? 4 : available));
+            const float x = pos.x + static_cast<float>(column * (cellWidth + 1)) * charWidth;
+            for (size_t offset = 0; offset < value.size(); offset += chunk) {
+                if (offset)
+                    ++line;
+                auto text = fmt::format("{:<{}} {}", offset ? "" : names[i], nameWidth, value.substr(offset, chunk));
+                DrawTextEx(font, text.c_str(), {x, pos.y + static_cast<float>(line * lineSpacing)}, 8, 0, col);
+            }
+        }
+        ++line;
+        first = end;
+    }
+    return line;
+}
+
+void Debugger::showCpuPanels(emu::GenericCpu& cpu, Font& font, const int lineSpacing)
+{
+    using namespace gui;
+    const auto normalCol = StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);
+    const auto lightgrayCol = StyleManager::mappedColor(LIGHTGRAY);
+    const auto yellowCol = StyleManager::mappedColor(YELLOW);
+    const auto charWidth = MeasureTextEx(font, "0", 8, 0).x;
+    // the 1802 has no stack, but its X register points to the data its instructions work on
+    enum class Detail { NONE, STACK, X_DATA };
+    const auto detail = cpu.cpuID() == 1802 ? Detail::X_DATA : (cpu.stackSize() > 0 ? Detail::STACK : Detail::NONE);
+    Begin();
+    SetSpacing(0);
+    BeginPanel(cpu.name().c_str(), {3, 4});
+    {
+        auto pos = GetCurrentPos();
+        auto area = GetContentAvailable();
+        const int maxChars = static_cast<int>(area.width / charWidth);
+        const int lines = showCpuRegisters(cpu, _cpuStates[_visibleExecUnit], _cpuStatesBackup[_visibleExecUnit], font, lineSpacing, pos, maxChars);
+        Space(detail == Detail::NONE ? static_cast<int>(area.height) : lines * lineSpacing);
+    }
+    EndPanel();
+    if (detail != Detail::NONE) {
+        BeginPanel(detail == Detail::STACK ? "Stack" : "X Data", {3, 4});
+        auto pos = GetCurrentPos();
+        auto area = GetContentAvailable();
+        Space(area.height);
+        const int maxLines = std::max(0, static_cast<int>(area.height) / lineSpacing);
+        if (detail == Detail::STACK) {
+            auto stack = cpu.stack();
+            const int entries = std::min(static_cast<int>(cpu.stackSize()), maxLines);
+            for (int i = 0; i < entries; ++i) {
+                auto element = formatStackElement(stack, i, _stackBackup[_visibleExecUnit]);
+                DrawTextEx(font, TextFormat("%X %s", i & 0xF, element.first), {pos.x, pos.y + i * lineSpacing}, 8, 0, element.second ? yellowCol : lightgrayCol);
+            }
+        }
+        else {
+            const auto rx = static_cast<uint32_t>(cpu.registerbyIndex(cpu.registerByName("X").value).value);
+            for (int offset = 0; offset < maxLines; ++offset) {
+                DrawTextEx(font, TextFormat("%02X: %02X", offset, cpu.readMemoryByte((rx + offset) & 0xffff)), {pos.x, pos.y + offset * lineSpacing}, 8, 0, normalCol);
+            }
+        }
+        EndPanel();
+    }
+    End();
+}
+
+void Debugger::refreshBreakpoints()
+{
+    _breakpointCache.clear();
+    for(size_t i = 0; i < _core->numberOfExecutionUnits(); ++i) {
+        auto& unit = *_core->executionUnit(i);
+        for (size_t bidx = 0; bidx < unit.numBreakpoints(); ++bidx) {
+            _breakpointCache.push_back(unit.nthBreakpoint(bidx));
+        }
+    }
+    std::ranges::sort(_breakpointCache,
+        [](const std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>& a, const std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>& b) {
+            return a.first < b.first;
+        }
+    );
+    selectBreakpoint(_breakpointCache.empty() ? -1 : 0);
 }
 
 const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n)
@@ -317,7 +794,6 @@ const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesB
     n *= 4;
     uint32_t start = n > addr ? 0 : addr - n;
     disassembly.clear();
-    bool inIf = false;
     while (start < addr) {
         int bytes = 0;
         auto instruction = cpu.disassembleInstructionWithBytes(start, &bytes);
@@ -329,31 +805,70 @@ const std::vector<std::pair<uint32_t,std::string>>& Debugger::disassembleNLinesB
 
 void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
 {
-    auto* bpi = cpu.findBreakpoint(address);
-    if(bpi) {
-        if(bpi->type != emu::GenericCpu::BreakpointInfo::eCODED)
-            cpu.removeBreakpoint(address);
-    }
-    else {
-        cpu.setBreakpoint(address, {fmt::format("BP@{:x}", address), emu::GenericCpu::BreakpointInfo::eTRANSIENT, true});
-    }
-}
-
-void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
-{
-    for(uint32_t addr = 0; addr < std::min(_core->memSize(), 65536); ++addr) {
-        const auto* bpn = compiler.breakpointForAddr(addr);
-        if(bpn)
-            _core->setBreakpoint(addr, {bpn, emu::GenericCpu::BreakpointInfo::eCODED, true});
+    if (auto* bpi = cpu.findBreakpoint(address)) {
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+            if(bpi->type != emu::GenericCpu::BreakpointInfo::eCODED)
+                cpu.removeBreakpoint(address);
+        }
         else {
-            auto* bpi = _core->findBreakpoint(addr);
-            if(bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
-                _core->removeBreakpoint(addr);
+            bpi->isEnabled = !bpi->isEnabled;
         }
     }
+    else {
+        cpu.setBreakpoint(address, {.label = fmt::format("BP@{:x}", address), .type = emu::GenericCpu::BreakpointInfo::eTRANSIENT, .isEnabled = true, .unit = static_cast<uint8_t>(_activeInstructionsTab)});
+    }
+    selectBreakpoint(-1);
+    refreshBreakpoints();
+}
+
+void Debugger::clearOctoDebugInfo()
+{
+    _octoMonitors.clear();
+    if (auto core = chip8Core())
+        core->setSourceSymbols({});
+}
+
+void Debugger::updateOctoDebugInfo(const emu::OctoCompiler& compiler)
+{
+    _octoMonitors = compiler.monitors();
+    if(auto core = chip8Core(); core) {
+        core->setSourceSymbols(compiler.symbolValues());
+        for(uint32_t addr = 0; addr < std::min(core->memSize(), 65536); ++addr) {
+            const auto bpn = compiler.breakpointForAddr(addr);
+            if(!bpn.empty()) {
+                core->setBreakpoint(addr, core->codedBreakpoint(bpn));
+            }
+            else {
+                if (auto* bpi = core->findBreakpoint(addr); bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)
+                    core->removeBreakpoint(addr);
+            }
+        }
+    }
+    selectBreakpoint(-1);
+    refreshBreakpoints();
 }
 
 bool Debugger::supportsStepOver() const
 {
-    return _visibleCpu == CHIP8_CORE || !_backend || _backend->getCpuID() != 1802;
+    return _core->focussedExecutionUnit()->cpuID() != 1802;
+}
+
+void Debugger::setBreakpointTriggered(bool triggered)
+{
+    _isBreakpointTriggered = triggered;
+    if (triggered) {
+        int count = -1;
+        for (const auto& [address, bpinfo] : _breakpointCache) {
+            auto execUnit = _core->executionUnit(bpinfo->unit);
+            auto isChip8 = dynamic_cast<emu::IChip8Emulator*>(execUnit) != nullptr;
+            ++count;
+            if (bpinfo->isEnabled && execUnit->getPC() == address) {
+                _triggeredBreakpointAddress = address;
+                _selectedBreakpoint = count;
+            }
+        }
+    }
+    else {
+        _triggeredBreakpointAddress = ~0;
+    }
 }

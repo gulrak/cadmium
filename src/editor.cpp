@@ -23,31 +23,20 @@
 // SOFTWARE.
 //
 //---------------------------------------------------------------------------------------
+#include <editor.hpp>
 #include <GLFW/glfw3.h>
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <cmath>
 #include <regex>
-#include <editor.hpp>
 #include <chiplet/utility.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <ghc/utf8.hpp>
 
 namespace utf8 = ghc::utf8;
-
-std::unordered_set<std::string> Editor::_opcodes = {
-    "!=", "&=", "+=", "-=", "-key", ":", ":=", ";", "<", "<<=", "<=", "=-", "==", ">", ">=", ">>=", "^=", "|=",
-    "again", "audio", "bcd", "begin", "bighex", "buzzer", "clear", "delay", "else", "end", "hex", "hires", "if",
-    "jump", "jump0", "key", "load", "loadflags", "loop", "lores", "native", "pitch", "plane", "random", "return",
-    "save", "saveflags", "scroll-down", "scroll-left", "scroll-right", "scroll-up", "sprite", "then", "while"
-};
-
-std::unordered_set<std::string> Editor::_directives = {
-    ":alias", ":assert", ":breakpoint", ":byte", ":calc", ":call", ":const", ":macro", ":monitor", ":next", ":org", ":pointer", ":proto", ":stringmode", ":unpack"
-};
 
 extern void copyClip(const char*);
 extern const char* pasteClip();
@@ -73,12 +62,12 @@ void Editor::fixLinefeed(std::string& text)
 
 void Editor::setFocus()
 {
-    gui::SetKeyboardFocus((void*)this);
+    gui::SetKeyboardFocus(_focusId);
 }
 
 bool Editor::hasFocus() const
 {
-    return gui::HasKeyboardFocus((void*)this);
+    return gui::HasKeyboardFocus(_focusId);
 }
 
 void Editor::cursorLeft(int steps)
@@ -225,13 +214,18 @@ void Editor::updateLineInfo(uint32_t fromLine)
         _longestLineSize = 0;
     const char* str = _text.data() + (fromLine ? _lines[fromLine] : 0);
     const char* end = _text.data() + _text.size();
+    auto state = fromLine < _lineStates.size() ? _lineStates[fromLine] : LineState{};
     _lines.erase(_lines.begin() + fromLine, _lines.end());
+    _lineStates.resize(fromLine);
     auto length = str - _text.data();
     auto lastOffset = length;
     _lines.push_back(length);
+    _lineStates.push_back(state);
     while (str < end) {
         if (*str++ == '\n') {
+            state = scanLineState(_text.data() + lastOffset, str, state);
             _lines.push_back(str - _text.data());
+            _lineStates.push_back(state);
             length = _lines.back() - lastOffset;
             if(length > _longestLineSize)
                 _longestLineSize = length;
@@ -254,6 +248,7 @@ void Editor::ensureCursorVisibility()
 
 void Editor::update()
 {
+    using namespace gui;
     auto oldRepeat = _repeatTimer;
     ++_editId;
     _repeatTimer -= GetFrameTime();
@@ -305,14 +300,14 @@ void Editor::update()
         _mouseDownInText = false;
     if (sysKeyPressed && isAlphaPressed('F')) {
         _findOrReplace = _findOrReplace == eFIND ? eNONE : eFIND;
+        _findUpdateRevision = ~0u; // select the current match again when the bar opens
     }
     else if (sysKeyPressed && isAlphaPressed('R')) {
         _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
+        _findUpdateRevision = ~0u;
     }
     else if (sysKeyPressed && isAlphaPressed('S')) {
-        if(!_filename.empty()) {
-            writeFile(_filename, _text.data(), _text.size());
-        }
+        // Saving is done by the host, it knows where the source belongs.
     }
     else if (IsKeyPressed(KEY_ESCAPE)) {
         _selectionStart = _selectionEnd = 0;
@@ -355,7 +350,7 @@ void Editor::update()
             auto [selStart, selEnd] = selection();
             SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
         }
-#if defined(PLATFORM_WEB) && defined(WEB_WITH_CLIPBOARD)
+#if defined(PLATFORM_WEB)
         else if (isClipboardPaste()) {
             insert(GetClipboardTextX());
         }
@@ -394,12 +389,14 @@ void Editor::update()
             insert("\n");
         }
         else {
-            auto codepoint = GetCharPressed();
-            if (codepoint >= 32 && codepoint < 255) {
-                std::string s;
-                utf8::append(s, codepoint);
-                insert(s);
+            // raylib drops characters that are not fetched in this frame, so take all of them
+            std::string s;
+            while (auto codepoint = GetCharPressed()) {
+                if (codepoint >= 32 && codepoint < 255)
+                    utf8::append(s, codepoint);
             }
+            if (!s.empty())
+                insert(s);
         }
     }
     if(_cursorChanged) {
@@ -409,24 +406,23 @@ void Editor::update()
             _selectionStart = _selectionEnd = 0;
     }
 
-    if(_undoStack.empty() || _undoStack.top().id == _editId) {
+    if(_undoStack.empty() || _contentRevision != _lastSeenRevision) {
+        // text changed in this frame (or nothing to undo yet), restart the inactivity delay
+        _lastSeenRevision = _contentRevision;
         _blinkTimer = BLINK_RATE;
         _inactiveEditTimer = 0;
-        _lastEditId = _editId;
     }
-    else {
+    else if(_contentRevision != _checkedRevision) {
+        // text changed earlier, check it once after the inactivity delay
         _inactiveEditTimer += GetFrameTime();
         if(_inactiveEditTimer > INACTIVITY_DELAY) {
             _inactiveEditTimer = 0;
-            _editedTextSha1Hex = calculateSha1(_text).to_hex();
-            if(_editedTextSha1Hex != _compiledSourceSha1Hex) {
-                _compiledSourceSha1Hex = _editedTextSha1Hex;
-                recompile();
-                if(true) {
-                    //if(_compiler.sha1Hex() != romSha1Hex) {
-
-                    //}
-                }
+            _checkedRevision = _contentRevision;
+            if(_compiledRevision != _contentRevision) {
+                if(calculateSha1(_text) == _compiledSourceSha1)
+                    _compiledRevision = _contentRevision; // e.g. edits undone, compile result still matches
+                else
+                    recompile();
             }
         }
     }
@@ -436,15 +432,17 @@ void Editor::update()
 
 void Editor::recompile()
 {
+    _compiledRevision = _contentRevision;
+    _compiledSourceSha1 = calculateSha1(_text);
     try {
         auto start = std::chrono::steady_clock::now();
         _compiler.reset();
         if(_text.empty() || _text.back() != '\n') {
             auto text = _text + '\n';
-            _compiler.compile(_filename, text.data(), text.data() + text.size() + 1);
+            _compiler.compile(_filename, text);
         }
         else {
-            _compiler.compile(_filename, _text.data(), _text.data() + _text.size() + 1);
+            _compiler.compile(_filename, _text);
         }
         auto time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         TraceLog(LOG_INFO, "Recompilation took %dms", (int)time_ms);
@@ -455,8 +453,24 @@ void Editor::recompile()
 
 void Editor::updateCompilerOptions(int startAddress)
 {
-    if(_compiler.setStartAddress(startAddress))
-        recompile();
+    if(_compiler.setStartAddress(startAddress) && isCompiledUpToDate()) {
+        // Compile again at the next check instead of right now, the text might be big
+        // and the editor might not even be visible.
+        _compiledRevision = _contentRevision - 1;
+        _checkedRevision = _contentRevision - 1;
+        _compiledSourceSha1 = {};
+    }
+}
+
+void Editor::setGeneratedText(std::string text)
+{
+    setText(std::move(text));
+    _undoStack = std::stack<EditInfo>();
+    _redoStack = std::stack<EditInfo>();
+    _compiler.reset();
+    _compiledSourceSha1 = {};
+    _compiledRevision = _contentRevision - 1;
+    _checkedRevision = _lastSeenRevision = _contentRevision;
 }
 
 void Editor::draw(Font& font, Rectangle rect)
@@ -475,13 +489,13 @@ void Editor::draw(Font& font, Rectangle rect)
     gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
     gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
     //gui::Space(rect.height -50);
-    DrawRectangle(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
+    DrawRectangleClipped(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
     std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
     auto textColor = StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL);
     while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
         if(lineNumber >= 0) {
-            DrawTextEx(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, 8, 0, textColor);
-            drawTextLine(font, lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol);
+            DrawTextClipped(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, textColor);
+            drawHighlightedTextLine(font, _text.data(), lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol, LINE_SIZE, _lineStates[lineNumber]);
         }
         ++lineNumber;
         ypos += LINE_SIZE;
@@ -492,8 +506,9 @@ void Editor::draw(Font& font, Rectangle rect)
     if(hasFocus() && _blinkTimer >= BLINK_RATE/2) {
         auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
         auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
-        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height)
-            DrawRectangle(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
+        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height) {
+            DrawRectangleClipped(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
+        }
     }
 
     auto handle = verticalScrollHandle();
@@ -528,6 +543,7 @@ Rectangle Editor::verticalScrollHandle()
     return {_textArea.x + _textArea.width - 5, _textArea.y + step * _tosLine, 4, float(scrollLength)};
 }
 
+#if 0
 void Editor::highlightLine(const char* text, const char* end)
 {
     static emu::OctoCompiler::Lexer lexer;
@@ -571,7 +587,7 @@ void Editor::highlightLine(const char* text, const char* end)
     }
 }
 
-void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset)
+void Editor::drawHighlightedTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset)
 {
     uint32_t selStart = _selectionStart > _selectionEnd ? _selectionEnd : _selectionStart;
     uint32_t selEnd = _selectionStart > _selectionEnd ? _selectionStart : _selectionEnd;
@@ -586,7 +602,7 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
             if(offset >= selStart && offset < selEnd)
                 DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, _selected);
             if ((codepoint != ' ') && (codepoint != '\t')) {
-                DrawTextCodepoint(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
+                DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
             }
         }
         --columnOffset;
@@ -599,21 +615,23 @@ void Editor::drawTextLine(Font& font, const char* text, const char* end, Vector2
     if(textOffsetX < width && offset >= selStart && offset < selEnd)
         DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)LINE_SIZE}, _selected);
 }
+#endif
 
 void Editor::safeInsert(uint32_t offset, const std::string& text)
 {
-    assert(("Text offset is actually in text", offset <= _text.size()));
+    assert(offset <= _text.size() && "Text offset is actually in text");
     if(offset > _text.size()) {
         TraceLog(LOG_ERROR, "Trying to insert after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
     }
     else {
         _text.insert(offset, text);
+        ++_contentRevision;
     }
 }
 
 void Editor::safeErase(uint32_t offset, uint32_t length)
 {
-    assert(("Text offset is actually in text", offset <= _text.size()));
+    assert(offset <= _text.size() && "Text offset is actually in text");
     if(offset > _text.size()) {
         TraceLog(LOG_ERROR, "Trying to erase after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
         return;
@@ -622,6 +640,7 @@ void Editor::safeErase(uint32_t offset, uint32_t length)
         TraceLog(LOG_WARNING, "Trying to erase until after end at offset: %d, length: %d, (size: %d)", offset, length, (uint32_t)_text.size());
     }
     _text.erase(offset, length);
+    ++_contentRevision;
 }
 
 void Editor::deleteSelectedText()
@@ -738,27 +757,20 @@ Rectangle Editor::drawToolArea()
         SetNextWidth(18);
         Button(GuiIconText(ICON_LENS_BIG,""));
         SetNextWidth(toolArea.width - 18*5);
-        auto txt = _findString;
         {
             StyleManager::Scope guard;
             if (_findRegex && !_findRegexValid)
                 guard.setStyle(Style::TEXT_COLOR_PRESSED, RED);
-            if (TextBox(_findString, 4096))
+            if (TextBox("find", _findString, 4096))
                 updateFindResults();
             if (toolOpened)
-                SetKeyboardFocus((void*)&_findString);
+                SetKeyboardFocus(GetId("find"));
         }
-        if(txt != _findString)
+        SetNextWidth(18);
+        if (Toggle("Aa", &_findCaseSensitive))
             updateFindResults();
         SetNextWidth(18);
-        bool oldFlag = _findCaseSensitive;
-        _findCaseSensitive = Toggle("Aa", _findCaseSensitive);
-        if(oldFlag != _findCaseSensitive)
-            updateFindResults();
-        SetNextWidth(18);
-        oldFlag = _findRegex;
-        _findRegex = Toggle(".*", _findRegex);
-        if(oldFlag != _findRegex)
+        if (Toggle(".*", &_findRegex))
             updateFindResults();
         SetNextWidth(18);
         if(!_findResults || _findCurrentResult == _findResults) GuiDisable();
@@ -775,7 +787,7 @@ Rectangle Editor::drawToolArea()
         }
         GuiEnable();
         EndColumns();
-        if(_findUpdateId != _editId)
+        if(_findUpdateRevision != _contentRevision)
             updateFindResults();
     }
     if(_findOrReplace == eFIND_REPLACE) {
@@ -785,7 +797,7 @@ Rectangle Editor::drawToolArea()
         SetNextWidth(18);
         Button("R");
         SetNextWidth(toolArea.width - 96 - 18);
-        if(TextBox(_replaceString, 4096))
+        if(TextBox("replace", _replaceString, 4096))
             updateFindResults();
         SetNextWidth(48);
         if(!_findResults || _findCurrentOffset != _selectionStart || _selectionEnd - _selectionStart != _findCurrentLength)
@@ -803,10 +815,10 @@ Rectangle Editor::drawToolArea()
         Button(GuiIconText(ICON_ARROW_DOWN,""));
         EndColumns();
         if(IsKeyPressed(KEY_TAB)) {
-            if(HasKeyboardFocus((void*)&_findString))
-                SetKeyboardFocus((void*)&_replaceString);
-            else if(HasKeyboardFocus((void*)&_replaceString))
-                SetKeyboardFocus((void*)&_findString);
+            if(HasKeyboardFocus(GetId("find")))
+                SetKeyboardFocus(GetId("replace"));
+            else if(HasKeyboardFocus(GetId("replace")))
+                SetKeyboardFocus(GetId("find"));
         }
     }
     return toolArea;
@@ -845,20 +857,20 @@ void Editor::drawMessageArea()
     static float w = 0, h = 0;
     auto area = GetContentAvailable();
     DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
-    BeginScissorMode(area.x, area.y + 1, area.width, area.height - 1);
+    BeginClipping({area.x, area.y + 1, area.width, area.height - 1});
     const auto& compileResult = _compiler.compileResult();
     if(compileResult.resultType == emu::CompileResult::eOK) {
-        DrawTextPro(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextClipped(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
     }
     else {
         std::error_code ec;
         auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
         auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
         if(ec) relFile = compileResult.locations.back().file;
-        DrawTextPro(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, {0,0}, 0, 8, 0, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
-        DrawTextPro(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, {0,0}, 0, 8, 0, StyleManager::mappedColor(ORANGE));
+        DrawTextClipped(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextClipped(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, StyleManager::mappedColor(ORANGE));
     }
-    EndScissorMode();
+    EndClipping();
 }
 
 std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)
@@ -891,7 +903,7 @@ void Editor::updateFindResults()
     _findCurrentLength = 0;
     _findCurrentOffset = 0;
     _selectionStart = _selectionEnd = 0;
-    _findUpdateId = _editId;
+    _findUpdateRevision = _contentRevision;
     if(_findString.empty())
         return;
     if(_findRegex) {
@@ -900,9 +912,9 @@ void Editor::updateFindResults()
             caseSense = _findCaseSensitive;
             try {
                 if (_findCaseSensitive)
-                    regEx = std::regex(_findString, std::regex::icase);
-                else
                     regEx = std::regex(_findString);
+                else
+                    regEx = std::regex(_findString, std::regex::icase);
                 _findRegexValid = true;
             }
             catch (...)

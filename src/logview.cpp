@@ -26,10 +26,12 @@
 
 #include "logview.hpp"
 
-#include <rlguipp/rlguipp4.hpp>
-#include <ghc/utf8.hpp>
 #include <fmt/format.h>
-//#include <iostream>
+#include <ghc/utf8.hpp>
+#include <rlguipp/rlguipp.hpp>
+
+#include "systemtools.hpp"
+// #include <iostream>
 
 #if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
 #include <iostream>
@@ -38,6 +40,7 @@
 namespace utf8 = ghc::utf8;
 
 LogView::LogView()
+    : Logger(dataPath())
 {
     _logBuffer.resize(HISTORY_SIZE);
     clear();
@@ -51,6 +54,7 @@ LogView::~LogView()
 
 void LogView::clear()
 {
+    std::unique_lock guard(_logMutex);
     for(auto& entry : _logBuffer) {
         entry = {};
     }
@@ -60,8 +64,9 @@ void LogView::clear()
     _losCol = 0;
 }
 
-void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frameTime, const char* msg)
+void LogView::doLog(LogView::Source source, uint64_t cycle, FrameTime frameTime, const char* msg)
 {
+    std::unique_lock guard(_logMutex);
     auto& logEntry = _logBuffer[_writeIndex++];
     logEntry = {cycle, frameTime, 0, source, msg};
     if (_usedSlots < _logBuffer.size())
@@ -73,13 +78,33 @@ void LogView::doLog(LogView::Source source, emu::cycles_t cycle, FrameTime frame
     auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
     std::cout << content << std::endl;
 #else
-    //auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
-    //std::cout << content << std::endl;
+    // auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    // std::cout << content << std::endl;
+#endif
+}
+
+void LogView::doLog(emu::LogLevel lvl, const char* msg)
+{
+    std::unique_lock guard(_logMutex);
+    auto& logEntry = _logBuffer[_writeIndex++];
+    logEntry = {(uint64_t)lvl, FrameTime{0,0}, 0, Source::eHOST, msg};
+    if (_usedSlots < _logBuffer.size())
+        ++_usedSlots;
+    if (_writeIndex >= _logBuffer.size())
+        _writeIndex = 0;
+    _tosLine = _visibleLines >= _usedSlots ? 0 : _usedSlots - _visibleLines + 1;
+#if !defined(NDEBUG) && defined(FULL_CONSOLE_TRACE)
+    auto content = fmt::format("[{}] {}", emu::Logger::getLogLevelName(lvl), logEntry._line);
+    std::cout << content << std::endl;
+#else
+    // auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+    // std::cout << content << std::endl;
 #endif
 }
 
 void LogView::draw(Font& font, Rectangle rect)
 {
+    std::unique_lock guard(_logMutex);
     using namespace gui;
     int lineNumber = int(_tosLine) - 1;
     _totalArea = rect;
@@ -112,7 +137,7 @@ Rectangle LogView::drawToolArea()
     return Rectangle();
 }
 
-void LogView::drawTextLine(Font& font, int logLine, Vector2 position, float width, int columnOffset)
+void LogView::drawTextLine(const Font& font, int logLine, Vector2 position, float width, int columnOffset)
 {
     if(logLine < _usedSlots) {
         logLine = _writeIndex - _usedSlots + logLine;
@@ -122,7 +147,7 @@ void LogView::drawTextLine(Font& font, int logLine, Vector2 position, float widt
         float textOffsetX = 0.0f;
         size_t index = 0;
         auto& logEntry = _logBuffer[logLine];
-        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:03x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[    ] {}", logEntry._line);
+        auto content = logEntry._source != eHOST ? fmt::format("[{:02x}:{:04x}] {}", (int)logEntry._frameTime.frame, (int)logEntry._frameTime.cycle, logEntry._line) : fmt::format("[{}] {}", getLogLevelName((emu::LogLevel)logEntry._cycle), logEntry._line);
         const char* text = content.data();
         const char* end = text + content.size();
         while(text < end && textOffsetX < width && *text != '\n') {
@@ -133,7 +158,7 @@ void LogView::drawTextLine(Font& font, int logLine, Vector2 position, float widt
                 //if(offset >= selStart && offset < selEnd)
                 //    DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, selected);
                 if ((codepoint != ' ') && (codepoint != '\t')) {
-                    DrawTextCodepoint(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, {200, 200, 200, 255}/*_highlighting[index].front*/);
+                    DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, {200, 200, 200, 255}/*_highlighting[index].front*/);
                 }
             }
             --columnOffset;

@@ -26,8 +26,9 @@
 #pragma once
 
 #include <chiplet/chip8meta.hpp>
-#include <emulation/chip8options.hpp>
-#include <emulation/chip8emulatorbase.hpp>
+#include <emulation/chip8genericbase.hpp>
+#include <emulation/emulatorhost.hpp>
+#include <emulation/logger.hpp>
 #include <emulation/time.hpp>
 #include <iostream>
 
@@ -37,22 +38,40 @@ namespace emu
 extern const uint8_t _chip8_cvip[0x200];
 extern const uint8_t _rom_cvip[0x200];
 
-class Chip8StrictEmulator : public Chip8EmulatorBase
+struct Chip8StrictOptions {
+    Properties asProperties() const;
+    static Chip8StrictOptions fromProperties(const Properties& props);
+    static Properties& registeredPrototype();
+    int clockFrequency{};
+    size_t ramSize{};
+    bool cleanRam{};
+    bool traceLog{};
+    Palette palette;
+};
+
+class Chip8StrictEmulator : public Chip8GenericBase
 {
 public:
-    using Chip8EmulatorBase::ExecMode;
-    using Chip8EmulatorBase::CpuState;
     constexpr static uint16_t ADDRESS_MASK = 0xFFF;
-    constexpr static uint32_t MEMORY_SIZE = 4096;
+    //constexpr static uint32_t MEMORY_SIZE = 4096;
     constexpr static int SCREEN_WIDTH = 64;
     constexpr static int SCREEN_HEIGHT = 32;
     static constexpr uint64_t CPU_CLOCK_FREQUENCY = 1760640;
 
-    Chip8StrictEmulator(Chip8EmulatorHost& host, Chip8EmulatorOptions& options, IChip8Emulator* other = nullptr)
-        : Chip8EmulatorBase(host, options, other)
+    Chip8StrictEmulator(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr)
+        : Chip8GenericBase(chip8::Variant::CHIP_8, CPU_CLOCK_FREQUENCY)
+        , _host(host)
+        , _options(Chip8StrictOptions::fromProperties(properties))
     {
+        if (other) {
+            if (auto otherC8 = other->chip8Core()) {
+                swapBreakpoints(*otherC8);
+            }
+        }
+        _memory.resize(_options.ramSize, 0);
+        _rV = _memory.data() + _options.ramSize - 0x110;
         _systemTime.setFrequency(CPU_CLOCK_FREQUENCY>>3);
-        _memory.resize(MEMORY_SIZE, 0);
+        _memory.resize(_options.ramSize, 0);
     }
     ~Chip8StrictEmulator() override = default;
 
@@ -60,41 +79,46 @@ public:
     {
         return "Chip-8-Strict";
     }
+    chip8::VariantSet supportedChip8Variants() const override;
+    uint32_t cpuID() const override { return 0xC856; }
+    uint8_t readMemoryByte(uint32_t addr) const override { return readByte(addr); }
+    uint16_t getCurrentScreenWidth() const override { return 64; }
+    uint16_t getCurrentScreenHeight() const override { return 32; }
+    uint16_t getMaxScreenWidth() const override { return 64; }
+    uint16_t getMaxScreenHeight() const override { return 32; }
 
-    void reset() override
-    {
-        Chip8EmulatorBase::reset();
-        std::memcpy(_memory.data(), _chip8_cvip, 512);
-        _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
-        _nextFrame = calcNextFrame();
-        _cycleCounter = 2;
-        _systemTime.reset();
-        _frameCounter = 0;
-    }
+    bool updateProperties(Properties& props, Property& changed) override;
 
-    inline uint16_t readWord(uint32_t addr) const
+    uint16_t readWord(uint32_t addr) const
     {
         return (readByte(addr) << 8) | readByte(addr + 1);
     }
 
-    int64_t getMachineCycles() const override { return _machineCycles; }
+    int64_t machineCycles() const override { return _machineCycles; }
 
-    int64_t executeFor(int64_t microseconds) override
+    unsigned stackSize() const override { return 24; }
+
+    StackContent stack() const override;
+    bool restoreState(const Chip8State& state) override
     {
-        if(_execMode != ePAUSED) {
-            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
-            while(_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-                executeInstruction();
-            }
-            return _systemTime.difference_us(endTime);
+        if (!state.isValid(stackSize())) return false;
+        restoreRegisters(state);
+        for (int n = 0; n < state.sp; ++n) {
+            _memory[_options.ramSize - 0x131 - n * 2 - 2] = state.s[n] >> 8;
+            _memory[_options.ramSize - 0x131 - n * 2 - 1] = state.s[n] & 0xFF;
         }
-        return 0;
+        return true;
     }
 
-    void tick(int instructionsPerFrame) override
+    uint32_t defaultLoadAddress() const override
+    {
+        return 0x200;
+    }
+
+    void executeFrame() override
     {
         if (_execMode == ePAUSED || _cpuState == eERROR) {
-            setExecMode(ePAUSED);
+            Chip8GenericBase::setExecMode(ePAUSED);
             return;
         }
         auto nextFrame = _nextFrame;
@@ -103,27 +127,58 @@ public:
         }
     }
 
-    void executeInstruction() override
+    void errorHalt(std::string errorMessage)
     {
+        _execMode = ePAUSED;
+        _cpuState = eERROR;
+        _errorMessage = std::move(errorMessage);
+        _rPC -= 2;
+    }
+
+    int executeInstruction() override
+    {
+        const auto startCycles = _machineCycles;
         if (_execMode == ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
         uint16_t opcode = readWord(_rPC);
         _rPC = uint16_t(_rPC + 2);
-        if(_cpuState != eWAITING) {
+        if(_cpuState != CpuState::eWAIT) {
             ++_cycleCounter;
             addCycles((opcode & 0xF000) ? 68 : 40);
         }
         switch (opcode >> 12) {
             case 0:
                 if (opcode == 0x00E0) {  // 00E0 - clear
-                    clearScreen();
-                    ++_clearCounter;
-                    addCycles(3078);
+                    constexpr int eraseCycles = 3078;
+                    auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
+                    if(_cpuState != eWAIT) {
+                        _cpuState = eWAIT;
+                        _rPC = uint16_t(_rPC - 2);
+                        _instructionCycles = (eraseCycles > cyclesLeftInFrame) ? eraseCycles - cyclesLeftInFrame : 0;
+                        addCycles(cyclesLeftInFrame);
+                    }
+                    else
+                    {
+                        if(_instructionCycles) {
+                            _instructionCycles -= (_instructionCycles > cyclesLeftInFrame) ? cyclesLeftInFrame : _instructionCycles;
+                            addCycles(cyclesLeftInFrame);
+                        }
+                        if (!_instructionCycles) {
+                            _cpuState = eNORMAL;
+                            _screen.setAll(0);
+                            std::memset(_memory.data() + 0xF00, 0, 256);
+                            ++_clearCounter;
+                        }
+                        else {
+                            _rPC = uint16_t(_rPC - 2);
+                        }
+                    }
                 }
                 else if (opcode == 0x00EE) {  // 00EE - return
                     if(!_rSP)
                         errorHalt("STACK UNDERFLOW");
-                    _rPC = _stack[--_rSP];
+                    --_rSP;
+                    _rPC = (_memory[_options.ramSize - 0x131 - _rSP * 2 - 2] << 8) | _memory[_options.ramSize - 0x131 - _rSP * 2 - 1];
                     addCycles(10);
                     if (_execMode == eSTEPOUT)
                         _execMode = ePAUSED;
@@ -141,7 +196,9 @@ public:
             case 2:  // 2nnn - :call NNN
                 if(_rSP == 0x15)
                     errorHalt("STACK OVERFLOW");
-                _stack[_rSP++] = _rPC;
+                _memory[_options.ramSize - 0x131 - _rSP * 2 - 2] = _rPC >> 8;
+                _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = _rPC & 0xFF;
+                _rSP++;
                 _rPC = opcode & 0xFFF;
                 addCycles(26);
                 break;
@@ -189,6 +246,10 @@ public:
                 addCycles(10);
                 break;
             case 8: {
+                if(opcode & 0xF) {
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 2] = 0xF0 + (opcode & 0xF);
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = 0xD3;
+                }
                 switch (opcode & 0xF) {
                     case 0:  // 8xy0 - vX := vY
                         _rV[(opcode >> 8) & 0xF] = _rV[(opcode >> 4) & 0xF];
@@ -284,9 +345,10 @@ public:
                 int y = _rV[(opcode >> 4) & 0xF] & (SCREEN_HEIGHT - 1);
                 int lines = opcode & 0xF;
                 auto cyclesLeftInFrame = cyclesLeftInCurrentFrame();
-                if(_cpuState != eWAITING) {
+                if(_cpuState != eWAIT) {
                     auto prepareTime = 68 + lines * (46 + 20 * (x & 7));
-                    _cpuState = eWAITING;
+                    _memory[_options.ramSize - 0x131 - _rSP * 2 - 1] = x & 7;
+                    _cpuState = eWAIT;
                     _rPC = uint16_t(_rPC - 2);
                     _instructionCycles = (prepareTime > cyclesLeftInFrame) ? prepareTime - cyclesLeftInFrame : 0;
                     addCycles(cyclesLeftInFrame);
@@ -300,7 +362,7 @@ public:
                     }
                     else {
                         _cpuState = eNORMAL;
-                        _rV[15] = drawSprite(x, y, _rI, lines, false) ? 1 : 0;
+                        _rV[15] = drawSprite(x, y, _rI, lines) ? 1 : 0;
                     }
                 }
                 break;
@@ -340,7 +402,7 @@ public:
                             else {
                                 _instructionCycles = 0;
                                 _cpuState = eNORMAL;
-                                addCycles(8);
+                                addCycles(10);
                             }
                         }
                         else {
@@ -350,15 +412,16 @@ public:
                                 addCycles(cyclesLeftInCurrentFrame());
                                 _instructionCycles = 3 * 3668;
                                 _rST = 4;
-                                _cpuState = eWAITING;
+                                _rPC = uint16_t(_rPC - 2);
+                                _cpuState = eWAIT;
                             }
                             else {
                                 // keep waiting...
-                                _rPC -= 2;
+                                _rPC = uint16_t(_rPC - 2);
                                 if(key < 0) {
                                     _rST = 4;
                                 }
-                                _cpuState = eWAITING;
+                                _cpuState = eWAIT;
                             }
                         }
                         break;
@@ -419,15 +482,14 @@ public:
             }
         }
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP <= _stepOverSP)) {
-            if(_cpuState != eWAITING)
+            if(_cpuState != eWAIT)
                 _execMode = ePAUSED;
         }
-        if(hasBreakPoint(_rPC)) {
-            if(Chip8EmulatorBase::findBreakpoint(_rPC)) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(_rPC)) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
+        return static_cast<int>(_machineCycles - startCycles);
     }
 
     void executeInstructions(int numInstructions) override
@@ -436,22 +498,74 @@ public:
             Chip8StrictEmulator::executeInstruction();
     }
 
-    bool drawSprite(uint8_t x, uint8_t y, uint16_t data, uint8_t height, bool hires)
+    void drawRamPixel(uint8_t x, uint8_t y)
+    {
+        uint8_t mask = 0x80u >> (x & 3);
+        unsigned offset = (y << 3u) + (x >> 3u);
+        _memory[0xF00 + offset] ^= mask;
+    }
+
+    bool drawSprite(uint8_t x, uint8_t y, uint16_t data, uint8_t height)
     {
         // sdt = 26 + 34*VisN + 4*ColRow1 + (VX < 56 ? 16*VisN + 4*ColRow2 : 0);
         bool collision = false;
         auto bitOffset = x & 7;
         int drawTime = 26;
-        x %= 64;
-        y %= 32;
+        x &= 63;
+        y &= 31;
+        auto workOffset = _memory.size() - 0x130;
         for (int l = 0; l < height; ++l) {
             uint8_t value = readByte(data++);
+            _memory[workOffset + l*2] = value >> bitOffset;
+            _memory[workOffset + l*2 + 1] = bitOffset ? value << (8 - bitOffset) : 0;
+        }
+        auto xOff = x>>3;
+        for (int l = 0; l < height; ++l) {
+            if (y + l < 32) {
+                drawTime += 34;
+                auto xPos = xOff<<3;
+                auto frameOffset = _memory.size() - 0x100 + xOff + ((y+l)<<3);
+                auto drawByte = _memory[workOffset + l*2];
+                if (drawByte) {
+                    auto& screenByte = _memory[frameOffset];
+                    if (screenByte & drawByte) {
+                        collision = true;
+                        drawTime += 4;
+                    }
+                    screenByte ^= drawByte;
+                    for (int i = 0; i < 8; ++i, drawByte<<=1) {
+                        _screen.setPixel(xPos + i, y + l, (screenByte >> (7-i)) & 1);
+                    }
+                }
+                if (xOff < 7) {
+                    auto drawByte2 = _memory[workOffset + l*2 + 1];
+                    drawTime += 16;
+                    if (drawByte2) {
+                        auto& screenByte = _memory[frameOffset + 1];
+                        if (screenByte & drawByte2) {
+                            collision = true;
+                            drawTime += 4;
+                        }
+                        screenByte ^= drawByte2;
+                        for (int i = 0; i < 8; ++i) {
+                            _screen.setPixel(xPos + i + 8, y + l, (screenByte >> (7-i)) & 1);
+                        }
+                    }
+                }
+            }
+        }
+        /*
+        for (int l = 0; l < height; ++l) {
+            uint8_t value = readByte(data++);
+            _memory[_memory.size() - 0x130 + l*2] = value >> bitOffset;
+            _memory[_memory.size() - 0x130 + l*2 + 1] = bitOffset ? value << (8 - bitOffset) : 0;
             if (y + l < 32) {
                 unsigned col1 = 0, col2 = 0;
                 for (unsigned b = 0; b < 8; ++b, value <<= 1) {
                     unsigned vipBit = b + bitOffset;
                     if (x + b < 64 && (value & 0x80)) {
                         unsigned& col = vipBit < 8 ? col1 : col2;
+                        drawRamPixel(x + b, y + l);
                         if (_screen.drawSpritePixel(x + b, y + l, 1)) {
                             collision = true;
                             col = 4;
@@ -461,6 +575,7 @@ public:
                 drawTime += 34 + col1 + (x < 56 ? 16 : 0) + col2;
             }
         }
+        */
         addCycles(drawTime);
         _screenNeedsUpdate = true;
         return collision;
@@ -477,16 +592,47 @@ public:
         }
         else {
             // Default is silence
-            IChip8Emulator::renderAudio(samples, frames, sampleFrequency);
+            IEmulationCore::renderAudio(samples, frames, sampleFrequency);
         }
     }
 
+    const VideoType* getScreen() const override { return &_screen; }
+
+    void setPalette(const Palette& palette) override;
+
 protected:
+    void handleReset(bool cold) override
+    {
+        _cycleCounter = 0;
+        _frameCounter = 0;
+        _clearCounter = 2;
+        _systemTime.reset();
+        if(_options.cleanRam)
+            std::memset(_memory.data(), 0, _memory.size());
+        if(_options.traceLog)
+            Logger::log(Logger::eCHIP8, _cycleCounter, {_frameCounter, 0}, "--- RESET ---");
+        _rI = 0;
+        _rPC = 0x200;
+        //std::memset(_memory.data() + MEMORY_SIZE - 0x160, 0, 48); // clear stack
+        _rSP = 0;
+        _rDT = 0;
+        _rST = 0;
+        std::memset(_rV, 0, 16);
+        std::memcpy(_memory.data(), _chip8_cvip, 512);
+        _machineCycles = 3250;  // This is the amount of cycles a VIP needs to get to the start of the program
+        _nextFrame = calcNextFrame();
+        _frameCounter = 0;
+        _screen.setAll(0);
+        _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
+        _cpuState = eNORMAL;
+        _errorMessage.clear();
+        _wavePhase = 0;
+    }
     void wait(int instructionCycles = 0)
     {
         _rPC -= 2;
         _instructionCycles = instructionCycles;
-        _cpuState = eWAITING;
+        _cpuState = eWAIT;
     }
     int64_t cyclesLeftInCurrentFrame() const
     {
@@ -494,22 +640,22 @@ protected:
     }
     uint8_t readByte(uint16_t addr) const
     {
-        if(addr < 0x1000) {
-            return _memory[addr];
+        if(addr < 0x8000) {
+            return _memory[addr % _options.ramSize];
         }
-        else if(addr >= 0x8000 && addr < 0x8200)
+        if(addr >= 0x8000 /*&& addr < 0x8200*/)
         {
             return _rom_cvip[addr & 0x1ff];
         }
-        return 0;
+        return 0xFF;
     }
     void writeByte(uint16_t addr, uint8_t val)
     {
-        if(addr < 0x1000) {
-            _memory[addr] = val;
+        if(addr < 0x8000) {
+            _memory[addr % _options.ramSize] = val;
         }
     }
-    int64_t calcNextFrame() const override { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
+    int64_t calcNextFrame() const { return ((_machineCycles + 2572) / 3668) * 3668 + 1096; }
     void handleTimer() override
     {
         ++_frameCounter;
@@ -522,24 +668,40 @@ protected:
         if (!_rST)
             _wavePhase = 0;
         if(_screenNeedsUpdate) {
+            for (int x = 0; x < 8; ++x) {
+                for (int y = 0; y < 32; ++y) {
+                    auto data = _memory[_memory.size() - 0x100 + x + (y<<3)];
+                    for (int i = 0; i < 8; ++i) {
+                        bool bit = data & (0x80 >> i);
+                        _screen.setPixel(x*8 + i, y, bit);
+                    }
+                }
+            }
             _host.updateScreen();
         }
     }
-    inline void addCycles(emu::cycles_t cycles)
+    void addCycles(emu::cycles_t cycles)
     {
         _machineCycles += cycles;
         _systemTime.addCycles(cycles);
         if(_machineCycles >= _nextFrame) {
-            handleTimer();
             auto irqTime = 1832 + (_rST ? 4 : 0) + (_rDT ? 8 : 0);
+            handleTimer();
             _machineCycles += irqTime;
             _systemTime.addCycles(irqTime);
             _nextFrame = calcNextFrame();
         }
     }
-    int64_t _machineCycles{0};
+    EmulatorHost& _host;
+    Chip8StrictOptions _options;
+    uint16_t _randomSeed{};
+    int64_t _machineCycles{};
     int64_t _nextFrame{1122};
-    int _instructionCycles{0};
+    float _wavePhase{0};
+    int _clearCounter{};
+    int _instructionCycles{};
+    bool _screenNeedsUpdate{};
+    VideoType _screen{64,32};
 };
 
 }

@@ -1,0 +1,86 @@
+#----------------------------------------------------------------
+# AUTO-DETECTION-CODE:
+# Jumps to the following labels:
+#   c8_detected - CHIP-8
+#   sc_detected - SCHIP
+#   mc_detected - MegaChip8
+#   xo_detected - XO-CHIP
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: autodetect
+    :const VIP_CHIP_8 1
+    :const LEGACY_SCHIP 2
+    :const MODERN_SCHIP 3
+    :const ORIGINAL_MEGACHIP 3
+    :const MEGACHIP 4
+    :const XO_CHIP 5
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# 1. Check for XO-CHIP
+# XO-CHIP skip would see this as a four byte opcode and skip all
+# others will just skip two byte executing the jump
+    if vf != vf then 0xF0 0x00 jump no_xo_support
+    jump xo_detected
+: no_xo_support
+    # 2. Check for SCHIP/MegaChip8
+    # Shifting on SCHIP/MC8 ignores vy and just shifts vx
+    # if v0 is 1, v1 was used and it is CHIP-8
+    v1 := 2
+    v0 := 0
+    v0 >>= v1
+    if v0 == 1 then
+        jump no_sc_support
+    # 3. SCHIP uses Bxnn, instead of Bnnn so SCHIP will
+    # jump to xnn + v2, while MegaChip8 will jump to nnn + v0
+    i := has_bnnn
+    load v1
+    va = v0
+    vb = v1
+    :unpack 1 omc_detected
+    :call write_trampoline
+    v0 := 0
+    v2 := 2
+    jump0 has_bnnn
+: has_bnnn
+    jump mc_detected
+    jump sc_detected
+
+: restore_trampoline
+    v0 := va
+    v1 := vb
+: write_trampoline
+    i := has_bnnn
+    v2 := 0x80
+    i += v2
+    i += v2
+    i += v2
+    i += v2
+    save v1
+    return
+
+: no_sc_support
+    jump c8_detected
+# AUTO-DETECTION-END
+#----------------------------------------------------------------
+
+: c8_detected
+    v0 := VIP_CHIP_8
+    return
+
+: sc_detected
+    :call restore_trampoline
+    v0 := LEGACY_SCHIP
+    return
+
+: omc_detected
+    :call restore_trampoline
+    v0 := ORIGINAL_MEGACHIP
+    return
+
+: mc_detected
+    :call restore_trampoline
+    v0 := MEGACHIP
+    return
+
+: xo_detected
+    v0 := XO_CHIP
+    return

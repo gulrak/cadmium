@@ -49,7 +49,7 @@ Chip8Variant Chip8EmulatorOptions::variantForPreset(SupportedPreset preset)
         case eSCHIP10: return Chip8Variant::SCHIP_1_0;
         case eSCHIP11: return Chip8Variant::SCHIP_1_1;
         case eSCHPC: return Chip8Variant::SCHIPC_GCHIPC;
-        case eSCHIP_MODERN: return Chip8Variant::SCHIPC_GCHIPC;
+        case eSCHIP_MODERN: return Chip8Variant::SCHIP_MODERN;
         case eMEGACHIP: return Chip8Variant::MEGA_CHIP;
         case eXOCHIP: return Chip8Variant::XO_CHIP;
         case eCHIP8VIP: return Chip8Variant::CHIP_8;
@@ -248,6 +248,7 @@ Chip8EmulatorOptions::SupportedPreset Chip8EmulatorOptions::presetForVariant(chi
     else if(variant == chip8::Variant::SCHIP_1_0) return eSCHIP10;
     else if(variant == chip8::Variant::SCHIP_1_1) return eSCHIP11;
     else if(variant == chip8::Variant::SCHIPC) return eSCHPC;
+    else if(variant == chip8::Variant::SCHIP_MODERN) return eSCHIP_MODERN;
     else if(variant == chip8::Variant::MEGA_CHIP) return eMEGACHIP;
     else if(variant == chip8::Variant::XO_CHIP) return eXOCHIP;
     else if(variant == chip8::Variant::CHIP_8_TPD) return eCHIP8VIP_TPD;

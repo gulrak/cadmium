@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/cdp1802.hpp
+// src/emulation/hardware/cdp1802.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -57,6 +57,7 @@ public:
     virtual uint8_t readByte(uint16_t addr) const = 0;
     virtual uint8_t readByteDMA(uint16_t addr) const = 0;
     virtual void writeByte(uint16_t addr, uint8_t val) = 0;
+    virtual void passiveCycle() {}
 };
 
 struct Cdp1802State
@@ -72,18 +73,28 @@ struct Cdp1802State
     bool ie{};
     bool q{};
     int64_t cycles{};
+    bool operator==(const Cdp1802State& state) const = default;
+
+    std::string toString() const
+    {
+        return fmt::format(
+            "R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} D:{:02x} DF:{} IE:{} Q:{} cycles:{}",
+            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15], p, x, n, i, t, d, df ? 1 : 0, ie ? 1 : 0, q ? 1 : 0, cycles);
+    }
 };
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
 #define GENERIC_OVERRIDE override
-class Cdp1802 : public GenericCpu
+#define GENERIC_BASE : public GenericCpu
 #else
 #define GENERIC_OVERRIDE
-class Cdp1802
+#define GENERIC_BASE
 #endif
+
+/// Implementation of a CDP1802 CPU
+class Cdp1802 : public GenericCpu
 {
 public:
-    enum CpuState { eNORMAL, eIDLE, eHALT, eERROR };
     struct Disassembled {
         int size;
         std::string text;
@@ -91,34 +102,16 @@ public:
     using OutputHandler = std::function<void(uint8_t, uint8_t)>;
     using InputHandler = std::function<uint8_t (uint8_t)>;
     using NEFInputHandler = std::function<bool (uint8_t)>;
-    Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
+    using QChangeHandler = std::function<void (bool)>;
+    explicit Cdp1802(Cdp1802Bus& bus, Time::ticks_t clockFreq = 3200000)
         : _bus(bus)
         , _systemTime(clockFreq)
     {
         _output = [](uint8_t, uint8_t){};
         _input = [](uint8_t){ return 0; };
         _inputNEF = [](uint8_t) { return true; };
-        reset();
-    }
-
-    void reset()
-    {
-        _rI = 0;
-        _rN = 0;
-        _rP = 0;
-        _rQ = false;
-        _rX = 0;
-        _rR[0] = 0;
-        _rR[1] = 0;
-        _rIE = true;
-        _cycles = 0;
-#ifdef DIFFERENTIATE_CYCLES
-        _idleCycles = 0;
-        _irqCycles = 0;
-#endif
-        _systemTime.reset();
-        _execMode = eRUNNING;
-        _cpuState = eNORMAL;
+        _qChange = [](bool){};
+        Cdp1802::reset();
     }
 
     void setOutputHandler(OutputHandler handler)
@@ -136,12 +129,17 @@ public:
         _inputNEF = handler;
     }
 
+    void setQChangeHandler(QChangeHandler handler)
+    {
+        _qChange = handler;
+    }
+
     //void triggerIrq() { _irq = true; }
     uint16_t getR(uint8_t index) const { return _rR[index & 0xf]; }
     void setR(uint8_t index, uint16_t value) { _rR[index & 0xf] = value; }
     bool getIE() const { return _rIE; }
-    const ClockedTime& getTime() const override { return _systemTime; }
-    int64_t getCycles() const GENERIC_OVERRIDE { return _cycles; }
+    const ClockedTime& time() const override { return _systemTime; }
+    int64_t cycles() const GENERIC_OVERRIDE { return _cycles; }
 #ifdef DIFFERENTIATE_CYCLES
     int64_t getIdleCycles() const { return _idleCycles; }
     int64_t getIrqCycles() const { return _irqCycles; }
@@ -182,6 +180,9 @@ public:
         _rD = state.d;
         _rDF = state.df;
         _rIE = state.ie;
+        if(_rQ != state.q) {
+            _qChange(state.q);
+        }
         _rQ = state.q;
         _cycles = state.cycles;
     }
@@ -194,6 +195,7 @@ public:
             PC() = (PC() & 0xFF00) | readByte(PC());
         }
         else {
+            readByte(PC());
             ++PC();
         }
     }
@@ -213,15 +215,21 @@ public:
     void branchLong(bool condition)
     {
         if(condition) {
-            PC() = (readByte(PC()) << 8) | readByte(PC()+1);
+            auto hi = readByte(PC());
+            auto lo = readByte(PC()+1);
+            PC() = (hi << 8) | lo;
         }
         else {
+            readByte(PC());
+            readByte(PC()+1);
             PC() += 2;
         }
         addCycles(8);
     }
     void skipLong(bool condition)
     {
+        readByte(PC());
+        readByte(PC()+1);
         if(condition) {
             PC() += 2;
         }
@@ -229,6 +237,11 @@ public:
     }
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
+    size_t disassemblyPrefixSize() const override
+    {
+        return 13;
+    }
+
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
 #else
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const
@@ -242,16 +255,16 @@ public:
         auto [size, text] = Cdp1802::disassembleInstruction(data, data+3);
         if(bytes) *bytes = size;
         switch(size) {
-           case 2:  return fmt::format("{:04x}: {:02x} {:02x}  {}", addr, data[0], data[1], text);
-           case 3:  return fmt::format("{:04x}: {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
-           default: return fmt::format("{:04x}: {:02x}     {}", addr, data[0], text);
+           case 2:  return fmt::format("{:04x}  {:02x} {:02x}     {}", addr, data[0], data[1], text);
+           case 3:  return fmt::format("{:04x}  {:02x} {:02x} {:02x}  {}", addr, data[0], data[1], data[2], text);
+           default: return fmt::format("{:04x}  {:02x}        {}", addr, data[0], text);
         }
     }
 
     std::string dumpStateLine() const
     {
-        return fmt::format("R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} D:{:02x} DF:{} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} PC:{:04x} O:{:02x} EF:{}{}{}{}", getR(0), getR(1), getR(2),
-                           getR(3), getR(4), getR(5), getR(6), getR(7), getR(8), getR(9), getR(10), getR(11), getR(12), getR(13), getR(14), getR(15), _rD, _rDF?1:0, _rP, _rX, _rN, _rI, _rT, _rR[_rP], _bus.readByte(_rR[_rP]), _inputNEF(0)?0:1, _inputNEF(1)?0:1, _inputNEF(2)?0:1, _inputNEF(3)?0:1);
+        return fmt::format("R0:{:04x} R1:{:04x} R2:{:04x} R3:{:04x} R4:{:04x} R5:{:04x} R6:{:04x} R7:{:04x} R8:{:04x} R9:{:04x} RA:{:04x} RB:{:04x} RC:{:04x} RD:{:04x} RE:{:04x} RF:{:04x} D:{:02x} DF:{} P:{:1x} X:{:1x} N:{:1x} I:{:1x} T:{:02x} PC:{:04x} O:{:02x} EF:{}{}{}{} Q:{}", getR(0), getR(1), getR(2),
+                           getR(3), getR(4), getR(5), getR(6), getR(7), getR(8), getR(9), getR(10), getR(11), getR(12), getR(13), getR(14), getR(15), _rD, _rDF?1:0, _rP, _rX, _rN, _rI, _rT, _rR[_rP], _bus.readByte(_rR[_rP]), _inputNEF(0)?0:1, _inputNEF(1)?0:1, _inputNEF(2)?0:1, _inputNEF(3)?0:1, _rQ?1:0);
     }
 
     static Disassembled disassembleInstruction(const uint8_t* code, const uint8_t* end)
@@ -357,19 +370,6 @@ public:
         }
     }
 
-    int64_t executeFor(int64_t microseconds) override
-    {
-        if(_execMode != GenericCpu::ePAUSED) {
-            auto startTime = _systemTime;
-            auto endTime = startTime + Time::fromMicroseconds(microseconds);
-            while (_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-                executeInstruction();
-            }
-            return startTime.excessTime_us(_systemTime, microseconds);
-        }
-        return 0;
-    }
-
     void executeDMAIn(uint8_t data)
     {
         if(_cpuState == eIDLE)
@@ -387,22 +387,25 @@ public:
         return {readByteDMA(addr), addr};
     }
 
-    void executeInstruction()
+    int executeInstruction() override
     {
+        const auto startCycles = _cycles;
         if (_execMode == GenericCpu::ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
         //if(!_rIE)
         //    std::clog << fmt::format("CDP1802: [{:9}] {:<24} | ", _cycles, disassembleCurrentStatement()) << dumpStateLine() << std::endl;
         if(_cpuState == eIDLE) {
             addCycles(8);
-            return;
+            return 8;
         }
         uint8_t opcode = readByte(PC()++);
         addCycles(16);
+        _rI = opcode >> 4;
         _rN = opcode & 0xF;
         switch (opcode) {
             case 0x00: // IDL ; WAIT FOR DMA OR INTERRUPT; M(R(0)) → BUS
                 _cpuState = eIDLE;
+                readByte(_rR[0]);
                 break;
             CASE_15(0x01): // LDN Rn ; M(R(N)) → D; FOR N not 0
                 _rD = readByte(RN());
@@ -438,7 +441,8 @@ public:
                 branchShort(_inputNEF(3));
                 break;
             case 0x38: // SKP
-                PC()++;
+                readByte(PC());
+                ++PC();
                 break;
             case 0x39: // BNQ
                 branchShort(!_rQ);
@@ -468,13 +472,25 @@ public:
                 writeByte(RN(), _rD);
                 break;
             case 0x60: // IRX ; R(X) + 1 → R(X)
-                RX()++;
+                readByte(RX()++);
                 break;
             CASE_7(0x61): { // OUT 1/7 ; M(R(X)) → BUS; R(X) + 1 → R(X); N LINES = N
                 _output(_rN, readByte(RX()++));
                 break;
             }
-            case 0x68: _cpuState = eERROR; PC()--; break; // ILLEGAL (still behaving as NOP on the original CDP1802)
+            case 0x68: {
+                // INP 0, BUS → M(R(X)); BUS → D; N LINES = N
+                if (_stopOn68) {
+                    // ILLEGAL (still behaving as NOP on the original CDP1802)
+                    _cpuState = eERROR; _errorMessage = "Illegal opcode 0x68!"; PC()--;
+                }
+                else {
+                    // the actual behavior on a 1802 when executing the opcode
+                    _rD = _input(0);
+                    writeByte(RX(), _rD);
+                }
+                break;
+            }
             CASE_7(0x69): { // INP 1/7 ; BUS → M(R(X)); BUS → D; N LINES = N
                 _rD = _input(_rN&7);
                 writeByte(RX(), _rD);
@@ -534,10 +550,16 @@ public:
                 _rR[2]--;
                 break;
             case 0x7A: // REQ ; 0 → Q
-                _rQ = false;
+                if (_rQ) {
+                    _qChange(false);
+                    _rQ = false;
+                }
                 break;
             case 0x7B: // SEQ ; 1 → Q
-                _rQ = true;
+                if (!_rQ) {
+                    _qChange(true);
+                    _rQ = true;
+                }
                 break;
             case 0x7C: { // ADCI ; M(R(P)) + D + DF → DF, D; R(P) + 1 → R(P)
                 auto t = uint16_t(readByte(PC()++)) + _rD + _rDF;
@@ -582,19 +604,19 @@ public:
                 branchLong(_rQ);
                 break;
             case 0xC2: // LBZ ; IF D = 0, M(R(P)) → R(P).1, M(R(P) +1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(!_rD);
+                branchLong(_rD == 0);
                 break;
             case 0xC3: // LBDF ; IF DF = 1, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
                 branchLong(_rDF);
                 break;
             case 0xC4: // NOP ; CONTINUE
-                addCycles(8);
+                skipLong(false);
                 break;
             case 0xC5: // LSNQ ; IF Q = 0, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(!_rQ);
                 break;
             case 0xC6: // LSNZ ; IF D Not 0, R(P) + 2 → R(P), ELSE CONTINUE
-                skipLong(_rD == 0);
+                skipLong(_rD != 0);
                 break;
             case 0xC7: // LSNF ; IF DF = 0, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rDF == 0);
@@ -603,13 +625,13 @@ public:
                 skipLong(true);
                 break;
             case 0xC9: // LBNQ ; IF Q = 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0 EISE R(P) + 2 → R(P)
-                branchLong(_rQ);
+                branchLong(!_rQ);
                 break;
             case 0xCA: // LBNZ ; IF D Not 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(_rD);
+                branchLong(_rD != 0);
                 break;
             case 0xCB: // LBNF ; IF DF = 0, M(R(P)) → R(P).1, M(R(P) + 1) → R(P).0, ELSE R(P) + 2 → R(P)
-                branchLong(_rDF);
+                branchLong(_rDF == 0);
                 break;
             case 0xCC: // LSIE ; IF IE = 1, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rIE);
@@ -618,7 +640,7 @@ public:
                 skipLong(_rQ);
                 break;
             case 0xCE: // LSZ ; IF D = 0, R(P) + 2 → R(P), ELSE CONTINUE
-                skipLong(_rD);
+                skipLong(_rD == 0);
                 break;
             case 0xCF: // LSDF ; IF DF = 1, R(P) + 2 → R(P), ELSE CONTINUE
                 skipLong(_rDF);
@@ -697,27 +719,31 @@ public:
                 _rD = t;
                 break;
             }
+            default:
+                _cpuState = eERROR;
+                _errorMessage = "Internal error, default opcode case should not happen!";
+                --PC();
+                break;
         }
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rR[_rP] >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC())) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
+        return static_cast<int>(_cycles - startCycles);
     }
 #ifdef CADMIUM_WITH_GENERIC_CPU
     ~Cdp1802() override = default;
-    uint8_t getMemoryByte(uint32_t addr) const override
-    {
-        return _bus.readByteDMA(addr);
+    uint8_t readMemoryByte(uint32_t addr) const override { return _bus.readByteDMA(addr);
     }
+    unsigned stackSize() const override { return 0; }
+    StackContent stack() const override { return {}; }
     bool inErrorState() const override { return _cpuState == eERROR; }
-    uint32_t getCpuID() const override { return 1802; }
-    const std::string& getName() const override { static const std::string name = "CDP1802"; return name; }
-    const std::vector<std::string>& getRegisterNames() const override
+    uint32_t cpuID() const override { return 1802; }
+    std::string name() const override { static const std::string name = "CDP1802"; return name; }
+    const std::vector<std::string>& registerNames() const override
     {
         static const std::vector<std::string> registerNames = {
             "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7",
@@ -726,8 +752,8 @@ public:
         };
         return registerNames;
     }
-    size_t getNumRegisters() const override { return 25; }
-    RegisterValue getRegister(size_t index) const override
+    size_t numRegisters() const override { return 25; }
+    RegisterValue registerbyIndex(size_t index) const override
     {
         switch(index) {
             case 0: return {_rR[0], 16};
@@ -785,7 +811,12 @@ public:
             case 21: _rDF = value != 0; break;
             case 22: _rT = static_cast<uint8_t>(value); break;
             case 23: _rIE = value != 0; break;
-            case 24: _rQ = value != 0; break;
+            case 24:
+                if (bool newValue = value != 0; _rQ != newValue) {
+                    _qChange(value != 0);
+                    _rQ = newValue;
+                }
+                break;
             default: break;
         }
     }
@@ -799,23 +830,66 @@ public:
         return _rR[2];
     }
 #endif
+protected:
+    void handleReset(bool cold) override
+    {
+        _rI = 0;
+        _rN = 0;
+        _rP = 0;
+        _qChange(false);
+        _rQ = false;
+        _rX = 0;
+        _rR[0] = 0;
+        _rR[1] = 0;
+        _rIE = true;
+        _cycles = 0;
+#ifdef DIFFERENTIATE_CYCLES
+        _idleCycles = 0;
+        _irqCycles = 0;
+#endif
+        _systemTime.reset();
+        _execMode = eRUNNING;
+        _cpuState = eNORMAL;
+        _errorMessage.clear();
+    }
+
+    void initExpressionist() override
+    {
+        _expressionist.define("v", &_rR[0], 0xF);
+        for (size_t i = 0; i < 16; ++i) {
+            _expressionist.define(fmt::format("r{:x}", i), &_rR[i]);
+        }
+        _expressionist.define("d", &_rD);
+        _expressionist.define("i", &_rI);
+        _expressionist.define("n", &_rN);
+        _expressionist.define("p", &_rP);
+        _expressionist.define("x", &_rX);
+        _expressionist.define("df", &_rDF);
+        _expressionist.define("t", &_rT);
+        _expressionist.define("ie", &_rIE);
+        _expressionist.define("q", &_rQ);
+        _expressionist.define("ram", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+        _expressionist.define("memory", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+    }
 private:
     Cdp1802Bus& _bus;
     OutputHandler _output;
     InputHandler _input;
     NEFInputHandler _inputNEF;
+    QChangeHandler _qChange;
     CpuState _cpuState{eNORMAL};
     uint8_t _rD{};
     bool _rDF{};
     uint16_t _rR[16]{};
-    uint16_t _rP:4;
-    uint16_t _rX:4;
-    uint16_t _rN:4;
-    uint16_t _rI:4;
+    uint8_t _rP{};
+    uint8_t _rX{};
+    uint8_t _rN{};
+    uint8_t _rI{};
     uint8_t _rT{};
     bool _rIE{false};
     bool _rQ{false};
     bool _irq{false};
+    bool _stopOn68{false};
     int64_t _cycles{};
     int64_t _idleCycles{};
     int64_t _irqCycles{};

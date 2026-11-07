@@ -1,0 +1,57 @@
+# Test by Chromatophore
+# https://github.com/Chromatophore/HP48-Superchip/blob/master/investigations/quirk_display.md
+
+:alias px v3
+:alias py v4
+
+: main
+	i := data
+	load v5
+	lores
+
+	i := tilea
+	sprite v0 v1 15
+
+	vf := key
+
+	hires
+
+	vf := key
+
+	i := tileb
+	sprite v2 v3 15
+
+	vf := key
+
+	sprite v4 v3 15
+	sprite v2 v5 15
+	sprite v4 v5 15
+
+	vf := key
+
+	lores
+
+	vf := key
+
+	i := tilea
+	sprite v0 v1 15
+
+	vf := key
+
+	clear
+
+	vf := key
+
+	jump main
+;
+
+: data
+10 10 20 20 28 35
+
+: tilea
+0xFF 0xBD 0xFF 0xE7 0xFF 0xA5 0xDB 0xA5
+0xDB 0xA5 0xD9 0xFF 0xFF 0xFF 0xFF
+
+: tileb
+0xCD 0xFE 0xCD 0xFE 0xCD 0xFE 0xCD 0xFE
+0xCD 0xFE 0xCD 0xFE 0xCD 0xFE 0xCD

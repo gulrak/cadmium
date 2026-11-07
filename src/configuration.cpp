@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/configuration.hpp
+// src/configuration.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -28,26 +28,90 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 
+void to_json(nlohmann::json& j, const Sha1::Digest& d)
+{
+    j = d.to_hex();
+}
+
+void from_json(const nlohmann::json& j, Sha1::Digest& d)
+{
+    d = Sha1::Digest(j.get<std::string>());
+}
+
+template <typename T> inline
+void to_json(nlohmann::json& j, const std::map<Sha1::Digest, T>& m)
+{
+    using std::to_string;
+    for (const auto& e : m)
+    {
+        j[e.first.to_hex()] = e.second;
+    }
+}
+
+template <typename T> inline
+void from_json(const nlohmann::json& j, std::map<Sha1::Digest, T>& m)
+{
+    for (const auto& [k, v] : j.items())
+    {
+        Sha1::Digest d;
+        from_json(k, d);
+        v.get_to(m[d]);
+    }
+}
+
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
     j = nlohmann::json{
+        {"windowPosX", cc.windowPosX},
+        {"windowPosY", cc.windowPosY},
+        {"scaleMode", cc.scaleMode},
         {"volume", cc.volume},
         {"guiHue", cc.guiHue},
         {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
-        {"databaseDirectory", cc.databaseDirectory},
-        {"emuOptions", cc.emuOptions},
+        {"libraryPath", cc.libraryPath},
+        {"recentFiles", cc.recentFiles},
+        {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
     };
 }
 
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
+    cc.windowPosX = j.value("windowPosX", 0xFFFF);
+    cc.windowPosY = j.value("windowPosY", 0xFFFF);
+    cc.scaleMode = j.value("scaleMode", 0);
     j.at("workingDirectory").get_to(cc.workingDirectory);
-    cc.databaseDirectory = j.value("databaseDirectory", "");
+    if (!j.contains("libraryPath") && j.contains("databaseDirectory")) {
+        cc.libraryPath.clear();
+        auto dbDir = j.value("databaseDirectory", "");
+        if (!dbDir.empty())
+            cc.libraryPath.push_back(dbDir);
+    }
+    else {
+        cc.libraryPath.clear();
+        if (j.contains("libraryPath")) {
+            if (j.at("libraryPath").is_array()) {
+                j.at("libraryPath").get_to(cc.libraryPath);
+            }
+            else if (j.at("libraryPath").is_string()) {
+                auto path = j.at("libraryPath").get<std::string>();
+                if (!path.empty()) {
+                    auto list = split(path, ';');
+                    cc.libraryPath = list;
+                }
+            }
+        }
+    }
+    if (j.contains("recentFiles")) {
+        j.at("recentFiles").get_to(cc.recentFiles);
+    }
+    else {
+        cc.recentFiles.clear();
+    }
     cc.volume = j.value("volume", 0.5f);
     cc.guiHue = j.value("guiHue", 192);
     cc.guiSat = j.value("guiSaturation", 90);
     try {
-        j.at("emuOptions").get_to(cc.emuOptions);
+        j.at("emuProperties").get_to(cc.emuProperties);
     }
     catch(...) {}
     try {

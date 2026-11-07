@@ -1,32 +1,49 @@
 add_subdirectory(emulation)
 
+# The compiled in files from resources/files, the emulation library uses them too (HP-48SX ROM).
+add_library(resourcemanager STATIC resourcemanager.cpp resourcemanager.hpp)
+target_link_libraries(resourcemanager PUBLIC resourcedata raylib_static PRIVATE libzstd_static)
+target_include_directories(resourcemanager PRIVATE "${zstd_SOURCE_DIR}/lib")
+
 set(CADMIUM_SOURCE
-    cadmium.cpp
-    debugger.cpp
-    debugger.hpp
-    editor.cpp
-    editor.hpp
-    logview.cpp
-    logview.hpp
-    librarian.cpp
-    librarian.hpp
-    systemtools.cpp
-    systemtools.hpp
-    resourcemanager.cpp
-    resourcemanager.hpp
-    configuration.cpp
-    configuration.hpp
-    circularbuffer.cpp
-    circularbuffer.hpp
-    chip8emuhostex.cpp
-    chip8emuhostex.hpp
     c8capturehost.cpp
     c8capturehost.hpp
+    c8db/database.hpp
+    cadmium.cpp
+    circularbuffer.cpp
+    circularbuffer.hpp
+    configuration.cpp
+    configuration.hpp
+    debugger.cpp
+    debugger.hpp
+    disassemblyview.cpp
+    disassemblyview.hpp
+    editor.cpp
+    editor.hpp
+    emuhostex.cpp
+    emuhostex.hpp
+    highlighter.cpp
+    highlighter.hpp
+    headlessrun.cpp
+    headlessrun.hpp
+    librarian.cpp
+    librarian.hpp
+    libraryquery.cpp
+    libraryquery.hpp
+    logview.cpp
+    logview.hpp
     stylemanager.cpp
     stylemanager.hpp
-    rlguippimpl.cpp
-    c8db/database.hpp
+    systemtools.cpp
+    systemtools.hpp
+    texturescaler.hpp
+    crtrenderer.cpp
+    crtrenderer.hpp
 )
+
+if(CADMIUM_WITH_DATABASE)
+    list(APPEND CADMIUM_SOURCE database.cpp database.hpp)
+endif()
 
 if(WIN32)
     set(ICO_FILE_NAME "${PROJECT_BINARY_DIR}/resources/cadmium.ico")
@@ -61,32 +78,39 @@ endif()
 if (NOT ${PLATFORM} MATCHES "Web")
     add_dependencies(cadmium cadmium_icon)
 endif()
-target_compile_definitions(cadmium PUBLIC CADMIUM_VERSION="${PROJECT_VERSION}" CADMIUM_VERSION_DECIMAL=${PROJECT_VERSION_DECIMAL} CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
-if(WEB_WITH_CLIPBOARD)
-    target_compile_definitions(cadmium PUBLIC WEB_WITH_CLIPBOARD)
+target_compile_definitions(cadmium PUBLIC
+        CADMIUM_VERSION="${PROJECT_VERSION}"
+        CADMIUM_VERSION_DECIMAL=${PROJECT_VERSION_DECIMAL}
+        CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
+if(NOT EMSCRIPTEN)
+    target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_BACKGROUND_EMULATION)
+    target_include_directories(cadmium PRIVATE
+        "${raylib_SOURCE_DIR}/src/external/glfw/include")
+endif()
+if(CADMIUM_WITH_DATABASE)
+    target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_DATABASE)
+    target_link_libraries(cadmium PUBLIC ghc::sqlite)
+    if(NOT EMSCRIPTEN)
+        # only for fetching the chip-8-database, not available on the web
+        target_link_libraries(cadmium PUBLIC ssl httplib::httplib)
+    endif()
 endif()
 if(WEB_WITH_FETCHING)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_FETCHING)
 endif()
 set_source_files_properties(src/editor.cpp PROPERTIES COMPILE_FLAGS "-Wno-unused-value")
-target_link_libraries(cadmium PRIVATE emulation rlguipp resourcedata jsct ghc_filesystem)
+target_link_libraries(cadmium PRIVATE emulation rlguipp resourcemanager ghc_filesystem Threads::Threads)
 target_code_coverage(cadmium)
 if (${PLATFORM} MATCHES "Web")
-    if(WEB_WITH_CLIPBOARD)
-        if(USE_WEBGL)
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -sUSE_GLFW=3 -sASSERTIONS -sUSE_WEBGL2=1 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html -sASYNCIFY -sASYNCIFY_IMPORTS=[copyClip,pasteClip]")
-        else()
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -sASSERTIONS=1 -sUSE_GLFW=3 -sUSE_WEBGL2=0 -sWASM=1 -sALLOW_MEMORY_GROWTH=1 -sFETCH -sEXPORTED_RUNTIME_METHODS=[ccall,stackAlloc,stackSave,stackRestore] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html -sASYNCIFY -sASYNCIFY_IMPORTS=[copyClip,pasteClip]")
-        endif()
-    else()
-        if(USE_WEBGL)
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -s USE_GLFW=3 -s USE_WEBGL2=1 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html")
-        else()
-            set_target_properties(cadmium PROPERTIES LINK_FLAGS "-Os -s USE_GLFW=3 -s USE_WEBGL2=0 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -sFETCH -s EXPORTED_RUNTIME_METHODS=[ccall] --no-heap-copy --shell-file ${PROJECT_SOURCE_DIR}/resources/minshell.html")
-        endif()
-    endif()
-    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index")
-    set_target_properties(cadmium PROPERTIES SUFFIX ".html")
+    target_link_options(cadmium PRIVATE
+        -sUSE_GLFW=3
+        -sUSE_WEBGL2=0
+        -sALLOW_MEMORY_GROWTH=1
+        -sFETCH
+        -sEXPORTED_RUNTIME_METHODS=['HEAPF32']
+        --shell-file=${PROJECT_SOURCE_DIR}/resources/minshell.html)
+    set_target_properties(cadmium PROPERTIES OUTPUT_NAME "index" SUFFIX ".html"
+        LINK_DEPENDS ${PROJECT_SOURCE_DIR}/resources/minshell.html)
 endif ()
 
 if(APPLE)

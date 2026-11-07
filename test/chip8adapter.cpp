@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// tests/chip8adapter.hpp
+// test/chip8adapter.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -25,8 +25,8 @@
 //---------------------------------------------------------------------------------------
 
 #include "chip8adapter.hpp"
-#include "../src/chip8emuhostex.hpp"
-#include <fmt/format.h>
+#include "../src/emulation/coreregistry.hpp"
+#include "../src/emuhostex.hpp"
 
 #ifdef TEST_CHIP8EMULATOR_TS
 #include <emulation/chip8cores.hpp>
@@ -45,6 +45,9 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             break;
         case C8TV_C48:
             options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eCHIP48);
+            break;
+        case C8TV_SC09:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP09);
             break;
         case C8TV_SC10:
             options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10);
@@ -90,7 +93,6 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
 }
 
 #elif defined(TEST_CHIP8EMULATOR_STRICT)
-#include <emulation/chip8cores.hpp>
 #include <emulation/chip8strict.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
@@ -126,11 +128,14 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
         case C8TV_C48:
             options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP48);
             break;
+        case C8TV_SC09:
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP09);
+            break;
         case C8TV_SC10:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP10);
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP10);
             break;
         case C8TV_SC11:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eSCHIP11);
+            options = Chip8EmulatorOptions::optionsOfPreset(Chip8EmulatorOptions::eSCHIP11);
             break;
         case C8TV_MC8:
             options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eMEGACHIP);
@@ -140,33 +145,34 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
             break;
     }
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8EmulatorFP>(host, options);
+    return std::make_unique<emu::Chip8GenericEmulator>(host, options);
 }
 
 #elif defined(TEST_CHIP8VIP)
-#include <emulation/chip8cores.hpp>
-#include <emulation/chip8vip.hpp>
+//#include <emulation/chip8cores.hpp>
+#include <emulation/cosmacvip.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
+    emu::CoreRegistry registry;
     static emu::Chip8EmulatorOptions options;
     switch(variant) {
         case C8TV_GENERIC:
-        case C8TV_C8:
-            options = emu::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
+            case C8TV_C8:
+            options = registry-> ::Chip8EmulatorOptions::optionsOfPreset(emu::Chip8EmulatorOptions::eCHIP8);
             break;
         default:
             return nullptr;
     }
     //options.optTraceLog = true;
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8VIP>(host, options);
+    return std::make_unique<emu::CosmacVIP>(host, options);
 }
 
 #elif defined(TEST_CHIP8DREAM)
 
 #include <emulation/chip8cores.hpp>
-#include <emulation/chip8dream.hpp>
+#include <emulation/dream6800.hpp>
 
 std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant variant)
 {
@@ -181,7 +187,7 @@ std::unique_ptr<emu::IChip8Emulator> createChip8Instance(Chip8TestVariant varian
     }
     options.optTraceLog = true;
     static Chip8HeadlessTestHost host(options);
-    return std::make_unique<emu::Chip8Dream>(host, options);
+    return std::make_unique<emu::Dream6800>(host, options);
 }
 
 #elif defined(TEST_C_OCTO)

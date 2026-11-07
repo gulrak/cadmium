@@ -1,4 +1,4 @@
-//---------------------------------------------------------------------------------------
+ //---------------------------------------------------------------------------------------
 // src/emulation/cdp186x.hpp
 //---------------------------------------------------------------------------------------
 //
@@ -25,7 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
 #include <emulation/config.hpp>
 #include <emulation/videoscreen.hpp>
 
@@ -34,18 +34,14 @@
 
 namespace emu {
 
-#define VIDEO_FIRST_VISIBLE_LINE 80
-#define VIDEO_FIRST_INVISIBLE_LINE  208
-
 class Cdp1802;
 
 class Cdp186x
 {
 public:
     enum Type { eCDP1861, eVP590, eCDP1861_C10, eCDP1861_62, eCDP1864 };
-    enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES};
-    using VideoType = VideoScreen<uint8_t, 256, 192>; // size for easier inter-operability with other CHIP-8 implementations, it just uses 64x128
-    Cdp186x(Type type, Cdp1802& cpu, const Chip8EmulatorOptions& options);
+    enum SubMode { eNONE, eVP590_DEFAULT, eVP590_LORES, eVP590_HIRES };
+    Cdp186x(Type type, Cdp1802& cpu, bool traceLog);
     void reset();
     bool getNEFX() const;
     Type getType() const { return _type; }
@@ -53,44 +49,66 @@ public:
     void enableDisplay();
     void disableDisplay();
     bool isDisplayEnabled() const { return _displayEnabled; }
-    void setSubMode(SubMode subMode) { _subMode = subMode; }
+    void setSubMode(SubMode subMode)
+    {
+        _subMode = subMode;
+        switch (subMode) {
+            case eNONE:
+                _screen.setOverlayCellHeight(0);
+                break;
+            case eVP590_DEFAULT:
+                _screen.setOverlayCellHeight(-1);
+                break;
+            case eVP590_LORES:
+                _screen.setOverlayCellHeight(4);
+                break;
+            case eVP590_HIRES:
+                _screen.setOverlayCellHeight(1);
+        }
+    }
+    void setTrace(bool traceLog);
     void incrementBackground();
+    void enableColor();
     int frames() const { return _frameCounter; }
-    const VideoType& getScreen() const;
-
+    int cyclesPerFrame() const { return VIDEO_CYCLES_PER_FRAME; }
+    const VideoRGBAType& getScreen() const;
+    void setPalette(const Palette& palette);
     static int64_t machineCycle(cycles_t cycles)
     {
         return cycles >> 3;
     }
 
-    static int frameCycle(cycles_t cycles)
+    int frameCycle(cycles_t cycles) const
     {
-        return machineCycle(cycles) % 3668;
+        return int(machineCycle(cycles) % VIDEO_CYCLES_PER_FRAME);
     }
 
-    static int videoLine(cycles_t cycles)
+    int videoLine(cycles_t cycles) const
     {
         return frameCycle(cycles) / 14;
     }
 
-    static cycles_t nextFrame(cycles_t cycles)
+    cycles_t nextFrame(cycles_t cycles) const
     {
-        return ((cycles + 8*3668) / (8*3668)) * (8*3668);
+        //return ((cycles + 8*VIDEO_CYCLES_PER_FRAME) / (8*VIDEO_CYCLES_PER_FRAME)) * (8*VIDEO_CYCLES_PER_FRAME);
+        return cycles + (8 * VIDEO_CYCLES_PER_FRAME - cycles % (8 * VIDEO_CYCLES_PER_FRAME));
     }
 
 private:
     Cdp1802& _cpu;
     Type _type{eCDP1861};
     SubMode _subMode{eNONE};
-    const Chip8EmulatorOptions& _options;
-    std::array<uint32_t,256> _cdp1862Palette;
-    VideoScreen<uint8_t,256,192> _screen;
+    VideoRGBAType _screen;
+    const int VIDEO_FIRST_VISIBLE_LINE{0};
+    const int VIDEO_FIRST_INVISIBLE_LINE{0};
+    const int VIDEO_CYCLES_PER_FRAME{0};
     int _frameCycle{0};
     int _frameCounter{0};
     int _backgroundColor{0};
     bool _displayEnabled{false};
     bool _displayEnabledLatch{false};
-    static const uint32_t _cdp1862BackgroundColors[4];
+    bool _colorEnabled{false};
+    bool _traceLog{false};
 };
 
 }

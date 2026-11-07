@@ -4,16 +4,18 @@
 
 #include <emulation/chip8opcodedisass.hpp>
 #include <chiplet/chip8meta.hpp>
+#include <utility>
 
 #include <fmt/format.h>
 
 namespace emu {
 
-Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(Chip8EmulatorOptions& options)
-: _options(options)
-, _opcodeSet(Chip8EmulatorOptions::variantForPreset(options.behaviorBase))
+Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(chip8::VariantSet variant, SymbolResolver resolver)
+: _labelOrAddress(std::move(resolver))
+, _opcodeSet(variant)
 {
-    _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
+    if(!_labelOrAddress)
+        _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
 }
 
 std::tuple<uint16_t, uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end) const

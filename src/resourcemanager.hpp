@@ -29,7 +29,9 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <utility>
+#include <vector>
 
 class ResourceManager
 {
@@ -42,6 +44,7 @@ public:
         {}
         const std::string& name() const { return _name; }
         const unsigned char* data() const { return _data; }
+        std::string dataAsString() const { return std::string(reinterpret_cast<const char*>(_data), _size); }
         size_t size() const { return _size; }
         bool empty() const { return !_data || !_size; }
     private:
@@ -52,7 +55,7 @@ public:
 
     ResourceManager();
     void registerResources(const void* data, long size);
-    bool recourceAvailable(const std::string& name) const;
+    bool resourceAvailable(const std::string& name) const;
     Resource resourceForName(const std::string& name) const;
 
     static ResourceManager& instance();
@@ -60,4 +63,7 @@ public:
 private:
     typedef std::map<std::string,const void*> ResourceMap;
     ResourceMap _resources;
+    // zstd packed resources are decompressed on first use and kept, so their data stays valid
+    mutable std::mutex _decompressedMutex;
+    mutable std::map<std::string, std::vector<unsigned char>> _decompressedResources;
 };

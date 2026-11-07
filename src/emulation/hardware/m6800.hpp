@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/m6800.hpp
+// src/emulation/hardware/m6800.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -137,6 +137,7 @@ public:
     virtual void dummyRead(word_t addr) const {}
     virtual byte_t readDebugByte(word_t addr) const { return readByte(addr); }
     virtual void writeByte(word_t addr, byte_t val) = 0;
+    virtual const byte_t* getRamPage(word_t addr, uint16_t pageSize) const { return nullptr; }
 };
 
 struct M6800State
@@ -221,25 +222,6 @@ public:
         : _bus(bus)
 #endif
     {
-
-    }
-
-    void reset()
-    {
-        _rA = 0;
-        _rB = 0;
-        _rIX = 0;
-        _rSP = 0;
-        _rCC.setFromVal(0xFF, 0xC0);
-        _rCC.set(I);
-        auto t = readByte(0xFFFE);
-        _rPC = (t << 8) | readByte(0xFFFF);
-        _cycles = 0;
-        _instructions = 0;
-        _cpuState = eNORMAL;
-#ifdef M6800_WITH_TIME
-        _systemTime.reset();
-#endif
     }
 
     void irq()
@@ -259,13 +241,13 @@ public:
     }
 
 #ifdef M6800_WITH_TIME
-    const ClockedTime& getTime() const override
+    const ClockedTime& time() const override
     {
         return _systemTime;
     }
 #endif
 
-    int64_t getCycles() const GENERIC_OVERRIDE
+    int64_t cycles() const GENERIC_OVERRIDE
     {
         return _cycles;
     }
@@ -349,6 +331,10 @@ public:
     }
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
+    size_t disassemblyPrefixSize() const override
+    {
+        return 16;
+    }
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const override
 #else
     std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const
@@ -369,11 +355,11 @@ public:
             if(bytes) *bytes = size;
             switch (size) {
                 case 2:
-                    return emu::format("{:04X}: {:02X} {:02X}     {}", address, data[0], data[1], text);
+                    return emu::format("{:04X}  {:02X} {:02X}     {}", address, data[0], data[1], text);
                 case 3:
-                    return emu::format("{:04X}: {:02X} {:02X} {:02X}  {}", address, data[0], data[1], data[2], text);
+                    return emu::format("{:04X}  {:02X} {:02X} {:02X}  {}", address, data[0], data[1], data[2], text);
                 default:
-                    return emu::format("{:04X}: {:02X}        {}", address, data[0], text);
+                    return emu::format("{:04X}  {:02X}        {}", address, data[0], text);
             }
         }
         else {
@@ -432,35 +418,21 @@ public:
         return emu::format("A:{:02X} B:{:02X} X:{:04X} SP:{:04X} PC:{:04X} SR:{}", _rA, _rB, _rIX, _rSP, _rPC, _rCC.asString().substr(2));
     }
 
-#ifdef CADMIUM_WITH_GENERIC_CPU
-    int64_t executeFor(int64_t microseconds) override
-    {
-        if(_execMode != GenericCpu::ePAUSED) {
-            auto startTime = _systemTime;
-            auto endTime = _systemTime + Time::fromMicroseconds(microseconds);
-            while (_execMode != GenericCpu::ePAUSED && _systemTime < endTime) {
-                executeInstruction();
-            }
-            return startTime.excessTime_us(_systemTime, microseconds);
-        }
-        return 0;
-    }
-#endif
-
-    void executeInstruction()
+    int executeInstruction() override
     {
 #ifdef CADMIUM_WITH_GENERIC_CPU
         if(_execMode == ePAUSED || _cpuState == eERROR)
-            return;
+            return 0;
 #else
         if(_cpuState == eERROR)
             return;
 #endif
         if(_halt) {
             handleHALT();
-            return;
+            return 1;
         }
-        else if(_nmi)
+        const auto startCycles = _cycles;
+        if(_nmi)
             handleNMI();
         else if(_irq && _rCC.isUnset(I))
             handleIRQ();
@@ -474,13 +446,12 @@ public:
         if (_execMode == eSTEP || (_execMode == eSTEPOVER && _rSP >= _stepOverSP)) {
             _execMode = ePAUSED;
         }
-        if(hasBreakPoint(getPC())) {
-            if(findBreakpoint(getPC())) {
-                _execMode = ePAUSED;
-                _breakpointTriggered = true;
-            }
+        if(tryTriggerBreakpoint(getPC())) {
+            _execMode = ePAUSED;
+            _breakpointTriggered = true;
         }
 #endif
+        return static_cast<int>(_cycles - startCycles);
     }
 
     std::string executeInstructionTraced()
@@ -500,22 +471,31 @@ public:
 
 #ifdef CADMIUM_WITH_GENERIC_CPU
     ~M6800() override = default;
-    uint8_t getMemoryByte(uint32_t addr) const override
+    uint8_t readMemoryByte(uint32_t addr) const override
     {
         return _bus.readDebugByte(addr);
     }
+    unsigned stackSize() const override { return 16; }
+    StackContent stack() const override
+    {
+        auto page = _bus.getRamPage(_rSP, 32);
+        if(page) {
+            return {2, eBIG, eDOWNWARDS, std::span(page, 32)};
+        }
+        return {};
+    }
     bool inErrorState() const override { return _cpuState == eERROR; }
-    uint32_t getCpuID() const override { return 6800; }
-    const std::string& getName() const override { static const std::string name = "M6800"; return name; }
-    const std::vector<std::string>& getRegisterNames() const override
+    uint32_t cpuID() const override { return 6800; }
+    std::string name() const override { static const std::string name = "M6800"; return name; }
+    const std::vector<std::string>& registerNames() const override
     {
         static const std::vector<std::string> registerNames = {
             "A", "B", "IX", "SP", "PC", "SR"
         };
         return registerNames;
     }
-    size_t getNumRegisters() const override { return 6; }
-    RegisterValue getRegister(size_t index) const override
+    size_t numRegisters() const override { return 6; }
+    RegisterValue registerbyIndex(size_t index) const override
     {
         switch(index) {
             case 0: return {_rA, 8};
@@ -544,6 +524,35 @@ public:
 
 
 protected:
+    void handleReset(bool cold) override
+    {
+        _rA = 0;
+        _rB = 0;
+        _rIX = 0;
+        _rSP = 0;
+        _rCC.setFromVal(0xFF, 0xC0);
+        _rCC.set(I);
+        auto t = readByte(0xFFFE);
+        _rPC = (t << 8) | readByte(0xFFFF);
+        _cycles = 0;
+        _instructions = 0;
+        _cpuState = eNORMAL;
+#ifdef M6800_WITH_TIME
+        _systemTime.reset();
+#endif
+    }
+    void initExpressionist() override
+    {
+        _expressionist.define("a", &_rA);
+        _expressionist.define("b", &_rB);
+        _expressionist.define("ix", &_rIX);
+        _expressionist.define("sp", &_rSP);
+        _expressionist.define("cc", std::function([&]() -> int64_t { return _rCC.asNumber(); }));
+        _expressionist.define("pc", &_rPC);
+        _expressionist.define("ram", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+        _expressionist.define("memory", std::function([&](uint32_t address) -> int64_t { return _bus.readByte(address); }));
+    }
+
     enum AddressingMode { INVALID, INHERENT, IMMEDIATE, IMMEDIATE16, DIRECT, EXTENDED, RELATIVE, INDEXED, ACCUA = 8, ACCUB = 16, UNDOC = 32};
     enum InstructionType { NORMAL, READ, WRITE, STACK, JUMP, CCJUMP, CALL, CCCALL, RETURN, HALT};
     using OpcodeHandler = void (M6800::*)();
@@ -559,6 +568,7 @@ protected:
     {
         return _opcodes;
     }
+
 
 private:
     void pushByte(byte_t data)

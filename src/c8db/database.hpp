@@ -26,7 +26,7 @@
 #pragma once
 
 #include <cstdint>
-#include <stdexcept>
+#include <system_error>
 #include <fstream>
 #include <map>
 #include <optional>
@@ -41,6 +41,42 @@
 
 namespace c8db {
 using json = nlohmann::json;
+
+enum class DatabaseError {
+    OK,
+    FileError,
+    ParsingError
+};
+
+struct DatabaseErrorCategory : std::error_category
+{
+    const char* name() const noexcept override
+    {
+        return "database error";
+    }
+    std::string message(int ev) const override
+    {
+        using namespace std::string_literals;
+        switch (static_cast<DatabaseError>(ev)) {
+            case DatabaseError::OK: return "Ok"s;
+            case DatabaseError::FileError: return "File error"s;
+            case DatabaseError::ParsingError: return "Parsing error"s;
+        }
+        std::abort();
+    }
+};
+
+}
+
+template<>
+struct std::is_error_code_enum<c8db::DatabaseError> : std::true_type{};
+
+namespace c8db {
+
+inline std::error_code make_error_code(DatabaseError e)
+{
+    return {static_cast<int>(e), c8db::DatabaseErrorCategory()};
+}
 
 enum class OriginType {
     UNKNOWN, GAMEJAM, EVENT, MAGAZINE, MANUAL
@@ -245,20 +281,32 @@ public:
         bool quirkEnabled(const std::string& name) const { auto iter = effectiveQuirks.find(name); return iter != effectiveQuirks.end() ? iter->second : false; }
     };
 
-    explicit Database(std::string directory, std::string platformsFile = "platforms.json", std::string programsFile = "programs.json")
+    explicit Database(std::string directory, const std::string& platformsFile_ = "platforms.json", const std::string& programsFile_ = "programs.json")
     : dbDir(std::move(directory))
-    , platformsFile(platformsFile)
-    , programsFile(programsFile)
+    , platformsFile(platformsFile_.front() != '[' ? platformsFile_ : "")
+    , programsFile(programsFile_.front() != '[' ? programsFile_ : "")
     {
-        platformList = readPlatforms(dbDir + "/" + platformsFile);
-        programList= readPrograms(dbDir + "/" + programsFile);
-        std::for_each(programList.begin(), programList.end(), [this](c8db::Program& p) {
-            for(auto&[sha,r] : p.roms)
+        if (platformsFile.empty()) {
+            std::istringstream platformsStream(platformsFile_);
+            platformList = readPlatforms(platformsStream);
+        }
+        else {
+            platformList = readPlatforms(dbDir + "/" + platformsFile);
+        }
+        if (programsFile.empty()) {
+            std::istringstream programsStream(programsFile_);
+            programList = readPrograms(programsStream);
+        }
+        else {
+            programList= readPrograms(dbDir + "/" + programsFile);
+        }
+        std::ranges::for_each(programList, [this](c8db::Program& p) {
+            for (const auto& sha : p.roms | std::views::keys)
                 romLookupTable[sha] = &p;
         });
     }
-
     size_t numRoms() const { return romLookupTable.size(); }
+    const std::unordered_map<std::string,Program*>& romTable() const { return romLookupTable; }
     const auto& platforms() const { return platformList; }
     const auto& programs() const { return programList; }
     const Platform* findPlatform(const std::string& name) const
@@ -301,26 +349,42 @@ public:
     }
 
 private:
-    std::vector<Platform> readPlatforms(const std::string& filepath)
+    static std::vector<Platform> readPlatforms(std::istream& is)
     {
+        static auto platformsFallback = R"(
+            [
+              {"id": "originalChip8", "name": "Cosmac VIP CHIP-8", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "hybridVIP", "name": "CHIP-8 with Cosmac VIP instructions", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "modernChip8", "name": "Modern CHIP-8", "defaultTickrate": 12, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": false, "logic": false}},
+              {"id": "chip8x", "name": "CHIP-8X", "defaultTickrate": 15, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": false, "jump": false, "vblank": true, "logic": true}},
+              {"id": "chip48", "name": "CHIP48 for the HP48", "defaultTickrate": 30, "quirks": {"shift": true, "memoryIncrementByX": true, "memoryLeaveIUnchanged": false, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "superchip1", "name": "Superchip 1.0", "defaultTickrate": 30, "quirks": {"shift": true, "memoryIncrementByX": true, "memoryLeaveIUnchanged": false, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "superchip", "name": "Superchip 1.1", "defaultTickrate": 30, "quirks": {"shift": true, "memoryLeaveIUnchanged": true, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "megachip8", "name": "MEGA-CHIP", "defaultTickrate": 1000, "quirks": {"shift": true, "memoryLeaveIUnchanged": true, "wrap": false, "jump": true, "vblank": false, "logic": false}},
+              {"id": "xochip", "name": "XO-CHIP", "defaultTickrate": 100, "quirks": {"shift": false, "memoryIncrementByX": false, "memoryLeaveIUnchanged": false, "wrap": true, "jump": false, "vblank": false, "logic": false}}
+            ])";
         std::vector<Platform> result;
-        std::ifstream ifs(filepath);
-        if(ifs.fail())
-            return result;
         try {
-            auto j = json::parse(ifs);
-            if(j.is_array()) {
-                for(const auto& pObj : j) {
+            auto j = is.fail() ? json::parse(std::istringstream(platformsFallback)) : json::parse(is);
+            if (j.is_array()) {
+                for (const auto& pObj : j) {
                     Platform p;
                     from_json(pObj, p);
                     result.push_back(p);
                 }
             }
         }
-        catch(...) {
-            return result;
+        catch (...) {
+            auto fis = std::istringstream(platformsFallback);
+            return readPlatforms(fis);
         }
         return result;
+    }
+
+    static std::vector<Platform> readPlatforms(const std::string& filepath)
+    {
+        std::ifstream ifs(filepath);
+        return readPlatforms(ifs);
     }
 
     bool readRom(const json& obj, Program::Rom& rom)
@@ -359,32 +423,39 @@ private:
     void to_json_ordered(nlohmann::ordered_json& j, const Program& prg)
     {
         j["title"] = prg.title;
-        if(prg.origin.type != OriginType::UNKNOWN) j["origin"] = json(prg.origin);
-        if(!prg.description.empty()) j["description"] = prg.description;
-        if(!prg.release.empty()) j["release"] = prg.release;
-        if(!prg.copyright.empty()) j["copyright"] = prg.copyright;
-        if(!prg.license.empty()) j["license"] = prg.license;
-        if(!prg.authors.empty()) j["authors"] = prg.authors;
-        if(!prg.images.empty()) j["images"] = prg.images;
-        if(!prg.urls.empty()) j["urls"] = prg.urls;
+        if (prg.origin.type != OriginType::UNKNOWN)
+            j["origin"] = json(prg.origin);
+        if (!prg.description.empty())
+            j["description"] = prg.description;
+        if (!prg.release.empty())
+            j["release"] = prg.release;
+        if (!prg.copyright.empty())
+            j["copyright"] = prg.copyright;
+        if (!prg.license.empty())
+            j["license"] = prg.license;
+        if (!prg.authors.empty())
+            j["authors"] = prg.authors;
+        if (!prg.images.empty())
+            j["images"] = prg.images;
+        if (!prg.urls.empty())
+            j["urls"] = prg.urls;
         j["roms"] = {};
-        for(const auto& [sha,r] : prg.roms) {
+        for (const auto& [sha, r] : prg.roms) {
             nlohmann::ordered_json robj;
             to_json_ordered(robj, r);
             j["roms"][sha] = robj;
         }
     }
 
-    std::vector<Program> readPrograms(const std::string& filepath)
+    static std::vector<Program> readPrograms(std::istream& is)
     {
         std::vector<Program> result;
-        std::ifstream ifs(filepath);
-        if(ifs.fail())
+        if (is.fail())
             return result;
         try {
-            auto j = json::parse(ifs);
-            if(j.is_array()) {
-                for(const auto& pObj : j) {
+            auto j = json::parse(is);
+            if (j.is_array()) {
+                for (const auto& pObj : j) {
                     Program p;
                     from_json(pObj, p);
                     result.push_back(p);
@@ -399,6 +470,12 @@ private:
             return result;
         }
         return result;
+    }
+
+    static std::vector<Program> readPrograms(const std::string& filepath)
+    {
+        std::ifstream ifs(filepath);
+        return readPrograms(ifs);
     }
 
     bool writePrograms(const std::string& filepath, const std::vector<Program>& programs)

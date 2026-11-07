@@ -26,7 +26,7 @@
 #pragma once
 
 #include <emulation/ichip8.hpp>
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
 #include <chiplet/chip8meta.hpp>
 
 
@@ -37,14 +37,15 @@
 
 namespace emu {
 
-class Chip8OpcodeDisassembler : public emu::IChip8Emulator
+class Chip8OpcodeDisassembler
 {
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
-    Chip8OpcodeDisassembler(Chip8EmulatorOptions& options);
-    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const override;
+    explicit Chip8OpcodeDisassembler(chip8::VariantSet variant, SymbolResolver resolver = {});
+    void setVariant(chip8::VariantSet variant) { _opcodeSet = detail::OpcodeSet(variant, _labelOrAddress); }
+    void setSymbolResolver(SymbolResolver resolver) { _labelOrAddress = std::move(resolver); }
+    std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const;
 protected:
-    Chip8EmulatorOptions& _options;
     SymbolResolver _labelOrAddress;
     detail::OpcodeSet _opcodeSet;
 };

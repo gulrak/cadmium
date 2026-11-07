@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/mc682x.hpp
+// src/emulation/hardware/genericcpu.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -26,71 +26,122 @@
 #pragma once
 
 #include <array>
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <span>
+#include <ranges>
 #include <string>
 #include <vector>
-#include <variant>
+
 #include <emulation/time.hpp>
+#include <emulation/expressionist.hpp>
+#include <emulation/logger.hpp>
 
 namespace emu
 {
 
+/// Abstract CPU base class that allows generic control and register retrieval
 class GenericCpu
 {
 public:
     enum ExecMode { ePAUSED, eRUNNING, eSTEP, eSTEPOVER, eSTEPOUT };
+    enum CpuState { eNORMAL, eIDLE, eWAIT = eIDLE, eHALT, eERROR };
+    enum StackDirection { eDOWNWARDS, eUPWARDS };
+    enum Endianness { eNATIVE, eLITTLE, eBIG };
     struct BreakpointInfo {
         enum Type { eTRANSIENT, eCODED };
+        std::string condition;
         std::string label;
+        std::string logCondition;
         Type type{eTRANSIENT};
         bool isEnabled{true};
+        uint8_t unit{0};
+        Expressionist::CompiledExpression conditionExpr;
+        Expressionist::CompiledExpression logConditionExpr;
+        int64_t numHits{0};
     };
     struct RegisterValue {
-        uint32_t value{};
+        uint64_t value{};
         uint32_t size{};
+    };
+    struct StackContent
+    {
+        int entrySize{2};
+        Endianness endianness{eLITTLE};
+        StackDirection stackDirection{eDOWNWARDS};
+        std::span<const uint8_t> content{};
     };
     using RegisterPack = std::vector<RegisterValue>;
     virtual ~GenericCpu() = default;
-
-    virtual int64_t executeFor(int64_t microseconds) = 0;
-    virtual ExecMode getExecMode() const { return _execMode; }
+    void reset(bool cold = true)
+    {
+        for(auto& [addr, bpi] : _breakpoints) {
+            bpi.numHits = 0;
+        }
+        initExpressionist();
+        handleReset(cold);
+    }
+    virtual int executeInstruction() = 0;
+    virtual ExecMode execMode() const { return _execMode; }
     virtual void setExecMode(ExecMode mode) { _execMode = mode; if(mode == eSTEPOVER) _stepOverSP = getSP(); }
     virtual bool inErrorState() const = 0;
-
-    virtual uint32_t getCpuID() const = 0;
-    virtual const std::string& getName() const = 0;
-    virtual const std::vector<std::string>& getRegisterNames() const = 0;
-    virtual size_t getNumRegisters() const = 0;
-    virtual RegisterValue getRegister(size_t index) const = 0;
+    virtual const std::string& errorMessage() const { return _errorMessage; }
+    virtual uint32_t cpuID() const = 0;
+    virtual std::string name() const = 0;
+    virtual CpuState cpuState() const { return _cpuState; }
+    virtual const std::vector<std::string>& registerNames() const = 0;
+    virtual size_t numRegisters() const = 0;
+    virtual RegisterValue registerbyIndex(size_t index) const = 0;
     virtual void fetchAllRegisters(RegisterPack& registers) const
     {
-        registers.resize(getNumRegisters());
-        for(size_t i = 0; i < getNumRegisters(); ++i) {
-            registers[i] = getRegister(i);
+        registers.resize(numRegisters());
+        for(size_t i = 0; i < numRegisters(); ++i) {
+            registers[i] = registerbyIndex(i);
         }
     }
     virtual void setRegister(size_t index, uint32_t value) = 0;
     virtual uint32_t getSP() const = 0;
     virtual uint32_t getPC() const = 0;
-    virtual int64_t getCycles() const = 0;
-    virtual const ClockedTime& getTime() const = 0;
-    virtual uint8_t getMemoryByte(uint32_t addr) const = 0;
-
-    virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
-
-    virtual void setBreakpoint(uint32_t address, const BreakpointInfo& bpi)
+    virtual int64_t cycles() const = 0;
+    virtual const ClockedTime& time() const = 0;
+    virtual Logger::FrameTime frameTime() const { return Logger::FrameTime{0,0}; }
+    virtual uint8_t readMemoryByte(uint32_t addr) const = 0;
+    virtual unsigned stackSize() const = 0;
+    virtual StackContent stack() const = 0;
+    uint32_t stackElement(size_t index) const
     {
-        _breakpoints[address] = bpi;
+        auto s = stack();
+        auto offset = s.stackDirection == emu::GenericCpu::eUPWARDS ? index * s.entrySize : s.content.size() - (index + 1) * s.entrySize;
+        switch(s.entrySize) {
+            case 1: return readStackEntry<uint8_t>(&s.content[offset], s.endianness);
+            case 2: return readStackEntry<uint16_t>(&s.content[offset], s.endianness);
+            case 4: return readStackEntry<uint32_t>(&s.content[offset], s.endianness);
+            default: return 0;
+        }
+    }
+
+    virtual size_t disassemblyPrefixSize() const = 0;
+    virtual std::string disassembleInstructionWithBytes(int32_t pc, int* bytes) const = 0;
+    /// True if an instruction is known to start at address, e.g. because it was executed there,
+    /// the debugger uses it to keep its disassembly on the real instruction boundaries
+    virtual bool isKnownInstructionStart(uint32_t address) const { return false; }
+
+    void swapBreakpoints(GenericCpu& other)
+    {
+        std::swap(_breakpoints, other._breakpoints);
+        std::swap(_breakMap, other._breakMap);
+    }
+
+    virtual void setBreakpoint(uint32_t address, BreakpointInfo&& bpi)
+    {
+        _breakpoints[address] = std::move(bpi);
         _breakMap[address & 0xFFF] = 1;
     }
     virtual void removeBreakpoint(uint32_t address)
     {
         _breakpoints.erase(address);
-        size_t count = 0;
-        uint32_t masked = address & 0xFFF;
+        const uint32_t masked = address & 0xFFF;
         for(const auto& [addr, bpi] : _breakpoints) {
             if((addr & 0xFFF) == masked) {
                 _breakMap[masked] = 1;
@@ -111,7 +162,7 @@ public:
     virtual size_t numBreakpoints() const {
         return _breakpoints.size();
     }
-    virtual std::pair<uint32_t, BreakpointInfo*> getNthBreakpoint(size_t index)
+    virtual std::pair<uint32_t, BreakpointInfo*> nthBreakpoint(size_t index)
     {
         size_t count = 0;
         for(auto& [addr, bpi] : _breakpoints) {
@@ -119,6 +170,12 @@ public:
                 return {addr, &bpi};
         }
         return {0, nullptr};
+    }
+    virtual void resetAllHitCounters()
+    {
+        for(auto& [addr, bpi] : _breakpoints) {
+            bpi.numHits = 0;
+        }
     }
     virtual void removeAllBreakpoints()
     {
@@ -129,22 +186,101 @@ public:
     {
         return _breakMap[address&0xfff] != 0;
     }
-    RegisterValue getRegisterByName(const std::string& name) const
+    bool tryTriggerBreakpoint(uint32_t address)
     {
-        static const auto& regNames = getRegisterNames();
-        auto iter = std::find(regNames.begin(), regNames.end(), name);
-        if(iter != regNames.end()) {
-            return getRegister(iter - regNames.begin());
+        if (_breakMap[address&0xFFF] != 0) {
+            auto iter = _breakpoints.find(address);
+            if(iter != _breakpoints.end() && iter->second.isEnabled) {
+                auto& bpi = iter->second;
+                ++bpi.numHits;
+                const bool triggered = !bpi.conditionExpr.first || bpi.conditionExpr.first->eval() != 0;
+                const bool logIt = bpi.logConditionExpr.first ? bpi.logConditionExpr.first->eval() != 0 : triggered;
+                if (logIt) {
+                    doLog(_expressionist.format(bpi.label));
+                }
+                return triggered;
+            }
+        }
+        return false;
+    }
+    RegisterValue registerByName(const std::string& name) const
+    {
+        // not static, every CPU type has its own names
+        const auto& regNames = registerNames();
+        if (const auto iter = std::ranges::find(regNames, name); iter != regNames.end()) {
+            return registerbyIndex(iter - regNames.begin());
         }
         return {0,0};
     }
-    virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
+    virtual bool isBreakpointTriggered()
+    {
+        auto result = _breakpointTriggered; _breakpointTriggered = false; return result;
+    }
+
+    Expressionist::CompiledExpression parseExpression(std::string_view expr)
+    {
+        return _expressionist.parseExpression(expr);
+    }
+    std::string formatExpression(std::string_view fmt)
+    {
+        return _expressionist.format(fmt);
+    }
+    void setSourceSymbols(const std::vector<std::pair<std::string, int64_t>>& symbols)
+    {
+        _expressionist.setSourceSymbols(symbols);
+    }
+    BreakpointInfo codedBreakpoint(std::string_view text)
+    {
+        auto [condition, format] = _expressionist.splitConditionalFormat(text);
+        if (format.empty()) {
+            format = condition;  // "v0 == 3 ?" still needs a name for the breakpoint list
+        }
+        BreakpointInfo bpi{.condition = std::move(condition), .label = std::move(format), .type = BreakpointInfo::eCODED, .isEnabled = true};
+        if (!bpi.condition.empty()) {
+            bpi.conditionExpr = _expressionist.parseExpression(bpi.condition);
+        }
+        return bpi;
+    }
 protected:
-    mutable ExecMode _execMode{eRUNNING};
+    virtual void handleReset(bool) = 0;
+    virtual void initExpressionist() = 0;
+    virtual void doLog(const std::string& message) const
+    {
+        if (!message.empty()) {
+            Logger::log(Logger::eBACKEND_EMU, cycles(), frameTime(), message.c_str());
+        }
+    }
+    template<typename T>
+    T readStackEntry(const uint8_t* address, Endianness endianness) const
+    {
+        switch(endianness) {
+            case eNATIVE:
+                return *reinterpret_cast<const T*>(address);
+            case eBIG: {
+                T result = 0;
+                for (int i = 0; i < sizeof(T); ++i) {
+                    result |= static_cast<T>(address[i]) << (8 * (sizeof(T) - i - 1));
+                }
+                return result;
+            }
+            case eLITTLE: {
+                T result = 0;
+                for (int i = 0; i < sizeof(T); ++i) {
+                    result |= static_cast<T>(address[i]) << (8 * i);
+                }
+                return result;
+            }
+        }
+        return 0;
+    }
+    mutable ExecMode _execMode{ePAUSED};
+    CpuState _cpuState{eNORMAL};
     uint32_t _stepOverSP{};
-    std::array<uint8_t,4096> _breakMap;
-    std::map<uint32_t,BreakpointInfo> _breakpoints;
+    std::array<uint8_t,4096> _breakMap{};
+    std::map<uint32_t,BreakpointInfo> _breakpoints{};
+    std::string _errorMessage{};
     bool _breakpointTriggered{false};
+    Expressionist _expressionist;
 };
 
 }

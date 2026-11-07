@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="812" viewBox="0 0 680 812" role="img">
+<title>Cadmium preset family tree</title>
+<desc>The 41 Cadmium presets grouped under the CHIP-8 variant they implement, from CHIP-8 (1977) to XO-CHIP, plus the bare machine presets.</desc>
+<style>
+text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;font-size:12px}
+.n{font-size:14px;font-weight:600;fill:#2C2C2A}.s{fill:#5F5E5A}
+.l{fill:none;stroke:#888780;stroke-width:0.75}.sep{stroke:#D3D1C7;stroke-width:0.75}
+.h{fill:#EEEDFE;stroke:#534AB7;stroke-width:0.75}.ht{fill:#3C3489}
+.v{fill:#E1F5EE;stroke:#0F6E56;stroke-width:0.75}.vt{fill:#085041}
+</style>
+<rect class="h" x="20" y="10" width="22" height="16" rx="4"/>
+<text class="s" x="50" y="22">High level emulation</text>
+<rect class="v" x="200" y="10" width="22" height="16" rx="8"/>
+<text class="s" x="230" y="22">Original interpreter on emulated hardware</text>
+<line class="sep" x1="20" y1="42" x2="660" y2="42"/>
+<text class="n" x="20" y="69">CHIP-8</text>
+<text class="s" x="230" y="68">1977</text>
+<rect class="h" x="290" y="54" width="58" height="20" rx="4"/><text class="ht" x="319" y="68" text-anchor="middle">chip-8</text>
+<rect class="h" x="354" y="54" width="104" height="20" rx="4"/><text class="ht" x="406" y="68" text-anchor="middle">strict-chip-8</text>
+<rect class="v" x="464" y="54" width="84" height="20" rx="10"/><text class="vt" x="506" y="68" text-anchor="middle">vip-chip-8</text>
+<path class="l" d="M24 73 L24 94 L34 94"/>
+<text class="n" x="38" y="99">CHIP-10</text>
+<text class="s" x="230" y="98">1979</text>
+<rect class="h" x="290" y="84" width="64" height="20" rx="4"/><text class="ht" x="322" y="98" text-anchor="middle">chip-10</text>
+<rect class="v" x="360" y="84" width="91" height="20" rx="10"/><text class="vt" x="406" y="98" text-anchor="middle">vip-chip-10</text>
+<path class="l" d="M24 73 L24 124 L34 124"/>
+<text class="n" x="38" y="129">CHIP-8 TPD</text>
+<text class="s" x="230" y="128">1979</text>
+<rect class="h" x="290" y="114" width="84" height="20" rx="4"/><text class="ht" x="332" y="128" text-anchor="middle">chip-8-tpd</text>
+<rect class="v" x="380" y="114" width="110" height="20" rx="10"/><text class="vt" x="435" y="128" text-anchor="middle">vip-chip-8-tpd</text>
+<path class="l" d="M42 133 L42 154 L52 154"/>
+<text class="n" x="56" y="159">TPD (Tom Swan)</text>
+<text class="s" x="230" y="158">1979</text>
+<rect class="v" x="290" y="144" width="130" height="20" rx="10"/><text class="vt" x="355" y="158" text-anchor="middle">vip-chip-8-tpd-ts</text>
+<path class="l" d="M24 73 L24 184 L34 184"/>
+<text class="n" x="38" y="189">CHIP-8 FPD</text>
+<text class="s" x="230" y="188">1980</text>
+<rect class="h" x="290" y="174" width="84" height="20" rx="4"/><text class="ht" x="332" y="188" text-anchor="middle">chip-8-fpd</text>
+<rect class="v" x="380" y="174" width="110" height="20" rx="10"/><text class="vt" x="435" y="188" text-anchor="middle">vip-chip-8-fpd</text>
+<path class="l" d="M24 73 L24 214 L34 214"/>
+<text class="n" x="38" y="219">CHIP-8 RB</text>
+<text class="s" x="230" y="218">1979</text>
+<rect class="v" x="290" y="204" width="104" height="20" rx="10"/><text class="vt" x="342" y="218" text-anchor="middle">vip-chip-8-rb</text>
+<path class="l" d="M24 73 L24 244 L34 244"/>
+<text class="n" x="38" y="249">CHIP-8E</text>
+<text class="s" x="230" y="248">1979</text>
+<rect class="h" x="290" y="234" width="71" height="20" rx="4"/><text class="ht" x="326" y="248" text-anchor="middle">chip-8-e</text>
+<rect class="v" x="367" y="234" width="97" height="20" rx="10"/><text class="vt" x="416" y="248" text-anchor="middle">vip-chip-8-e</text>
+<path class="l" d="M24 73 L24 274 L34 274"/>
+<text class="n" x="38" y="279">CHIP-8X</text>
+<text class="s" x="230" y="278">1980</text>
+<rect class="h" x="290" y="264" width="71" height="20" rx="4"/><text class="ht" x="326" y="278" text-anchor="middle">chip-8-x</text>
+<rect class="v" x="367" y="264" width="97" height="20" rx="10"/><text class="vt" x="416" y="278" text-anchor="middle">vip-chip-8-x</text>
+<path class="l" d="M42 283 L42 304 L52 304"/>
+<text class="n" x="56" y="309">CHIP-8X TPD</text>
+<text class="s" x="230" y="308">1982</text>
+<rect class="v" x="290" y="294" width="124" height="20" rx="10"/><text class="vt" x="352" y="308" text-anchor="middle">vip-chip-8-x-tpd</text>
+<path class="l" d="M42 283 L42 334 L52 334"/>
+<text class="n" x="56" y="339">CHIP-8X FPD</text>
+<text class="s" x="230" y="338">1982</text>
+<rect class="v" x="290" y="324" width="124" height="20" rx="10"/><text class="vt" x="352" y="338" text-anchor="middle">vip-chip-8-x-fpd</text>
+<path class="l" d="M24 73 L24 364 L34 364"/>
+<text class="n" x="38" y="369">CHIP-8-R</text>
+<text class="s" x="230" y="368">2026</text>
+<rect class="v" x="290" y="354" width="97" height="20" rx="10"/><text class="vt" x="338" y="368" text-anchor="middle">vip-chip-8-r</text>
+<path class="l" d="M24 73 L24 394 L34 394"/>
+<text class="n" x="38" y="399">CHIPOS</text>
+<text class="s" x="230" y="398">1979</text>
+<rect class="v" x="290" y="384" width="97" height="20" rx="10"/><text class="vt" x="338" y="398" text-anchor="middle">dream-chip-8</text>
+<path class="l" d="M42 403 L42 424 L52 424"/>
+<text class="n" x="56" y="429">CHIPOSLO</text>
+<text class="s" x="230" y="428">2020</text>
+<rect class="v" x="290" y="414" width="124" height="20" rx="10"/><text class="vt" x="352" y="428" text-anchor="middle">dream-chip-8-lop</text>
+<path class="l" d="M24 73 L24 454 L34 454"/>
+<text class="n" x="38" y="459">ETI-660 CHIP-8</text>
+<text class="s" x="230" y="458">1982</text>
+<rect class="v" x="290" y="444" width="84" height="20" rx="10"/><text class="vt" x="332" y="458" text-anchor="middle">eti-chip-8</text>
+<path class="l" d="M24 73 L24 484 L34 484"/>
+<text class="n" x="38" y="489">CHIP-48</text>
+<text class="s" x="230" y="488">1990</text>
+<rect class="h" x="290" y="474" width="64" height="20" rx="4"/><text class="ht" x="322" y="488" text-anchor="middle">chip-48</text>
+<rect class="v" x="360" y="474" width="104" height="20" rx="10"/><text class="vt" x="412" y="488" text-anchor="middle">hp-48-chip-48</text>
+<path class="l" d="M42 493 L42 514 L52 514"/>
+<text class="n" x="56" y="519">SCHIP 1.0 beta</text>
+<text class="s" x="230" y="518">1991</text>
+<rect class="h" x="290" y="504" width="110" height="20" rx="4"/><text class="ht" x="345" y="518" text-anchor="middle">schip-1-0-beta</text>
+<rect class="v" x="406" y="504" width="150" height="20" rx="10"/><text class="vt" x="481" y="518" text-anchor="middle">hp-48-schip-1-0-beta</text>
+<path class="l" d="M60 523 L60 544 L70 544"/>
+<text class="n" x="74" y="549">SCHIP 1.0</text>
+<text class="s" x="230" y="548">1991</text>
+<rect class="h" x="290" y="534" width="77" height="20" rx="4"/><text class="ht" x="328" y="548" text-anchor="middle">schip-1-0</text>
+<rect class="v" x="373" y="534" width="117" height="20" rx="10"/><text class="vt" x="432" y="548" text-anchor="middle">hp-48-schip-1-0</text>
+<path class="l" d="M78 553 L78 574 L88 574"/>
+<text class="n" x="92" y="579">SCHIP 1.1</text>
+<text class="s" x="230" y="578">1991</text>
+<rect class="h" x="290" y="564" width="77" height="20" rx="4"/><text class="ht" x="328" y="578" text-anchor="middle">schip-1-1</text>
+<rect class="h" x="373" y="564" width="124" height="20" rx="4"/><text class="ht" x="435" y="578" text-anchor="middle">strict-schip-1-1</text>
+<rect class="v" x="503" y="564" width="117" height="20" rx="10"/><text class="vt" x="562" y="578" text-anchor="middle">hp-48-schip-1-1</text>
+<path class="l" d="M96 583 L96 604 L106 604"/>
+<text class="n" x="110" y="609">SCHIPC</text>
+<text class="s" x="230" y="608">2017</text>
+<rect class="h" x="290" y="594" width="58" height="20" rx="4"/><text class="ht" x="319" y="608" text-anchor="middle">schipc</text>
+<rect class="v" x="354" y="594" width="91" height="20" rx="10"/><text class="vt" x="400" y="608" text-anchor="middle">hp-48-schpc</text>
+<path class="l" d="M96 583 L96 634 L106 634"/>
+<text class="n" x="110" y="639">MegaChip</text>
+<text class="s" x="230" y="638">2007</text>
+<rect class="h" x="290" y="624" width="71" height="20" rx="4"/><text class="ht" x="326" y="638" text-anchor="middle">megachip</text>
+<rect class="h" x="367" y="624" width="91" height="20" rx="4"/><text class="ht" x="412" y="638" text-anchor="middle">rs-megachip</text>
+<path class="l" d="M96 583 L96 664 L106 664"/>
+<text class="n" x="110" y="669">Octo SCHIP</text>
+<text class="s" x="230" y="668">2014</text>
+<rect class="h" x="290" y="654" width="97" height="20" rx="4"/><text class="ht" x="338" y="668" text-anchor="middle">schip-modern</text>
+<path class="l" d="M114 673 L114 694 L124 694"/>
+<text class="n" x="128" y="699">XO-CHIP</text>
+<text class="s" x="230" y="698">2014</text>
+<rect class="h" x="290" y="684" width="64" height="20" rx="4"/><text class="ht" x="322" y="698" text-anchor="middle">xo-chip</text>
+<line class="sep" x1="20" y1="730" x2="660" y2="730"/>
+<text class="n" x="20" y="765">Bare machines</text>
+<text class="s" x="20" y="782">No CHIP-8 interpreter</text>
+<rect class="v" x="290" y="750" width="71" height="20" rx="10"/><text class="vt" x="326" y="764" text-anchor="middle">vip-none</text>
+<rect class="v" x="367" y="750" width="84" height="20" rx="10"/><text class="vt" x="409" y="764" text-anchor="middle">hp-48-none</text>
+<rect class="v" x="457" y="750" width="84" height="20" rx="10"/><text class="vt" x="499" y="764" text-anchor="middle">dream-none</text>
+<rect class="v" x="547" y="750" width="71" height="20" rx="10"/><text class="vt" x="582" y="764" text-anchor="middle">eti-none</text>
+<rect class="v" x="290" y="776" width="124" height="20" rx="10"/><text class="vt" x="352" y="790" text-anchor="middle">studio-2-builtin</text>
+</svg>

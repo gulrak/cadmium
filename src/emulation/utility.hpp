@@ -226,7 +226,7 @@ private:
 
 inline std::string formatUnit(double val, const std::string& suffix, int minScale = -1)
 {
-    static const char* prefix[] = {"n", "u", "m", "", "k", "M", "G", "T"};
+    static const char* prefix[] = {"n", "μ", "m", "", "k", "M", "G", "T"};
     if(std::isnan(val))
         return "";
     bool isNeg = val < 0;
@@ -244,7 +244,7 @@ inline std::string formatUnit(double val, const std::string& suffix, int minScal
 inline std::string calculateSha1Hex(const uint8_t* data, size_t size)
 {
     char hex[SHA1_HEX_SIZE];
-    sha1 sum;
+    Sha1 sum;
     sum.add(data, size);
     sum.finalize();
     sum.print_hex(hex);
@@ -254,7 +254,7 @@ inline std::string calculateSha1Hex(const uint8_t* data, size_t size)
 inline std::string calculateSha1Hex(const std::string& str)
 {
     char hex[SHA1_HEX_SIZE];
-    sha1 sum;
+    Sha1 sum;
     sum.add(str.data(), str.size());
     sum.finalize();
     sum.print_hex(hex);

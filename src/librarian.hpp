@@ -25,41 +25,58 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+//#include <emulation/chip8options.hpp>
+#include <emulation/properties.hpp>
 #include <chiplet/chip8variants.hpp>
+#include <sha1/sha1.hpp>
 #include <configuration.hpp>
 
 #include <chrono>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
 struct KnownRomInfo {
-    const char* sha1;
-    emu::chip8::Variant variant;
+    Sha1::Digest sha1;
+    const char* preset;
     const char* name;
     const char* options;
     const char* url;
+};
+
+// The config of a known ROM: a preset and the changes of its properties.
+struct RomMetadata
+{
+    std::string preset;
+    std::string properties;  // a JSON diff to the preset, empty if there is none
 };
 
 class Librarian
 {
 public:
     static constexpr size_t MAX_ROM_SIZE = 16 * 1024 * 1024 - 512;
+    class MetadataSource
+    {
+    public:
+        virtual ~MetadataSource() = default;
+        virtual std::optional<RomMetadata> romMetadata(const Sha1::Digest& sha1) const = 0;
+    };
     struct Info
     {
         enum Type { eDIRECTORY, eUNKNOWN_FILE, eROM_FILE, eOCTO_SOURCE };
         std::string filePath;
         Type type;
-        emu::Chip8EmulatorOptions::SupportedPreset variant;
+        std::string variant;
         size_t fileSize;
         std::chrono::system_clock::time_point changeDate;
         //------ available after analyzed == true ------------
         bool analyzed{false};
         bool isKnown{false};
-        std::string sha1sum;
-        emu::Chip8Variant possibleVariants{};
+        Sha1::Digest sha1sum;
+        emu::chip8::VariantSet possibleVariants{};
         std::string minimumOpcodeProfile() const;
-        emu::Chip8EmulatorOptions::SupportedPreset minimumOpcodePreset() const;
+        //emu::Chip8EmulatorOptions::SupportedPreset minimumOpcodePreset() const;
     };
     struct Screenshot
     {
@@ -68,33 +85,40 @@ public:
         int pixelAspect{1};
         std::vector<uint32_t> pixel;
     };
-    Librarian(const CadmiumConfiguration& cfg);
+    explicit Librarian(const CadmiumConfiguration& cfg);
     std::string currentDirectory() const { return _currentPath; }
     std::string fullPath(std::string file) const;
     bool fetchDir(std::string directory);
     bool intoDir(std::string subDirectory);
     bool parentDir();
-    bool update(const emu::Chip8EmulatorOptions& options);
+    bool update(const emu::Properties& properties);
 
     size_t numEntries() const { return _directoryEntries.size(); }
     const Info& getInfo(size_t index) { return _directoryEntries[index]; }
     void select(int index) { _activeEntry = index; }
     int getSelectedIndex() const { return _activeEntry; }
-    bool isKnownFile(const uint8_t* data, size_t size) const;
-    bool isKnownFile(const std::string& sha1sum) const;
-    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(std::string sha1sum) const;
-    emu::Chip8EmulatorOptions::SupportedPreset getPresetForFile(const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions::SupportedPreset getEstimatedPresetForFile(emu::Chip8EmulatorOptions::SupportedPreset currentPreset, const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions getOptionsForFile(const uint8_t* data, size_t size) const;
-    emu::Chip8EmulatorOptions getOptionsForFile(const std::string& sha1sum) const;
+    bool isKnownFile(std::span<const uint8_t> data) const;
+    bool isKnownFile(const Sha1::Digest& sha1) const;
+    bool isGenericChip8(std::span<const uint8_t> data) const;
+    bool isGenericChip8(const Sha1::Digest& sha1) const;
+    std::string getPresetForFile(const Sha1::Digest& sha1) const;
+    std::string getPresetForFile(std::span<const uint8_t> data) const;
+    std::string getEstimatedPresetForFile(std::string_view filename, std::string_view currentPreset, std::span<const uint8_t> data) const;
+    emu::Properties getPropertiesForFile(std::span<const uint8_t> data) const;
+    emu::Properties getPropertiesForFile(const Sha1::Digest& sha1) const;
+    static emu::Properties getPropertiesForSha1(const Sha1::Digest& sha1);
     Screenshot genScreenshot(const Info& info, const std::array<uint32_t, 256> palette) const;
-    static bool isPrefixedTPDRom(const uint8_t* data, size_t size);
-    static bool isPrefixedRSTDPRom(const uint8_t* data, size_t size);
+    static bool isPrefixedTPDRom(std::span<const uint8_t> data);
+    static std::mutex& decompilerMutex();
+    static bool isPrefixedRSTDPRom(std::span<const uint8_t> dat);
     static size_t numKnownRoms();
     static const KnownRomInfo& getRomInfo(size_t index);
     static const KnownRomInfo* getKnownRoms();
-    static const KnownRomInfo* findKnownRom(const std::string sha1);
-    static emu::Chip8EmulatorOptions getOptionsForSha1(const std::string_view& sha1);
+    static const KnownRomInfo* findKnownRom(const Sha1::Digest& sha1);
+    static size_t findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms);
+    static void setMetadataSource(const MetadataSource* source);
+    // the metadata source first, then the compiled in list
+    static std::optional<RomMetadata> findRomMetadata(const Sha1::Digest& sha1);
 private:
     int _activeEntry{-1};
     std::string _currentPath;

@@ -25,43 +25,76 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <stdendian/stdendian.h>
 #include <array>
 #include <cstdint>
-#include <stdendian/stdendian.h>
-#include <set>
+#include <cstring>
+#include <emulation/palette.hpp>
+#include <ghc/bit.hpp>
+#include <emulation/logger.hpp>
+#include <ghc/span2d.hpp>
 
 namespace emu {
 
-template<typename PixelType, int Width, int Height>
+// Converts an ARGB8888 value (the SDL pixel format, used by the HP-48 display) into the
+// R8G8B8A8 byte order raylib expects in its pixel data.
+inline uint32_t argb8888ToRgba8888(uint32_t argb)
+{
+    return be32((argb << 8U) | (argb >> 24U));
+}
+
+template<typename PixelType>
 class VideoScreen
 {
 public:
-    static constexpr int WIDTH = Width;
-    static constexpr int HEIGHT = Height;
-    VideoScreen()
+    VideoScreen(int width, int height, int ratio = -1)
+    : _stride(width)
+    , _totalRows(height)
     {
+        setMode(width, height, ratio);
         _palette[0] = be32(0x00000000);
         _palette[1] = be32(0xFFFFFFFF);
         _palette[2] = be32(0xCCCCCCFF);
         _palette[3] = be32(0x888888FF);
-        _palette[254] = be32(0xFFFFFFFF);
+        _palette[255] = be32(0xFFFFFFFF);
     }
     void setMode(int width, int height, int ratio = -1)
     {
-        _width = width;
-        _height = height;
-        _ratio = ratio > 0 ? ratio : (width/height/2);
+        if (width <= _stride) {
+            _width = width;
+            _height = height;
+            if (_screenBuffer.size() != _stride * _totalRows)
+                _screenBuffer.resize(_stride * _totalRows);
+            _ratio = ratio > 0 ? ratio : (width/height/2);
+        }
+        else {
+            ERROR_LOG("Can't upsize a VideoScreen beyond its stride!");
+        }
     }
     void setOverlayCellHeight(int height) {
         _overlayCellHeight = height;
         if(_overlayCellHeight < 0) {
             std::memset(_colorOverlay.data(), 0, 256);
             _colorOverlay[0] = 2;
-            _overlayBackground = 0;
             _overlayCellHeight = 4;
         }
     }
-    void setOverlayBackground(int background) { _overlayBackground = background; }
+    void setBackgroundRGBA(uint32_t background)
+    {
+        _backgroundVariants[0] = background;
+        _palette[0] = background;
+    }
+    uint32_t getBackgroundRGBA() const
+    {
+        return _backgroundColor;
+    }
+
+    void setBackgroundPal(size_t background)
+    {
+        _backgroundColor = _backgroundVariants[background & _backgroundVariantsMask];
+    }
+    uint32_t getBorderColor() const { return _borderColor; }
+    uint32_t getSignalColor() const { return _signalColor; }
     int width() const { return _width; }
     int height() const { return _height; }
     int stride() const { return _stride; }
@@ -72,6 +105,32 @@ public:
         for(int i = 0; i < palette.size(); ++i) {
             _palette[i] = be32(palette[i]);
         }
+        _paletteMask = 0xFF;
+    }
+    void setPalette(const Palette& palette)
+    {
+        for(int i = 0; i < palette.size(); ++i) {
+            _palette[i] = be32(palette.colors[i].toRGBAInt());
+        }
+        _backgroundIndex = 0;
+        if (palette.backgroundColors.empty()) {
+            _backgroundVariantsMask = 0;
+            _backgroundColor = _palette[0];
+        }
+        else {
+            auto backgroundVariants = palette.backgroundColors.size();
+            if (backgroundVariants > _backgroundVariants.size()) {
+                backgroundVariants = _backgroundVariants.size();
+            }
+            for (size_t i = 0; i < backgroundVariants; ++i) {
+                _backgroundVariants[i] = be32(palette.backgroundColors[i].toRGBAInt());
+            }
+            _backgroundVariantsMask = (1u << ghc::bit_width(backgroundVariants)) - 1u;
+            _backgroundColor = _backgroundVariants[_backgroundIndex];
+        }
+        _paletteMask = (1u << ghc::bit_width(palette.size())) - 1u;
+        _borderColor = palette.borderColor ? be32(palette.borderColor->toRGBAInt()) : _palette[0];
+        _signalColor = palette.signalColor ? be32(palette.signalColor->toRGBAInt()) : _borderColor;
     }
     uint32_t getPixel(int x, int y) const
     {
@@ -79,6 +138,43 @@ public:
             return _screenBuffer[y * _stride + x];
         }
         return _palette[_screenBuffer[y * _stride + x]];
+    }
+    uint8_t getPixelIndex(int x, int y) const
+    {
+        if constexpr (isRGBA()) {
+            return 0;
+        }
+        if(_overlayCellHeight) {
+            auto overlayPtr = _colorOverlay.data() + (y/_overlayCellHeight)*_overlayCellHeight * 8;
+
+            return (_screenBuffer[y * _stride + x] & 0x7f) | *overlayPtr << 4;
+        }
+        return _screenBuffer[y * _stride + x];
+    }
+    char getPixelDebugBW(int x, int y) const
+    {
+        if  (isRGBA()) {
+            const auto p = _screenBuffer[y * _stride + x];
+            return p != _backgroundColor ? '#' : '.';
+        }
+        return _screenBuffer[y * _stride + x] ? '#' : '.';
+    }
+    char getPixelDebugCol(int x, int y) const
+    {
+        static constexpr auto hex = "0123456789ABCDEF";
+        if constexpr (isRGBA()) {
+            return '?';
+        }
+
+        if(_overlayCellHeight) {
+            auto overlayPtr = _colorOverlay.data() + (y/_overlayCellHeight)*_overlayCellHeight * 8;
+            auto pixel = _screenBuffer[y * _stride + x];
+            if (pixel) {
+                return hex[pixel & 0xf];
+            }
+            return _backgroundVariantsMask ? 'A' + (*overlayPtr & 0xf) : '.';
+        }
+        return hex[_screenBuffer[y * _stride + x] & 0xf];
     }
     PixelType& getPixelRef(int x, int y)
     {
@@ -93,27 +189,52 @@ public:
         if(_overlayCellHeight > 0)
             _colorOverlay[((y * _overlayCellHeight)&31) * 8 + (x & 7)] = value & 0xF;
     }
-    void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen<PixelType,Width,Height>* background = nullptr) const
+
+    void convertHp48(ghc::span2d<uint8_t> destination) const
+    {
+        if constexpr (!isRGBA()) {
+            // Convert _screenBuffer values 0 or 1 into packed bits (MSB first)
+            // Each row is 16 bytes in destination, stride is 17
+            for (int y = 0; y < _height; ++y) {
+                auto srcPtr = _screenBuffer.data() + y * _stride;
+                auto dstPtr = destination.data() + y * 17;
+
+                // Process 128 pixels (16 bytes) per row
+                for (int byteIdx = 0; byteIdx < 16; ++byteIdx) {
+                    uint8_t byte = 0;
+                    // Pack 8 bits, MSB first
+                    for (int bitIdx = 0; bitIdx < 8; ++bitIdx) {
+                        int pixelX = byteIdx * 8 + bitIdx;
+                        if (pixelX < _width && srcPtr[pixelX]) {
+                            byte |= (1 << (7 - bitIdx));
+                        }
+                    }
+                    dstPtr[byteIdx] = byte;
+                }
+            }
+        }
+    }
+
+    void convert(uint32_t* destination, int destinationStride, uint8_t alpha, const VideoScreen* background = nullptr) const
     {
         if(isRGBA() || !_overlayCellHeight) {
             if(!background) {
+                // non background-blending palette or RGBA mode
                 for (unsigned row = 0; row < _height; ++row) {
                     auto srcPtr = _screenBuffer.data() + row * _stride;
                     auto dstPtr = destination + row * destinationStride;
                     for (unsigned x = 0; x < _width; ++x) {
                         if constexpr (isRGBA()) {
-                            blendColorsAlpha(dstPtr, srcPtr, alpha);
-                            dstPtr++;
-                            srcPtr++;
-                            //*dstPtr++ = blend(*srcPtr++,alpha);
+                            blendColorsAlpha(dstPtr++, srcPtr++, alpha);
                         }
                         else {
-                            *dstPtr++ = blend(_palette[*srcPtr++],alpha);
+                            *dstPtr++ = blend(_palette[*srcPtr++ & _paletteMask],alpha);
                         }
                     }
                 }
             }
             else {
+                // background-blending RGBA mode (Mega8)
                 for (unsigned row = 0; row < _height; ++row) {
                     auto srcPtr = _screenBuffer.data() + row * _stride;
                     auto backPtr = background->_screenBuffer.data() + row * _stride;
@@ -132,17 +253,17 @@ public:
             }
         }
         else {
+            // color overlay mode (e.g. CHIP-8X), this mode uses the overlay color if pixel value != 0
             for (unsigned row = 0; row < _height; ++row) {
                 auto srcPtr = _screenBuffer.data() + row * _stride;
                 auto dstPtr = destination + row * destinationStride;
                 auto overlayPtr = _colorOverlay.data() + (row/_overlayCellHeight)*_overlayCellHeight * 8;
                 for (unsigned x = 0; x < _width; ++x) {
-                    auto pxl = *srcPtr++;
-                    if(_overlayCellHeight < 0) {
-                        *dstPtr++ = pxl ? _palette[7+4] : _palette[_overlayBackground & 3];
+                    if(*srcPtr++) {
+                        *dstPtr++ = _overlayCellHeight < 0 ? _palette[7] : _palette[overlayPtr[x >> 3]];
                     }
                     else {
-                        *dstPtr++ = pxl ? _palette[overlayPtr[x >> 3] + 4] : _palette[_overlayBackground & 3];
+                        *dstPtr++ = _backgroundColor;
                     }
                 }
             }
@@ -155,7 +276,7 @@ public:
                 pixel = value;
         }
         else {
-            std::memset(_screenBuffer.data(), value, Width * Height);
+            std::memset(_screenBuffer.data(), value, _screenBuffer.size());
         }
     }
     void binaryAND(PixelType mask)
@@ -181,7 +302,7 @@ public:
     }
     void scrollLeft(int n)
     {
-        for(int y = 0; y < Height; ++y) {
+        for(int y = 0; y < _totalRows; ++y) {
             std::memmove(_screenBuffer.data() + y * _stride, _screenBuffer.data() + y * _stride + n, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + _stride - n + i] = _black;
@@ -192,7 +313,7 @@ public:
     }
     void scrollRight(int n)
     {
-        for(int y = 0; y < Height; ++y) {
+        for(int y = 0; y < _totalRows; ++y) {
             std::memmove(_screenBuffer.data() + y * _stride + n, _screenBuffer.data() + y * _stride, (_stride - n) * sizeof(PixelType));
             if constexpr (isRGBA())
                 for(unsigned i = 0; i < n; ++i) _screenBuffer[y * _stride + i] = _black;
@@ -208,7 +329,46 @@ public:
         _palette = other._palette;
         return *this;
     }
-    inline bool drawSpritePixel(uint8_t x, uint8_t y, uint8_t planes)
+    // Draws an 8 pixel wide sprite into plane 1, clipped at clipWidth/clipHeight, with one 64-bit
+    // access per row instead of one access per pixel. Returns true on a collision.
+    bool drawSpriteWidth8(int x, int y, const uint8_t* data, int lines, int clipWidth, int clipHeight)
+    {
+        static_assert(sizeof(PixelType) == 1);
+        if (x >= clipWidth || y >= clipHeight)
+            return false;
+        if (y + lines > clipHeight)
+            lines = clipHeight - y;
+        // a sprite row as eight pixels, the leftmost one at the lowest address
+        struct RowTable {
+            uint8_t rows[256][8]{};
+            constexpr RowTable() {
+                for (int value = 0; value < 256; ++value)
+                    for (int bit = 0; bit < 8; ++bit)
+                        rows[value][bit] = (value >> (7 - bit)) & 1;
+            }
+        };
+        static constexpr RowTable table{};
+        // all bits set in the bytes that are still visible, independent of the byte order
+        uint64_t clip = ~uint64_t(0);
+        if (x + 8 > clipWidth) {
+            uint8_t visible[8]{};
+            std::memset(visible, 0xFF, clipWidth - x);
+            std::memcpy(&clip, visible, 8);
+        }
+        auto* row = _screenBuffer.data() + _stride * y + x;
+        uint64_t hit = 0;
+        for (int line = 0; line < lines; ++line, row += _stride) {
+            uint64_t sprite, pixels;
+            std::memcpy(&sprite, table.rows[data[line]], 8);
+            std::memcpy(&pixels, row, 8);
+            sprite &= clip;
+            hit |= pixels & sprite;
+            pixels ^= sprite;
+            std::memcpy(row, &pixels, 8);
+        }
+        return hit != 0;
+    }
+    bool drawSpritePixel(uint8_t x, uint8_t y, uint8_t planes)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -217,7 +377,7 @@ public:
         *pixel ^= planes;
         return collision;
     }
-    inline bool drawSpritePixelDoubled(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    bool drawSpritePixelDoubled(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -237,7 +397,7 @@ public:
         }
         return collision;
     }
-    inline bool drawSpritePixelDoubledSC(uint8_t x, uint8_t y, uint8_t planes, bool hires)
+    bool drawSpritePixelDoubledSC(uint8_t x, uint8_t y, uint8_t planes, bool hires)
     {
         auto* pixel = _screenBuffer.data() + _stride * y + x;
         bool collision = false;
@@ -251,10 +411,6 @@ public:
                 *(pixel + 1) ^= planes;
             }
         }
-        /*if(!hires) {
-            *(pixel + _stride) = *pixel;
-            *(pixel + _stride + 1) = *(pixel + 1);
-        }*/
         return collision;
     }
     void copyPixelRow(int x1, int x2, int ySrc, int yDst)
@@ -274,7 +430,7 @@ public:
         _screenBuffer[y * _stride + x] &= ~mask;
     }
 protected:
-    static inline uint32_t blend(uint32_t color, uint8_t  alpha)
+    static uint32_t blend(uint32_t color, uint8_t  alpha)
     {
         auto newAlpha = (color >> 24) * alpha / 255;
         return (color & 0x00ffffff) | (newAlpha << 24);
@@ -282,24 +438,31 @@ protected:
     static void blendColorsAlpha(uint32_t* dest, const uint32_t* col, uint8_t alpha)
     {
         int a = alpha;
-        auto* dst = (uint8_t*)dest;
+        auto* dst = reinterpret_cast<uint8_t*>(dest);
         const auto* c1 = dst;
-        const auto* c2 = (const uint8_t*)col;
+        const auto* c2 = reinterpret_cast<const uint8_t*>(col);
         *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
         *dst++ = (a * *c2++ + (255 - a) * *c1++) >> 8;
         *dst++ = (a * *c2 + (255 - a) * *c1) >> 8;
         *dst = 255;
     }
-    const int _stride{Width};
-    int _width{Width};
-    int _height{Height};
+    const int _stride{};
+    const int _totalRows{};
+    int _width{};
+    int _height{};
     int _ratio{1};
     int _overlayCellHeight{0};
-    int _overlayBackground{0};
+    uint8_t _paletteMask{0xFF};
+    uint8_t _backgroundVariantsMask{0xF};
     PixelType _black{isRGBA() ? be32(0x00000000) : 0};
     PixelType _white{isRGBA() ? be32(0xFFFFFFFF) : 1};
-    std::array<PixelType, Width*Height> _screenBuffer;
+    std::vector<PixelType> _screenBuffer;
     std::array<uint32_t, 256> _palette{};
+    std::array<uint32_t, 16> _backgroundVariants{};
+    size_t _backgroundIndex{};
+    uint32_t _backgroundColor{};
+    uint32_t _borderColor{};
+    uint32_t _signalColor{};
     std::array<uint8_t, 256> _colorOverlay{};
 };
 

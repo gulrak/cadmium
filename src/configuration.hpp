@@ -25,24 +25,32 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
-#include <emulation/chip8options.hpp>
+#include <emulation/properties.hpp>
 #include <nlohmann/json_fwd.hpp>
-
+#include "recentfiles.hpp"
+#include <sha1/sha1.hpp>
 #include <map>
 #include <string>
 
+
 struct CadmiumConfiguration
 {
+    int windowPosX{0xFFFF};
+    int windowPosY{0xFFFF};
+    int scaleMode{0};
     float volume{};
     uint16_t guiHue{200};
     uint8_t guiSat{80};
     std::string workingDirectory;
-    std::string databaseDirectory;
-    emu::Chip8EmulatorOptions emuOptions;
-    std::map<std::string,emu::Chip8EmulatorOptions> romConfigs;
+    std::vector<std::string> libraryPath;
+    RecentFiles recentFiles;
+    emu::Properties emuProperties;
+    std::map<Sha1::Digest,emu::Properties> romConfigs;
     bool load(const std::string& filepath);
     bool save(const std::string& filepath);
 };
 
 void to_json(nlohmann::json& j, const CadmiumConfiguration& cc);
 void from_json(const nlohmann::json& j, CadmiumConfiguration& cc);
+void to_json(nlohmann::json& j, const Sha1::Digest& d);
+void from_json(const nlohmann::json& j, Sha1::Digest& d);

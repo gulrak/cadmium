@@ -125,6 +125,11 @@ inline int length(const std::string& text)
     return length(text.data(), text.data() + text.size());
 }
 
+inline int length(std::string_view text)
+{
+    return length(text.data(), text.data() + text.size());
+}
+
 inline std::wstring toWString(const std::string& utf8String)
 {
     std::wstring result;
@@ -238,6 +243,85 @@ inline std::string heuristicUtf8(const std::string& str)
         }
         return result;
     }
+}
+
+inline std::vector<std::string> wordWrap(const std::string_view text, const size_t width)
+{
+    if (width == 0) {
+        return {};
+    }
+
+    std::vector<std::string> result;
+    std::vector<uint32_t> currentLine;
+
+    const char* ptr = text.data();
+    const char* end = ptr + text.size();
+
+    auto findLastWrapPoint = [&]() -> int {
+        for (auto i = static_cast<int>((std::min)(currentLine.size(), width) - 1); i >= 0; --i) {
+            auto cp = currentLine[i];
+            if (cp == ' ' || cp == '.' || cp == ',' ||
+               cp == ';' || cp == '-' || cp == '/') {
+                return i;
+            }
+        }
+        return -1;
+    };
+
+    auto commitLine = [&](size_t endPos) {
+        std::string line;
+        for (size_t i = 0; i < endPos; ++i) {
+            append(line, currentLine[i]);
+        }
+        if (!line.empty()) {
+            result.push_back(std::move(line));
+        }
+        currentLine.erase(currentLine.begin(), currentLine.begin() + endPos);
+    };
+
+    while (ptr < end) {
+        uint32_t codepoint = fetchCodepoint(ptr, end);
+        currentLine.push_back(codepoint);
+        if (currentLine.size() > width) {
+            int wrapPoint = findLastWrapPoint();
+
+            if (wrapPoint >= 0) {
+                commitLine(wrapPoint + 1);
+            } else {
+                commitLine(width);
+            }
+        }
+    }
+
+    if (!currentLine.empty()) {
+        std::string line;
+        for (uint32_t cp : currentLine) {
+            append(line, cp);
+        }
+        result.push_back(line);
+    }
+
+    return result;
+}
+
+inline std::string truncateWithEllipsis(std::string_view text, std::size_t maxSize) {
+    if (maxSize == 0) {
+        return {};
+    }
+    auto cpCount = static_cast<std::size_t>(length(text));
+    if (cpCount <= maxSize) {
+        return std::string{text};
+    }
+    std::size_t skipCount = cpCount - (maxSize - 1);
+    const char* iter = text.data();
+    const char* end = text.data() + text.size();
+    for (std::size_t i = 0; i < skipCount && iter < end; ++i) {
+        utf8::fetchCodepoint(iter, end);
+    }
+    std::string result;
+    append(result, 0x2026);  // U+2026 HORIZONTAL ELLIPSIS '…'
+    result.append(iter, end);
+    return result;
 }
 
 }  // namespace utf8

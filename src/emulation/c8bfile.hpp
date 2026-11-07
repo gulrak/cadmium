@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/chipsound.hpp
+// src/emulation/c8bfile.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2022, Steffen Schümann <s.schuemann@pobox.com>
@@ -263,9 +263,9 @@ public:
         return (rawData[offset]<<8)|rawData[offset+1];
     }
 
-    uint16_t read24bit(uint16_t offset)
+    uint32_t read24bit(uint16_t offset)
     {
-        if(offset + 1 >= rawData.size())
+        if(offset + 2 >= rawData.size())
             throw std::runtime_error("offset out of range");
         return (rawData[offset]<<16)|(rawData[offset+1]<<8)|rawData[offset+2];
     }

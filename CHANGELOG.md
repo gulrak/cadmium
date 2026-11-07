@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.9-1.1.11] (wip)
+## [2.0.0] - unreleased
 
 ### Added
 
@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New high-level variant `CHIP-8E`, the emulator will by default still use the real `VIP-CHIP-8E`
   due to more accurate timing, but the generic one will take up less resources for more constrained
   platforms
+- New high-level variants `CHIP-8 TPD` (64x64) and `CHIP-8 FPD` (64x128), files with their extensions
+  still default to the real `VIP-CHIP-8 TPD` and `VIP-CHIP-8 FPD`
 - Programs that are loaded from source are now also checked for their assembled binary being known
   and options set accordingly
 - COSMAC VIP now supports up to 32k RAM, the interpreters will still put their screen data at
@@ -22,21 +24,229 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bit operands limit usability quite a bit)
 - New non-CHIP-8 mode: COSMAC VIP now supports running native VIP programs
 - Memory panel now has a checkbox to detach it from auto-following the `I` register
+- VIP settings allow now to individually select if video events should be added to the trace log
+- Support for more fonts in generic CHIP-8 variants
+- New debugger breakpoint tab under the video panel allowing configuration
+- Breakpoints now can be disabled/enabled, first click in disassembly creates one, further clicks
+  either enable or disable it, to delete a breakpoint a SHIFT click is now used.
+- Breakpoints allow a condition, it can be an expression using any of the registers or access ram
+  as if it is an array, e.g. `v0==23 && ram[0x234]>3` and only if that expression evaluates to
+  a non-zero value the breakpoint stops, no condition makes it always stop
+- Breakpoints now can have a log format entry (for `:breakpoint` directives it is the string parameter)
+  that will be appended to to log window if the breakpoint triggers, an additional log condition
+  can be set to make the log print only if that condition is met, independent of the breakpoint condition.
+- Library/Research screen and database integration allows for easier research on existing roms
+  and interpreters, all information about programs, and even the binaries themselves (not in web version)
+  are now kept in a local SQLite3 file in the configuration directory (<10MB for all known programs combined)
+
+#### Library
+- A new library starts from built-in starter metadata with about 900 programs and 1100 ROMs,
+  ROMs that are only known from that metadata are "missing" and hidden by default (eye button)
+- The library search uses a small query language: plain words search name, description and
+  authors, fields like `release < 1980`, `author ~ winter`, `tag = new`, `variant = xo-chip`,
+  `ipf > 100`, `wrap = true`, `size < 1k`, partial dates and ranges (`197x`, `1990..1999`), the
+  keywords `missing`, `present` and `analyzed`, and opcode search like `uses F?75`, combined with
+  `and`, `or`, `not`/`-` and parentheses, a feedback line shows the number of matches or the error
+- Tags filter the list (Ctrl/Cmd click for several), smart tags save a selection and search as
+  a named query
+- Programs can be edited (name, authors, release date, origin with reference, license as SPDX
+  expression, copyright, URL, description), each ROM can have several configs (variant plus
+  property changes) that can be loaded or run directly, ROMs can have their own tags, a ROM
+  tagged "bad" is only used as default if nothing else is left
+- ROMs can be moved between programs (also by dragging), detached, merged, removed or removed
+  and ignored so future scans don't add them again, dropping files on the library adds them
+- The library shows a live preview of the selected ROM and a scrollable info panel
+- "Save settings to library" in the main menu stores the current settings (including the palette
+  preset) as a config of the loaded ROM
+- In the web version, the library works on the starter metadata, opening a ROM selects its entry,
+  changes are lost on reload, library folders, scanning, the live preview and "Save settings to
+  library" stay desktop only
+- New command line options `--export-metadata-db` (library without ROMs and local data, for
+  sharing), `--update-program-database` (compare with the chip-8-database `programs.json`) and
+  `--opcode-stats`
+- Generic cores have a new "Rotation" option (`--screen-rotation 0/90/180/270`) for programs
+  played sideways, taken from the library, the chip-8-database and Octo cartridges
+- [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed
+- Cadmium now has a `--version` command line option and shows the git commit hash in the about dialog
+
+<!-- New systems and cores -->
+- New system: HP-48SX hardware emulation, running the original CHIP-48, SUPER-CHIP 1.0 beta,
+  SUPER-CHIP 1.0, SUPER-CHIP 1.1 and Chromatophore's SCHPC interpreters on an emulated HP-48SX
+  (Saturn CPU), presets `hp-48-chip-48`, `hp-48-schip-1-0-beta`, `hp-48-schip-1-0`,
+  `hp-48-schip-1-1`, `hp-48-schpc` and a raw
+  `hp-48-none` mode. The interpreters are assembled from source, SUPER-CHIP 1.0 beta,
+  SUPER-CHIP 1.1 and SCHPC are source reconstructions from the binaries, as the originals are lost
+- The HP-48SX core comes with Cadmium's own clean-room replacement ROM, so it is available in
+  every build, including the web version. It only runs the five interpreters (no calculator,
+  so `hp-48-none` needs HP's revision E ROM) and shows a simple stack display while idle. Builds
+  with HP's ROM compiled in can choose the ROM (`--rom`), saved states remember which ROM they
+  belong to.
+- New core: `strict-schip-1-1`, a cycle exact high-level emulation of SUPER-CHIP 1.1 as it runs
+  on the HP-48SX, with optional HP-48SX display emulation, based on the measured interpreter
+  timing.
+- New system: RCA Studio II hardware emulation with the preset `studio-2-builtin`, running
+  its built-in games (pad A on keys 1-9 and 0), this is still more of a preview mode
+- HP-48SX display contrast is emulated from the calculator's contrast register, and as the
+  calculator settings can't be reached without its keyboard, a "Fixed contrast" option
+  (`--fixed-contrast`, `--contrast 0-31`) allows setting it directly, even while running
+- New system: ETI-660 hardware emulation (CDP1802 with CDP1864 video and sound) with the
+  presets `eti-chip-8` (64x48 CHIP-8) and the raw `eti-none` mode, selectable keyboard layouts
+  (ETI-660 hex, ETI-660 two row, VIP hex)
+- New core: `rs-megachip`, a faithful reimplementation of the original RS-M8001 MegaChip
+  interpreter by Revival-Studios (2007), based on an analysis of the original binary,
+  including its original bugs (but with checked memory bounds), with an optional
+  "VIP mode" option for the original mode-1 behavior including double shifts
+- New generic variant `SCHIP-1.0-BETA` (`schip-1-0-beta`, `.sc10b`), the SUPER-CHIP 1.0 beta
+  with its preview behavior of `Fx29`
+- New COSMAC VIP presets: `vip-chip-10` (CHIP-10 with the 128x64 hires hardware modification),
+  `vip-chip-8-rb` (CHIP-8 with relative branching `BFnn`/`FBnn` by Wayne Smith, VIPER V2-I1),
+  `vip-chip-8-tpd-ts` (Tom Swan's two page display version from "PIPS for VIPS"),
+  `vip-chip-8-r` (CHIP-8R, a research variant with PC relative jumps `BBnn`/`BFnn`, calls through
+  `I` with `BC00` and 16 bit `I` loads `F000 nnnn` for programs beyond 4k, also supported by
+  Chiplet)
+- New DREAM6800 raw mode `dream-none` to run native M6800 programs without CHIPOS, the DREAM6800
+  can now be configured with 2k or 4k RAM
+- Every hardware core (COSMAC VIP, strict CHIP-8, DREAM6800, ETI-660) now allows configuring the
+  CPU clock rate
+
+#### Emulation
+- New generic quirks: "HP-48SX display emulation" (renders the generic SCHIP output like on the
+  HP-48SX LCD), "HP SuperChip 1.0 'preview' Fx29", "CubeChip contextual tone" and "Clean RAM"
+  (otherwise RAM starts with a pseudo random pattern, for SCHIP variants with a sparse pattern
+  similar to a used HP-48)
+- New generic options for RAM size (2k up to 16MB), load/start address and the 5px and 10px fonts
+- COSMAC VIP monitor tape output (Q line) is now written as a `tape<timestamp>.wav` file when
+  saving to tape from the VIP monitor
+- COSMAC VIP: holding key `C` during reset boots into the monitor instead of the CHIP-8 interpreter,
+  like on the real hardware
+- Warm reset: a right click on the restart button resets the emulated system without reloading
+  the program and without clearing the RAM, a left click still reloads and restarts the program
+- Intel HEX files (`.hex`) can be loaded, the data is put to the addresses given in the file
+- Octo cartridges (`.gif`) can be loaded via drag and drop, including their options, palette (all
+  four planes, border and sound colors), font, screen rotation and touch mode
+- Programs can be saved as Octo cartridge (`.gif`) from the save dialog, with a label, Octo's
+  original or Cadmium's image and optionally as binary only (hex dump instead of source), options
+  and palette are stored too, available for generic CHIP-8, CHIP-48, SCHIP and XO-CHIP presets
+- New CRT effect option (`--crt-effect`, "CRT Effect") that shows the screen like a CRT with
+  visible scan lines, for the COSMAC VIP, DREAM6800, ETI-660, RCA Studio II and the generic
+  MegaChip preset
+- New command line option `--custom-palette "#rrggbb,#rrggbb,..."` to set the palette colors
+- New test ROMs in `test-roms`: a variant detection test that identifies which CHIP-8 variant
+  it is running on, an XO-CHIP sound test, a font test, a DREAM6800 key test and the
+  Chromatophore HP-48 draw test
+- New test ROMs `superchip-test` (detects the SCHIP variant and tests the opcodes including the
+  HP-48SX lores drawing details), `xochip-test` (XO-CHIP opcodes, also reports the number of
+  planes) and `vipchip8-test` (classic CHIP-8 as on the VIP, including the display wait), all
+  ending with a sound test
+
+#### Debugger / UI
+- Debugger memory view now shows 16 bytes per line and the disassembly is syntax highlighted
+- The debugger supports the HP-48SX Saturn CPU: register panel with its 64 bit registers and a
+  stable, syntax highlighted disassembly view of its variable length instructions
+- Text fields now support selection, clipboard, undo/redo, word wise movement and double/triple
+  click, multi-line fields wrap and scroll
+- Disassembly scrolls by whole lines with smooth trackpad scrolling
+- Breakpoint list shows the triggered breakpoint and the hit count of a breakpoint
+- Octo `:breakpoint` directives with a valid expression as name now act as conditional breakpoints,
+  `:breakpoint "v0 == 3 ? hit at i={i:04x}"` sets the condition and the log format separately, and
+  a plain name still always breaks
+- The log format and log condition of a breakpoint can be edited in the breakpoint tab, without a
+  log condition a breakpoint logs whenever it breaks
+- Breakpoint expressions support `!=`, `%`, `0x` hex and `0b` binary numbers, and the labels and
+  constants of the loaded Octo source (`ram[data+1]`, `v0 == LIMIT`)
+- Log formats can read memory like Octo monitor fields, `{data:%2i}` shows two bytes at `data` as a
+  number, `{i:%4x}` four bytes at `I` in hex, besides the fmt style `{v0:02x}`
+- New debugger Watch tab: the Octo `:monitor` entries of the source, shown like Octo does and
+  updated while the program runs, and watches added in the tab as expressions or log formats;
+  `:monitor` formats can use the `{...}` placeholders of log formats as a Cadmium extension
+- Breakpoints now stay in sync across the emulation instances and survive resets
+- New main menu with "Open recent" files (and "Clear recent files") and shown hotkeys
+- Keyboard shortcuts: `Ctrl`/`Cmd` + `N`/`O`/`S`/`K`/`Q` for New, Open, Save, Key Map and Quit,
+  `F5` run, `Shift+F5` pause, `F7` step into, `Shift+F7` step out, `F8` step over
+- Toolbar buttons for opening the library, opening and saving a program
+- Saving lets you choose between saving the ROM file or the source code and asks before
+  overwriting an existing file
+- Palette settings now also allow configuring background, border and signal colors, new palette
+  presets "C64", "Intellivision" and "CGA"
+- The Appearance settings tab allows tinting the UI colors and changing their saturation
+- Settings show the emulated hardware configuration of a core (e.g. ROM and interpreter with
+  their SHA1)
+- The library view shows the SHA1 and the (estimated) type of a file
+- About 390 more known ROMs (now about 1100, v1.1.8 had about 710), among them new ETI-660
+  programs, and better palettes for known programs
+
+#### Command line
+- New headless mode: `--headless` runs a binary ROM deterministically without a window, with
+  `--until-presentations`, `--max-instructions`, `--dump-screen` (export last frame as image) and
+  `--dump-state` (export the machine state as JSON)
+- All core options are now available on the command line, generated per core, with
+  `--[no-]<option>` style switches (e.g. `--[no-]schip-11-collision`, `--clock-rate`, `--memory`,
+  `--instructions-per-frame`, `--frame-rate`, `--trace-file`)
+
+#### Web
+- Web version: saving/downloading ROMs and sources, better clipboard support and the canvas now
+  follows the browser window size and pixel ratio
+- Web version: the library (see above) and the HP-48SX core (with the replacement ROM) are
+  available, the page no longer busy-waits between frames, "unlimited" instructions per frame runs
+  at 1000000 instructions per frame there, and a new deploy is no longer hidden by cached files
 
 ### Changed
 
+- Enhanced memory compatibility in strict CHIP-8 core to have the same ram state as CHIP-8 on a VIP
 - Changed hardly visible memory change highlight color on darker columns
 - When running the program and the view is on settings or editor, the view will now switch to the
   last used run-view (those are full video or debugger)
-- When loading source that has a compile error, the editor is shown
+- When loading source that has a compile error, the editor is shown.
+- Due to the overhead of scissor mode for scroll panels, GuiDrawText and GuiDrawRectangle where
+  changed to use new clipping helpers that clip rectangles and glyph drawing and make scissor
+  mode unnecessary.
+
+- Settings were reworked: each emulation core has its own set of options, presets are grouped
+  by core (generic HLE, strict, RS-M8001, COSMAC VIP, HP-48SX, DREAM6800, ETI-660) and the
+  options of hardware cores are no longer limited to CHIP-8 quirks
+- Command line quirk options have been renamed to the per core option names
+  (e.g. `--lores-dxy0-width-8` is now `--lores-dxy-0-is-8-x-16`), `-s/--exec-speed` is replaced by
+  `--instructions-per-frame`, `--trace-log` is now per core and `--random-gen`/`--random-seed`
+  were removed
+- Preset names are now lowercase and dash separated (`schip-1-1`, `vip-chip-8-x`, ...), see
+  `--help` or the README for the full list
+- Changed preset defaults:
+  - `SCHIPC` now behaves closer to Chromatophore's SCHPC: it waits for vblank on `Dxyn`, lores
+    `Dxy0` draws 8 pixels wide, it uses half pixel scrolling and the HP-48SX lores drawing and
+    it runs at 64 fps
+  - `SCHIP-1.0` now runs at 30 instead of 15 instructions per frame
+  - `SCHIP-MODERN` now runs at 64 fps
+  - `MEGACHIP` now runs at 50 fps with 5000 instructions per frame and waits for vblank on `Dxyn`
+  - `CHIP-8`, `CHIP-10` and `CHIP-8E` use the extended display wait emulation by default
+  - The extended display wait now depends on the time left in the frame instead of only on the sprite size
+    and position, this is much closer to the draw rates of the real interpreters
+- Generic SUPER-CHIP 1.x presets (all but `SCHIP-MODERN`) now only save/load eight flag
+  registers with `Fx75`/`Fx85` like the HP-48SX interpreters (`x` is clamped to 7)
+- The HP-48SX lores drawing of the generic SCHIP presets now matches the interpreters: a lores
+  row is drawn on the even hires row and copied to the odd row below, collisions only look at
+  the even row
+- Generic cores start with a pseudo random RAM content instead of zeroed RAM unless "Clean RAM"
+  is set
+- Generic cores now emulate the short key feedback beep while `Fx0A` waits for a key
+- CHIP-8X based VIP presets now run with the 1.789773 MHz clock that comes with the VP-590
+  color board
+- COSMAC VIP buzzer sound is now a more realistic enveloped frequency changing sound instead
+  of a plain square wave
+- Editor syntax highlighting now handles constructs spanning multiple lines
+- Backend updated to raylib 6.0
+- [Desktop only] macOS builds now need macOS 13.3 or newer
 
 ### Fixed
 
+- Memory view "Follow" showed wrong position
+- Disassembly sometimes only showed hex bytes instead of opcodes
 - The VIP-CHIP-8E interpreter had a typo leading to `BBnn` not working ([#12](https://github.com/gulrak/cadmium/issues/12))
 - Disassembling 0x7C, 0x7D or 0x7F generated single byte opcodes instead two byte ones ([#13](https://github.com/gulrak/cadmium/issues/12))
 - Octo-Assembler would hang on macro definitions without name or parameter
 - High-level emulation didn't finish a frame with the right amount of cycles if part of it was
   single stepped or breakpoints involved
+- Added wrapping behavior for ram and rom, including the unconnected second 2k of a 2k
+  VIP in strict CHIP-8 and VIP emulation
 - Wrong initial cycles after a reset for the COSMAC VIP and the CHIP-8 strict timing core, the
   time in ROM was not counted in
 - COSMAC VIP could make Cadmium hang on opcode 0x68
@@ -46,8 +256,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DREAM6800 was wrongly buzzing all the time, correctly controlled by PB6 now
 - DREAM6800 had not finished the last frame when auto-pausing on self-loop, potentially leaving
   change undisplayed
-- Due to an change in the gui library the toggle buttons in the find bar of the editor didn't work
+- Due to a change in the gui library the toggle buttons in the find bar of the editor didn't work
 - Loading of Octo source that didn't compile without error was not possible
+- `.c8b` files (CHIP-8 binary format) were loaded as raw data instead of their bytecode, they load
+  again with their palette and speed, and a speed above 65535 instructions per frame is no longer cut
+- MegaChip audio suppressed the last sample of a non looping sound
+- VIP finally shows Q in the trace log
+- SUPER-CHIP v1.1 collision handling was broken
+- Syzygy was wrongly classified as CHIP-48, it's author declares it as CHIP-48 and it is working
+  with CHIP-48 or SCHIP, switched to CHIP-48 (thanks to `@juan_tigre` for the find).
+
+- The DREAM6800 CHIPOSLO kernel had a bug in `Ex9E` key handling, fixed with a size neutral
+  patch ([tobiasvl/chiposlo#3](https://github.com/tobiasvl/chiposlo/issues/3))
+- Stepping or breakpoints could trigger while the generic core was waiting for vblank or a key
+- Keyboard shortcuts with `Ctrl`/`Cmd` no longer also trigger the CHIP-8 key mapped to that key
+- The big digit `6` of the SUPER-CHIP 1.0 font had a wrong pixel in its third row
+- Horsey Jump was wrongly classified as `SCHIP-1.1`, now `SCHIP-MODERN`, Raycaster got a better
+  instructions per frame setting
 
 ## [1.1.8] - 2024-01-01
 
@@ -60,7 +285,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to support the CORS mechanism (e.g. `raw.githubusercontent.com`) and the url
   needs to be url-encoded, for programs it knows am url for, the SHA1 number works too
 - New variant `Modern-SuperChip` that is in line with Octos interpretation of SCHIP,
-  and the one from the CHIP-8 test suite v4.1, the SCHIPC is now moreoriented on the
+  and the one from the CHIP-8 test suite v4.1, the SCHIPC is now more oriented on the
   behavior of Chromatophores SCHIPC
 - Added support for CHIP-8E on the VIP core
 - Realistic buzzer sound from HP48 based variants (CHIP-48, SCHIP1.x, SCHIPC)

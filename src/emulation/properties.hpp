@@ -25,28 +25,58 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <emulation/palette.hpp>
+#include <chiplet/utility.hpp>
+
 #include <algorithm>
 #include <cstddef>
 #include <map>
-#include <unordered_map>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <unordered_map>
 #include <variant>
 #include <vector>
-#include <tuple>
-#include <chiplet/utility.hpp>
 
 #include <nlohmann/json_fwd.hpp>
 
+#include "ghc/bitenum.hpp"
+
 namespace emu {
 
-template<class... Ts> struct visitor : Ts... { using Ts::operator()...;  };
-template<class... Ts> visitor(Ts...) -> visitor<Ts...>;
+template<class... Ts>
+
+struct visitor : Ts... { using Ts::operator()...;  };
+template<class... Ts>
+
+visitor(Ts...) -> visitor<Ts...>;
+
+enum class PropertyFlags { eNone = 0, eWritable = 1, eInvisible = 2, eNeedsRelaunch = 4 };
+
+// Whether a property matters, decided by the rules of its core (see CoreRegistry::applyRules). It is derived from
+// the values, so it is neither saved nor compared.
+enum class PropertyState {
+    ACTIVE,          // has an effect
+    INACTIVE,        // has no effect with the current values of other properties, keeps its value
+    NOT_APPLICABLE   // makes no sense for the variant, is hidden and kept at the preset default
+};
+
+// Ids of properties several cores share and that the host and the UI use directly.
+namespace propid {
+inline constexpr std::string_view TRACE_LOG{"traceLog"};
+inline constexpr std::string_view INSTRUCTIONS_PER_FRAME{"instructionsPerFrame"};
+inline constexpr std::string_view FRAME_RATE{"frameRate"};
+inline constexpr std::string_view START_ADDRESS{"startAddress"};
+inline constexpr std::string_view CRT_EFFECT{"crtEffect"};  // display only: the host renders the screen with a CRT beam shader
+}
+GHC_ENUM_ENABLE_BIT_OPERATIONS(PropertyFlags)
 
 class Property
 {
 public:
-    struct Combo {
+    struct Combo
+    {
         Combo(std::initializer_list<std::string> opts)
         : options{opts}
         {
@@ -59,61 +89,78 @@ public:
             static std::string emptyString{};
             return emptyString;
         }
+        // Selects the first option matching the text, keeps the current selection if there is none.
         void setSelectedToText(const std::string& text)
         {
-            index = 0;
             for(size_t i = 0; i < options.size(); ++i) {
-                if (options[i] == text)
-                    index = i;
+                if (fuzzyCompare(options[i], text)) {
+                    index = static_cast<int>(i);
+                    return;
+                }
             }
         }
         int index{};
         std::vector<std::string> options;
         std::string rgCombo;
     };
-    struct Integer {
+
+    struct Integer
+    {
+
         int intValue{};
-        int minValue{};
-        int maxValue{};
+
+        int minValue{std::numeric_limits<int>::min()};
+
+        int maxValue{std::numeric_limits<int>::max()};
     };
     using Value = std::variant<std::nullptr_t,bool,Integer,std::string,Combo>;
 
-    Property(std::string name, Value val, std::string additionalInfo, bool isReadOnly = true);
-    Property(std::string name, Value val, bool isReadOnly = true);
+    // The id is the stable technical name: key in Properties, key in JSON (configs, ROM database) and base of the
+    // CLI option. It must never change. The label is only shown to the user and can be changed at any time.
+    Property(std::string id, std::string label, Value val, std::string description, PropertyFlags flags_ = PropertyFlags::eNone);
+    Property(std::string id, std::string label, Value val, PropertyFlags flags_);  // description is the label
     Property(const Property& other);
-    const std::string& getName() const { return _name; }
-    const std::string& getJsonKey() const { return _jsonKey; }
-    void setJsonKey(const std::string& jsonKey) { _jsonKey = jsonKey; }
+    // An entry without a value that separates groups of properties in the UI.
+    static Property separator() { return {"", "", nullptr, ""}; }
+    const std::string& getId() const { return _id; }
+    const std::string& getLabel() const { return _label; }
+    const std::string& getOptionName() const { return _optionName; }
+    // Only for CLI options that already existed with a name toOptionName(id) doesn't produce.
+    Property& setOptionName(std::string optionName) { _optionName = std::move(optionName); return *this; }
+    const std::string& getDescription() const { return _description; }
     const std::string& getAdditionalInfo() const { return _additionalInfo; }
     void setAdditionalInfo(std::string info) { _additionalInfo = std::move(info); }
-    bool isReadonly() const { return _isReadonly; }
+    PropertyFlags getFlags() const { return _flags; }
+    bool hasFlags(const PropertyFlags flags) const { return (_flags & flags) == flags; }
+    PropertyState getState() const { return _state; }
+    void setState(PropertyState state) { _state = state; }
+    bool isActive() const { return _state == PropertyState::ACTIVE; }
+    bool isApplicable() const { return _state != PropertyState::NOT_APPLICABLE; }
+    bool isValid() const { return !std::holds_alternative<std::nullptr_t>(_value); }
+    explicit operator bool() const { return isValid(); }
     Value& getValue() { return _value; }
+    Value& getValueNC() { return _value; }
     const Value& getValue() const { return _value; }
     bool getBool() const { return std::get<bool>(_value); }
     void setBool(bool val) { std::get<bool>(_value) = val; }
     int getInt() const { return std::get<Integer>(_value).intValue; }
+    int& getIntRef() { return std::get<Integer>(_value).intValue; }
     int getIntMin() const { return std::get<Integer>(_value).minValue; }
     int getIntMax() const { return std::get<Integer>(_value).maxValue; }
-    void setInt(int val) { std::get<Integer>(_value).intValue = val; }
+    void setInt(int val) { std::get<Integer>(_value).intValue = std::clamp(val, std::get<Integer>(_value).minValue, std::get<Integer>(_value).maxValue); }
     std::string& getStringRef() { return std::get<std::string>(_value); }
     const std::string& getString() const { return std::get<std::string>(_value); }
     void setString(const std::string& val) { std::get<std::string>(_value) = val; }
     const std::string& getSelectedText() const { return std::get<Combo>(_value).selectedText(); }
-    void setSelectedIndex(size_t idx) { std::get<Combo>(_value).index = idx; }
-    void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
-/*    Property& operator=(const Property& other)
+    size_t getSelectedIndex() const { return std::get<Combo>(_value).index; }
+    int& getSelectedIndexRef() { return std::get<Combo>(_value).index; }
+    void setSelectedIndex(size_t idx)
     {
-        if(_value.index() != other._value.index())
-            return *this;
-        std::visit(emu::visitor{
-                  [&](std::nullptr_t) { },
-                  [&](bool& val) { val = std::get<bool>(other._value); },
-                  [&](Integer& val) { val.intValue = std::get<Integer>(other._value).intValue; },
-                  [&](std::string& val) { val = std::get<std::string>(other._value); },
-                  [&](emu::Property::Combo& val) { val.index = std::get<Combo>(other._value).index; }
-              }, _value);
-        return *this;
-    }*/
+        auto& combo = std::get<Combo>(_value);
+        if (!combo.options.empty())
+            combo.index = static_cast<int>(std::min(idx, combo.options.size() - 1));
+    }
+    void setSelectedText(const std::string& val) { std::get<Combo>(_value).setSelectedToText(val); }
     bool operator==(const Property& other) const
     {
         if(_value.index() != other._value.index())
@@ -126,31 +173,36 @@ public:
                        [&](const emu::Property::Combo& val) { return val.index == std::get<Combo>(other._value).index; }
                    }, _value);
     }
+
 private:
-    std::string _name;
-    std::string _jsonKey;
+    std::string _id;
+    std::string _label;
+    std::string _optionName;
     Value _value;
+    std::string _description;
     std::string _additionalInfo;
-    bool _isReadonly{true};
+    PropertyFlags _flags{PropertyFlags::eNone};
+    PropertyState _state{PropertyState::ACTIVE};
 };
 
-class Properties {
-    struct RegistryMaps {
+class Properties
+{
+    struct RegistryMaps
+    {
         static std::map<std::string_view,Properties> propertyRegistry;
         static std::unordered_map<std::string,std::string> registeredKeys;
         static std::unordered_map<std::string,std::string> registeredJsonKeys;
     };
 public:
     Properties() = default;
-    //Properties(const Properties&) = delete;
     explicit operator bool() const { return !_valueList.empty(); }
     const std::string& propertyClass() const { return _class; }
     void registerProperty(const Property& prop)
     {
-        auto iter = _valueMap.find(prop.getName());
+        auto iter = _valueMap.find(prop.getId());
         if(iter == _valueMap.end()) {
-            _valueList.push_back(prop.getName());
-            _valueMap.emplace(prop.getName(), prop);
+            _valueList.push_back(prop.getId());
+            _valueMap.emplace(prop.getId(), prop);
         }
     }
     size_t numProperties() const { return _valueList.size(); }
@@ -158,44 +210,24 @@ public:
     Properties& operator=(const Properties& other)
     {
         if(&other != this) {
-            _class = other._class;
-            _valueList = other._valueList;
-            _valueMap = other._valueMap;
-        }
-        return *this;
-    }
 
-    /*
-    void cloneInto(Properties& props) const
-    {
-        props._valueList = _valueList;
-        props._valueMap = _valueMap;
-    }
-    void copyInto(Properties& props) const
-    {
-        if(_valueList.empty()) {
-            if(props._valueList.empty()) {
-                // from a passive copy into another passive copy
-                props._valueMap = _valueMap;
-            }
-            else {
-                // from a passive copy into an active property set
-                for(auto iterDest = props._valueMap.begin(); iterDest != props._valueMap.cend(); ++iterDest) {
-                    auto iterSrc = _valueMap.find(iterDest->first);
-                    if(iterSrc != _valueMap.end()) {
-                        iterDest->second = iterSrc->second;
+            if(_class == other._class) {
+                for (auto& [key, val] : _valueMap) {
+                    auto it = other._valueMap.find(key);
+                    if (it != other._valueMap.end()) {
+                        val = it->second;
                     }
                 }
             }
+            else {
+                _class = other._class;
+                _valueList = other._valueList;
+                _valueMap = other._valueMap;
+            }
+            _palette = other._palette;
         }
-        else {
-            // from an active property set to a passive copy
-            if(!props._valueList.empty())
-                throw std::runtime_error("Tried to overwrite an active property set with another active one!");
-            props._valueMap = _valueMap;
-        }
+        return *this;
     }
-     */
     bool operator==(const Properties& other) const
     {
         return _valueMap == other._valueMap;
@@ -204,15 +236,13 @@ public:
     {
         return _valueMap != other._valueMap;
     }
+    // The first property that differs from the memento (or doesn't exist there).
     Property* changedProperty(const Properties& memento)
     {
-        auto iterM = memento._valueMap.cbegin();
-        bool error = false;
-        for(auto iter = _valueMap.begin(); iter != _valueMap.cend(); ++iter, ++iterM) {
-            if(iter->first != iterM->first)
-                error = true;
-            if(!(iter->second == iterM->second)) {
-                return &iter->second;
+        for(auto& [key, prop] : _valueMap) {
+            auto iter = memento._valueMap.find(key);
+            if(iter == memento._valueMap.end() || !(prop == iter->second)) {
+                return &prop;
             }
         }
         return nullptr;
@@ -226,10 +256,10 @@ public:
         }
         return iter->second;
     }
-    bool isReadonly(size_t index) const
+    PropertyFlags getFlags(size_t index) const
     {
         auto iter = _valueMap.find(_valueList[index]);
-        return iter == _valueMap.end() ? true : iter->second.isReadonly();
+        return iter == _valueMap.end() ? PropertyFlags::eInvisible : iter->second.getFlags();
     }
     Property& operator[](const std::string& key)
     {
@@ -239,43 +269,94 @@ public:
         }
         return iter->second;
     }
-    inline static Properties& getProperties(std::string_view key)
+    const Property& operator[](const std::string& key) const
+    {
+        auto iter = _valueMap.find(key);
+        if(iter == _valueMap.end()) {
+            throw std::runtime_error("No property named " + key);
+        }
+        return iter->second;
+    }
+    // Lookups by id are exact, code always uses ids.
+    Property* find(std::string_view id)
+    {
+        auto iter = _valueMap.find(id);
+        return iter == _valueMap.end() ? nullptr : &iter->second;
+    }
+    const Property* find(std::string_view id) const
+    {
+        auto iter = _valueMap.find(id);
+        return iter == _valueMap.end() ? nullptr : &iter->second;
+    }
+    // Only for text typed by people (or written by hand): matches ids and labels, ignoring case and punctuation.
+    Property* findFuzzy(std::string_view text)
+    {
+        if (auto* prop = find(text))
+            return prop;
+        for(auto& [id, prop] : _valueMap) {
+            if(!id.empty() && (fuzzyCompare(id, text) || fuzzyCompare(prop.getLabel(), text))) {
+                return &prop;
+            }
+        }
+        return nullptr;
+    }
+    Property& at(std::string_view id)
+    {
+        if (auto* prop = find(id)) {
+            return *prop;
+        }
+        throw std::runtime_error(fmt::format("No property with id '{}'", id));
+    }
+    const Property& at(std::string_view id) const
+    {
+        if (const auto* prop = find(id)) {
+            return *prop;
+        }
+        throw std::runtime_error(fmt::format("No property with id '{}'", id));
+    }
+    template<typename T>
+    std::optional<T> get(std::string_view id) const
+    {
+        if (const auto* prop = find(id); prop && std::holds_alternative<T>(prop->getValue())) {
+            return std::get<T>(prop->getValue());
+        }
+        return {};
+    }
+    bool contains(std::string_view id) const
+    {
+        return find(id) != nullptr;
+    }
+    static Properties& getProperties(std::string_view key)
     {
         auto iter = propertyRegistry.find(key);
         if(iter == propertyRegistry.end()) {
-            iter = propertyRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple()).first;
+            iter = propertyRegistry.emplace(std::piecewise_construct, std::forward_as_tuple(std::string(key)), std::forward_as_tuple()).first;
             iter->second._class = key;
         }
         return iter->second;
     }
-    inline static std::string makeJsonKey(std::string name)
-    {
-        std::string key;
-        bool nonChar = false;
-        for(char c : name) {
-            if(isalnum(c)) {
-                key.push_back(nonChar && key.size() ? std::toupper(int(c)) : std::tolower(int(c)));
-                nonChar = false;
-            }
-            else {
-                nonChar = true;
-            }
-        }
-        return key;
-    }
+    Palette& palette() { return _palette; }
+    const Palette& palette() const { return _palette; }
 
-    RegistryMaps& getRegistryMaps();
+    static RegistryMaps& getRegistryMaps();
+
+    nlohmann::json createDiff(const Properties& other) const;
+    void applyDiff(const nlohmann::json& diff);
 
 private:
     std::string _class;
     std::vector<std::string> _valueList;
-    std::map<std::string, Property> _valueMap;
-    static std::map<std::string_view,Properties> propertyRegistry;
+    std::map<std::string, Property, std::less<>> _valueMap;
+    Palette _palette;
+    // Owns its keys, callers may pass a temporary string (e.g. a class name read from JSON).
+    static std::map<std::string,Properties,std::less<>> propertyRegistry;
     static std::unordered_map<std::string,std::string> registeredKeys;
     static std::unordered_map<std::string,std::string> registeredJsonKeys;
 };
 
-void to_json(nlohmann::json& j, const Properties& cc);
-void from_json(const nlohmann::json& j, Properties& cc);
+void to_json(nlohmann::json& j, const Properties& props);
+void from_json(const nlohmann::json& j, Properties& props);
+void to_json(nlohmann::json& j, const Palette& pal);
+void from_json(const nlohmann::json& j, Palette& pal);
 
 }

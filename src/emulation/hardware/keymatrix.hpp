@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/keymatrix.hpp
+// src/emulation/hardware/keymatrix.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>

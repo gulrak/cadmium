@@ -1,7 +1,14 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.0...3.24)
 
-project(cadmium VERSION 1.1.11 LANGUAGES C CXX)
-cmake_policy(VERSION 3.16)
+set(CMAKE_OSX_DEPLOYMENT_TARGET "13.3" CACHE STRING "Minimum MacOS deployment version" FORCE)
+project(cadmium VERSION 2.0.0 LANGUAGES C CXX)
+option(CADMIUM_BUILD_TESTS "Build Cadmium test targets" ON)
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21.0")
+    cmake_policy(VERSION 3.21)
+endif()
+if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+    cmake_policy(SET CMP0135 NEW)
+endif()
 
 include(cmake/BuildSettings.cmake)
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
@@ -20,8 +27,14 @@ add_subdirectory(tools)
 add_subdirectory(resources)
 
 add_subdirectory(src)
-add_subdirectory(test)
+if(NOT EMSCRIPTEN AND CADMIUM_BUILD_TESTS)
+    add_subdirectory(test-roms)
+    add_subdirectory(test)
+endif()
 
+#if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experimental")
+#    add_subdirectory(experimental)
+#endif()
 
 set(CPACK_PACKAGE_VENDOR "gulrak.net")
 set(CPACK_PACKAGE_CONTACT "s.schuemann@pobox.com")

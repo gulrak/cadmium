@@ -26,6 +26,7 @@
 #pragma once
 
 #include <chiplet/octocompiler.hpp>
+#include <chiplet/sha1.hpp>
 
 #include <algorithm>
 #include <array>
@@ -38,23 +39,36 @@
 
 #include <raylib.h>
 
+#include <threadpool.hpp>
+#include <highlighter.hpp>
+#include <rlguipp/rlguipp.hpp>
+
 std::string GetClipboardTextX();
-void SetClipboardTextX(std::string text);
+void SetClipboardTextX(const std::string& text);
 bool isClipboardPaste();
 
-class Editor
+class Editor : public Highlighter
 {
 public:
     static constexpr float INACTIVITY_DELAY{1.0f};
     enum FindReplaceMode { eNONE, eFIND, eFIND_REPLACE };
-    enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
-    inline static Color _defaultColors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _defaultSelected{100, 100, 120, 255};
-    inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _selected{100, 100, 120, 255};
-    Editor() : _alphabetKeys(26,0) { updateLineInfo(); }
 
+#ifndef PLATFORM_WEB
+    Editor(ThreadPool& threadPool)
+        : _threadPool(threadPool)
+        , _alphabetKeys(26, 0)
+    {
+        updateLineInfo();
+    }
+#else
+    Editor()
+        : _alphabetKeys(26, 0)
+    {
+        updateLineInfo();
+    }
+#endif
     void setFilename(std::string filename) { _filename = filename; }
+    const std::string& getFilename() const { return _filename; }
     bool isEmpty() const { return _text.empty(); }
     const std::string& getText() const { return _text; }
     void setText(std::string text)
@@ -65,12 +79,19 @@ public:
         _losCol = _tosLine = _cursorX = _cursorY = 0;
         _cursorChanged = true;
     }
+    // Sets text that was generated from the loaded program (a disassembly). It is not compiled
+    // until the user edits it, and it can't be undone into the previous program's text.
+    void setGeneratedText(std::string text);
 
     uint32_t topOfScreen() const { return _tosLine; }
     uint32_t totalLines() const { return _lines.size(); }
     uint32_t line() const { return _cursorY + 1; }
     uint32_t column() const { return _cursorX + 1; }
     uint32_t editId() const { return _editId; }
+    // Changes only when the text itself changes (edits, undo/redo, setText), unlike editId() which counts frames
+    uint32_t contentRevision() const { return _contentRevision; }
+    // True if compiler() holds the result for the current text
+    bool isCompiledUpToDate() const { return _compiledRevision == _contentRevision; }
 
     void updateLineInfo(uint32_t fromLine = 0);
     void update();
@@ -127,8 +148,6 @@ protected:
     void recompile();
     static void fixLinefeed(std::string& text);
     void ensureCursorVisibility();
-    void highlightLine(const char* text, const char* end);
-    void drawTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset);
     Rectangle drawToolArea();
     Rectangle layoutMessageArea();
     void drawMessageArea();
@@ -153,10 +172,6 @@ protected:
     }
     void updateFindResults();
 
-    struct ColorPair {
-        Color front;
-        Color back;
-    };
     enum Operation { eINSERT, eDELETE };
     struct EditInfo {
         Operation operation;
@@ -166,15 +181,18 @@ protected:
         uint32_t endOffset;
         std::string text;
     };
+#ifndef PLATFORM_WEB
+    ThreadPool& _threadPool;
+    std::future<emu::CompileResult> _compileResult;
+#endif
     static constexpr int LINE_SIZE = 12;
-    static constexpr int COLUMN_WIDTH = 6;
     const float BLINK_RATE = 0.8f;
     const float REPEAT_DELAY = 0.5f;
     const float REPEAT_RATE = 0.05f;
     std::string _filename;
     std::string _text;
     std::vector<uint32_t> _lines;
-    std::vector<ColorPair> _highlighting;
+    std::vector<LineState> _lineStates;
     std::stack<EditInfo> _undoStack;
     std::stack<EditInfo> _redoStack;
     std::vector<char> _alphabetKeys{};
@@ -187,8 +205,6 @@ protected:
     uint32_t _visibleCols{0};
     int _lineNumberWidth{6*COLUMN_WIDTH};
     uint32_t _lineNumberCols{6};
-    uint32_t _selectionStart{0};
-    uint32_t _selectionEnd{0};
     uint32_t _editId{0};
     uint32_t _longestLineSize{0};
     Rectangle _totalArea{};
@@ -202,7 +218,8 @@ protected:
     bool _findRegexValid{false};
     std::string _findString;
     std::string _replaceString;
-    uint32_t _findUpdateId{0xFFFFFFFF};
+    gui::Id _focusId{gui::GetId("Editor")};
+    uint32_t _findUpdateRevision{0xFFFFFFFF};
     int _findResults{0};
     int _findCurrentResult{-1};
     uint32_t _findCurrentOffset{0};
@@ -216,12 +233,12 @@ protected:
     bool _messageWindowVisible{true};
     bool _isInvertedTheme{};
     emu::OctoCompiler _compiler;
-    uint32_t _lastEditId{~0u};
-    std::string _editedTextSha1Hex;
-    std::string _compiledSourceSha1Hex;
+    uint32_t _contentRevision{0};
+    uint32_t _lastSeenRevision{0};
+    uint32_t _checkedRevision{0};
+    uint32_t _compiledRevision{0};
+    Sha1::Digest _compiledSourceSha1;
     float _inactiveEditTimer{0};
-    static std::unordered_set<std::string> _opcodes;
-    static std::unordered_set<std::string> _directives;
 };
 
 

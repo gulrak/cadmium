@@ -1,0 +1,582 @@
+#####
+##  ChipMark '77
+##
+##  Copyright(c) 2016 John Deeny
+###
+### Superchip Math mark edition
+### - modification by Chromatophore
+###
+##
+##  A simple Chip8 benchmarking utility. Counts the number of 50-instruction
+##  benchmark passes can be completed in 30 frames. Using the assumption that
+##  60 frames is equal to one second of realtime, kOPS (1000s of Operations
+##  Per Second) is calculated and displayed.
+##
+##
+##  The MIT License (MIT)
+##
+##  Permission is hereby granted, free of charge, to any person obtaining a copy
+##  of this software and associated documentation files (the "Software"), to deal
+##  in the Software without restriction, including without limitation the rights
+##  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+##  copies of the Software, and to permit persons to whom the Software is
+##  furnished to do so, subject to the following conditions:
+##
+##  The above copyright notice and this permission notice shall be included in
+##  all copies or substantial portions of the Software.
+##
+##  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+##  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+##  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+##  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+##  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+##  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+##  THE SOFTWARE.
+#####
+
+
+####
+## Data
+####
+: sprite_table    # Sprites to be randomly displayed
+: dot    0x00 0x00 0x00 0x18 0x18 0x00 0x00 0x00
+: dot2   0x00 0x00 0x18 0x3C 0x3C 0x18 0x00 0x00
+: smcirc 0x00 0x00 0x18 0x24 0x24 0x18 0x00 0x00
+: bgcirc 0x00 0x18 0x24 0x42 0x42 0x24 0x18 0x00
+: hgcirc 0x18 0x66 0x42 0x81 0x81 0x42 0x66 0x18
+: flower 0x18 0x66 0x42 0x99 0x99 0x42 0x66 0x18
+: sun    0x18 0x66 0x5A 0xBD 0xBD 0x5A 0x66 0x18
+: dblc   0x3C 0x42 0x99 0xA5 0xA5 0x99 0x42 0x3C
+
+
+# Sprites for kOPS display
+: units_1 0x0E 0x8A 0xAA 0xCA 0xAE
+: units_2 0xEE 0xA8 0xEE 0x82 0x8E
+:const UNITS_SPRITE_N 5   # number of lines for units sprites
+
+# Sprites for comma and period
+: comma  0x40 0x40
+: period 0x80
+
+
+# If you add (256-100) to a byte, it will wrap around and be equivalent to subtracting 100
+:const MINUS_100      156
+
+# Locations of characters
+:const DIG_X0          1
+:const DIG_X1          6
+:const DIG_X2          11
+:const DIG_X3          18
+:const DIG_X4          23
+:const DIG_X5          28
+:const DIG_X6          35
+:const DIG_X7          40
+:const DIG_Y           1
+:const DIG_SPRITE_N    5
+
+:const COMMA_Y 5
+:const COMMA_X 15
+:const PERIOD_Y 5
+:const PERIOD_X 33
+:const COMMA_N 2
+:const PERIOD_N 1
+
+:const UNITS_X 46
+:const UNITS_Y 1
+
+
+
+# Circular buffer to hold 10 results for averaging. Results are stored: LSB -> MSB
+# 3-byte values are stored -- these are padded out 1 byte so that indexing is easier
+: result_buffer 0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+
+
+# 4-bytes to store averaging result
+: accumulator
+: accumulator_lo    0
+: accumulator_mid   0
+: accumulator_hi    0
+: accumulator_over  0
+
+
+# memory to store result of BCD operation
+: bcd_scratch
+: bcd_hi      0
+: bcd_mid     0
+: bcd_lo      0
+
+
+
+# global register aliases -- do not alias with anything else
+:alias g_result_idx vD
+
+
+# register aliases for averaging
+:alias avg_r_lo       v0    # result value, filled with load v2
+:alias avg_r_mid      v1    #
+:alias avg_r_hi       v2    #
+:alias avg_a_lo       v3    # accumulated value
+:alias avg_a_mid      v4    #
+:alias avg_a_hi       v5    #
+:alias avg_a_over     v6    #
+:alias avg_counter    v7    # loop counter
+:alias avg_temp       v8    # temp variable
+:alias avg_subtrahend v9    # used for subtraction
+
+# register aliases for show_result
+:alias show_flag      v3
+:alias show_x         v4
+:alias show_y         v5
+
+# register aliases for benchmark
+:alias bench_count_lo   v0
+:alias bench_count_mid  v1
+:alias bench_count_hi   v2
+:alias bench_x          v3
+:alias bench_y          v4
+:alias bench_idx        v5
+:alias bench_temp       v6
+
+# register aliases for main
+:alias main_idx   v4
+:alias main_temp  v5
+
+
+####
+## Main
+####
+: main
+  # initialize variables
+  g_result_idx := 0
+
+  clear
+
+  ## Main Loop
+  : begin_bench
+
+    run_benchmark
+
+    # load the index, mask to keep flag
+    main_idx := g_result_idx
+    main_temp := 0x80
+    main_idx &= main_temp
+
+    # if the flag isn't set, do more benchmarks until we have 10
+    if main_idx != 0x80 then jump begin_bench
+
+    calc_average
+
+    clear
+    show_result
+    #wait
+
+  jump begin_bench
+
+
+: wait
+  vF := 60
+  delay := vF
+  loop
+    vF := delay
+    if vF != 0 then
+  again
+  return
+
+####
+## Display
+####
+
+# Displays the value stored in accumulator
+#
+: show_result
+  show_flag := 0
+
+  show_y := DIG_Y
+
+  # MSD overflow
+  i := accumulator_over
+  load v0
+  # get bcd values
+  i := bcd_scratch
+  bcd v0          #store BCD into bcd_scratch
+  i := bcd_mid
+  load v0         #load mid bcd
+  if v0 != 0 then show_flag := 1
+  if show_flag == 0 then jump show_skip1
+  i := hex v0
+  show_x := DIG_X0
+  sprite show_x show_y DIG_SPRITE_N
+  : show_skip1
+
+  # LSD overflow
+  i := bcd_lo    #load lo bcd
+  load v0
+  if v0 != 0 then show_flag := 1
+  if show_flag == 0 then jump show_skip2
+  i := hex v0
+  show_x := DIG_X1
+  sprite show_x show_y DIG_SPRITE_N
+
+  : show_skip2
+
+
+  # MSD hi
+  i := accumulator_hi
+  load v0
+  # get bcd values
+  i := bcd_scratch
+  bcd v0
+  i := bcd_mid
+  load v0
+  if v0 != 0 then show_flag := 1
+  if show_flag == 0 then jump show_skip3
+  i := hex v0
+  show_x := DIG_X2
+  sprite show_x show_y DIG_SPRITE_N
+
+  : show_skip3
+
+  # LSD hi
+  i := bcd_lo
+  load v0
+  if v0 != 0 then show_flag := 1
+  if show_flag == 0 then jump show_skip4
+  i := hex v0
+  show_x := DIG_X3
+  sprite show_x show_y DIG_SPRITE_N
+
+  i := comma
+  show_x := COMMA_X
+  show_y := COMMA_Y
+  sprite show_x show_y COMMA_N
+  show_y := DIG_Y
+
+  : show_skip4
+
+  # MSD mid
+  i := accumulator_mid
+  load v0
+  # get bcd values
+  i := bcd_scratch
+  bcd v0
+  i := bcd_mid
+  load v0
+  if v0 != 0 then show_flag := 1
+  if show_flag == 0 then jump show_skip5
+  i := hex v0
+  show_x := DIG_X4
+  sprite show_x show_y DIG_SPRITE_N
+  : show_skip5
+
+
+  # LSD mid
+  i := bcd_lo
+  load v0
+  i := hex v0
+  show_x := DIG_X5
+  sprite show_x show_y DIG_SPRITE_N
+
+i := period
+  show_x := PERIOD_X
+  show_y := PERIOD_Y
+  sprite show_x show_y PERIOD_N
+  show_y := DIG_Y
+
+  # MSD lo
+  i := accumulator_lo
+  load v0
+  # get bcd values
+  i := bcd_scratch
+  bcd v0
+  i := bcd_mid
+  load v0
+  i := hex v0
+  show_x := DIG_X6
+  sprite show_x show_y DIG_SPRITE_N
+
+
+  # LSD lo
+  i := bcd_lo
+  load v0
+  i := hex v0
+  show_x := DIG_X7
+  sprite show_x show_y DIG_SPRITE_N
+
+  show_x := UNITS_X
+  show_y := UNITS_Y
+  i := units_1
+  sprite show_x show_y UNITS_SPRITE_N
+  show_x += 8
+  i := units_2
+  sprite show_x show_y UNITS_SPRITE_N
+
+  return
+
+
+
+####
+## Calculations
+####
+
+# Adds up all the results. Since there are 10 results, to find average, simply don't display the last digit
+: calc_average
+  #:breakpoint CalcAverage
+
+  # clear accumulator
+  avg_a_lo := 0
+  avg_a_mid := 0
+  avg_a_hi := 0
+  avg_a_over := 0
+
+  # clear counter
+  avg_counter := 0
+
+  # set up value for subtraction
+  avg_subtrahend := 100
+
+  # set i to address of results
+  i := result_buffer
+
+  loop
+    #load result into v0-v2 [avg_r_lo, avg_r_mid, avg_r_hi]
+    load avg_r_hi
+    #:breakpoint CalcAverageLoadedResult
+
+
+    # Process lo byte
+      # add result lo to accumulator lo
+      avg_a_lo += avg_r_lo
+      # check if value is > 100
+      avg_temp := avg_a_lo
+      avg_temp -= avg_subtrahend
+      if vF == 0 then jump no_carry_lo
+        avg_a_lo := avg_temp  # save value with carry subtracted
+        avg_a_mid += 1          # carry
+    : no_carry_lo
+
+
+    # Process mid byte
+      # add result mid to accumulator mid
+      avg_a_mid += avg_r_mid
+      # check if value is > 100
+      avg_temp := avg_a_mid
+      avg_temp -= avg_subtrahend
+      if vF == 0 then jump no_carry_mid
+        avg_a_mid := avg_temp  # save value with carry subtracted
+        avg_a_hi += 1          # carry
+    : no_carry_mid
+
+    # Process hi byte
+      # add result hi to accumulator hi
+      avg_a_hi += avg_r_hi
+      # check if value is > 100
+      avg_temp := avg_a_hi
+      avg_temp -= avg_subtrahend
+      if vF == 0 then jump no_carry_hi
+        avg_a_hi := avg_temp  # save value with carry subtracted
+        avg_a_over += 1       # carry into overflow
+    : no_carry_hi
+
+
+    # i was automatically incremented, but needs to be 1 higher to point at next result, due to padding
+    avg_temp := 4
+    i += avg_temp
+
+    # increment counter, loop until we hit 10
+    avg_counter += 1
+    if avg_counter != 10 then
+  again
+
+  # After 10 loops, store result in accumulator
+  i := accumulator
+  # copy result to v0..v3 and store
+  v0 := avg_a_lo
+  v1 := avg_a_mid
+  v2 := avg_a_hi
+  v3 := avg_a_over
+  save v3
+  return
+
+####
+## Benchmark
+####
+
+# attempt to keep this constant time
+
+: run_benchmark
+  ## initialize new benchmark run
+  vf := 0xf if vf key then hires
+  vf := 0xe if vf key then lores
+
+  bench_count_lo := 0
+  bench_count_mid := 0
+  bench_count_hi := 0
+
+  ## Set the delay timer
+  vF := 32
+  delay := vF
+  # wait until it drops to 30 frames, so we start as soon as possible
+  loop
+    vF := delay
+    if vF != 30 then
+  again
+
+  ## Benchmark loop
+
+  loop
+    #:breakpoint StartOfBenchPass
+    ## do one pass of the benchmark
+    benchmark_pass
+
+
+    ## increment the BCD loop counter, with constant # of instructions
+
+    bench_count_lo += 1
+    # we either carry to mid if lo is 100 or add 100 to lo needlessly
+    if bench_count_lo == 100 then bench_count_mid += 1
+    if bench_count_lo != 100 then bench_count_lo += 100
+    # then, we subtract 100 from lo. Either it corrects for the carry or corrects for the extra +100
+    bench_count_lo += MINUS_100
+    # do the same for mid
+    if bench_count_mid == 100 then bench_count_hi += 1
+    if bench_count_mid != 100 then bench_count_mid += 100
+    bench_count_mid += MINUS_100
+    # hi is not expected to overflow
+
+    ## check the delay timer
+
+
+    vF := delay
+
+    #:breakpoint EndOfBenchPass    # actual loop takes an extra 2 instructions, the comparison and the jump to start
+
+    # when delay timer expires, 1/2 second has elapsed
+    if vF != 0 then
+  again
+
+  ## store the result in the circular buffer
+  i := result_buffer
+
+  # load the index
+  bench_idx := g_result_idx
+  bench_temp := 0x7F
+  bench_idx &= bench_temp          # mask off the flag in MSB
+
+  # increment index. It wraps at 10, but we store a flag in MSB to indicate that 10 results have been collected
+  g_result_idx += 1
+  if g_result_idx == 10 then g_result_idx := 0x80
+  if g_result_idx == 0x8A then g_result_idx := 0x80
+
+  # shift twice to multiply by 4
+  bench_idx <<= bench_idx
+  bench_idx <<= bench_idx
+
+  # add index to base addr
+  i += bench_idx
+
+  # save v0..v2, the loop count
+  save bench_count_hi
+
+  return
+
+# runs a single pass of the benchmark
+: benchmark_pass
+  b_do_math
+  return
+
+# Arithmetic test
+: b_do_math
+  # Math mark
+  # Run a whole bunch of math operations that are just register fiddling. This should be the fastest but still useful thing we can do
+  va := random 0xFF
+  vb := random 0xFF
+  va := 62 # assignment
+  vc := va # assignment
+  vc += vb # var addition
+  vb -= va # var subtraction
+  va >>= va # bit shift
+  vb <<= vc # bit shift
+  vb += 55 # constant addition
+  vc ^= va # xor
+  va |= vc # or
+  va =- va # reverse subtract
+  vb &= va # and
+  va := 62 # assignment
+  vc := va # assignment
+  vc += vb # var addition
+  vb -= va # var subtraction
+  va >>= va # bit shift
+  vb <<= vc # bit shift
+  vb += 55 # constant addition
+  vc ^= va # xor
+  va |= vc # or
+  va =- va # reverse subtract
+  vb &= va # and
+  vc := va # assignment
+  vc += vb # var addition
+  vb -= va # var subtraction
+  va >>= va # bit shift
+  vb <<= vc # bit shift
+  vb += 55 # constant addition
+  vc ^= va # xor
+  va |= vc # or
+  va =- va # reverse subtract
+  vb &= va # and
+
+  return
+
+
+
+# randomly selects a sprite from the sprite table
+# Params: none
+# Return: i = sprite address
+: b_get_random_sprite
+  # get address of the sprite table
+  i := sprite_table
+  # randomly select 3-bit value to select sprite 0-7. Value is shifted left to index 8 bytes into sprite table for each entry
+  bench_temp := random 0b111000
+  i += bench_temp
+  return
+
+# randomly selects a font sprite
+# Params: none
+# Return: i = sprite address
+: b_get_random_glyph
+  # randomly select 4-bit value to select a font glyph
+  bench_temp := random 0b1111
+  # set i to a font glyph
+  i := hex bench_temp
+  return
+
+# draws the 8-line sprite at the address in i, to a random location
+# Params: none
+# Return: none
+: b_draw_sprite
+  # select a random x location at any point across the screen, 0-63
+  bench_x := random 63
+  # select a random y location, from the range 0-16 then shift it down 8
+  bench_y := random 15
+  bench_y += 8
+  sprite bench_x bench_y 8
+  return
+
+# draws the 5-line font glyph at the address in i, to a random location
+# Params: none
+# Return: none
+: b_draw_glyph
+  # select a random x location at any point across the screen, 0-63
+  bench_x := random 63
+  # select a random y location, from the range 0-16 then shift it down 8
+  bench_y := random 15
+  bench_y += 8
+  sprite bench_x bench_y 5
+  return

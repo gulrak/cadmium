@@ -26,12 +26,16 @@
 #pragma once
 
 #include <emulation/ichip8.hpp>
+#include <emulation/iemulationcore.hpp>
 #include <emulation/chip8realcorebase.hpp>
 #include <chiplet/octocompiler.hpp>
+#include <highlighter.hpp>
+#include <disassemblyview.hpp>
 
 #include <raylib.h>
 
-class Debugger
+
+class Debugger : public Highlighter
 {
 public:
     using ExecMode = emu::GenericCpu::ExecMode;
@@ -39,30 +43,53 @@ public:
     Debugger() = default;
 
     void setExecMode(ExecMode mode);
-    void updateCore(emu::IChip8Emulator* core);
+    void updateCore(emu::IEmulationCore* core);
     void captureStates();
-    void render(Font& font, std::function<void(Rectangle,int)> drawScreen);
-    void updateOctoBreakpoints(const emu::OctoCompiler& compiler);
+    void render(Font& font, const std::function<void(Rectangle,int)>& drawScreen);
+    void updateOctoDebugInfo(const emu::OctoCompiler& compiler);
+    void clearOctoDebugInfo();
     bool supportsStepOver() const;
-    bool isControllingChip8() const { return _backend == nullptr || _visibleCpu == CHIP8_CORE; }
+    bool isControllingChip8() const { return dynamic_cast<emu::IChip8Emulator*>(_core->focussedExecutionUnit()) != nullptr; }
+    void setBreakpointTriggered(bool triggered);
+    bool isBreakpointTriggered() const { return _isBreakpointTriggered; }
 private:
+    emu::IChip8Emulator* chip8Core();
     void showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
+    void showBreakpoints(Font& font, const int lineSpacing);
+    void selectBreakpoint(int idx);
+    void showWatches(Font& font, const int lineSpacing);
+    std::string octoMonitorValue(const emu::OctoCompiler::MonitorInfo& monitor);
+    std::string userWatchValue(const std::string& text);
     void showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const;
-    const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);
+    int showCpuRegisters(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos, const int maxChars) const;
+    void showCpuPanels(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
+    void refreshBreakpoints();
     void toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address);
+    static const std::vector<std::pair<uint32_t,std::string>>& disassembleNLinesBackwardsGeneric(emu::GenericCpu& cpu, uint32_t addr, int n);
     enum Core { CHIP8_CORE, BACKEND_CORE };
-    emu::IChip8Emulator* _core{nullptr};
+    emu::IEmulationCore* _core{nullptr};
     emu::Chip8RealCoreBase* _realCore{nullptr};
     emu::GenericCpu* _backend{nullptr};
-    Core _visibleCpu{CHIP8_CORE};
-    int _instructionOffset[2]{};
+    size_t _visibleExecUnit{0};
+    std::vector<int> _instructionOffset{};
+    std::vector<DisassemblyView> _disassemblyViews{};
+    float _wheelRemainder{0.0f};
     int _activeInstructionsTab{0};
     bool _memViewFollow{true};
-    RegPack _chip8State;
-    RegPack _chip8StateBackup;
-    RegPack _backendState;
-    RegPack _backendStateBackup;
-    std::vector<uint16_t> _chip8StackBackup;
+    std::vector<RegPack> _cpuStates;
+    std::vector<RegPack> _cpuStatesBackup;
+    std::vector<std::vector<uint8_t>> _stackBackup;
     std::vector<uint8_t> _memBackup;
+    std::vector<std::pair<uint32_t, emu::GenericCpu::BreakpointInfo*>> _breakpointCache;
+    int _selectedBreakpoint{-1};
+    uint32_t _triggeredBreakpointAddress{std::numeric_limits<uint32_t>::max()};
+    bool _isBreakpointTriggered{false};
+    std::string _bpCondition;
+    std::string _bpLogFormat;
+    std::string _bpLogCondition;
+    std::string _bpHitCount{"0"};
+    std::vector<emu::OctoCompiler::MonitorInfo> _octoMonitors;
+    std::vector<std::string> _userWatches;
+    std::string _newWatch;
 };
 

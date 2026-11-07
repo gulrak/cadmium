@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/stylemanager.hpp
+// src/stylemanager.cpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -26,11 +26,12 @@
 
 #include <stylemanager.hpp>
 
-#include <rlguipp/rlguipp4.hpp>
+#include <rlguipp/rlguipp.hpp>
 #include <fmt/format.h>
 
 #include <cmath>
 
+namespace gui {
 #if 0
 static const uint32_t cadmiumPalette[7] = {
     0x00222bff, //E = 0!
@@ -54,7 +55,8 @@ static const uint32_t cadmiumPalette[7] = {
 #endif
 static float cadmiumAverageHue = 200.0f;
 
-#define CHIP8_STYLE_PROPS_COUNT 16
+
+#define CHIP8_STYLE_PROPS_COUNT 17
 static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 0, 2},   // F! DEFAULT_BORDER_COLOR_NORMAL
     {0, 1, 1},   // D! DEFAULT_BASE_COLOR_NORMAL
@@ -72,6 +74,7 @@ static const StyleManager::Entry chip8StyleProps[CHIP8_STYLE_PROPS_COUNT] = {
     {0, 19, 0},  // E! DEFAULT_BACKGROUND_COLOR
     {0, 16, 0x00000008},  // DEFAULT_TEXT_SIZE
     {0, 17, 0x00000000},  // DEFAULT_TEXT_SPACING
+    {2, 12, 1},  // BUTTON_BORDER_WIDTH = 1 (raygui defaults to 2)
 };
 
 #if 0
@@ -414,6 +417,8 @@ void StyleManager::renderAppearanceEditor()
     int xoffset = 64;
     updateStyle(_guiHue, _guiSaturation, false);
     for (int i = 0; i < 7; ++i) {
+        DrawRectangleRec({pos.x + xoffset + i * 18, pos.y, 16, 16}, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BORDER_COLOR_NORMAL)));
+        DrawRectangleRec({pos.x + xoffset + i * 18 + 1, pos.y + 1, 14, 14}, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BACKGROUND_COLOR)));
         col = GetColor(_currentStyle.palette[i]);
         DrawRectangle(pos.x + xoffset + i * 18 + 2, pos.y + 2 , 12, 12,col);
         bool hover =  CheckCollisionPointRec(GetMousePosition(), {pos.x + xoffset + i * 18, pos.y, 16, 16});
@@ -421,13 +426,12 @@ void StyleManager::renderAppearanceEditor()
             hsv = gui::HsvFromColor(col);
         }
         //if(!GuiIsLocked() && IsMouseButtonReleased(0) && hover) {
-            /*_selectedColor = &_colorPalette[i];
-            _previousColor = _colorPalette[i];
-            _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
-            _colorSelectOpen = true;
-             */
+        /*_selectedColor = &_colorPalette[i];
+        _previousColor = _colorPalette[i];
+        _colorText = fmt::format("{:06x}", _colorPalette[i]>>8);
+        _colorSelectOpen = true;
+         */
         //}
-        DrawRectangleLines(pos.x + xoffset + i * 18, pos.y, 16, 16, GetColor(guard.getStyle(/*hover ? Style::BORDER_COLOR_FOCUSED :*/ Style::BORDER_COLOR_NORMAL)));
     }
     Label(fmt::format("H:{}, S:{}, V:{}", hsv.x, hsv.y, hsv.z).c_str());
     SetNextWidth(120);
@@ -435,4 +439,6 @@ void StyleManager::renderAppearanceEditor()
         updateStyle(200, 80, false); // 192,90?
     }
     End();
+}
+
 }

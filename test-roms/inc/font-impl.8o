@@ -1,0 +1,156 @@
+#----------------------------------------------------------------
+# Copyright (c) 2025, Steffen "Gulrak" Schümann
+# SPDX-License-Identifier: MIT
+#----------------------------------------------------------------
+
+:unless FONT_IMPL
+:const FONT_IMPL 1
+
+:macro fixup-i N {
+    :call font-lib-has-mem-quirk
+    if vf != 2 begin
+        if vf == 0 begin
+            vf := N
+            i += vf
+        else
+            vf := 1
+            i += vf
+        end
+    end
+}
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-select-font
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    :call font-impl-init-mem-quirk-handling
+    i := font-impl-get-height
+    save v1
+    :call font-impl-get-height
+    i := font-impl-draw-char-1
+    v1 := 0x30
+    v0 |= v1
+    save v0
+    return
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-get-height
+# Inputs:
+# -
+# Outputs:
+# i  = char pointer
+# v0 = height
+# Destroys:
+# vf
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    i := 0
+    load v0
+    fixup-i 1
+    return
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-get-char-pointer
+# Inputs:
+# v1 = char index
+# Outputs:
+# i = char pointer
+# v0 = height
+# Destroys:
+# ve, vf
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    :call font-impl-get-height
+    ve := v0
+    ve += 1
+    loop
+        if ve == 0 then
+            return
+        ve -= 1
+        i += v1
+    again
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-init-mem-quirk-handling
+# Inputs:
+# -
+# Outputs:
+# -
+# Destroys:
+# i
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    i := font-impl-mem-quirk-register-safe
+    save v1
+    i := font-impl-mem-quirk-data
+    load v1
+    load v0
+    i := font-impl-mem-quirk-result
+    save v0
+    i := font-impl-mem-quirk-register-safe
+    load v1
+    return
+
+: font-impl-mem-quirk-register-safe
+    0 0
+: font-impl-mem-quirk-data
+    0 1 2 0
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-lib-has-mem-quirk
+# Outputs:
+# vf == 0 -> I is not incremented
+# vf == 1 -> I is incremented by x
+# vf == 2 -> I is incremented by x+1
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    :next font-impl-mem-quirk-result
+    vf := 0
+    return
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-draw-char
+# Input:
+# v0 = the character to draw
+# v2 = x
+# v3 = y
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    v1 := v0
+    :call font-impl-get-char-pointer
+    load v0
+    fixup-i 1
+    :next font-impl-draw-char-1
+    sprite v2 v3 0
+    v2 += v0
+    return
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+: font-impl-draw-text
+# Input:
+# v0/v1 = the text to draw from :unpack 0xA ...
+# v2 = x
+# v3 = y
+# Output:
+# -
+# Destroys:
+# i, vf
+# - - - - - - - - - - - - - - - - - : - - - - - - - - - - - - - - - -
+    i := font-impl-draw-text-1
+    save v1
+: font-impl-draw-text-1
+    i := 0
+    load v0
+    if v0 == 255 then
+        return
+    :call font-impl-draw-char
+    i := font-impl-draw-text-1
+    load v1
+    v1 += 1
+    if v1 == 0 then
+        v0 += 1
+    i := font-impl-draw-text-1
+    save v1
+    jump font-impl-draw-text-1
+    return
+
+:end

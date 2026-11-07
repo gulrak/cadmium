@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------------------
-// src/emulation/stylemanager.hpp
+// src/stylemanager.hpp
 //---------------------------------------------------------------------------------------
 //
 // Copyright (c) 2023, Steffen Schümann <s.schuemann@pobox.com>
@@ -26,10 +26,13 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <cstdint>
 
+struct Color;
+
+namespace gui {
 enum class Style {
     BORDER_COLOR_NORMAL,
     BASE_COLOR_NORMAL,
@@ -51,8 +54,6 @@ enum class Style {
     TOOL_BUTTON_COLOR_NORMAL,
     TOOL_BUTTON_COLOR_ACTIVE
 };
-
-struct Color;
 
 class StyleManager
 {
@@ -100,3 +101,4 @@ private:
     static StyleManager* _instance;
 };
 
+}
