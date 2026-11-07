@@ -36,11 +36,9 @@
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
 #include <librarian.hpp>
-#ifndef PLATFORM_WEB
 #include <threadpool.hpp>
 #ifdef CADMIUM_WITH_DATABASE
 #include <database.hpp>
-#endif
 #endif
 
 #ifdef CADMIUM_WITH_BACKGROUND_EMULATION
@@ -195,11 +193,9 @@ protected:
     std::string _currentFileName;
     Librarian _librarian;
     std::unordered_map<std::string, std::string> _badges;
-#ifndef PLATFORM_WEB
-    ThreadPool _threadPool;
+    ThreadPool _threadPool;  // without threads on the web, jobs run when they are enqueued there
 #ifdef CADMIUM_WITH_DATABASE
     static std::unique_ptr<Database> _database;
-#endif
 #endif
     std::unique_ptr<IEmulationCore> _chipEmu;
     std::string _romName;

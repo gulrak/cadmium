@@ -1625,7 +1625,7 @@ public:
 #endif
                 }
                 SetTooltip("OPEN PROGRAM");
-#ifndef PLATFORM_WEB
+#if !defined(PLATFORM_WEB) || defined(CADMIUM_WITH_DATABASE)
                 if (iconButton(ICON_NOTEBOOK, _mainView == eLIBRARY)) {
                     _mainView = eLIBRARY, _chipEmu->setExecMode(ExecMode::ePAUSED);
                 }
@@ -1956,7 +1956,7 @@ public:
                         _mainView = _lastView;
                     break;
                 }
-#ifndef PLATFORM_WEB
+#if !defined(PLATFORM_WEB) || defined(CADMIUM_WITH_DATABASE)
                 case eLIBRARY: {
                     _lastView = _mainView;
                     SetSpacing(0);
@@ -2743,6 +2743,11 @@ public:
         _sourcePath = compiler && fs::path(filename).extension() == ".8o" ? filename : std::string{};
         if (_romOrigin != ProgramOrigin::DATABASE)
             _recentFiles.usingFile(filename);
+#if defined(PLATFORM_WEB) && defined(CADMIUM_WITH_DATABASE)
+        if (_database && _romOrigin != ProgramOrigin::DATABASE && !_romImage.empty()) {
+            TraceLog(LOG_INFO, "%s", _database->showRom(_romSha1, _romImage).c_str());
+        }
+#endif
         updateMainMenu();
         resetStats();
         if(compiler)

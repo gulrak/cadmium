@@ -62,8 +62,16 @@ inline std::uint64_t thisThreadId() noexcept {
     return static_cast<std::uint64_t>(::syscall(SYS_gettid));
 }
 
+#elif defined(__EMSCRIPTEN__)
+#include <pthread.h>
+
+inline std::uint64_t thisThreadId() noexcept {
+    // only used for log messages, without pthreads the browser's main thread is the only one
+    return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(::pthread_self()));
+}
+
 #else
-#error "thisThreadId(): unsupported platform (need Windows, macOS, or Linux)."
+#error "thisThreadId(): unsupported platform (need Windows, macOS, Linux, or Emscripten)."
 #endif
 
 #define SQLITE3X(call)                                    \

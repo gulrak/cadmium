@@ -57,16 +57,21 @@ EmuHostEx::EmuHostEx(CadmiumConfiguration& cfg)
     , _librarian(_cfg)
 #ifndef PLATFORM_WEB
     , _threadPool(6)
+#else
+    , _threadPool(0)
 #endif
 {
 #ifndef PLATFORM_WEB
     _currentDirectory = _cfg.workingDirectory.empty() ? fs::current_path().string() : _cfg.workingDirectory;
     //_databaseDirectory = _cfg.libraryPath.front();
+#endif
 #ifdef CADMIUM_WITH_DATABASE
+    // on the web the library is a copy of the starter metadata in MEMFS (dataPath() is /cadmium there)
     if (!_instanceNum) {
         _database = std::make_unique<Database>(_cores, _cfg, _threadPool, dataPath());
     }
 #endif
+#ifndef PLATFORM_WEB
     _librarian.fetchDir(_currentDirectory);
 #endif
     // TODO: Fix this

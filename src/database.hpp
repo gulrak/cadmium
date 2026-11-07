@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <span>
 #include <string>
 #include <vector>
 
@@ -66,6 +67,9 @@ public:
     Action render(Font& font); // LOAD or RUN if getSelectedProgram() should be loaded (and run)
     bool fetchC8PDB();
     bool containsBinary(const Sha1::Digest& sha1) const;
+    // Selects the library entry of a ROM (and scrolls the list to it), a ROM only known from metadata gets the
+    // given data, as with a drop, so it can be loaded from the library, used on the web when a ROM is opened.
+    std::string showRom(const Sha1::Digest& sha1, std::span<const uint8_t> data);
     std::string storeSettings(const Sha1::Digest& sha1, const emu::Properties& properties);
     std::string addFiles(const std::vector<std::string>& paths);
     // Compares the library with programs.json of the chip-8-database (https://github.com/chip-8/chip-8-database,

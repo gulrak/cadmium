@@ -175,7 +175,7 @@ if(CADMIUM_WITH_HP48)
     list(APPEND RESOURCE_ADDS --add cadmium-hp48sx-rom ${HP48_REPLACEMENT_ROM})
     list(APPEND RESOURCE_GENERATED ${HP48_REPLACEMENT_ROM})
 endif()
-# The starter metadata of the library is only of use with the database (not on the web).
+# The starter metadata of the library is only of use with the database.
 if(NOT CADMIUM_WITH_DATABASE)
     list(APPEND RESOURCE_EXCLUDES --exclude library)
 endif()

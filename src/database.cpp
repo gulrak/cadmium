@@ -38,7 +38,7 @@
 #include <rlguipp/rlguipp.hpp>
 
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(PLATFORM_WEB)
 #include <httplib.h>
 #endif
 
@@ -504,6 +504,23 @@ static std::string libraryFile(const std::string& path)
     return file;
 }
 
+#ifdef CADMIUM_WITH_BACKGROUND_EMULATION
+using PreviewHost = emu::ThreadedBackgroundHost;
+static constexpr bool HAS_LIVE_PREVIEW = true;
+#else
+// Without background emulation (the web build has no threads) the library shows no running preview.
+class PreviewHost
+{
+public:
+    explicit PreviewHost(CadmiumConfiguration&) {}
+    void killEmulation() {}
+    bool loadBinary(std::string_view, ghc::span<const uint8_t>, const emu::Properties&, bool) { return false; }
+    std::pair<Texture2D*, Rectangle> updateTexture() { return {nullptr, {}}; }
+    void drawScreen(Rectangle) const {}
+};
+static constexpr bool HAS_LIVE_PREVIEW = false;
+#endif
+
 // The library answers the Librarian's questions about known ROMs, its configs come before the compiled in list.
 class LibraryMetadataSource : public Librarian::MetadataSource
 {
@@ -589,7 +606,12 @@ struct Database::Private
     std::vector<VariantGroup> variantGroups;
     std::string coresCombo;
     std::string queryLine;
+#ifdef PLATFORM_WEB
+    bool showMissing{true};  // on the web the library starts with metadata only, all its ROMs are missing
+#else
     bool showMissing{false};  // also list programs none of whose ROMs were found in the library folders
+#endif
+    std::optional<int> scrollToProgramId;  // the list scrolls to it once it is shown, see Database::showRom()
     std::set<std::string> selectedTags;
     LibraryQuery query;     // the last valid query of the search field
     std::string queryText;   // the text of that query
@@ -639,7 +661,7 @@ struct Database::Private
     Vector2 dragStart{};
     bool dragging{false};
     std::atomic<bool> cancelScan{false};
-    emu::ThreadedBackgroundHost backgroundHost;
+    PreviewHost backgroundHost;
     LibraryMetadataSource metadataSource{database};
 
 
@@ -2462,7 +2484,11 @@ struct Database::Private
         using namespace gui;
         auto iter = programs.find(selectedProgramId);
         if (iter == programs.end()) {
+#ifdef PLATFORM_WEB
+            Label("No program selected, an opened ROM shows its entry here.");
+#else
             Label("No program selected, drop ROM files here to add them.");
+#endif
             return;
         }
         const auto& program = iter->second;
@@ -2530,7 +2556,12 @@ struct Database::Private
         row("Variant:", join(variants.begin(), variants.end(), ", "));
         row("Tags:", join(tagNames.begin(), tagNames.end(), ", "));
         row("SHA1:", sha1);
-        row("Size:", binary ? fmt::format("{} bytes{}", binary->size, binary->data ? "" : " (missing, not found in the library folders)") : "");
+#ifdef PLATFORM_WEB
+        constexpr const char* missingNote = " (missing, open the ROM to add it)";
+#else
+        constexpr const char* missingNote = " (missing, not found in the library folders)";
+#endif
+        row("Size:", binary ? fmt::format("{} bytes{}", binary->size, binary->data ? "" : missingNote) : "");
         row("File:", file);
         row("Description:", description);
         EndScrollView();
@@ -2889,6 +2920,39 @@ bool Database::containsBinary(const Sha1::Digest& sha1) const
     return _digests.contains(sha1);
 }
 
+std::string Database::showRom(const Sha1::Digest& sha1, std::span<const uint8_t> data)
+{
+    std::lock_guard lock(_pimpl->mutex);
+    const auto sha1Hex = sha1.to_hex();
+    auto iter = std::ranges::find_if(_pimpl->binaries, [&](const auto& entry) { return entry.second.sha1 == sha1Hex; });
+    if (iter == _pimpl->binaries.end()) {
+        return fmt::format("ROM {} is not part of the library.", sha1Hex);
+    }
+    const int binaryId = iter->first;
+    if (!iter->second.data && !data.empty() && calculateSha1(data) == sha1) {
+        // like a drop on the desktop, but without the "new" tag and without a file name, the ROM is
+        // not new to the library, only present now; on the web this lasts as long as the page is open
+        const std::vector<uint8_t> romData(data.begin(), data.end());
+        try {
+            auto session = db::Session(_pimpl->database);
+            if (_pimpl->storeBinaryData(session, binaryId, iter->second.program_id, false, romData)) {
+                _pimpl->applyBinaryData(binaryId, false, romData);
+            }
+        }
+        catch (const db::Exception& ex) {
+            TraceLog(LOG_WARNING, fmt::format("Storing the data of ROM {} failed: {}", sha1Hex, ex.what()).c_str());
+        }
+    }
+    _pimpl->selectedProgramId = iter->second.program_id;
+    _pimpl->selectedBinaryId = binaryId;
+    _pimpl->markedProgramIds = {_pimpl->selectedProgramId};
+    _pimpl->scrollToProgramId = _pimpl->selectedProgramId;
+    _pimpl->updateFilter();
+    updatePreview();
+    auto programIter = _pimpl->programs.find(iter->second.program_id);
+    return fmt::format("ROM {} is '{}' in the library.", sha1Hex, programIter != _pimpl->programs.end() ? programIter->second.name : std::string("?"));
+}
+
 std::string Database::storeSettings(const Sha1::Digest& sha1, const emu::Properties& properties)
 {
     std::lock_guard lock(_pimpl->mutex);
@@ -3048,9 +3112,14 @@ Database::Action Database::render(Font& font)
     if (first) {
         first = false;
         fetchProgramInfo();
+#ifndef PLATFORM_WEB
         _scanResult = _threadPool.enqueue([this]() {
             return scanLibrary();
         });
+#else
+        // there are no library folders on the web, ROMs get their data when they are opened, see showRom()
+        second = true;
+#endif
     }
     if (!second && _scanResult.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
         TraceLog(LOG_INFO, fmt::format("scan result: {} ({} unique) files ({}ms)", _scanResult.get(), _digests.size(), std::chrono::duration_cast<std::chrono::milliseconds>(durationOfLastJob).count()).c_str());
@@ -3196,6 +3265,17 @@ Database::Action Database::render(Font& font)
             auto listWidth = tableArea.width;
             auto listRect = Rectangle{tableArea.x, tableArea.y, listWidth, tableArea.height - 135};
             static Vector2 scrollPos{0,0};
+            if (_pimpl->scrollToProgramId && *_pimpl->scrollToProgramId != _pimpl->selectedProgramId) {
+                _pimpl->scrollToProgramId.reset();  // another program was selected meanwhile
+            }
+            if (auto pid = _pimpl->scrollToProgramId; pid && std::ranges::find(_pimpl->shownIndices, *pid) != _pimpl->shownIndices.end()) {
+                // the program is placed at a third of the list height, if the list is long enough, a program hidden
+                // by the search scrolls into view when the search changes to show it
+                _pimpl->scrollToProgramId.reset();
+                const auto& rect = _pimpl->programs.at(*pid).rect;
+                const float maxScroll = std::max(0.0f, _pimpl->listContentHeight - listRect.height);
+                scrollPos.y = -std::clamp(rect.y - listRect.height / 3, 0.0f, maxScroll);
+            }
             auto [px, py] = GetCurrentPos();
             BeginScrollPanel(listRect.height, Rectangle{0.0f,0.0f, listRect.width - 8, _pimpl->listContentHeight < listRect.height ? listRect.height : _pimpl->listContentHeight}, &scrollPos);
             auto [cx, cy] = GetCurrentPos();
@@ -3351,7 +3431,7 @@ Database::Action Database::render(Font& font)
         auto previewRect = Rectangle{pos.x + area.width - 131.0f, pos.y, 130.0f, 98.0f};
         DrawPanelClipped(previewRect, 1, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL), {0,0,0,0});
         auto [texture, rect] = _pimpl->backgroundHost.updateTexture();
-        if (_selectedProgram) {
+        if (_selectedProgram && HAS_LIVE_PREVIEW) {
             _pimpl->backgroundHost.drawScreen({pos.x + area.width - 130, pos.y + 1, 128, 96});
             //DrawTextEx(font, fmt::format("FPS: {:02.1f} ({} frames)", 1000000.0/_pimpl->backgroundHost.getFrameTimeAvg()+0.005, _pimpl->backgroundHost.getFrames()).c_str(), {pos.x + area.width - 130 + 4, pos.y + 100}, 8, 1, WHITE);
         }
@@ -3413,7 +3493,7 @@ Database::Action Database::render(Font& font)
 
 bool Database::fetchC8PDB()
 {
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(PLATFORM_WEB)
     httplib::Client cli("https://raw.githubusercontent.com");
     //cli.enable_server_certificate_verification(false);
     //cli.enable_server_hostname_verification(false);

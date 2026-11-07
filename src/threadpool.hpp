@@ -62,6 +62,11 @@ public:
         auto task = std::make_shared<std::packaged_task<ReturnType()>>(
             std::bind(std::forward<F>(func), std::forward<Args>(args)...));
         std::future<ReturnType> result = task->get_future();
+        if (workers.empty()) {
+            // a pool without threads (the web build has none) runs the job right away
+            (*task)();
+            return result;
+        }
         {
             std::unique_lock lock(queueMutex);
             if (stopFlag) {
