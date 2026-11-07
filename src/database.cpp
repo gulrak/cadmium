@@ -1945,6 +1945,7 @@ struct Database::Private
     {
         using namespace gui;
         constexpr float labelWidth = 80;
+        constexpr float DESCRIPTION_HEIGHT = 114;  // nine lines of 12 pixels, the border and the vertical padding
         auto textRow = [&](const char* label, const char* id, std::string& value, int maxLength) {
             BeginColumns();
             SetNextWidth(labelWidth);
@@ -1989,7 +1990,12 @@ struct Database::Private
         EndColumns();
         textRow("Copyright:", "##copyright", edit.program.copyright, 255);
         textRow("URL:", "##url", edit.program.url, 1024);
-        textRow("Description:", "##description", edit.program.description, 4096);
+        // descriptions (also the ones from the chip-8-database) can have several paragraphs
+        BeginColumns();
+        SetNextWidth(labelWidth);
+        Label("Description:");
+        TextBoxMulti(DESCRIPTION_HEIGHT, "##description", edit.program.description, 4096);
+        EndColumns();
         renderTagToggles(labelWidth);
     }
 

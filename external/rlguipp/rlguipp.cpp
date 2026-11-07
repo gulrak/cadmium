@@ -15,8 +15,14 @@
 #include <emscripten/emscripten.h>
 #endif
 
+#if defined(PLATFORM_DESKTOP) || defined(PLATFORM_DESKTOP_GLFW)
+// Part of the GLFW raylib is built with, declared here to not depend on the GLFW headers
+extern "C" const char* glfwGetKeyName(int key, int scancode);
+#endif
+
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <deque>
@@ -473,6 +479,42 @@ struct MenuBarState
     int64_t lastUpdate{0};
 };
 static std::unordered_map<Id, MenuBarState> g_menuBarMap;
+
+// The state of a TextBox or TextBoxMulti, cursor positions are byte offsets into the UTF-8 text
+struct TextEditState
+{
+    struct Snapshot
+    {
+        std::string text;
+        size_t cursor{0};
+        size_t anchor{0};
+    };
+    size_t cursor{0};
+    size_t anchor{0};               // the other end of the selection, equal to cursor if nothing is selected
+    float preferredX{-1.0f};        // the x position kept while moving up and down, < 0 if not set
+    Vector2 scroll{};               // scroll offset of the text in pixels
+    bool hadFocus{false};
+    bool mouseSelecting{false};
+    bool typingRun{false};          // characters typed one after another are undone together
+    int clickCount{0};
+    double lastClickTime{-1.0};
+    Vector2 lastClickPos{};
+    double blinkStart{0.0};
+    std::string knownText;          // the text at the end of the last frame, to notice changes made by the application
+    std::vector<Snapshot> undoStack;
+    std::vector<Snapshot> redoStack;
+    int64_t lastUpdate{0};
+};
+static std::unordered_map<Id, TextEditState> g_textEditMap;
+
+struct ClipboardHandler
+{
+    std::function<std::string()> getText;
+    std::function<void(const std::string&)> setText;
+    std::function<bool()> pasteRequested;
+};
+static ClipboardHandler g_clipboardHandler;
+
 static std::deque<TabViewContext> g_tabViewStack;
 static std::vector<Id> g_idStack;
 static std::stack<Rectangle> g_clippingStack;
@@ -510,6 +552,35 @@ void reportError(const char* message)
         TraceLog(LOG_ERROR, "RLGUIPP: %s (only reported once)", message);
     }
     RLGUIPP_ASSERT(!"rlguipp api misuse, see the logged error");
+}
+
+bool isMacLike()
+{
+#ifdef __APPLE__
+    return true;
+#elif defined(__EMSCRIPTEN__)
+    static const bool macOS = EM_ASM_INT({
+        if (navigator.userAgent.indexOf("Mac") != -1)
+            return 1;
+        return 0;
+    }) != 0;
+    return macOS;
+#else
+    return false;
+#endif
+}
+
+// The upper case letter the key shows in the current keyboard layout, 0 if it shows no letter.
+// raylib key codes are positions on a US keyboard, so KEY_Z is the 'Y' of a German keyboard.
+int keyLetter(int key)
+{
+#if defined(PLATFORM_DESKTOP) || defined(PLATFORM_DESKTOP_GLFW)
+    if (const char* name = glfwGetKeyName(key, 0); name && name[0] && !name[1]) {
+        const auto c = static_cast<unsigned char>(name[0]);
+        return std::isalpha(c) ? std::toupper(c) : 0;
+    }
+#endif
+    return key >= KEY_A && key <= KEY_Z ? key : 0;
 }
 
 // The names of the Begin*()/End*() functions of a context type, for error messages
@@ -658,6 +729,7 @@ void pruneUnusedState(RenderTexture* renderTexture)
     }
     std::erase_if(g_tableContextMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     std::erase_if(g_menuBarMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
+    std::erase_if(g_textEditMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     std::erase_if(GuiContext::dropdownBoxes, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     if (GuiContext::openDropdownboxId && !GuiContext::dropdownBoxes.contains(GuiContext::openDropdownboxId)) {
         GuiContext::openDropdownboxId = 0;
@@ -819,6 +891,7 @@ void UnloadGui()
     g_popupMap.clear();
     g_popupUnderMouse = nullptr;
     g_tableContextMap.clear();
+    g_textEditMap.clear();
     GuiContext::dropdownBoxes.clear();
     GuiContext::openDropdownboxId = 0;
     GuiContext::editFocusId = 0;
@@ -1842,26 +1915,842 @@ bool ValueBox(const char* label, int* value, int minValue, int maxValue)
     return *value != oldValue;
 }
 
-bool TextBox(const char* id, char* text, int textSize)
+//-----------------------------------------------------------------------------
+// Text editing (TextBox, TextBoxMulti)
+// raygui's GuiTextBox has no selection, no clipboard and no undo, and it can't wrap or scroll
+// multi-line text, so rlguipp edits text itself. It looks like GuiTextBox, as it uses the TEXTBOX style.
+//-----------------------------------------------------------------------------
+
+namespace detail {
+
+static constexpr size_t TEXT_UNDO_LIMIT = 100;
+static constexpr double TEXT_MULTI_CLICK_TIME = 0.4;    // seconds between clicks of a double or triple click
+static constexpr double TEXT_CURSOR_BLINK_TIME = 0.53;  // seconds the cursor is shown and hidden
+
+std::string clipboardText()
 {
-    auto textId = GetId(id);
-    // raygui only changes the text in edit mode, so only then a copy is needed
-    bool editing = HasKeyboardFocus(textId);
-    std::string oldText = editing ? text : "";
-    detail::editableWidget(GuiTextBox, textId, text, textSize);
-    return editing && oldText != text;
+    if (g_clipboardHandler.getText)
+        return g_clipboardHandler.getText();
+    const char* text = ::GetClipboardText();
+    return text ? text : "";
 }
+
+void setClipboardText(const std::string& text)
+{
+    if (g_clipboardHandler.setText)
+        g_clipboardHandler.setText(text);
+    else
+        ::SetClipboardText(text.c_str());
+}
+
+bool isPasteRequested()
+{
+    return g_clipboardHandler.pasteRequested ? g_clipboardHandler.pasteRequested() : IsShortcutPressed('V');
+}
+
+size_t nextOffset(const std::string& text, size_t pos)
+{
+    if (pos >= text.size())
+        return text.size();
+    ++pos;
+    while (pos < text.size() && (static_cast<unsigned char>(text[pos]) & 0xC0) == 0x80)
+        ++pos;
+    return pos;
+}
+
+size_t prevOffset(const std::string& text, size_t pos)
+{
+    if (pos == 0)
+        return 0;
+    --pos;
+    while (pos > 0 && (static_cast<unsigned char>(text[pos]) & 0xC0) == 0x80)
+        --pos;
+    return pos;
+}
+
+// Moves an offset that may point into a UTF-8 sequence to its start
+size_t toCodepointStart(const std::string& text, size_t pos)
+{
+    pos = std::min(pos, text.size());
+    while (pos > 0 && pos < text.size() && (static_cast<unsigned char>(text[pos]) & 0xC0) == 0x80)
+        --pos;
+    return pos;
+}
+
+int codepointAt(const std::string& text, size_t pos, int* size)
+{
+    const int codepoint = GetCodepointNext(text.c_str() + pos, size);
+    if (*size <= 0)
+        *size = 1;
+    return codepoint;
+}
+
+// Word movement stops where the class changes: line break, space, word character (also all non-ASCII), punctuation
+int charClass(int codepoint)
+{
+    if (codepoint == '\n')
+        return 0;
+    if (codepoint == ' ' || codepoint == '\t')
+        return 1;
+    if (codepoint >= 128 || std::isalnum(codepoint) || codepoint == '_')
+        return 2;
+    return 3;
+}
+
+// Removes control characters from typed or pasted text, a TextBox gets line breaks and tabs as spaces
+std::string filterTextInput(std::string_view input, bool multiline)
+{
+    if (!multiline) {
+        while (!input.empty() && (input.back() == '\n' || input.back() == '\r'))
+            input.remove_suffix(1);
+    }
+    std::string result;
+    result.reserve(input.size());
+    for (size_t i = 0; i < input.size(); ++i) {
+        const char c = input[i];
+        if (c == '\r') {
+            if (i + 1 < input.size() && input[i + 1] == '\n')
+                continue;
+            result += multiline ? '\n' : ' ';
+        }
+        else if (c == '\n') {
+            result += multiline ? '\n' : ' ';
+        }
+        else if (c == '\t') {
+            result += ' ';
+        }
+        else if (static_cast<unsigned char>(c) >= 32 && c != 127) {
+            result += c;
+        }
+    }
+    return result;
+}
+
+struct TextLine
+{
+    size_t start{0};  // byte offset of the first character
+    size_t end{0};    // byte offset after the last character, a line break is not part of the line
+};
+
+// Layout, cursor movement and editing of the text of one TextBox or TextBoxMulti in the current frame
+class TextEditor
+{
+public:
+    TextEditor(TextEditState& state, std::string& text, size_t maxLength, bool multiline)
+        : _state(state)
+        , _text(text)
+        , _maxLength(maxLength)
+        , _multiline(multiline)
+        , _font(GuiGetFont())
+        , _fontSize(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SIZE)))
+        , _spacing(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SPACING)))
+    {
+        if (_font.texture.id == 0)
+            _font = GetFontDefault();
+        _scale = _font.baseSize > 0 ? _fontSize / static_cast<float>(_font.baseSize) : 1.0f;
+        _lineHeight = std::floor(_fontSize * 1.5f);
+    }
+
+    const std::string& text() const { return _text; }
+    const Font& font() const { return _font; }
+    float fontSize() const { return _fontSize; }
+    float lineHeight() const { return _lineHeight; }
+    bool changed() const { return _changed; }
+
+    float advance(int codepoint) const
+    {
+        if (codepoint == '\t' || codepoint == '\n')
+            codepoint = ' ';
+        const int index = GetGlyphIndex(_font, codepoint);
+        const float width = _font.glyphs[index].advanceX ? static_cast<float>(_font.glyphs[index].advanceX) : _font.recs[index].width;
+        return width * _scale + _spacing;
+    }
+
+    float width(size_t start, size_t end) const
+    {
+        float result = 0;
+        for (size_t pos = start; pos < end;) {
+            int size = 0;
+            result += advance(codepointAt(_text, pos, &size));
+            pos += size;
+        }
+        return result;
+    }
+
+    void setWrapWidth(float wrapWidth)
+    {
+        if (wrapWidth != _wrapWidth) {
+            _wrapWidth = wrapWidth;
+            _dirty = true;
+        }
+    }
+
+    const std::vector<TextLine>& lines()
+    {
+        if (_dirty)
+            layout();
+        return _lines;
+    }
+
+    float contentHeight() { return static_cast<float>(lines().size()) * _lineHeight; }
+
+    // The line the offset is shown in, an offset where a line was wrapped belongs to the following line
+    size_t lineOf(size_t offset)
+    {
+        const auto& all = lines();
+        auto iter = std::upper_bound(all.begin(), all.end(), offset, [](size_t value, const TextLine& line) { return value < line.start; });
+        return iter == all.begin() ? 0 : static_cast<size_t>(iter - all.begin() - 1);
+    }
+
+    float xOf(size_t lineIndex, size_t offset)
+    {
+        const auto& line = lines()[lineIndex];
+        return width(line.start, std::clamp(offset, line.start, line.end));
+    }
+
+    // The last cursor position of a line, a wrapped line ends before its last character (usually the space it was wrapped at)
+    size_t lineEnd(size_t lineIndex)
+    {
+        const auto& all = lines();
+        const auto& line = all[lineIndex];
+        if (lineIndex + 1 < all.size() && all[lineIndex + 1].start == line.end && line.end > line.start)
+            return prevOffset(_text, line.end);
+        return line.end;
+    }
+
+    size_t offsetInLine(size_t lineIndex, float x)
+    {
+        const auto& line = lines()[lineIndex];
+        float current = 0;
+        for (size_t pos = line.start; pos < line.end;) {
+            int size = 0;
+            const float glyphWidth = advance(codepointAt(_text, pos, &size));
+            if (x < current + glyphWidth / 2)
+                return std::min(pos, lineEnd(lineIndex));
+            current += glyphWidth;
+            pos += size;
+        }
+        return lineEnd(lineIndex);
+    }
+
+    // The offset nearest to a point relative to the top left of the text
+    size_t offsetAt(float x, float y)
+    {
+        if (!_multiline)
+            return offsetInLine(0, x);
+        const float lineIndex = std::floor(y / _lineHeight);
+        if (lineIndex < 0)
+            return 0;
+        if (lineIndex >= static_cast<float>(lines().size()))
+            return _text.size();
+        return offsetInLine(static_cast<size_t>(lineIndex), x);
+    }
+
+    // The offset `delta` lines above (negative) or below the cursor, keeping the x position of the first move
+    size_t verticalTarget(long delta)
+    {
+        const auto lineIndex = static_cast<long>(lineOf(_state.cursor));
+        if (_state.preferredX < 0)
+            _state.preferredX = xOf(static_cast<size_t>(lineIndex), _state.cursor);
+        const long target = lineIndex + delta;
+        if (target < 0)
+            return 0;
+        if (target >= static_cast<long>(lines().size()))
+            return _text.size();
+        return offsetInLine(static_cast<size_t>(target), _state.preferredX);
+    }
+
+    size_t visualLineStart(size_t offset) { return lines()[lineOf(offset)].start; }
+    size_t visualLineEnd(size_t offset) { return lineEnd(lineOf(offset)); }
+
+    int classAt(size_t pos) const
+    {
+        if (pos >= _text.size())
+            return -1;
+        int size = 0;
+        return charClass(codepointAt(_text, pos, &size));
+    }
+
+    int classBefore(size_t pos) const { return pos == 0 ? -1 : classAt(prevOffset(_text, pos)); }
+
+    size_t wordLeft(size_t pos) const
+    {
+        while (pos > 0 && classBefore(pos) == 1)
+            pos = prevOffset(_text, pos);
+        const int wordClass = classBefore(pos);
+        if (wordClass == 0)
+            return prevOffset(_text, pos);
+        while (pos > 0 && classBefore(pos) == wordClass)
+            pos = prevOffset(_text, pos);
+        return pos;
+    }
+
+    size_t wordRight(size_t pos) const
+    {
+        const int wordClass = classAt(pos);
+        if (wordClass == 0)
+            return nextOffset(_text, pos);
+        if (wordClass > 1) {
+            while (pos < _text.size() && classAt(pos) == wordClass)
+                pos = nextOffset(_text, pos);
+        }
+        while (pos < _text.size() && classAt(pos) == 1)
+            pos = nextOffset(_text, pos);
+        return pos;
+    }
+
+    bool hasSelection() const { return _state.cursor != _state.anchor; }
+    std::pair<size_t, size_t> selection() const { return std::minmax(_state.cursor, _state.anchor); }
+
+    std::string selectedText() const
+    {
+        const auto [start, end] = selection();
+        return _text.substr(start, end - start);
+    }
+
+    void moveTo(size_t offset, bool extend, bool keepPreferredX = false)
+    {
+        _state.cursor = std::min(offset, _text.size());
+        if (!extend)
+            _state.anchor = _state.cursor;
+        if (!keepPreferredX)
+            _state.preferredX = -1;
+        _state.typingRun = false;
+    }
+
+    void selectAll()
+    {
+        _state.anchor = 0;
+        moveTo(_text.size(), true);
+    }
+
+    void selectWord(size_t offset)
+    {
+        int wordClass = classAt(offset);
+        if (wordClass <= 0) {
+            wordClass = classBefore(offset);
+            if (wordClass <= 0) {
+                moveTo(offset, false);
+                return;
+            }
+            offset = prevOffset(_text, offset);
+        }
+        size_t start = offset;
+        size_t end = offset;
+        while (start > 0 && classBefore(start) == wordClass)
+            start = prevOffset(_text, start);
+        while (end < _text.size() && classAt(end) == wordClass)
+            end = nextOffset(_text, end);
+        _state.anchor = start;
+        moveTo(end, true);
+    }
+
+    // The text between two line breaks, all of it in a TextBox
+    void selectParagraph(size_t offset)
+    {
+        if (!_multiline) {
+            selectAll();
+            return;
+        }
+        const auto before = offset > 0 ? _text.rfind('\n', offset - 1) : std::string::npos;
+        const auto after = _text.find('\n', offset);
+        _state.anchor = before == std::string::npos ? 0 : before + 1;
+        moveTo(after == std::string::npos ? _text.size() : after, true);
+    }
+
+    // Replaces the selection (or inserts at the cursor), as much of `insert` as fits into the maximum length
+    void replaceSelection(std::string insert, bool typing)
+    {
+        const auto [start, end] = selection();
+        if (_maxLength > 0) {
+            const size_t remaining = _text.size() - (end - start);
+            const size_t room = _maxLength > remaining ? _maxLength - remaining : 0;
+            if (insert.size() > room) {
+                size_t size = room;
+                while (size > 0 && (static_cast<unsigned char>(insert[size]) & 0xC0) == 0x80)
+                    --size;
+                insert.resize(size);
+            }
+        }
+        if (start == end && insert.empty())
+            return;
+        if (!typing || !_state.typingRun || start != end)
+            pushUndo();
+        _text.replace(start, end - start, insert);
+        _state.cursor = _state.anchor = start + insert.size();
+        _state.typingRun = typing;
+        _state.preferredX = -1;
+        _changed = _dirty = true;
+    }
+
+    // Deletes the selection, or if there is none, the text between the cursor and the offset
+    void deleteTo(size_t offset)
+    {
+        if (!hasSelection())
+            _state.anchor = std::min(offset, _text.size());
+        replaceSelection({}, false);
+    }
+
+    void undo() { restore(_state.undoStack, _state.redoStack); }
+    void redo() { restore(_state.redoStack, _state.undoStack); }
+
+private:
+    void pushUndo()
+    {
+        _state.undoStack.push_back({_text, _state.cursor, _state.anchor});
+        if (_state.undoStack.size() > TEXT_UNDO_LIMIT)
+            _state.undoStack.erase(_state.undoStack.begin());
+        _state.redoStack.clear();
+    }
+
+    void restore(std::vector<TextEditState::Snapshot>& from, std::vector<TextEditState::Snapshot>& to)
+    {
+        if (from.empty())
+            return;
+        to.push_back({_text, _state.cursor, _state.anchor});
+        auto snapshot = std::move(from.back());
+        from.pop_back();
+        _text = std::move(snapshot.text);
+        _state.cursor = std::min(snapshot.cursor, _text.size());
+        _state.anchor = std::min(snapshot.anchor, _text.size());
+        _state.typingRun = false;
+        _state.preferredX = -1;
+        _changed = _dirty = true;
+    }
+
+    // Breaks the text into lines at line breaks, a TextBoxMulti also wraps at spaces (or inside words longer than a line)
+    void layout()
+    {
+        _lines.clear();
+        const bool wrap = _multiline && _wrapWidth > 0;
+        size_t start = 0;
+        size_t pos = 0;
+        size_t breakPos = 0;  // the offset after the last space of the line, 0 for none
+        float x = 0;
+        while (pos < _text.size()) {
+            int size = 0;
+            const int codepoint = codepointAt(_text, pos, &size);
+            if (_multiline && codepoint == '\n') {
+                _lines.push_back({start, pos});
+                pos += size;
+                start = pos;
+                breakPos = 0;
+                x = 0;
+                continue;
+            }
+            const float glyphWidth = advance(codepoint);
+            // spaces may stand out of the line, so a line never starts with the space it was wrapped at
+            if (wrap && codepoint != ' ' && pos > start && x + glyphWidth > _wrapWidth) {
+                const size_t end = breakPos > start ? breakPos : pos;
+                _lines.push_back({start, end});
+                start = end;
+                breakPos = 0;
+                x = width(start, pos);
+                continue;
+            }
+            x += glyphWidth;
+            pos += size;
+            if (codepoint == ' ' || codepoint == '\t')
+                breakPos = pos;
+        }
+        _lines.push_back({start, _text.size()});
+        _dirty = false;
+    }
+
+    TextEditState& _state;
+    std::string& _text;
+    size_t _maxLength{0};
+    bool _multiline{false};
+    Font _font{};
+    float _fontSize{10};
+    float _spacing{0};
+    float _scale{1};
+    float _lineHeight{15};
+    float _wrapWidth{0};
+    std::vector<TextLine> _lines;
+    bool _dirty{true};
+    bool _changed{false};
+};
+
+struct TextEditResult
+{
+    bool changed{false};
+    bool finished{false};
+};
+
+// The common implementation of TextBox and TextBoxMulti
+TextEditResult textEdit(Id id, Rectangle bounds, std::string& text, size_t maxLength, bool multiline)
+{
+    TextEditResult result;
+    auto& state = g_textEditMap[id];
+    state.lastUpdate = GuiContext::frameId;
+    if (text != state.knownText) {
+        // changed by the application, the undo history doesn't fit anymore
+        state.knownText = text;
+        state.undoStack.clear();
+        state.redoStack.clear();
+        state.cursor = toCodepointStart(text, state.cursor);
+        state.anchor = toCodepointStart(text, state.anchor);
+        state.typingRun = false;
+    }
+
+    const bool disabled = GuiGetState() == STATE_DISABLED;
+    const bool readOnly = GuiGetStyle(TEXTBOX, TEXT_READONLY) != 0;
+    const bool interactive = !disabled && !guiLocked;
+    bool focused = HasKeyboardFocus(id);
+    if (focused && disabled) {
+        SetKeyboardFocus(0);
+        focused = false;
+    }
+
+    TextEditor editor(state, text, maxLength, multiline);
+    const float border = static_cast<float>(GuiGetStyle(TEXTBOX, BORDER_WIDTH));
+    const float padding = static_cast<float>(GuiGetStyle(TEXTBOX, TEXT_PADDING));
+    Rectangle area{};       // the text area, x and width without the padding
+    Rectangle clip{};       // the area text is drawn in
+    Rectangle scrollBar{};
+    bool hasScrollBar = false;
+    float textY = 0;        // top of the first line on screen without scrolling
+    if (multiline) {
+        const Rectangle inner{bounds.x + border, bounds.y + border, bounds.width - 2 * border, bounds.height - 2 * border};
+        const float verticalPadding = std::min(padding, 2.0f);
+        area = {inner.x + padding, inner.y + verticalPadding, std::max(1.0f, inner.width - 2 * padding), std::max(1.0f, inner.height - 2 * verticalPadding)};
+        editor.setWrapWidth(area.width);
+        if (editor.contentHeight() > area.height) {
+            const float barWidth = static_cast<float>(GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH));
+            hasScrollBar = true;
+            scrollBar = {inner.x + inner.width - barWidth, inner.y, barWidth, inner.height};
+            area.width = std::max(1.0f, area.width - barWidth);
+            editor.setWrapWidth(area.width);
+        }
+        clip = area;
+        textY = area.y;
+    }
+    else {
+        area = GetTextBounds(TEXTBOX, bounds);
+        // like GuiDrawText(), but the text may be higher than the text bounds, as long as it is inside the border
+        textY = std::floor(area.y + area.height / 2 - editor.fontSize() / 2 + static_cast<float>(static_cast<int>(area.height) % 2));
+        clip = {area.x, bounds.y + border, area.width, bounds.height - 2 * border};
+    }
+    auto textX = [&]() { return area.x - state.scroll.x; };
+    auto textTop = [&]() { return textY - state.scroll.y; };
+
+    // Mouse
+    const Vector2 mouse = GetMousePosition();
+    const bool hover = CheckCollisionPointRec(mouse, bounds);
+    const bool overScrollBar = hasScrollBar && CheckCollisionPointRec(mouse, scrollBar);
+    const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    bool cursorMoved = false;
+    auto offsetAtMouse = [&]() { return editor.offsetAt(mouse.x - textX(), mouse.y - textTop()); };
+    if (interactive && !guiControlExclusiveMode) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            if (hover && !overScrollBar) {
+                const bool wasFocused = focused;
+                if (!focused) {
+                    SetKeyboardFocus(id);
+                    focused = true;
+                }
+                const double now = GetTime();
+                if (now - state.lastClickTime < TEXT_MULTI_CLICK_TIME && std::abs(mouse.x - state.lastClickPos.x) < 4 && std::abs(mouse.y - state.lastClickPos.y) < 4)
+                    ++state.clickCount;
+                else
+                    state.clickCount = 1;
+                state.lastClickTime = now;
+                state.lastClickPos = mouse;
+                const auto offset = offsetAtMouse();
+                if (state.clickCount == 2)
+                    editor.selectWord(offset);
+                else if (state.clickCount >= 3)
+                    editor.selectParagraph(offset);
+                else
+                    editor.moveTo(offset, wasFocused && shift);
+                state.mouseSelecting = state.clickCount == 1;
+                cursorMoved = true;
+            }
+            else if (!hover && focused) {
+                SetKeyboardFocus(0);
+                focused = false;
+            }
+        }
+        else if (state.mouseSelecting && focused && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            const auto offset = offsetAtMouse();
+            if (offset != state.cursor) {
+                editor.moveTo(offset, true);
+                cursorMoved = true;
+            }
+        }
+    }
+    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        state.mouseSelecting = false;
+    if (multiline && hover && interactive) {
+        state.scroll.y -= GetMouseWheelMove() * editor.lineHeight() * 3;
+    }
+
+    // Keyboard
+    if (focused && interactive) {
+        const bool mac = isMacLike();
+        const bool sys = IsSysKeyDown();
+        const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+        const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        const bool wordKey = mac ? alt : ctrl;
+        const auto cursor = state.cursor;
+        auto activated = [](int key) { return IsKeyPressed(key) || IsKeyPressedRepeat(key); };
+        auto move = [&](size_t offset, bool keepPreferredX = false) {
+            editor.moveTo(offset, shift, keepPreferredX);
+            cursorMoved = true;
+        };
+        const long pageLines = std::max(1L, static_cast<long>(area.height / editor.lineHeight()) - 1);
+
+        if (IsKeyPressed(KEY_ESCAPE) || (!multiline && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)))) {
+            SetKeyboardFocus(0);
+            focused = false;
+        }
+        else if (IsShortcutPressed('A')) {
+            editor.selectAll();
+            cursorMoved = true;
+        }
+        else if (IsShortcutPressed('C')) {
+            if (editor.hasSelection())
+                setClipboardText(editor.selectedText());
+        }
+        else if (IsShortcutPressed('X')) {
+            if (editor.hasSelection() && !readOnly) {
+                setClipboardText(editor.selectedText());
+                editor.replaceSelection({}, false);
+            }
+        }
+        else if (IsShortcutPressed('Z')) {
+            if (!readOnly) {
+                if (shift)
+                    editor.redo();
+                else
+                    editor.undo();
+            }
+        }
+        else if (!mac && IsShortcutPressed('Y')) {
+            if (!readOnly)
+                editor.redo();
+        }
+        else if (activated(KEY_LEFT)) {
+            if (editor.hasSelection() && !shift)
+                move(editor.selection().first);
+            else if (mac && sys)
+                move(editor.visualLineStart(cursor));
+            else
+                move(wordKey ? editor.wordLeft(cursor) : prevOffset(text, cursor));
+        }
+        else if (activated(KEY_RIGHT)) {
+            if (editor.hasSelection() && !shift)
+                move(editor.selection().second);
+            else if (mac && sys)
+                move(editor.visualLineEnd(cursor));
+            else
+                move(wordKey ? editor.wordRight(cursor) : nextOffset(text, cursor));
+        }
+        else if (activated(KEY_UP)) {
+            if (!multiline || (mac && sys))
+                move(0);
+            else
+                move(editor.verticalTarget(-1), true);
+        }
+        else if (activated(KEY_DOWN)) {
+            if (!multiline || (mac && sys))
+                move(text.size());
+            else
+                move(editor.verticalTarget(1), true);
+        }
+        else if (multiline && activated(KEY_PAGE_UP)) {
+            move(editor.verticalTarget(-pageLines), true);
+        }
+        else if (multiline && activated(KEY_PAGE_DOWN)) {
+            move(editor.verticalTarget(pageLines), true);
+        }
+        else if (IsKeyPressed(KEY_HOME)) {
+            move(ctrl && !mac ? 0 : editor.visualLineStart(cursor));
+        }
+        else if (IsKeyPressed(KEY_END)) {
+            move(ctrl && !mac ? text.size() : editor.visualLineEnd(cursor));
+        }
+        else if (activated(KEY_BACKSPACE)) {
+            if (!readOnly) {
+                if (mac && sys)
+                    editor.deleteTo(editor.visualLineStart(cursor));
+                else
+                    editor.deleteTo(wordKey ? editor.wordLeft(cursor) : prevOffset(text, cursor));
+            }
+        }
+        else if (activated(KEY_DELETE)) {
+            if (!readOnly)
+                editor.deleteTo(wordKey ? editor.wordRight(cursor) : nextOffset(text, cursor));
+        }
+        else if (multiline && (activated(KEY_ENTER) || activated(KEY_KP_ENTER))) {
+            if (!readOnly)
+                editor.replaceSelection("\n", false);
+        }
+        if (focused && !readOnly && isPasteRequested()) {
+            editor.replaceSelection(filterTextInput(clipboardText(), multiline), false);
+        }
+        // all characters typed in this frame, raylib drops the ones not read
+        std::string typed;
+        for (int codepoint = GetCharPressed(); codepoint > 0; codepoint = GetCharPressed()) {
+            if (codepoint < 32 || codepoint == 127 || (mac && sys))
+                continue;
+            int size = 0;
+            const char* encoded = CodepointToUTF8(codepoint, &size);
+            typed.append(encoded, size);
+        }
+        if (focused && !readOnly && !typed.empty()) {
+            editor.replaceSelection(std::move(typed), true);
+        }
+    }
+
+    if (!focused) {
+        state.anchor = state.cursor;
+        state.mouseSelecting = false;
+        state.typingRun = false;
+        result.finished = state.hadFocus;
+    }
+    if (cursorMoved || editor.changed())
+        state.blinkStart = GetTime();
+
+    // Scrolling, follow the cursor when it was moved by the user
+    if (multiline) {
+        if (editor.contentHeight() > area.height && !hasScrollBar) {
+            // the text got longer than the box in this frame, the scroll bar is there from the next frame on
+            editor.setWrapWidth(area.width - static_cast<float>(GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH)));
+        }
+        if (focused && (cursorMoved || editor.changed())) {
+            const float top = static_cast<float>(editor.lineOf(state.cursor)) * editor.lineHeight();
+            if (top < state.scroll.y)
+                state.scroll.y = top;
+            else if (top + editor.lineHeight() > state.scroll.y + area.height)
+                state.scroll.y = top + editor.lineHeight() - area.height;
+        }
+        state.scroll.y = std::clamp(state.scroll.y, 0.0f, std::max(0.0f, editor.contentHeight() - area.height));
+        state.scroll.x = 0;
+    }
+    else if (focused) {
+        if (cursorMoved || editor.changed()) {
+            const float x = editor.xOf(0, state.cursor);
+            if (x - state.scroll.x > area.width - 1)
+                state.scroll.x = x - area.width + 1;
+            else if (x < state.scroll.x)
+                state.scroll.x = x - area.width / 3;  // show some of the text left of the cursor
+        }
+        state.scroll.x = std::clamp(state.scroll.x, 0.0f, std::max(0.0f, editor.width(0, text.size()) - area.width + 1));
+    }
+    else {
+        state.scroll.x = 0;
+    }
+
+    // Drawing
+    const int drawState = disabled ? STATE_DISABLED : (focused ? STATE_PRESSED : (hover && interactive ? STATE_FOCUSED : STATE_NORMAL));
+    Color base = BLANK;
+    if (drawState == STATE_PRESSED)
+        base = GetColor(GuiGetStyle(TEXTBOX, BASE_COLOR_PRESSED));
+    else if (drawState == STATE_DISABLED)
+        base = GetColor(GuiGetStyle(TEXTBOX, BASE_COLOR_DISABLED));
+    GuiDrawRectangle(bounds, static_cast<int>(border), GetColor(GuiGetStyle(TEXTBOX, BORDER + drawState * 3)), base);
+
+    BeginClipping(clip);
+    const auto& lines = editor.lines();
+    const float lineHeight = multiline ? editor.lineHeight() : editor.fontSize() + 2;
+    const float glyphOffsetY = multiline ? std::floor((lineHeight - editor.fontSize()) / 2) : 1;
+    const float originX = textX();
+    const float originY = multiline ? textTop() : textY - 1;
+    const size_t firstLine = multiline ? static_cast<size_t>(std::max(0.0f, std::floor(state.scroll.y / lineHeight))) : 0;
+    const size_t lastLine = multiline ? std::min(lines.size(), static_cast<size_t>((state.scroll.y + area.height) / lineHeight) + 1) : 1;
+    const auto [selectionStart, selectionEnd] = editor.selection();
+    const bool showSelection = focused && selectionStart != selectionEnd;
+    const Color textColor = GuiFade(GetColor(GuiGetStyle(TEXTBOX, TEXT + drawState * 3)), guiAlpha);
+    const Color selectionColor = GuiFade(Fade(GetColor(GuiGetStyle(TEXTBOX, BORDER_COLOR_FOCUSED)), 0.4f), guiAlpha);
+    for (size_t lineIndex = firstLine; lineIndex < lastLine; ++lineIndex) {
+        const auto& line = lines[lineIndex];
+        const float y = originY + static_cast<float>(lineIndex) * lineHeight;
+        if (showSelection && selectionStart <= line.end && selectionEnd >= line.start) {
+            const float x0 = editor.xOf(lineIndex, std::max(selectionStart, line.start));
+            float x1 = editor.xOf(lineIndex, std::min(selectionEnd, line.end));
+            // a selected line break is shown as a selected space
+            if (selectionEnd > line.end && line.end < text.size() && text[line.end] == '\n')
+                x1 += editor.advance(' ');
+            if (x1 > x0)
+                DrawRectangleClipped(static_cast<int>(originX + x0), static_cast<int>(y), static_cast<int>(std::ceil(x1 - x0)), static_cast<int>(lineHeight), selectionColor);
+        }
+        float x = originX;
+        for (size_t pos = line.start; pos < line.end && x < clip.x + clip.width;) {
+            int size = 0;
+            const int codepoint = codepointAt(text, pos, &size);
+            const float glyphWidth = editor.advance(codepoint);
+            if (x + glyphWidth >= clip.x && codepoint != ' ' && codepoint != '\t' && codepoint != '\n')
+                DrawTextCodepointClipped(editor.font(), codepoint, {std::floor(x), y + glyphOffsetY}, editor.fontSize(), textColor);
+            x += glyphWidth;
+            pos += size;
+        }
+    }
+    if (focused && !readOnly && std::fmod(GetTime() - state.blinkStart, 2 * TEXT_CURSOR_BLINK_TIME) < TEXT_CURSOR_BLINK_TIME) {
+        const auto lineIndex = editor.lineOf(state.cursor);
+        const float x = originX + editor.xOf(lineIndex, state.cursor);
+        const float y = originY + static_cast<float>(lineIndex) * lineHeight;
+        DrawRectangleClipped(static_cast<int>(x), static_cast<int>(y), 1, static_cast<int>(lineHeight), GuiFade(GetColor(GuiGetStyle(TEXTBOX, BORDER_COLOR_PRESSED)), guiAlpha));
+    }
+    EndClipping();
+
+    if (hasScrollBar) {
+        const float contentHeight = editor.contentHeight();
+        const int oldSliderSize = GuiGetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE);
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, static_cast<int>(std::max(8.0f, area.height / contentHeight * scrollBar.height)));
+        state.scroll.y = static_cast<float>(GuiScrollBar(scrollBar, static_cast<int>(state.scroll.y), 0, static_cast<int>(contentHeight - area.height)));
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, oldSliderSize);
+    }
+
+    state.knownText = text;
+    state.hadFocus = focused;
+    result.changed = editor.changed();
+    return result;
+}
+
+}  // namespace detail
 
 bool TextBox(const char* id, std::string& text, int textSize)
 {
-    auto textId = GetId(id);
-    bool editing = HasKeyboardFocus(textId);
-    std::string oldText = editing ? text : std::string();
-    // GuiTextBox takes the buffer size including the terminating zero
-    text.resize(textSize + 1);
-    detail::editableWidget(GuiTextBox, textId, text.data(), textSize + 1);
-    text.resize(std::strlen(text.data()));
-    return editing && oldText != text;
+    auto& ctx = detail::context();
+    const auto size = ctx.standardSize();
+    const Rectangle bounds{ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y};
+    const auto result = detail::textEdit(GetId(id), bounds, text, textSize > 0 ? static_cast<size_t>(textSize) : 0, false);
+    ctx.increment(size);
+    GuiContext::lastWidgetEditFinished = result.finished;
+    return result.changed;
+}
+
+bool TextBox(const char* id, char* text, int textSize)
+{
+    if (!text || textSize <= 0) {
+        AllocateWidget({});
+        return false;
+    }
+    size_t length = 0;
+    while (length < static_cast<size_t>(textSize) - 1 && text[length])
+        ++length;
+    std::string value(text, length);
+    const bool changed = TextBox(id, value, textSize - 1);
+    if (changed) {
+        std::memcpy(text, value.data(), value.size());
+        text[value.size()] = 0;
+    }
+    return changed;
+}
+
+bool TextBoxMulti(float height, const char* id, std::string& text, int textSize)
+{
+    auto& ctx = detail::context();
+    if (height <= 0)
+        height = std::max(ctx.rowHeight, ctx.content.y + ctx.content.height - ctx.currentPos.y);
+    const auto size = ctx.standardSize(height);
+    const Rectangle bounds{ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y, size.x, size.y};
+    const auto result = detail::textEdit(GetId(id), bounds, text, textSize > 0 ? static_cast<size_t>(textSize) : 0, true);
+    ctx.increment(size);
+    GuiContext::lastWidgetEditFinished = result.finished;
+    return result.changed;
 }
 
 bool IsLastWidgetEditFinished()
@@ -2089,20 +2978,27 @@ Vector2 GetTextSize(const char* text)
 
 bool IsSysKeyDown()
 {
-#ifdef __APPLE__
-    return IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
-#elif defined(__EMSCRIPTEN__)
-    static bool macOS = EM_ASM_INT({
-        if (navigator.userAgent.indexOf("Mac") != -1)
-            return 1;
-        return 0;
-    }) != 0;
-    if(macOS)
+    if (detail::isMacLike())
         return IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-#else
-    return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-#endif
+}
+
+bool IsShortcutPressed(char letter)
+{
+    if (!IsSysKeyDown())
+        return false;
+    const int wanted = std::toupper(static_cast<unsigned char>(letter));
+    // the keys that can show a letter in some keyboard layout, e.g. KEY_SEMICOLON is the 'M' of AZERTY
+    for (int key = KEY_APOSTROPHE; key <= KEY_GRAVE; ++key) {
+        if ((IsKeyPressed(key) || IsKeyPressedRepeat(key)) && detail::keyLetter(key) == wanted)
+            return true;
+    }
+    return false;
+}
+
+void SetClipboardHandler(std::function<std::string()> getText, std::function<void(const std::string&)> setText, std::function<bool()> pasteRequested)
+{
+    g_clipboardHandler = {std::move(getText), std::move(setText), std::move(pasteRequested)};
 }
 
 Color ColorFromHsv(Vector3 hsv)

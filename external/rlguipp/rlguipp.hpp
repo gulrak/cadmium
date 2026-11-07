@@ -192,8 +192,13 @@ RLGUIPP_API bool ComboBox(const char* text, int* active);                       
 RLGUIPP_API bool DropdownBox(const char* label, int* active, bool directionUp = false);                                   // Dropdown Box control, items separated by ';', the label is also the id, a selection is reported in the frame after it was made
 RLGUIPP_API bool Spinner(const char* label, int* value, int minValue, int maxValue);                                      // Spinner control, the label is also the id
 RLGUIPP_API bool ValueBox(const char* label, int* value, int minValue, int maxValue);                                     // Value Box control, the label is also the id
+// Text editing (TextBox, TextBoxMulti): selection with shift and the mouse (double click: word, triple click: all or the paragraph),
+// cut/copy/paste/select all/undo/redo with the system key (Cmd on macOS, else Ctrl) and the key showing X/C/V/A/Z(/Y) in the keyboard
+// layout, word movement with Alt (macOS) or Ctrl, Enter or Escape or a click elsewhere ends the editing. TEXTBOX TEXT_READONLY allows
+// selecting and copying only. textSize limits what the user can enter, text set by the application is never shortened.
 RLGUIPP_API bool TextBox(const char* id, char* text, int textSize);                                                       // Text Box control identified by id, textSize is the size of the buffer
 RLGUIPP_API bool TextBox(const char* id, std::string& text, int textSize);                                                // Text Box control identified by id, textSize is the maximum length in bytes
+RLGUIPP_API bool TextBoxMulti(float height, const char* id, std::string& text, int textSize);                             // Multi-line text box identified by id, wraps at spaces and scrolls, Enter adds a line break, height <= 0 uses the remaining height, textSize is the maximum length in bytes
 RLGUIPP_API bool IsLastWidgetEditFinished();                                                                              // True if the previous widget left its edit mode in this frame (enter or click elsewhere)
 RLGUIPP_API void SetKeyboardFocus(Id id);                                                                                 // Give the keyboard focus to the widget with the id (0 removes it), it is dropped after a frame without the widget
 RLGUIPP_API bool HasKeyboardFocus(Id id);                                                                                 // Check if the widget with the id has the keyboard focus, for custom widgets this also keeps the focus
@@ -218,6 +223,11 @@ RLGUIPP_API Vector3 HsvFromColor(Color col);
 RLGUIPP_API const char* IconText(int icon, const char* text);
 
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
+RLGUIPP_API bool IsShortcutPressed(char letter);  // True if the system key is down and the key showing the letter (A-Z) in the current keyboard layout was pressed or repeated
+
+// Clipboard used by the text widgets, by default raylib's GetClipboardText()/SetClipboardText() and the shortcut Sys+V.
+// pasteRequested (optional) replaces the shortcut check, e.g. for the web, where the text only arrives with the browser's paste event.
+RLGUIPP_API void SetClipboardHandler(std::function<std::string()> getText, std::function<void(const std::string&)> setText, std::function<bool()> pasteRequested = {});
 
 // Custom widgets
 RLGUIPP_API Rectangle AllocateWidget(Vector2 naturalSize);  // Reserve space for a custom widget at the current position, advance the layout and return the screen rectangle to draw in.

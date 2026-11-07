@@ -361,6 +361,7 @@ public:
 
         InitWindow(_screenWidth * _scaleMode, _screenHeight * _scaleMode, "Cadmium - A CHIP-8 variant environment");
         SetMouseScale(1.0f/_scaleMode, 1.0f/_scaleMode);
+        _appliedScaleMode = _scaleMode;
         auto winPos = GetWindowPosition();
         if (cfg.windowPosX != 0xFFFF) {
             winPos.x = cfg.windowPosX;
@@ -503,6 +504,12 @@ public:
         constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
         webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
 #endif
+        // the text widgets use the clipboard of the editor, on the web the text arrives with the browser's paste event
+#ifdef PLATFORM_WEB
+        gui::SetClipboardHandler(GetClipboardTextX, SetClipboardTextX, isClipboardPaste);
+#else
+        gui::SetClipboardHandler(GetClipboardTextX, SetClipboardTextX);
+#endif
         if(_volume > 1.0f)
             _volume = _volumeSlider = 1.0f;
         updateKeyboardOverlay();
@@ -608,7 +615,9 @@ public:
             SetTextureFilter(_renderTexture.texture, TEXTURE_FILTER_POINT);
         }
 #else
-        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH || GetScreenWidth() != _screenWidth * _scaleMode) {
+        // What the host applied is remembered instead of asking raylib for the size, see setupWindowViewport().
+        if(_screenHeight < MIN_SCREEN_HEIGHT ||_screenWidth < MIN_SCREEN_WIDTH || _scaleMode != _appliedScaleMode) {
+            _appliedScaleMode = _scaleMode;
             //UnloadRenderTexture(_renderTexture);
             _screenWidth = MIN_SCREEN_WIDTH;
             _screenHeight = MIN_SCREEN_HEIGHT;
@@ -619,6 +628,21 @@ public:
             SetMouseScale(1.0f/_scaleMode*scale2d.x, 1.0f/_scaleMode*scale2d.y);
             _textureScaler->setOutputSize(_screenWidth * _scaleMode / scale2d.x, _screenHeight * _scaleMode / scale2d.y);
         }
+#endif
+    }
+
+    // compensate for raylob 6.0 framebuffer scale issues
+    void setupWindowViewport() const
+    {
+#if defined(__APPLE__) && !defined(PLATFORM_WEB) && !defined(RESIZABLE_GUI) && RAYLIB_VERSION_MAJOR >= 6
+        const auto width = _screenWidth * _scaleMode;
+        const auto height = _screenHeight * _scaleMode;
+        rlViewport(0, 0, width, height);
+        rlMatrixMode(RL_PROJECTION);
+        rlLoadIdentity();
+        rlOrtho(0, width, height, 0, 0.0, 1.0);
+        rlMatrixMode(RL_MODELVIEW);
+        rlLoadIdentity();
 #endif
     }
 
@@ -1132,6 +1156,7 @@ public:
         _avgGuiRenderTime = guiRenderTime.getElapsedAvgString();
 
         BeginDrawing();
+        setupWindowViewport();
         {
             ClearBackground(CADMIUM_VERSION_DECIMAL & 1 ? Color{16,0,0,255} : BLACK);
             //ClearBackground(BLACK);
@@ -2917,6 +2942,7 @@ private:
     double _partialFrameTime{0};
     double _audioSamplesDue{0};
     int _scaleMode{1};
+    int _appliedScaleMode{0};
     int _behaviorSel{0};
     int _subBehaviorSel{0};
     //float _messageTime{};

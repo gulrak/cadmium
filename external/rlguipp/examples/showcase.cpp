@@ -381,6 +381,10 @@ private:
             End();
         }
         EndColumns();
+
+        Space(4);
+        Label("TextBoxMulti (wraps at spaces, scrolls, read-only with TEXTBOX TEXT_READONLY):");
+        TextBoxMulti(62, "multiBuf", _multiBuf, 2048);
     }
 
     // -----------------------------------------------------------------------
@@ -1002,6 +1006,9 @@ private:
     // Input tab
     char        _charBuf[256]{"Edit me (char array)"};
     std::string _stringBuf{"Edit me (std::string)"};
+    std::string _multiBuf{"A multi-line text box wraps long lines at spaces and gets a scroll bar when the text is higher than the box.\n\n"
+                          "Select with the mouse or shift and the cursor keys, a double click selects a word, a triple click the paragraph. "
+                          "Cut, copy, paste, select all and undo work with the usual shortcuts.\n\nEnter adds a line break, Escape or a click elsewhere ends the editing."};
     int         _spinnerVal{42};
     int         _valueBoxVal{100};
     int         _comboActive{0};
