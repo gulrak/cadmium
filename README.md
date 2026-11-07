@@ -194,6 +194,12 @@ roms, it is only based on the SHA1 of the content, so as long as any valid exten
 For undetected files with a specific extension that multiple variants support, the first one in the order above will be
 used.
 
+The family tree below shows where the variants came from and which presets implement
+each of them, either as high level emulation or as the original interpreter running on
+the emulated hardware:
+
+<p align="center"><img src="media/cadmium_preset_tree.svg" alt="Family tree of the Cadmium presets"></p>
+
 ### Roadmap of upcoming variants that are currently in development (no promises on a date):
 
 The DREAM6800, ETI-660 and HP-48SX hardware emulations of the earlier roadmap are done (see the
