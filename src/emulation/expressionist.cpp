@@ -26,6 +26,8 @@
 
 #include "expressionist.hpp"
 
+#include <cctype>
+#include <charconv>
 #include <ostream>
 #include <sstream>
 #include <fmt/format.h>
@@ -33,6 +35,25 @@
 namespace {
 
 constexpr int NO_PRECEDENCE = 20;
+
+int64_t parseNumber(const std::string& text)
+{
+    int base = 10;
+    size_t offset = 0;
+    if (text.size() > 2 && text[0] == '0') {
+        if (text[1] == 'x' || text[1] == 'X')
+            base = 16, offset = 2;
+        else if (text[1] == 'b' || text[1] == 'B')
+            base = 2, offset = 2;
+    }
+    uint64_t value{};
+    const auto* first = text.data() + offset;
+    const auto* last = text.data() + text.size();
+    auto [ptr, ec] = std::from_chars(first, last, value, base);
+    if (ec != std::errc() || ptr != last)
+        throw std::runtime_error("Invalid number: " + text);
+    return static_cast<int64_t>(value);
+}
 
 bool isConstant(const emu::Expressionist::Value& value)
 {
@@ -145,16 +166,20 @@ struct BinaryExpr final : emu::Expressionist::Expr
     , rhs(std::move(rhs))
     , opName(std::move(name))
     {
-        if (auto literal = dynamic_cast<LiteralExpr*>(lhs.get()); literal && literal->isIndexBase()) {
+        // REVIEW: The parameters shadow the members, the old checks looked at the moved-from parameters
+        // and never fired, so `v + 1` silently evaluated to v0 + 1.
+        if (auto literal = dynamic_cast<LiteralExpr*>(this->lhs.get()); literal && literal->isIndexBase()) {
             throw std::runtime_error("Index base cannot be used in binary operator");
         }
-        if (auto literal = dynamic_cast<LiteralExpr*>(rhs.get()); literal && literal->isIndexBase()) {
+        if (auto literal = dynamic_cast<LiteralExpr*>(this->rhs.get()); literal && literal->isIndexBase()) {
             throw std::runtime_error("Index base cannot be used in binary operator");
         }
     }
     int64_t eval() const override
     {
-        // Add, Sub, Mul, Div, Shl, Shr, BitAnd, BitOr, BitXor, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual
+        // Add, Sub, Mul, Div, Mod, Shl, Shr, BitAnd, BitOr, BitXor, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual
+        // Division by zero and out of range shifts evaluate to 0 instead of crashing the emulation,
+        // conditions are evaluated while the program runs and constants get folded while parsing.
         switch (op) {
             case BinaryOperation::Add:
                 return lhs->eval() + rhs->eval();
@@ -162,12 +187,22 @@ struct BinaryExpr final : emu::Expressionist::Expr
                 return lhs->eval() - rhs->eval();
             case BinaryOperation::Mul:
                 return lhs->eval() * rhs->eval();
-            case BinaryOperation::Div:
-                return lhs->eval() / rhs->eval();
-            case BinaryOperation::Shl:
-                return lhs->eval() << rhs->eval();
-            case BinaryOperation::Shr:
-                return lhs->eval() >> rhs->eval();
+            case BinaryOperation::Div: {
+                const auto divisor = rhs->eval();
+                return divisor ? lhs->eval() / divisor : 0;
+            }
+            case BinaryOperation::Mod: {
+                const auto divisor = rhs->eval();
+                return divisor ? lhs->eval() % divisor : 0;
+            }
+            case BinaryOperation::Shl: {
+                const auto shift = rhs->eval();
+                return shift >= 0 && shift < 64 ? static_cast<int64_t>(static_cast<uint64_t>(lhs->eval()) << shift) : 0;
+            }
+            case BinaryOperation::Shr: {
+                const auto shift = rhs->eval();
+                return shift >= 0 && shift < 64 ? lhs->eval() >> shift : 0;
+            }
             case BinaryOperation::BitAnd:
                 return lhs->eval() & rhs->eval();
             case BinaryOperation::BitOr:
@@ -210,15 +245,19 @@ struct IndexExpr final : emu::Expressionist::Expr
     std::unique_ptr<LiteralExpr> base;
     std::unique_ptr<Expr> index;
     uint32_t mask;
-    IndexExpr(std::unique_ptr<LiteralExpr>&& literalExpr, std::unique_ptr<Expr>&& indexExpr, uint32_t mask) : base(std::move(literalExpr)), index(std::move(indexExpr)), mask(mask) {}
-    int64_t eval() const override
+    IndexExpr(std::unique_ptr<LiteralExpr>&& literalExpr, std::unique_ptr<Expr>&& indexExpr, uint32_t mask) : base(std::move(literalExpr)), index(std::move(indexExpr)), mask(mask)
     {
+        // REVIEW: These checks were in eval(), so they threw from inside the running emulation,
+        // now they make parseExpression fail instead.
         if (!base->isIndexBase()) {
             throw std::runtime_error("Operand is not indexable");
         }
         if (auto literal = dynamic_cast<LiteralExpr*>(index.get()); literal && literal->isIndexBase()) {
             throw std::runtime_error("Index base cannot be used as index");
         }
+    }
+    int64_t eval() const override
+    {
         return std::visit([&](const auto &val) -> int64_t {
             if constexpr (std::is_pointer_v<std::decay_t<decltype(val)>>) {
                 return val[index->eval() & mask];
@@ -266,9 +305,11 @@ emu::Expressionist::Token emu::Expressionist::nextToken(std::string_view::const_
         return {TokenType::Identifier, std::string(start, iter)};
     }
     if (std::isdigit(static_cast<unsigned char>(c))) {
+        // Take the whole word, parseNumber() checks it is decimal or Octo style 0x hex or 0b binary,
+        // so `12ab` is an error and not the number 12 followed by an identifier.
         auto start = iter;
         ++iter;
-        while (iter != end && std::isdigit(static_cast<unsigned char>(*iter)))
+        while (iter != end && (std::isalnum(static_cast<unsigned char>(*iter)) || *iter == '_'))
             ++iter;
         return {TokenType::Number, std::string(start, iter)};
     }
@@ -289,7 +330,7 @@ emu::Expressionist::Token emu::Expressionist::nextToken(std::string_view::const_
         return {TokenType::RightBracket, "]"};
     }
 
-    // All allowed operators: '!', '~', '*', '/', '+', '-',
+    // All allowed operators: '!', '~', '*', '/', '%', '+', '-',
     // '<<', '>>', '==', '<=', '<', '>=', '>', '&', '|', '&&', '||' and '^'
     Token token;
     token.type = TokenType::Operator;
@@ -308,14 +349,15 @@ emu::Expressionist::Token emu::Expressionist::nextToken(std::string_view::const_
         token.text = std::string{first};
         return token;
     }
-    if (c == '=') {
+    if (c == '=' || c == '!') {
+        const char first = c;
         ++iter;
         if (iter != end && *iter == '=') {
-            token.text = "==";
+            token.text = std::string{first, '='};
             ++iter;
             return token;
         }
-        token.text = "=";
+        token.text = std::string{first};
         return token;
     }
     if (c == '&' || c == '|') {
@@ -340,6 +382,8 @@ emu::Expressionist::BinOpInfo emu::Expressionist::getBinaryOpInfo(const std::str
         return {Mul, 5, false};
     if (s == "/")
         return {Div, 5, false};
+    if (s == "%")
+        return {Mod, 5, false};
     if (s == "+")
         return {Add, 6, false};
     if (s == "-")
@@ -398,7 +442,7 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(std::
         while ((tok = nextToken(iter, end))) {
             switch (tok.type) {
                 case TokenType::Number: {
-                    auto num = static_cast<int64_t>(std::stoul(tok.text));
+                    auto num = parseNumber(tok.text);
                     _operandStack.push(std::make_unique<LiteralExpr>(num, tok.text, 0));
                     expectOperand = false;
                     break;
@@ -406,7 +450,12 @@ emu::Expressionist::CompiledExpression emu::Expressionist::parseExpression(std::
                 case TokenType::Identifier: {
                     auto symIter = _symbols.find(tok.text);
                     if (symIter == _symbols.end()) {
-                        throw std::runtime_error("Unknown identifier");
+                        auto sourceIter = _sourceSymbols.find(tok.text);
+                        if (sourceIter == _sourceSymbols.end())
+                            throw std::runtime_error("Unknown identifier");
+                        _operandStack.push(std::make_unique<LiteralExpr>(sourceIter->second, tok.text, 0));
+                        expectOperand = false;
+                        break;
                     }
                     _operandStack.push(std::make_unique<LiteralExpr>(symIter->second.value, tok.text, symIter->second.mask));
                     expectOperand = false;
@@ -520,7 +569,10 @@ void emu::Expressionist::applyOperator()
         if (opEntry.token == "[]") {
             if (dynamic_cast<const LiteralExpr*>(left.get()) == nullptr)
                 throw std::runtime_error("Unexpected index operator");
-            _operandStack.push(std::make_unique<IndexExpr>(std::unique_ptr<LiteralExpr>(dynamic_cast<LiteralExpr*>(left.release())), std::move(right), 0xFFF));
+            // Pointer bases are bounded by their mask (`v` is 0xF), function bases see the full index.
+            auto base = std::unique_ptr<LiteralExpr>(dynamic_cast<LiteralExpr*>(left.release()));
+            const auto mask = base->mask ? base->mask : 0xFFFFFFFFu;
+            _operandStack.push(std::make_unique<IndexExpr>(std::move(base), std::move(right), mask));
         }
         else {
             auto binExp = std::make_unique<BinaryExpr>(info.op, std::move(left), std::move(right), opEntry.token);
@@ -537,82 +589,156 @@ void emu::Expressionist::applyOperator()
     }
 }
 
+// Never throws, the result goes to the log while the emulation runs. A placeholder that
+// does not evaluate shows up as `{<expression>: <error>}`.
 std::string emu::Expressionist::format(std::string_view fmt)
 {
     return format(fmt, [&](std::string_view expression) -> std::string {
-        std::string_view fmt;
-        std::string result;
+        std::string_view spec;
         auto pos = expression.find(':');
         if (pos != std::string_view::npos) {
-            fmt = expression.substr(pos + 1);
+            spec = expression.substr(pos + 1);
             expression = expression.substr(0, pos);
         }
+        auto [expr, error] = parseExpression(expression);
+        if (!expr) {
+            return fmt::format("{{{}: {}}}", expression, error);
+        }
         try {
-            auto [expr, error] = parseExpression(expression);
-            if (expr) {
-                if (fmt.empty()) {
-                    result = std::to_string(expr->eval());
-                }
-                else {
-                    result = fmt::format(fmt::runtime("{:" + std::string(fmt) + "}"), expr->eval());
-                }
+            if (spec.empty()) {
+                return std::to_string(expr->eval());
             }
+            if (spec.front() == '%') {
+                return formatOctoField(expr->eval(), spec);
+            }
+            return fmt::format(fmt::runtime("{:" + std::string(spec) + "}"), expr->eval());
         }
-        catch (std::runtime_error& ex) {
-            // TODO: report error
+        catch (const std::exception& ex) {
+            return fmt::format("{{{}:{}: {}}}", expression, spec, ex.what());
         }
-        return result;
     });
+}
+
+void emu::Expressionist::setSourceSymbols(const std::vector<std::pair<std::string, int64_t>>& symbols)
+{
+    _sourceSymbols.clear();
+    for (const auto& [name, value] : symbols)
+        _sourceSymbols.insert_or_assign(name, value);
+}
+
+std::string emu::Expressionist::formatOctoField(int64_t address, std::string_view spec)
+{
+    // `%<bytes?>[bixc]` like an Octo monitor format field, rendered the way Octo does it
+    size_t pos = 1;
+    size_t count = 0;
+    while (pos < spec.size() && std::isdigit(static_cast<unsigned char>(spec[pos])) && count <= 256)
+        count = count * 10 + static_cast<size_t>(spec[pos++] - '0');
+    if (pos == 1)
+        count = 1;
+    if (pos + 1 != spec.size() || std::string_view("bixc").find(spec[pos]) == std::string_view::npos)
+        throw std::runtime_error("Unknown format, should be %Nc, %Ni, %Nb or %Nx");
+    if (count == 0 || count > 256)
+        throw std::runtime_error("Byte count must be 1 to 256");
+    const auto ram = _symbols.find("ram");
+    if (ram == _symbols.end())
+        throw std::runtime_error("No ram to read from");
+    auto read = [&](int64_t addr) -> uint8_t {
+        return static_cast<uint8_t>(std::visit([&](const auto& val) -> int64_t {
+            using T = std::decay_t<decltype(val)>;
+            if constexpr (std::is_pointer_v<T>)
+                return val[static_cast<uint32_t>(addr) & ram->second.mask];
+            else if constexpr (std::is_same_v<T, std::function<int64_t(uint32_t)>>)
+                return val(static_cast<uint32_t>(addr));
+            else
+                return 0;
+        }, ram->second.value));
+    };
+    std::string result;
+    switch (spec[pos]) {
+        case 'c':
+            for (size_t i = 0; i < count; ++i)
+                result += static_cast<char>(read(address++) & 0x7F);
+            break;
+        case 'b':
+            for (size_t i = 0; i < count; ++i)
+                result += fmt::format("{:08b}", read(address++));
+            break;
+        case 'x':
+            for (size_t i = 0; i < count; ++i)
+                result += fmt::format("{:02X}", read(address++));
+            break;
+        default: {
+            // Octo shifts a JavaScript number, so it keeps the last four bytes as int32
+            uint32_t value = 0;
+            for (size_t i = 0; i < count; ++i)
+                value = (value << 8) | read(address++);
+            result = std::to_string(static_cast<int32_t>(value));
+            break;
+        }
+    }
+    return result;
 }
 
 std::string emu::Expressionist::format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval)
 {
-    std::ostringstream oss;
-    auto i = 0u;
+    // `{{` and `}}` are literal braces, `{expr}` is replaced by eval(expr). An unmatched brace
+    // is copied as it is.
+    std::string result;
+    result.reserve(fmt.size());
+    size_t i = 0;
     const auto n = fmt.size();
-
     while (i < n) {
-        char c = fmt[i];
-        if (c == '{') {
-            // Check for double curly brace for literal '{'
-            if (i + 1 < n && fmt[i+1] == '{') {
-                oss << '{';
-                i += 2;
-            } else {
-                // Start of an expression placeholder.
-                auto expr_start = i + 1;
-                auto expr_end = expr_start;
-                // Find the matching unescaped '}'
-                bool foundClosing = false;
-                while (expr_end < n) {
-                    if (fmt[expr_end] == '}') {
-                        foundClosing = true;
-                        break;
-                    }
-                    ++expr_end;
-                }
-                if (!foundClosing)
-                    throw std::runtime_error("Unmatched '{' in format string");
-
-                // Extract the expression inside the braces.
-                std::string_view expr = fmt.substr(expr_start, expr_end - expr_start);
-                // Replace the expression with the result from the lambda.
-                oss << eval(expr);
-                i = expr_end + 1;
+        const char c = fmt[i];
+        if ((c == '{' || c == '}') && i + 1 < n && fmt[i + 1] == c) {
+            result += c;
+            i += 2;
+        }
+        else if (c == '{') {
+            const auto exprEnd = fmt.find('}', i + 1);
+            if (exprEnd == std::string_view::npos) {
+                result += fmt.substr(i);
+                break;
             }
-        } else if (c == '}') {
-            // Check for double curly brace for literal '}'
-            if (i + 1 < n && fmt[i+1] == '}') {
-                oss << '}';
-                i += 2;
-            } else {
-                throw std::runtime_error("Unmatched '}' in format string");
-            }
-        } else {
-            oss << c;
+            result += eval(fmt.substr(i + 1, exprEnd - i - 1));
+            i = exprEnd + 1;
+        }
+        else {
+            result += c;
             ++i;
         }
     }
-    return oss.str();
+    return result;
 }
 
+emu::Expressionist::ConditionalFormat emu::Expressionist::splitConditionalFormat(std::string_view text)
+{
+    auto trim = [](std::string_view str) {
+        while (!str.empty() && std::isspace(static_cast<unsigned char>(str.front())))
+            str.remove_prefix(1);
+        while (!str.empty() && std::isspace(static_cast<unsigned char>(str.back())))
+            str.remove_suffix(1);
+        return str;
+    };
+    const auto trimmed = trim(text);
+    if (trimmed.empty()) {
+        return {};
+    }
+    if (parseExpression(trimmed).first) {
+        return {std::string(trimmed), std::string(trimmed)};
+    }
+    bool inPlaceholder = false;
+    for (size_t i = 0; i < trimmed.size(); ++i) {
+        if (trimmed[i] == '{')
+            inPlaceholder = true;
+        else if (trimmed[i] == '}')
+            inPlaceholder = false;
+        else if (trimmed[i] == '?' && !inPlaceholder) {
+            const auto condition = trim(trimmed.substr(0, i));
+            if (!condition.empty() && parseExpression(condition).first) {
+                return {std::string(condition), std::string(trim(trimmed.substr(i + 1)))};
+            }
+            break;
+        }
+    }
+    return {std::string(), std::string(trimmed)};
+}

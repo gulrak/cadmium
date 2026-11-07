@@ -668,6 +668,23 @@ bool EmuHostEx::loadRomImage()
                                               ? 0x200 : _chipEmu->defaultLoadAddress());
 }
 
+// The generic preset for a CHIP-8 binary format (CBF) variant, the order is the preference
+// when a `.c8b` file contains bytecode for several variants.
+static constexpr std::pair<C8BFile::Chip8Variant, std::string_view> C8B_VARIANT_PRESETS[] = {
+    {C8BFile::C8V_XO_CHIP, "xo-chip"},
+    {C8BFile::C8V_MEGA_CHIP, "megachip"},
+    {C8BFile::C8V_SCHIP_1_1, "schip-1-1"},
+    {C8BFile::C8V_SCHIPC_GCHIPC, "schipc"},
+    {C8BFile::C8V_SCHIP_1_0, "schip-1-0"},
+    {C8BFile::C8V_CHIP_48, "chip-48"},
+    {C8BFile::C8V_CHIP_8X, "chip-8-x"},
+    {C8BFile::C8V_CHIP_8E, "chip-8-e"},
+    {C8BFile::C8V_HI_RES_CHIP_8, "chip-8-fpd"},
+    {C8BFile::C8V_CHIP_8_TPD, "chip-8-tpd"},
+    {C8BFile::C8V_CHIP_10, "chip-10"},
+    {C8BFile::C8V_CHIP_8, "chip-8"},
+};
+
 #if 0
 static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
 {
@@ -734,6 +751,30 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         program.compiler = c8c;
         if ((loadOpt & DontChangeOptions) == 0) {
             isKnown = _librarian.isKnownFile(program.image);
+        }
+    }
+    else if (endsWith(filename, ".c8b")) {
+        // A CBF container: the bytecode of the best supported variant, with the palette and
+        // speed the file comes with, the known program settings or the variant's preset otherwise
+        C8BFile c8b;
+        if (c8b.loadFromData(fileData.data(), fileData.size()) != C8BFile::eOK)
+            return false;
+        const auto preset = std::ranges::find_if(C8B_VARIANT_PRESETS, [&](const auto& entry) { return c8b.variantBytecode.contains(entry.first); });
+        if (preset == std::end(C8B_VARIANT_PRESETS))
+            return false;
+        const auto [offset, size] = c8b.variantBytecode.at(preset->first);
+        program.image.assign(c8b.rawData.begin() + offset, c8b.rawData.begin() + offset + size);
+        isKnown = _librarian.isKnownFile(program.image);
+        if ((loadOpt & DontChangeOptions) == 0) {
+            auto props = isKnown && !_librarian.isGenericChip8(program.image) ? _librarian.getPropertiesForFile(program.image) : CoreRegistry::propertiesForPreset(preset->second);
+            if (!c8b.palette.empty()) {
+                props.palette().colors.clear();
+                for (const auto& color : c8b.palette)
+                    props.palette().colors.emplace_back(color.r, color.g, color.b, 255);
+            }
+            if (auto* ipf = props.find(propid::INSTRUCTIONS_PER_FRAME); ipf && c8b.executionSpeed > 0)
+                ipf->setInt(static_cast<int>(c8b.executionSpeed));
+            requestConfig(props);
         }
     }
     else {

@@ -417,7 +417,7 @@ static KnownRomInfo g_knownRoms[] = {
     {"6194da2a89a3f431674d7323bf30f5ffe2f7190d"_sha1, "chip-8", "Tetris (Verisimilitudes, 2020)",nullptr, nullptr},
     {"627f01b20ce4d33f6df1aa88acb405a3a732bde0"_sha1, "schipc", "Dvn8 (SystemLogoff, 2017-10-30)",R"({"instructionsPerFrame":20,"palette":{"border":"#000000","colors":["#f0f0f0","#1f1f1f","#ff6600","#662200"],"signal":"#aa2222"},"wrapSprites":true})", nullptr},
     {"6281eb5dbde6ac33dec3e74b957e38adb6c4f5ae"_sha1, "chip-8", "Dodge Catch Shoot (miratha, 2023)",nullptr, nullptr},
-    {"62e204572ac05be3748a746ac7831d6844f43003"_sha1, "xo-chip", "3D Viper Maze (Timendus, 2020)",nullptr, nullptr},
+    {"62e204572ac05be3748a746ac7831d6844f43003"_sha1, "xo-chip", "3D Viper Maze (Timendus, 2020)",R"({"instructionsPerFrame":300,"palette":{"border":"#000000","colors":["#996600","#ff6600","#ffcc00","#662200"],"signal":"#ffaa00"}})", nullptr},
     {"63458c204bd24234a33d263d965ea8d16dd5c9e8"_sha1, "chip-8", "Tank-Viper (Demo)",nullptr, nullptr},
     {"6363d99ed28b958faa1ff03f3e86724fa498ad47"_sha1, "generic-chip-8", "KEYPAD TEST (2006)",nullptr, nullptr},
     {"63989cd91d2bcb849a1a6598a8d021faddef1f97"_sha1, "eti-chip-8", "Chip2048 for ETI-660 (John Earnest, 2014)",nullptr, nullptr},

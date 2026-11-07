@@ -229,3 +229,61 @@ TEST_CASE("A VIP reset with C held boots the monitor without changing the config
     CHECK(interpreterLoaded());
     CHECK(host.getProperties() == configured);
 }
+
+namespace {
+
+// A CHIP-8 binary format (CBF) container with CHIP-8 and XO-CHIP bytecode, a palette and a speed
+std::vector<uint8_t> makeC8B(const std::vector<uint8_t>& chip8, const std::vector<uint8_t>& xoChip, uint32_t speed)
+{
+    std::vector<uint8_t> data{'C', 'B', 'F', 0, 6, 17};
+    auto word = [&](size_t value) { data.push_back(value >> 8); data.push_back(value & 0xFF); };
+    const size_t paletteOffset = 24, speedOffset = 37, chip8Offset = 40, xoOffset = chip8Offset + chip8.size();
+    data.push_back(0x01), word(chip8Offset), word(chip8.size());  // C8V_CHIP_8
+    data.push_back(0x34), word(xoOffset), word(xoChip.size());    // C8V_XO_CHIP
+    data.push_back(0);
+    data.push_back(9), word(paletteOffset);  // palette
+    data.push_back(1), word(speedOffset);    // execution speed
+    data.push_back(0);
+    REQUIRE(data.size() == paletteOffset);
+    data.insert(data.end(), {4, 0x99, 0x66, 0x00, 0xFF, 0x66, 0x00, 0xFF, 0xCC, 0x00, 0x66, 0x22, 0x00});
+    data.insert(data.end(), {uint8_t(speed >> 16), uint8_t(speed >> 8), uint8_t(speed)});
+    REQUIRE(data.size() == chip8Offset);
+    data.insert(data.end(), chip8.begin(), chip8.end());
+    data.insert(data.end(), xoChip.begin(), xoChip.end());
+    return data;
+}
+
+}
+
+TEST_CASE("Every CBF variant has a generic preset")
+{
+    for (const auto name : {"xo-chip", "megachip", "schip-1-1", "schipc", "schip-1-0", "chip-48", "chip-8-x", "chip-8-e", "chip-8-fpd", "chip-8-tpd", "chip-10", "chip-8"}) {
+        INFO(name);
+        CHECK_FALSE(emu::CoreRegistry::propertiesForPreset(name).propertyClass().empty());
+    }
+}
+
+TEST_CASE("A .c8b file loads its preferred bytecode with its palette and speed")
+{
+    const std::vector<uint8_t> xoCode{0x60, 0x11, 0x12, 0x02};
+    const auto c8b = makeC8B(CODE, xoCode, 100000);
+    LifecycleHost host;
+    host.updateEmulatorOptions(emu::CoreRegistry::propertiesForPreset("chip-8"));
+    REQUIRE(host.loadBinary("test.c8b", c8b, emu::EmuHostEx::None));
+    const auto expected = emu::CoreRegistry::propertiesForPreset("xo-chip");
+    CHECK(host.getProperties().propertyClass() == expected.propertyClass());
+    CHECK(emu::CoreRegistry::variantIndex(host.getProperties()).index == emu::CoreRegistry::variantIndex(expected).index);
+    CHECK(host.getProperties()[std::string(emu::propid::INSTRUCTIONS_PER_FRAME)].getInt() == 100000);  // needs all 24 bits
+    CHECK(std::equal(xoCode.begin(), xoCode.end(), host.emuCore().memory() + 0x200));
+    REQUIRE(host.propertiesPalette().size() >= 4);
+    CHECK(host.propertiesPalette().colors[0] == emu::Palette::Color(0x99, 0x66, 0x00));
+    CHECK(host.propertiesPalette().colors[3] == emu::Palette::Color(0x66, 0x22, 0x00));
+    CHECK(host.palette().colors[1] == emu::Palette::Color(0xFF, 0x66, 0x00));
+}
+
+TEST_CASE("A .c8b file that isn't a CBF container is rejected")
+{
+    LifecycleHost host;
+    host.updateEmulatorOptions(emu::CoreRegistry::propertiesForPreset("chip-8"));
+    CHECK_FALSE(host.loadBinary("broken.c8b", CODE, emu::EmuHostEx::None));
+}

@@ -418,9 +418,43 @@ size_t Highlighter::highlightLine1802(const char* text, const char* end, size_t 
     return index;
 }
 
+// Follows the M6800 disassembly: the mnemonic with its accumulator (`LDAA`), then one operand
+// where `#` marks immediate values, `$` hex numbers and `,X` indexed addressing. A `label:` and
+// `;` comments are taken as in common 6800 assemblers.
 size_t Highlighter::highlightLine6800(const char* text, const char* end, size_t index)
 {
-    return highlightPlain(text, end, index);
+    bool expectOpcode = true;
+    while (text < end && *text != '\n') {
+        const char* token = text;
+        uint32_t cp = utf8::fetchCodepoint(text, end);
+        if (cp == ' ' || cp == '\t' || cp == ',')
+            _highlighting[index++].front = _colors[eNORMAL];
+        else if (cp == ';') {
+            _highlighting[index++].front = _colors[eCOMMENT];
+            while (text < end && *text != '\n')
+                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+        }
+        else {
+            auto start = index++;
+            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
+                utf8::fetchCodepoint(text, end), ++index;
+            std::string_view tok(token, text - token);
+            Color col = _colors[eNORMAL];
+            if (tok.size() > 1 && tok.back() == ':')
+                col = _colors[eLABEL];
+            else if (tok == "???")
+                expectOpcode = false;  // an invalid opcode or operand stays plain like CHIP-8's "invalid"
+            else if (expectOpcode)
+                col = _colors[eOPCODE], expectOpcode = false;
+            else if (cp == '#' || cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
+                col = _colors[eNUMBER];
+            else if (tok == "X" || tok == "x")
+                col = _colors[eREGISTER];
+            while (start < index)
+                _highlighting[start++].front = col;
+        }
+    }
+    return index;
 }
 
 static std::unordered_set<std::string_view> g_saturnRegisters = {

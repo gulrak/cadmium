@@ -46,7 +46,8 @@ public:
     void updateCore(emu::IEmulationCore* core);
     void captureStates();
     void render(Font& font, const std::function<void(Rectangle,int)>& drawScreen);
-    void updateOctoBreakpoints(const emu::OctoCompiler& compiler);
+    void updateOctoDebugInfo(const emu::OctoCompiler& compiler);
+    void clearOctoDebugInfo();
     bool supportsStepOver() const;
     bool isControllingChip8() const { return dynamic_cast<emu::IChip8Emulator*>(_core->focussedExecutionUnit()) != nullptr; }
     void setBreakpointTriggered(bool triggered);
@@ -56,6 +57,9 @@ private:
     void showInstructions(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
     void showBreakpoints(Font& font, const int lineSpacing);
     void selectBreakpoint(int idx);
+    void showWatches(Font& font, const int lineSpacing);
+    std::string octoMonitorValue(const emu::OctoCompiler::MonitorInfo& monitor);
+    std::string userWatchValue(const std::string& text);
     void showGenericRegs(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos) const;
     int showCpuRegisters(emu::GenericCpu& cpu, const RegPack& regs, const RegPack& oldRegs, Font& font, const int lineSpacing, const Vector2& pos, const int maxChars) const;
     void showCpuPanels(emu::GenericCpu& cpu, Font& font, const int lineSpacing);
@@ -84,5 +88,8 @@ private:
     std::string _bpLogFormat;
     std::string _bpLogCondition;
     std::string _bpHitCount{"0"};
+    std::vector<emu::OctoCompiler::MonitorInfo> _octoMonitors;
+    std::vector<std::string> _userWatches;
+    std::string _newWatch;
 };
 

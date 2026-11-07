@@ -256,3 +256,34 @@ TEST_CASE("Generic core ends the frame while waiting for a key")
         }
     }
 }
+
+TEST_CASE("Coded breakpoint with condition and log format")
+{
+    // 0x200: V0 += 1, 0x202: jump 0x200, the breakpoint sits on the jump
+    for (const auto& [text, expectPause, expectedV0] : {std::tuple{"v0 == 3 ? v0={v0}", true, 3}, {"v0 == 0x03", true, 3}, {"v0 != 3 && v0 > 1", true, 2},
+                                                        {"0 ? never", false, 0}, {"hit v0={v0}", true, 1}}) {
+        INFO(std::string(text));
+        auto props = emu::CoreRegistry::propertiesForPreset("CHIP-8");
+        REQUIRE(props);
+        HeadlessTestHost host(props);
+        auto [name, core] = emu::CoreRegistry::create(host, props, nullptr);
+        REQUIRE(core);
+        auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(core->executionUnit(0));
+        REQUIRE(chip8);
+        host.setCore(std::move(core));
+        chip8->reset();
+        write(chip8, 0x200, {0x7001, 0x1200});
+        auto bpi = chip8->codedBreakpoint(text);
+        CHECK(bpi.type == emu::GenericCpu::BreakpointInfo::eCODED);
+        chip8->setBreakpoint(0x202, std::move(bpi));
+        host.executeFrame();  // one frame only, the test host sets the core back to running
+        CHECK((chip8->execMode() == emu::GenericCpu::ePAUSED) == expectPause);
+        if (expectPause) {
+            CHECK(chip8->getV(0) == expectedV0);
+            CHECK(chip8->findBreakpoint(0x202)->numHits == expectedV0);
+        }
+        else {
+            CHECK(chip8->getV(0) > 3);
+        }
+    }
+}

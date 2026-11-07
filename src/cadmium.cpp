@@ -1097,7 +1097,7 @@ public:
             _editor.update();
             if(_editor.contentRevision() != _loadedSourceRevision && _editor.isCompiledUpToDate() &&
                !_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
-                _debugger.updateOctoBreakpoints(_editor.compiler());
+                _debugger.updateOctoDebugInfo(_editor.compiler());
                 replaceProgramFromEditor({_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize()}, _editor.compiler().sha1());
             }
         }
@@ -2708,7 +2708,7 @@ public:
     void whenEmuChanged(emu::IEmulationCore& emu) override
     {
         _debugger.updateCore(&emu);
-        _debugger.updateOctoBreakpoints(_editor.compiler());
+        _debugger.updateOctoDebugInfo(_editor.compiler());
         _propsMemento = *_properties;
         auto startAddress = _chipEmu->defaultLoadAddress();
         _editor.updateCompilerOptions(startAddress);
@@ -2751,7 +2751,9 @@ public:
         updateMainMenu();
         resetStats();
         if(compiler)
-            _debugger.updateOctoBreakpoints(*compiler);
+            _debugger.updateOctoDebugInfo(*compiler);
+        else
+            _debugger.clearOctoDebugInfo();
         saveConfig();
         if(autoRun)
             _mainView = eVIDEO;

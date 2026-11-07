@@ -60,6 +60,49 @@ of hybrid CHIP-8 programs that contain a mix of CHIP-8 and assembly subroutines
 using the rarely supported `0nnn` opcode. So this project explores
 the corners of historic CHIP-8 as well and sometimes goes a bit beyond it.
 
+## New in Cadmium 2.0
+
+A short tour of what came with 2.0 (all screenshots are the window content of Cadmium 2.0.0):
+
+<table>
+<tr>
+<td width="50%"><img src="media/cadmium2_xo_skyward.png?raw=true" width="100%" alt="Skyward on XO-CHIP"></td>
+<td width="50%"><img src="media/cadmium2_xo_garlicscape.png?raw=true" width="100%" alt="Into the GarlicScape on XO-CHIP"></td>
+</tr>
+<tr>
+<td colspan="2">Known programs get their palette and settings from Cadmium's program database, like the
+XO-CHIP games <i>Skyward</i> (Jackie Kircher, 2016) and <i>Into the GarlicScape</i> (John Earnest, 2020).</td>
+</tr>
+<tr>
+<td width="50%"><img src="media/cadmium2_megachip_megainvaders.png?raw=true" width="100%" alt="MegaInvaders on MegaChip"></td>
+<td width="50%"><img src="media/cadmium2_hp48_spacefight.png?raw=true" width="100%" alt="Spacefight 2091! on an emulated HP-48SX"></td>
+</tr>
+<tr>
+<td><i>MegaInvaders</i> on the <code>megachip</code> preset, it also runs on <code>rs-megachip</code>, the
+emulation of the original RS-M8001 interpreter from 2007.</td>
+<td><i>Spacefight 2091!</i> (Carsten Soerensen, 1992) on the original SUPER-CHIP 1.1, running on an
+emulated HP-48SX with its LCD (<code>hp-48-schip-1-1</code>).</td>
+</tr>
+<tr>
+<td width="50%"><img src="media/cadmium2_eti660_wipeout.png?raw=true" width="100%" alt="Wipeout on an emulated ETI-660"></td>
+<td width="50%"><img src="media/cadmium2_eti660_kong660.png?raw=true" width="100%" alt="Kong660 on an emulated ETI-660"></td>
+</tr>
+<tr>
+<td colspan="2">The new ETI-660 emulation with the colours of its CDP1864 and the CRT effect: the hybrid
+games <i>Wipeout</i> (W.F. Kreykes, 1982) and <i>Kong660</i> (T. Parish, 1984) on <code>eti-chip-8</code>.</td>
+</tr>
+<tr>
+<td width="50%"><img src="media/cadmium2_dream_invaders.png?raw=true" width="100%" alt="DREAM Invaders on an emulated DREAM6800"></td>
+<td width="50%"><img src="media/cadmium2_studio2_bowling.png?raw=true" width="100%" alt="Bowling on an emulated RCA Studio II"></td>
+</tr>
+<tr>
+<td><i>DREAM Invaders</i>, a native M6800 program on the DREAM6800 (<code>dream-none</code>) with
+the CRT effect.</td>
+<td>The built-in Bowling of the RCA Studio II (<code>studio-2-builtin</code>, still a preview) with
+the CRT effect.</td>
+</tr>
+</table>
+
 ## Online Version
 
 Emscripten builds are available here for testing:
@@ -97,6 +140,8 @@ The Supported presets are (possible specific file extensions in parentheses):
 |:-------|:---------------:|:------------|:----:|:----:|
 | **Generic** | **HLE** | **Emulation based on generic non-hardware-based cores** | |
 | chip-8 | .ch8 | The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker | 1977 | ✓ |
+| chip-8-tpd | - | CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, files with its extensions still default to `vip-chip-8-tpd` | 1979 | ✓ |
+| chip-8-fpd | - | CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, files with its extensions still default to `vip-chip-8-fpd` | 1980 | ✓ |
 | chip-10 | .ch10 | 128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr. | 1979 | ✓ |
 | chip-8-e | .c8e | CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 | 1979 | ✓ |
 | chip-8-x | .c8x | An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595 | 1980 | ✓ |
@@ -108,7 +153,8 @@ The Supported presets are (possible specific file extensions in parentheses):
 | schip-modern | .scm | Modern SUPER-CHIP interpretation as done in Octo by John Earnest | 2014 | ✓ |
 | megachip | .mc8 | MegaChip as specified by Martijn Wanting, Revival-Studios | 2007 | ✓ |
 | xo-chip | .xo8 | A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest | 2014 | ✓ |
-| strict-chip-8 | .ch8; .c8vip | The classic CHIP-8 that came from Joseph Weisbecker | 1977 | ✓ |
+| strict-chip-8 | .ch8; .c8vip | Cycle exact high-level emulation of the classic CHIP-8 that came from Joseph Weisbecker on a COSMAC VIP | 1977 | ✓ |
+| strict-schip-1-1 | .sc8; .sc11 | Cycle exact high-level emulation of SUPER-CHIP 1.1 as it runs on an HP-48SX | 1991 | ✓ |
 | rs-megachip | .ch8; .mc8 | RS-M8001 implementation (original bugs, checked bounds) | 2007 | ✓ |
 | **<nobr>COSMAC VIP</nobr>** | **LLE** | **Emulation of an RCA COSMAC VIP** | |
 | vip-none | .bin; .hex; .ram; .raw; .cos | Raw COSMAC VIP without any CHIP-8 preloaded | 1977 | ✓ |
@@ -122,13 +168,14 @@ The Supported presets are (possible specific file extensions in parentheses):
 | vip-chip-8-x-tpd | .c8xtpd | A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by Andy Modle and Jef Winsor | 1982 | ✓ |
 | vip-chip-8-x-fpd | .c8xfpd | A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug | 1982 | ✓ |
 | vip-chip-8-e | .c8e | CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 | 1979 | ✓ |
+| vip-chip-8-r | .c8r | CHIP-8R, a research variant with PC relative jumps (BBnn, BFnn), calls through I (BC00) and 16 bit I loads (F000 nnnn) for programs beyond 4k, also supported by Chiplet | 2026 | ✓ |
 | **HP-48SX** | **LLE** | **Emulation of a HP-48SX Calculator** | |
-| hp-48-none | .hp; .hp48 | Raw HP-48SX, debugger still wip | 1990 | - |
-| hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX, debugger still wip | 1990 | WIP |
-| hp-48-schip-1-0-beta | .sc10b | SUPER-CHIP 1.0 beta on HP-48SX, debugger still wip | 1991 | WIP |
-| hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX, debugger still wip | 1991 | WIP |
-| hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX, debugger still wip | 1991 | WIP |
-| hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX, debugger still wip | 2017 | WIP |
+| hp-48-none | .hp; .hp48 | Raw HP-48SX, needs HP's revision E ROM, the built-in replacement ROM only runs the interpreters | 1990 | ✓ |
+| hp-48-chip-48 | .ch48; .c48 | Original CHIP-48 on HP-48SX | 1990 | ✓ |
+| hp-48-schip-1-0-beta | .sc10b | SUPER-CHIP 1.0 beta on HP-48SX | 1991 | ✓ |
+| hp-48-schip-1-0 | .sc10 | SUPER-CHIP 1.0 on HP-48SX | 1991 | ✓ |
+| hp-48-schip-1-1 | .sc8; .sc11 | SUPER-CHIP 1.1 on HP-48SX | 1991 | ✓ |
+| hp-48-schpc | .sc8; .scc | SUPER-CHIP compatibility interpreter on HP-48SX | 2017 | ✓ |
 | **DREAM 6800** | **LLE** | **Emulation of a DREAM6800 system** | |
 | dream-none | .bin; .hex; .ram; .raw | Raw DREAM6800 (loading to 0x200, unless .hex, and running it there) | 1979 | ✓ |
 | dream-chip-8 | .bin; .hex; .ram; .raw | CHIP-8 DREAM6800 (loading to 0x200, unless .hex, and running 0xC000) | 1979| ✓ |
@@ -136,10 +183,12 @@ The Supported presets are (possible specific file extensions in parentheses):
 | **ETI-660** | **LLE** | **Emulation of a ETI-660** | |
 | eti-none | .et660; .bin; .hex; .ram; .raw | Raw ETI660 | 1982 | ✓ |
 | eti-chip-8 | .c8eti | CHIP-8 on the ETI-660 (64x48) | 1982 | ✓ |
+| **RCA Studio II** | **LLE** | **Emulation of an RCA Studio II** | |
+| studio-2-builtin | - | RCA Studio II with its built-in games (pad A on keys 1-9 and 0), still more of a preview | 1977 | WIP |
 
 **NOTE:** Be aware that are no established standard file extension beyond `.ch8` in the CHIP-8 world. Different emulators come with files
 with different conventions, so this project used existing ones where they seemed fitting and invented their own where
-none where found. You can always use `.ch8`, for files known to Cadmium (short of 600 are known by it), this will
+none where found. You can always use `.ch8`, for files known to Cadmium (about 1100 are known by it), this will
 work seamlessly. For programs undetected, the settings screen allows to remember a configuration for a file. Like known
 roms, it is only based on the SHA1 of the content, so as long as any valid extension is used the detection will work.
 For undetected files with a specific extension that multiple variants support, the first one in the order above will be
@@ -147,73 +196,141 @@ used.
 
 ### Roadmap of upcoming variants that are currently in development (no promises on a date):
 
-* Hardware emulation of a DREAM6800:
-  * `dream-none` - Raw DREAM6800 for programs written in M6800 assembler (`.d68`;`.bin`;`.hex`;`.ram`;`.raw`)
-  * `dream-chipos` - CHIPOS, that is CHIP-8 on an emulated DREAM6800 by Mike Bauer, 1978 (`.ch8d`)
-  * `dream-chiposlo` - CHIPOSLO is an extension of CHIPOS, adding the missing opcodes, on an emulated DREAM6800, by Tobias V. Langhoff, 2020
-* Hardware emulation of an ETI-660:
-  * `et660-none` - Raw ETI-660 without any CHIP-8 preloaded (`.et660`;`.bin`;`.hex`;`.ram`;`.raw`)
-  * `et660-chip-8` - The CHIP-8 on an emulated ETI-660
-* Hardware emulation of "enough of" a HP-48SX (not a full HP-48SX, so not usable as calculator):
-  * `hp48-chip-48`
-  * `hp48-schip-1-0-beta`
-  * `hp48-schip-1-0`
-  * `hp48-schip-1-1`
-  * `hp48-schpc`
+The DREAM6800, ETI-660 and HP-48SX hardware emulations of the earlier roadmap are done (see the
+table above), the RCA Studio II is still a preview. Still planned:
+
 * Hardware emulation of "enough of" an Amiga (just enough to faithfully run Paul Hayters CHIP-8):
   * `amiga-chip-8`
 
 
 ----
 
-Whith `CHIP-8-STRICT` Cadmium might be the first high-level emulator that has
+With `strict-chip-8` Cadmium might be the first high-level emulator that has
 a core that can execute CHIP-8 with the behavior and timing of the initial
 VIP CHIP-8 interpreter without actually emulating the actual COSMAC VIP. While
 this core, like other HLE emulators, can not execute machine subroutines, it
 emulates the exact timing behavior of every instruction and the overall frame
 timing to reach cycle exact accuracy compared to the real machine. The main
-difference to the VIP-CHIP-8 preset is, that this one needs quite less host
+difference to the `vip-chip-8` preset is, that this one needs quite less host
 CPU resources, but as said, can't run hybrid programs.
 
-The `SUPER-CHIP COMP` or `SCHIPC` is a more generic variant that is similar
-to Chromatophores SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
-(often developed on Octo) that target SuperCHIP to run without tweeking some
+The `strict-schip-1-1` core does the same for SUPER-CHIP 1.1 as it runs on the
+HP-48SX, based on the measured timing of the interpreter, optionally with the
+HP-48SX display emulation, without the cost of emulating the calculator.
+
+The `schipc` preset is a more generic variant that is similar to
+Chromatophore's SCHPC/GCHPC variants of SCHIP1.1 to allow more modern games
+(often developed on Octo) that target SuperCHIP to run without tweaking some
 quirks that, while correct for the original SCHIP1.1, are not common in modern
 programs.
 
-The `MODERN-SUPER-CHIP` is more or less Octo's interpretation of SUPER-CHIP
+The `schip-modern` preset is more or less Octo's interpretation of SUPER-CHIP
 and what Timendus test suite v4.1 checks for as modern SCHIP.
 
-The `VIP-CHIP-8` variant presets activate a core that is emulating a COSMAC
-VIP driven by a CDP1802 CPU with 4k RAM, to execute original CHIP-8
+The `vip-*` presets activate a core that is emulating a COSMAC VIP driven by a
+CDP1802 CPU with 4k RAM (configurable up to 32k), to execute original CHIP-8
 interpreter variants to allow more accurate emulation of classic CHIP-8 and even
 allow hybrid roms (`.hc8`) that contain CDP1802 parts to execute on Cadmium.
-The currently available behaviors are classic CHIP-8, CHIP-8 Two Page Display (TPD),
-HI-RES-CHIP-8 (four page display, FPD), and CHIP-8X with the _VP-590 Color Board_
-and the _VP-595 Simple Sound Board_ attached, as well as a TDP and a HI-RES
-version of 8X using that hardware.
+The available behaviors are classic CHIP-8, CHIP-10, CHIP-8 with relative
+branching, CHIP-8 Two Page Display (TPD, also Tom Swan's version),
+HI-RES-CHIP-8 (four page display, FPD), CHIP-8E, CHIP-8X with the _VP-590 Color
+Board_ and the _VP-595 Simple Sound Board_ attached, as well as a TPD and a
+HI-RES version of 8X using that hardware, and the CHIP-8R research variant.
+With `vip-none` Cadmium runs a raw COSMAC VIP without any CHIP-8 interpreter,
+to load and run games and programs made for the VIP that don't use CHIP-8.
 
-The `CHIP-8-DREAM` preset activates a core that is emulating a DREAM6800
-driven by an M6800 CPU with 4k RAM, to execute the original CHIP-8 CHIPOS
-kernel and run an accurate emulation of DREAM6800 CHIP-8. This core also
-allows hybrid roms that use machine code parts.
+The `hp-48-*` presets activate a core that is emulating an HP-48SX with its
+Saturn CPU, running the original CHIP-48, SUPER-CHIP 1.0 beta, 1.0, 1.1 and
+Chromatophore's SCHPC interpreters, assembled from source (SUPER-CHIP 1.0 beta,
+1.1 and SCHPC are source reconstructions from the binaries, as the originals are
+lost). Cadmium comes with its own clean-room replacement ROM for it, so the
+interpreters run in every build, including the web version, but it is not a
+calculator, so `hp-48-none` needs HP's revision E ROM. The debugger works on the
+CHIP-8 level as well as on the Saturn CPU.
 
-There now also is the possibility to select a COSMAC VIP without any CHIP-8
-interpreter. Cadmium then falls back into a raw 1802 COSMAC VIP emulation
-that allows to load and run games and programs made for the VIP that don't
-use CHIP-8.
+The `dream-chip-8` preset activates a core that is emulating a DREAM6800
+driven by an M6800 CPU with 4k RAM (or 2k), to execute the original CHIP-8 CHIPOS
+kernel and run an accurate emulation of DREAM6800 CHIP-8, `dream-chip-8-lop`
+uses CHIPOSLO with its logical operators instead. This core also allows hybrid
+roms that use machine code parts, and `dream-none` runs native M6800 programs
+without CHIPOS.
+
+The `eti-chip-8` preset emulates an ETI-660 (CDP1802 with CDP1864 video and
+sound) running its 64x48 CHIP-8, `eti-none` the raw machine.
+
+The `studio-2-builtin` preset emulates an RCA Studio II running its built-in
+games, this is still more of a preview.
 
 ### Multi Architecture Debugging
 
 Cadmium allows for those presets, that emulate actual hardware, to debug
-seamlessly on the CHIP-8 opcode level or the backend CPU assembly level:
+seamlessly on the CHIP-8 opcode level or the backend CPU assembly level. Here
+the same program, Timendus' Corax+ opcode test, runs on the original
+interpreters of three different machines:
 
-![Cadmium emulating DREAM6800](media/cadmium_mdbg_01.png?raw=true "Debugging on CHIP8 level") ![Cadmium emulating DREAM6800](media/cadmium_mdbg_02.png?raw=true "Debugging on M6800 level")
+<table>
+<tr>
+<td width="50%"><img src="media/cadmium_mdbg_01.png?raw=true" width="100%" alt="Corax+ on the COSMAC VIP, debugging on CHIP-8 level"></td>
+<td width="50%"><img src="media/cadmium_mdbg_02.png?raw=true" width="100%" alt="Corax+ on the COSMAC VIP, debugging on CDP1802 level"></td>
+</tr>
+<tr>
+<td>COSMAC VIP (<code>vip-chip-8</code>) on the CHIP-8 level</td>
+<td>The same moment on the CDP1802 level of the VIP's CHIP-8 interpreter</td>
+</tr>
+<tr>
+<td width="50%"><img src="media/cadmium_mdbg_03.png?raw=true" width="100%" alt="Corax+ on the HP-48SX, debugging on Saturn level"></td>
+<td width="50%"><img src="media/cadmium_mdbg_04.png?raw=true" width="100%" alt="Corax+ on the DREAM6800, debugging on M6800 level"></td>
+</tr>
+<tr>
+<td>HP-48SX with SUPER-CHIP 1.1 (<code>hp-48-schip-1-1</code>) on the Saturn level</td>
+<td>DREAM6800 with CHIPOSLO (<code>dream-chip-8-lop</code>) on the M6800 level</td>
+</tr>
+</table>
 
 Breakpoints and single stepping works in both views, the selected instruction
 tab defines the logical entity the debug buttons work on, the register view
 shows the registers of that entity. Breakpoints of the hidden entity still
 work and the tab switches to the entity that hit the breakpoint.
+
+Breakpoints have a break condition, a log format and a log condition, all
+editable in the breakpoint tab. An empty condition always breaks, an empty
+log condition logs whenever the breakpoint breaks. Conditions are expressions
+using the registers of the CPU (`v0`-`vf`, `v[n]`, `i`, `pc`, `sp`, `dt`, `st`
+for CHIP-8) and `ram[addr]`, with decimal, `0x` hex or `0b` binary numbers and
+C operators (`+ - * / % << >> < <= > >= == != & ^ | && || ! ~`). Labels and
+constants of the loaded Octo source can be used too, as long as their names are
+C identifiers (`ram[data+1]`, `v0 == LIMIT`). The log format is text with
+`{expression}` or `{expression:spec}` placeholders, `spec` being a
+[fmt](https://fmt.dev) format spec like `02x` for the value, or an Octo monitor
+field like `%2i` that reads bytes from memory at the value as address:
+`{data:%2i}` shows two bytes at `data` as a number, `{i:%4x}` four bytes at `I`
+in hex.
+
+The Octo `:breakpoint` directive sets these from its text:
+
+| Directive                              | Breaks              | Logs              |
+|----------------------------------------|---------------------|-------------------|
+| `:breakpoint "frame-done"`             | always              | `frame-done`      |
+| `:breakpoint "hit v0={v0} i={i:04x}"`  | always              | `hit v0=3 i=0300` |
+| `:breakpoint "v0 == 3"`                | when `v0` is 3      | `v0 == 3`         |
+| `:breakpoint "v0 == 3 ? i={i:04x}"`    | when `v0` is 3      | `i=0300`          |
+| `:breakpoint "v0 == 3 ? {data:%2x}"`   | when `v0` is 3      | `1234`            |
+
+The text is split at the first `?` outside of a placeholder, but only if the
+part before it is a valid expression, so a plain name with a `?` stays a name.
+
+The Watch tab next to the breakpoints shows values that are updated while the
+program runs. The Octo `:monitor` directives of the compiled source come first
+and look like in Octo: `:monitor data 4` shows four bytes from the label
+`data`, `:monitor v2 3` the registers `v2` to `v4`, and a format like
+`:monitor pos "x:%i y:%i"` reads consecutive bytes with `%[bytes]i` (decimal),
+`x` (hex), `b` (binary) and `c` (7 bit ASCII). As a Cadmium extension the text
+of a monitor format can have the `{...}` placeholders of the log formats, like
+`:monitor pos "x:%i y:%i speed {SPEED}"`, also without any `%` field
+(`:monitor pos "{pos:%2x} at {pos:04x}"`), but Octo itself can't assemble the
+latter and shows the braces of the former as they are. Below the monitors,
+watches can be added in the tab, either an expression like `ram[i] + v1` or a
+log format like `pos {ram[i]:02x}` with the same syntax as breakpoints.
 
 **Note:** Be aware, that in COSMAC VIP 1802 mode, while breakpoints and single
 stepping works fine, there is no step-over/step-out support as there is no
@@ -284,17 +401,47 @@ USAGE: cadmium [options] ...
 OPTIONS:
 
 General Options:
+  --custom-palette <arg>
+    Set the colors of the palette, as comma separated list like "#000000,#FFFFFF,..."
+
   --draw-dump
     Dump screen after every draw when in trace mode.
 
+  --dump-interpreter <arg>
+    Dump the given interpreter in a local file named '<interpreter>.ram' and exit
+
+  --dump-screen <arg>
+    Export the last headless presentation as an image
+
+  --dump-state <arg>
+    Export headless machine state as JSON
+
+  --export-metadata-db <arg>
+    Write the library without ROM data and file names to the given file, as starter library for the resources
+
+  --headless
+    Run a binary ROM deterministically without a window (generic CHIP-8 core)
+
+  --max-instructions <arg>
+    Limit headless instruction steps (default 3000000)
+
   --opcode-json
     Dump opcode information as JSON to stdout
+
+  --opcode-stats
+    Print the opcode statistics of the given ROM files as JSON, analyzed like the library does
 
   --screen-dump
     When in trace mode, dump the final screen content to the console
 
   --test-suite-menu <arg>
     Sets 0x1ff to the given value before starting emulation in trace mode, useful for test suite runs.
+
+  --until-presentations <arg>
+    Stop after this many display updates; requires --headless
+
+  --update-program-database <arg>
+    Compare the library with the given programs.json of the chip-8-database and write programs_<timestamp>.json with the missing programs added
 
   -b <arg>, --benchmark <arg>
     Run given number of cycles as benchmark
@@ -309,6 +456,8 @@ General Options:
     Select one of the following available preset:
         Default HLE CHIP-8 emulation:
             chip-8 - The classic CHIP-8 for the COSMAC VIP by Joseph Weisbecker, 1977 (.ch8)
+            chip-8-tpd - CHIP-8 with two page display (64x64), from #VIPER-V1-I3, by Andy Modla and Jef Winsor, 1979 ()
+            chip-8-fpd - CHIP-8 with four page display (64x128), from #VIPER-V2-I6, by Tom Swan, 1980 ()
             chip-10 - 128x64 CHIP-8 from #VIPER-V1-I7 and #IpsoFacto-I10, by Ben H. Hutchinson, Jr., 1979 (.ch10)
             chip-8-e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
             chip-8-x - An official update to CHIP-8 by RCA, requiring the color extension VP-590 and the simple sound board VP-595, 1980 (.c8x)
@@ -322,6 +471,10 @@ General Options:
             xo-chip - A modern extension to SUPER-CHIP supporting colors and actual sound first implemented in Octo by John Earnest, 2014 (.xo8)
         First cycle exact HLE emulation of CHIP-8 on a COSMAC VIP:
             strict-chip-8 - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (.ch8;.c8vip)
+        First cycle exact HLE emulation of SCHIP 1.1 on an HP-48SX:
+            strict-schip-1-1 - Cycle exact SUPER-CHIP 1.1 as it runs on an HP-48SX, 1991 (.sc8;.sc11)
+        Faithful RS-M8001 interpreter with checked bounds:
+            rs-megachip - 2007 RS-M8001 implementation (original bugs, checked bounds) (.ch8;.mc8)
         Hardware emulation of a COSMAC VIP:
             vip-none - Raw COSMAC VIP without any CHIP-8 preloaded (.bin;.hex;.ram;.raw;.cos)
             vip-chip-8 - The classic CHIP-8 that came from Joseph Weisbecker, 1977 (.ch8;.c8vip;.hc8)
@@ -334,12 +487,23 @@ General Options:
             vip-chip-8-x-tpd - A modified version of CHIP-8X to use two page display (64x64), from #VIPER-V4-I3, by by Andy Modle and Jef Winsor (.c8xtpd)
             vip-chip-8-x-fpd - A modified version of CHIP-8X for the four page display mode (64x128), from #VIPER-V4-I3, by Tom Swan, sadly not actually working as described due to an implementation bug (.c8xfpd)
             vip-chip-8-e - CHIP-8 rewritten and extended by Gilles Detillieux, from #VIPER-V2-8+9 (.c8e)
+            vip-chip-8-r - CHIP-8 research variant with PC relative jumps (BBnn, BFnn), calls through I (BC00) and 16 bit I loads (F000 nnnn) instead of BMMM, for programs beyond 4k (.c8r)
+        Hardware emulation of an HP-48SX:
+            hp-48-none - Raw HP-48SX (.hp;.hp48)
+            hp-48-chip-48 - Original CHIP-48 on HP-48SX (.ch48;.c48)
+            hp-48-schip-1-0-beta - SUPER-CHIP 1.0 beta on HP-48SX (.sc10b)
+            hp-48-schip-1-0 - SUPER-CHIP 1.0 on HP-48SX (.sc10)
+            hp-48-schip-1-1 - SUPER-CHIP 1.1 on HP-48SX (.sc8;.sc11)
+            hp-48-schpc - SUPER-CHIP compatibility interpreter on HP-48SX (.sc8;.scc)
         Hardware emulation of a DREAM6800:
             dream-none - Raw DREAM6800 (.bin;.hex;.ram;.raw)
             dream-chip-8 - CHIP-8 DREAM6800 (.bin;.hex;.ram;.raw)
             dream-chip-8-lop - CHIP-8 with logical operators on DREAM6800 (.bin;.hex;.ram;.raw)
         Hardware emulation of an ETI660:
-            eti-none - Raw ETI660 (.bin;.hex;.ram;.raw)
+            eti-none - Raw ETI660 (.et660;.bin;.hex;.ram;.raw)
+            eti-chip-8 - CHIP-8 on the ETI-660 (64x48) (.c8eti)
+        Hardware emulation of an RCA Studio II:
+            studio-2-builtin - RCA Studio II with its built-in games (pad A on keys 1-9 and 0) ()
 
   -r, --[no-]run
     if a ROM is given (positional) start it
@@ -347,9 +511,15 @@ General Options:
   -t <arg>, --trace <arg>
     Run headless and dump given number of trace lines
 
+  -v, --version
+    Show version information
+
 CHIP-8 GENERIC Options (only available if preset uses default core):
   --[no-]clean-ram
     Clean RAM
+
+  --[no-]crt-effect
+    Show the screen like a CRT with visible scan lines (display only)
 
   --[no-]cubechip-tone
     CubeChip contextual tone
@@ -369,6 +539,9 @@ CHIP-8 GENERIC Options (only available if preset uses default core):
   --[no-]half-pixel-scroll
     Half pixel scrolling
 
+  --[no-]hp-48-display
+    HP-48SX display emulation
+
   --[no-]instant-dxyn
     Dxyn doesn't wait for vsync
 
@@ -379,13 +552,13 @@ CHIP-8 GENERIC Options (only available if preset uses default core):
     Bxnn/jump0 uses Vx
 
   --[no-]just-shift-vx
-    8xy6/8xyE just shift VX
+    8xy6/8xyE just shift Vx
 
   --[no-]load-store-inc-i-by-x
-    Fx55/Fx65 increment I by X
+    Fx55/Fx65 increment I by x
 
   --[no-]load-store-inc-i-by-x-plus-1
-    Fx55/Fx65 increment I by X + 1
+    Fx55/Fx65 increment I by x + 1
 
   --[no-]lores-dxy-0-is-16-x-16
     Lores Dxy0 draws 16 pixel width
@@ -407,6 +580,9 @@ CHIP-8 GENERIC Options (only available if preset uses default core):
 
   --[no-]schip-preview-fx-29
     HP SuperChip 1.0 'preview' Fx29
+
+  --screen-rotation <arg>
+    Clockwise rotation of the shown screen, for programs played sideways (0, 90, 180, 270)
 
   --trace-file <arg>
     Trace log file
@@ -430,12 +606,32 @@ CHIP-8 STRICT Options (only available if preset uses strict core):
   --[no-]trace-log
     Enable trace log
 
+SCHIP-STRICT Options (only available if preset uses strict core):
+  --[no-]clean-ram
+    Delete ram on startup
+
+  --[no-]hp-48-display
+    HP-48SX display emulation
+
+  --[no-]trace-log
+    Enable trace log
+
+RS-M8K1 Options (only available if preset uses default core):
+  --[no-]trace-log
+    Enable opcode trace
+
+  --[no-]vip-mode
+    Original mode-1 behavior, including double shifts
+
 COSMAC-VIP Options (only available if preset uses vip core):
   --[no-]clean-ram
     Delete ram on startup
 
   --clock-rate <arg>
     Clock frequency, default is 1760640
+
+  --[no-]crt-effect
+    Show the screen like a CRT with visible scan lines (display only)
 
   --memory <arg>
     Size of ram in bytes (2048, 4096, 8192, 12288, 16384, 32768)
@@ -446,12 +642,25 @@ COSMAC-VIP Options (only available if preset uses vip core):
   --[no-]trace-video
     Insert video events into trace log
 
+HP-48SX Options (only available if preset uses hp-48 core):
+  --contrast <arg>
+    Display contrast (0-31, the calculator default is 11)
+
+  --[no-]fixed-contrast
+    Use the Contrast setting instead of the contrast the calculator sets
+
+  --rom <arg>
+    HP-48SX ROM asset (sxrom-rev-e, cadmium-hp-48-sx-rom)
+
 DREAM6800 Options (only available if preset uses dream core):
   --[no-]clean-ram
     Delete ram on startup
 
   --clock-rate <arg>
     Clock frequency, default is 1000000
+
+  --[no-]crt-effect
+    Show the screen like a CRT with visible scan lines (display only)
 
   --memory <arg>
     Size of ram in bytes (2048, 4096)
@@ -469,14 +678,27 @@ ETI660 Options (only available if preset uses eti core):
   --clock-rate <arg>
     Clock frequency, default is 1773448
 
-  --memory <arg>
-    Size of ram in bytes (3072)
+  --[no-]crt-effect
+    Show the screen like a CRT with visible scan lines (display only)
+
+  --[no-]trace-log
+    Enable trace log
+
+STUDIO-II Options (only available if preset uses studio-2 core):
+  --[no-]clean-ram
+    Delete ram on startup
+
+  --clock-rate <arg>
+    Clock frequency, default is 1760640
+
+  --[no-]crt-effect
+    Show the screen like a CRT with visible scan lines (display only)
 
   --[no-]trace-log
     Enable trace log
 
 ...
-    ROM file or source to load (.bin, .c10, .c48, .c8e, .c8fpd, .c8h, .c8rb, .c8tpd, .c8tpdts, .c8vip, .c8x, .c8xfpd, .c8xtpd, .ch10, .ch48, .ch8, .cos, .hc8, .hex, .mc8, .ram, .raw, .sc10, .sc10b, .sc11, .sc8, .scc, .scm, .xo8)
+    ROM file or source to load (.bin, .c10, .c48, .c8e, .c8eti, .c8fpd, .c8h, .c8r, .c8rb, .c8tpd, .c8tpdts, .c8vip, .c8x, .c8xfpd, .c8xtpd, .ch10, .ch48, .ch8, .cos, .et660, .hc8, .hex, .hp, .hp48, .mc8, .ram, .raw, .sc10, .sc10b, .sc11, .sc8, .scc, .scm, .xo8)
 ```
 
 ## Versioning

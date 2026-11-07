@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include <rlguipp/rlguipp.hpp>
+#include <algorithm>
 #include <fmt/format.h>
 #include <ghc/bit.hpp>
 #include <stylemanager.hpp>
@@ -194,6 +195,10 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
     }
     if (BeginTab("Breakpoints", {5, 0})) {
         showBreakpoints(font, lineSpacing);
+        EndTab();
+    }
+    if (BeginTab("Watch", {5, 0})) {
+        showWatches(font, lineSpacing);
         EndTab();
     }
     EndTabView();
@@ -495,7 +500,6 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
         SetStyle(TEXTBOX, TEXT_COLOR_NORMAL, colTBnorm);
         SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
 
-        GuiDisable();
         Label("Log Format:");
         TextBox("logFormat", bpinfo->label, 256);
 
@@ -512,11 +516,110 @@ void Debugger::showBreakpoints(Font& font, const int lineSpacing)
         SetStyle(TEXTBOX, TEXT_COLOR_PRESSED, colTBfocus);
 
         Label("Hit Count:");
+        GuiDisable();
         TextBox("hitCount", _bpHitCount, 64);
         GuiEnable();
         PopId();
     }
     Space(GetContentAvailable().height);
+}
+
+void Debugger::showWatches(Font& font, const int lineSpacing)
+{
+    // Octo `:monitor` entries of the compiled source first, then the ones added here.
+    // Values are read every frame, so they follow the running program like in Octo.
+    using namespace gui;
+    static Vector2 scroll{0, 0};
+    constexpr float LINE_HEIGHT = 11.0f;
+    auto area = GetContentAvailable();
+    Space(2);
+    BeginTableView(area.height - (2 * 14.0f + 6), "watches", {TableColumn::Fixed(12), TableColumn::Fixed(84), TableColumn::Stretch()}, &scroll);
+    SetRowHeight(LINE_HEIGHT);
+    auto showRow = [&](const std::string& name, const std::string& value, bool removable) -> bool {
+        bool remove = false;
+        const auto lines = static_cast<float>(std::ranges::count(value, '\n') + 1);
+        TableNextRow(lines * LINE_HEIGHT);
+        TableNextColumn([&](Rectangle rect) {
+            if (removable) {
+                GuiDrawIcon(ICON_CROSS_SMALL, rect.x - 2, rect.y - 3, 1, RED);
+                remove = !GuiIsLocked() && IsMouseButtonPressed(0) && CheckCollisionPointRec(GetMousePosition(), rect);
+            }
+        });
+        TableNextColumn([&](Rectangle rect) {
+            // DrawTextClipped only clips to the table, so a long watch text is cut to the column
+            auto shown = name;
+            const auto maxWidth = rect.width - 4;
+            if (MeasureTextEx(font, shown.c_str(), static_cast<float>(font.baseSize), 0).x > maxWidth) {
+                while (!shown.empty() && MeasureTextEx(font, (shown + "..").c_str(), static_cast<float>(font.baseSize), 0).x > maxWidth)
+                    shown.pop_back();
+                shown += "..";
+            }
+            DrawTextClipped(font, shown.c_str(), {rect.x + 2, rect.y + 2}, removable ? WHITE : YELLOW);
+        });
+        TableNextColumn([&](Rectangle rect) {
+            size_t start = 0;
+            for (int line = 0; start <= value.size(); ++line) {
+                auto end = value.find('\n', start);
+                if (end == std::string::npos)
+                    end = value.size();
+                DrawTextClipped(font, value.substr(start, end - start).c_str(), {rect.x + 2, rect.y + 2 + line * LINE_HEIGHT}, WHITE);
+                start = end + 1;
+            }
+        });
+        return remove;
+    };
+    for (const auto& monitor : _octoMonitors) {
+        showRow(monitor.name, octoMonitorValue(monitor), false);
+    }
+    for (auto iter = _userWatches.begin(); iter != _userWatches.end();) {
+        if (showRow(*iter, userWatchValue(*iter), true))
+            iter = _userWatches.erase(iter);
+        else
+            ++iter;
+    }
+    EndTableView();
+    SetRowHeight(14);
+    Label("Add Watch (expression or format):");
+    BeginColumns();
+    SetSpacing(2);
+    SetNextWidth(GetContentAvailable().width - 18);
+    TextBox("newWatch", _newWatch, 256);
+    bool add = IsLastWidgetEditFinished() && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER));
+    add = Button("+") || add;
+    EndColumns();
+    if (add && !_newWatch.empty()) {
+        _userWatches.push_back(std::move(_newWatch));
+        _newWatch.clear();
+    }
+    Space(GetContentAvailable().height);
+}
+
+std::string Debugger::octoMonitorValue(const emu::OctoCompiler::MonitorInfo& monitor)
+{
+    auto* chip8 = chip8Core();
+    if (!chip8)
+        return "-";
+    // the literal parts can have `{...}` placeholders, a Cadmium extension
+    auto text = [chip8](std::string_view literal) { return chip8->formatExpression(literal); };
+    if (monitor.source == emu::OctoCompiler::MonitorInfo::eREGISTER)
+        return monitor.render([chip8](uint32_t index) -> uint8_t { return index < 16 ? chip8->getV(static_cast<uint8_t>(index)) : 0; }, text);
+    return monitor.render([chip8](uint32_t index) -> uint8_t { return chip8->readMemoryByte(index); }, text);
+}
+
+std::string Debugger::userWatchValue(const std::string& text)
+{
+    emu::GenericCpu* unit = chip8Core();
+    if (!unit)
+        unit = _core->executionUnit(0);
+    if (!unit)
+        return "-";
+    if (text.find('{') != std::string::npos)
+        return unit->formatExpression(text);
+    auto [expr, error] = unit->parseExpression(text);
+    if (!expr)
+        return error;
+    const auto value = expr->eval();
+    return fmt::format("{} (0x{:X})", value, value);
 }
 
 void Debugger::selectBreakpoint(int idx)
@@ -718,20 +821,22 @@ void Debugger::toggleBreakpoint(emu::GenericCpu& cpu, uint32_t address)
     refreshBreakpoints();
 }
 
-void Debugger::updateOctoBreakpoints(const emu::OctoCompiler& compiler)
+void Debugger::clearOctoDebugInfo()
 {
+    _octoMonitors.clear();
+    if (auto core = chip8Core())
+        core->setSourceSymbols({});
+}
+
+void Debugger::updateOctoDebugInfo(const emu::OctoCompiler& compiler)
+{
+    _octoMonitors = compiler.monitors();
     if(auto core = chip8Core(); core) {
+        core->setSourceSymbols(compiler.symbolValues());
         for(uint32_t addr = 0; addr < std::min(core->memSize(), 65536); ++addr) {
             const auto bpn = compiler.breakpointForAddr(addr);
             if(!bpn.empty()) {
-                auto label = std::string(bpn);
-                auto compiled = core->parseExpression(label);
-                if(compiled.first) {
-                    core->setBreakpoint(addr, {.condition = label, .label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true, .conditionExpr = std::move(compiled)});
-                }
-                else {
-                    core->setBreakpoint(addr, {.label = label, .type = emu::GenericCpu::BreakpointInfo::eCODED, .isEnabled = true});
-                }
+                core->setBreakpoint(addr, core->codedBreakpoint(bpn));
             }
             else {
                 if (auto* bpi = core->findBreakpoint(addr); bpi && bpi->type == emu::GenericCpu::BreakpointInfo::eCODED)

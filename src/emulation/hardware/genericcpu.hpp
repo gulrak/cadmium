@@ -193,13 +193,12 @@ public:
             if(iter != _breakpoints.end() && iter->second.isEnabled) {
                 auto& bpi = iter->second;
                 ++bpi.numHits;
-                if (bpi.conditionExpr.first) {
-                    auto triggered = bpi.conditionExpr.first->eval() != 0;
-                    doLog(fmt::format("{}: {}", _expressionist.format(bpi.label), triggered ? "triggered" : "not triggered"));
-                    return triggered;
+                const bool triggered = !bpi.conditionExpr.first || bpi.conditionExpr.first->eval() != 0;
+                const bool logIt = bpi.logConditionExpr.first ? bpi.logConditionExpr.first->eval() != 0 : triggered;
+                if (logIt) {
+                    doLog(_expressionist.format(bpi.label));
                 }
-                doLog(_expressionist.format(bpi.label));
-                return true;
+                return triggered;
             }
         }
         return false;
@@ -213,11 +212,34 @@ public:
         }
         return {0,0};
     }
-    virtual bool isBreakpointTriggered() { auto result = _breakpointTriggered; _breakpointTriggered = false; return result; }
+    virtual bool isBreakpointTriggered()
+    {
+        auto result = _breakpointTriggered; _breakpointTriggered = false; return result;
+    }
 
     Expressionist::CompiledExpression parseExpression(std::string_view expr)
     {
         return _expressionist.parseExpression(expr);
+    }
+    std::string formatExpression(std::string_view fmt)
+    {
+        return _expressionist.format(fmt);
+    }
+    void setSourceSymbols(const std::vector<std::pair<std::string, int64_t>>& symbols)
+    {
+        _expressionist.setSourceSymbols(symbols);
+    }
+    BreakpointInfo codedBreakpoint(std::string_view text)
+    {
+        auto [condition, format] = _expressionist.splitConditionalFormat(text);
+        if (format.empty()) {
+            format = condition;  // "v0 == 3 ?" still needs a name for the breakpoint list
+        }
+        BreakpointInfo bpi{.condition = std::move(condition), .label = std::move(format), .type = BreakpointInfo::eCODED, .isEnabled = true};
+        if (!bpi.condition.empty()) {
+            bpi.conditionExpr = _expressionist.parseExpression(bpi.condition);
+        }
+        return bpi;
     }
 protected:
     virtual void handleReset(bool) = 0;

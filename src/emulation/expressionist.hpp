@@ -35,6 +35,7 @@
 #include <string>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 namespace emu {
 
@@ -52,7 +53,7 @@ class Expressionist {
 public:
     using Value = std::variant<int64_t, const uint8_t*, const uint16_t*, const uint32_t*, const int*, const bool*, std::function<int64_t(uint32_t)>, std::function<int64_t()>>;
     enum UnaryOperation { Neg, Not, Inv };
-    enum BinaryOperation { Add, Sub, Mul, Div, Shl, Shr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual, Index };
+    enum BinaryOperation { Add, Sub, Mul, Div, Mod, Shl, Shr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Less, LessEqual, Greater, GreaterEqual, Equal, NotEqual, Index };
     struct Expr {
         virtual ~Expr() = default;
         virtual int64_t eval() const = 0;
@@ -65,11 +66,27 @@ public:
     {
         _symbols.emplace(ident, DefinedSymbol{value, mask});
     }
+    struct ConditionalFormat {
+        std::string condition;
+        std::string format;
+    };
+    // Labels and constants of the loaded source, they are only used for names that are not
+    // defined by the CPU, so a label can't hide a register.
+    void setSourceSymbols(const std::vector<std::pair<std::string, int64_t>>& symbols);
     CompiledExpression parseExpression(std::string_view expr);
+    // Replaces `{expr}` and `{expr:spec}` placeholders, `spec` is a fmt format spec like `02x`
+    // or an Octo monitor field like `%2i` that reads bytes from `ram` at the address `expr`.
     std::string format(std::string_view fmt);
+    // Splits a breakpoint text into a condition and a log format:
+    // - the whole text is a valid expression: it is the condition and the format,
+    // - "<condition> ? <format>" with a valid condition before the first '?'
+    //   outside of a placeholder: condition and format get split there,
+    // - anything else: no condition, the whole text is the format.
+    ConditionalFormat splitConditionalFormat(std::string_view text);
 
 private:
     static std::string format(std::string_view fmt, const std::function<std::string(std::string_view)>& eval);
+    std::string formatOctoField(int64_t address, std::string_view spec);
     enum class TokenType { End, Number, Identifier, Operator, LeftParen, RightParen, LeftBracket, RightBracket };
 
     struct Token {
@@ -117,6 +134,7 @@ private:
     std::stack<std::unique_ptr<Expr>> _operandStack;
     std::stack<OpStackEntry> _opStack;
     std::unordered_map<std::string, DefinedSymbol> _symbols;
+    std::unordered_map<std::string, int64_t> _sourceSymbols;
 };
 
 }
