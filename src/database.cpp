@@ -3822,6 +3822,8 @@ int Database::exportMetadata(const std::string& dataPath, const std::string& out
         transaction.commit();
         programs = static_cast<int>(database.executeForValue("SELECT COUNT(*) FROM programs;"));
         binaries = static_cast<int>(database.executeForValue("SELECT COUNT(*) FROM binaries;"));
+        // Cadmium creates the index of the opcodes on start, in the resource it would only add size (about 1.4MB)
+        database.execute("DROP INDEX IF EXISTS binary_opcodes_binary_id;");
         // a single file without WAL, as it is copied out of the resources
         database.execute("PRAGMA journal_mode = DELETE;");
         database.execute("VACUUM;");
