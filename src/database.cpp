@@ -2507,20 +2507,20 @@ struct Database::Private
                 file += fmt::format(" (+{})", binary->filenames.size() - 1);
             }
         }
-        std::string description = !program.description.empty() ? program.description : (binary ? binary->description : "");
-        // descriptions from the chip-8-database can have several lines, the row has one
-        std::ranges::replace_if(description, [](char c) { return c == '\n' || c == '\r' || c == '\t'; }, ' ');
-        description.erase(std::unique(description.begin(), description.end(), [](char a, char b) { return a == ' ' && b == ' '; }), description.end());
+        const std::string& description = !program.description.empty() ? program.description : (binary ? binary->description : "");
 
         constexpr float labelWidth = 80;
+        // values wrap and keep their line breaks (descriptions often have several paragraphs), the view scrolls if they don't fit,
+        // it uses the remaining height of the panel, its id changes with the program, so another program starts at the top
+        BeginScrollView(0, fmt::format("programInfo{}", program.id).c_str());
         SetRowHeight(12);
         SetSpacing(0);
-        const auto valueWidth = GetContentAvailable().width - labelWidth - 16;  // minus the label text padding
-        auto row = [&](const char* label, const std::string& value, bool keepEnd = false) {
+        auto row = [&](const char* label, const std::string& value) {
             BeginColumns();
             SetNextWidth(labelWidth);
             Label(label);
-            Label(value.empty() ? "-" : fitText(value, valueWidth, keepEnd).c_str());
+            SetNextWidth(GetContentAvailable().width);
+            LabelWrapped(value.empty() ? "-" : value.c_str());
             EndColumns();
         };
         row("Name:", program.name);
@@ -2531,8 +2531,9 @@ struct Database::Private
         row("Tags:", join(tagNames.begin(), tagNames.end(), ", "));
         row("SHA1:", sha1);
         row("Size:", binary ? fmt::format("{} bytes{}", binary->size, binary->data ? "" : " (missing, not found in the library folders)") : "");
-        row("File:", file, true);
+        row("File:", file);
         row("Description:", description);
+        EndScrollView();
     }
 
     void relayoutList(float width)
@@ -3161,7 +3162,8 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         {
             SetSpacing(4);
-            auto tagsWidth = area.width / 4 - 5;
+            // whole pixels, the list right of it draws its text at its position, and at half pixels the font sampling drops glyph columns
+            auto tagsWidth = std::floor(area.width / 4) - 5;
             SetNextWidth(tagsWidth);
             auto offset = GetCurrentPos();
             auto tagsRect = Rectangle{offset.x, offset.y, tagsWidth, GetContentAvailable().height - 135};
@@ -3343,9 +3345,9 @@ Database::Action Database::render(Font& font)
         //BeginScrollPanel(listRect.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto pos = GetCurrentPos();
         SetNextWidth(area.width - 135);
-        Begin();
+        // REVIEW: no Begin()/End() group around it, as a group inside a panel copies the panel's padding and EndImpl() adds
+        // it below the group, so a view filling the remaining height would push the panel's border over the status bar
         _pimpl->renderProgramInfo();
-        End();
         auto previewRect = Rectangle{pos.x + area.width - 131.0f, pos.y, 130.0f, 98.0f};
         DrawPanelClipped(previewRect, 1, StyleManager::instance().getStyleColor(gui::Style::BORDER_COLOR_NORMAL), {0,0,0,0});
         auto [texture, rect] = _pimpl->backgroundHost.updateTexture();

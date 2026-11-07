@@ -256,7 +256,7 @@ struct TableContext
 
 struct GuiContext
 {
-    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctPANEL, ctGROUPBOX, ctTABVIEW, ctTAB, ctSCROLLPANEL, ctTABLEVIEW, ctPOPUP, ctWINDOWBOX };
+    enum Type { ctROOT, ctGROUP, ctCOLUMNS, ctPANEL, ctGROUPBOX, ctTABVIEW, ctTAB, ctSCROLLPANEL, ctSCROLLVIEW, ctTABLEVIEW, ctPOPUP, ctWINDOWBOX };
     using ContextData = std::variant<std::monostate, RenderTexture*, TableContext*, TabViewContext*>;
     Type type;
     Vector2 initialPos{};
@@ -507,6 +507,17 @@ struct TextEditState
 };
 static std::unordered_map<Id, TextEditState> g_textEditMap;
 
+// State of a BeginScrollView(), the content height is measured at its end, so the scroll bar uses the one of the last frame
+struct ScrollViewState
+{
+    float scroll{0};          // how far the content is scrolled up, in pixels
+    float contentHeight{0};
+    bool lockedGui{false};
+    int64_t lastUpdate{0};
+};
+static std::unordered_map<Id, ScrollViewState> g_scrollViewMap;
+static std::vector<ScrollViewState*> g_scrollViewStack;
+
 struct ClipboardHandler
 {
     std::function<std::string()> getText;
@@ -595,6 +606,7 @@ std::pair<const char*, const char*> functionNames(GuiContext::Type type)
         case GuiContext::ctTABVIEW: return {"BeginTabView", "EndTabView"};
         case GuiContext::ctTAB: return {"BeginTab", "EndTab"};
         case GuiContext::ctSCROLLPANEL: return {"BeginScrollPanel", "EndScrollPanel"};
+        case GuiContext::ctSCROLLVIEW: return {"BeginScrollView", "EndScrollView"};
         case GuiContext::ctTABLEVIEW: return {"BeginTableView", "EndTableView"};
         case GuiContext::ctPOPUP: return {"BeginPopup", "EndPopup"};
         case GuiContext::ctWINDOWBOX: return {"BeginWindowBox", "EndWindowBox"};
@@ -730,6 +742,7 @@ void pruneUnusedState(RenderTexture* renderTexture)
     std::erase_if(g_tableContextMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     std::erase_if(g_menuBarMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     std::erase_if(g_textEditMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
+    std::erase_if(g_scrollViewMap, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     std::erase_if(GuiContext::dropdownBoxes, [lastFrame](const auto& item) { return item.second.lastUpdate < lastFrame; });
     if (GuiContext::openDropdownboxId && !GuiContext::dropdownBoxes.contains(GuiContext::openDropdownboxId)) {
         GuiContext::openDropdownboxId = 0;
@@ -892,6 +905,8 @@ void UnloadGui()
     g_popupUnderMouse = nullptr;
     g_tableContextMap.clear();
     g_textEditMap.clear();
+    g_scrollViewMap.clear();
+    g_scrollViewStack.clear();
     GuiContext::dropdownBoxes.clear();
     GuiContext::openDropdownboxId = 0;
     GuiContext::editFocusId = 0;
@@ -1184,6 +1199,70 @@ static void EndScrollPanelImpl()
 void EndScrollPanel()
 {
     detail::endContext(GuiContext::ctSCROLLPANEL);
+}
+
+void BeginScrollView(float height, const char* id)
+{
+    auto& ctxParent = detail::context();
+    auto& state = g_scrollViewMap[GetId(id)];
+    state.lastUpdate = GuiContext::frameId;
+    auto size = ctxParent.standardSize();
+    Rectangle area{ctxParent.currentPos.x + ctxParent.scrollOffset.x, ctxParent.currentPos.y + ctxParent.scrollOffset.y, size.x,
+                   height > 0 ? height : ctxParent.content.height + ctxParent.content.y - ctxParent.currentPos.y};
+    // the content height is the one of the last frame, a narrower view can only make it higher, so this can't flip every frame
+    const bool hasScrollBar = state.contentHeight > area.height;
+    const float scrollBarWidth = hasScrollBar ? static_cast<float>(GuiGetStyle(LISTVIEW, SCROLLBAR_WIDTH)) : 0.0f;
+    const float maxScroll = std::max(0.0f, state.contentHeight - area.height);
+    const bool mouseInside = CheckCollisionPointRec(GetMousePosition(), area);
+    if (hasScrollBar && mouseInside && !guiLocked && !guiControlExclusiveMode && GuiGetState() != STATE_DISABLED) {
+        state.scroll -= GetMouseWheelMove() * ctxParent.rowHeight * 3;
+    }
+    state.scroll = std::clamp(state.scroll, 0.0f, maxScroll);
+    if (hasScrollBar) {
+        const Rectangle scrollBar{area.x + area.width - scrollBarWidth, area.y, scrollBarWidth, area.height};
+        const int oldSliderSize = GuiGetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE);
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, static_cast<int>(std::max(8.0f, area.height / state.contentHeight * scrollBar.height)));
+        state.scroll = static_cast<float>(GuiScrollBar(scrollBar, static_cast<int>(state.scroll), 0, static_cast<int>(maxScroll)));
+        GuiSetStyle(SCROLLBAR, SCROLL_SLIDER_SIZE, oldSliderSize);
+    }
+
+    auto& ctx = ctxParent.newContext();
+    ctx.type = GuiContext::ctSCROLLVIEW;
+    ctx.area = {ctxParent.currentPos.x, ctxParent.currentPos.y, area.width, area.height};
+    ctx.content = {0, 0, area.width - scrollBarWidth, std::max(area.height, state.contentHeight)};
+    ctx.initialPos = ctx.currentPos = {0, 0};
+    ctx.scrollOffset = {area.x, area.y - state.scroll};
+    ctx.horizontal = false;
+    ctx.bordered = false;
+    ctx.level = 0;
+    ctx.nextWidth = ctx.nextHeight = ctx.defaultWidth = -1;
+    ctx.padding = {0, 0};
+    BeginClipping({area.x, area.y, area.width - scrollBarWidth, area.height});
+    // widgets scrolled out of the view must not react to the mouse
+    state.lockedGui = !mouseInside && !guiLocked;
+    if (state.lockedGui)
+        GuiLock();
+    g_scrollViewStack.push_back(&state);
+    ctx.captureStackSizes();
+}
+
+static void EndScrollViewImpl()
+{
+    auto& ctx = g_contextStack.back();
+    auto* state = g_scrollViewStack.back();
+    g_scrollViewStack.pop_back();
+    state->contentHeight = ctx.currentPos.y > ctx.initialPos.y ? ctx.currentPos.y - ctx.initialPos.y - ctx.spacingV : 0.0f;
+    if (state->lockedGui) {
+        state->lockedGui = false;
+        GuiUnlock();
+    }
+    g_clippingStack.pop();
+    EndImpl({ctx.area.width, ctx.area.height});
+}
+
+void EndScrollView()
+{
+    detail::endContext(GuiContext::ctSCROLLVIEW);
 }
 
 void BeginTableView(float height, const char* id, std::initializer_list<TableColumn> columns, Vector2 *scroll)
@@ -1502,6 +1581,7 @@ void closeContext()
         case GuiContext::ctTABVIEW: EndTabViewImpl(); break;
         case GuiContext::ctTAB: EndTabImpl(); break;
         case GuiContext::ctSCROLLPANEL: EndScrollPanelImpl(); break;
+        case GuiContext::ctSCROLLVIEW: EndScrollViewImpl(); break;
         case GuiContext::ctTABLEVIEW: EndTableViewImpl(); break;
         case GuiContext::ctPOPUP:
         case GuiContext::ctWINDOWBOX: EndPopupImpl(); break;
@@ -1648,12 +1728,20 @@ void SetTooltip(const std::string& tooltip)
     }
 }
 
-void Space(float size)
+void Space()
 {
     auto& ctx = detail::context();
-    if (size < 0) {
-        size = ctx.horizontal ? ctx.spacingH : ctx.spacingV;
-    }
+    Space(ctx.horizontal ? ctx.spacingH : ctx.spacingV);
+}
+
+void Space(float size)
+{
+    // a computed size below zero means the position is already past the wanted one, it can't move back, but it
+    // must not move on either (it used to insert the default spacing, so filling up a panel that was already
+    // full pushed its border further down)
+    if (size < 0)
+        return;
+    auto& ctx = detail::context();
     if (ctx.horizontal) {
         ctx.increment({size, ctx.rowHeight});
     }
@@ -2033,6 +2121,85 @@ struct TextLine
 };
 
 // Layout, cursor movement and editing of the text of one TextBox or TextBoxMulti in the current frame
+// Metrics of the font raygui draws text with (the DEFAULT style)
+struct TextMetrics
+{
+    TextMetrics()
+        : font(GuiGetFont())
+        , fontSize(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SIZE)))
+        , spacing(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SPACING)))
+    {
+        if (font.texture.id == 0)
+            font = GetFontDefault();
+        scale = font.baseSize > 0 ? fontSize / static_cast<float>(font.baseSize) : 1.0f;
+    }
+
+    float advance(int codepoint) const
+    {
+        if (codepoint == '\t' || codepoint == '\n')
+            codepoint = ' ';
+        const int index = GetGlyphIndex(font, codepoint);
+        const float width = font.glyphs[index].advanceX ? static_cast<float>(font.glyphs[index].advanceX) : font.recs[index].width;
+        return width * scale + spacing;
+    }
+
+    float width(const std::string& text, size_t start, size_t end) const
+    {
+        float result = 0;
+        for (size_t pos = start; pos < end;) {
+            int size = 0;
+            result += advance(codepointAt(text, pos, &size));
+            pos += size;
+        }
+        return result;
+    }
+
+    Font font{};
+    float fontSize{10};
+    float spacing{0};
+    float scale{1};
+};
+
+// Splits the text into the lines it is shown in: with multiline at line breaks, and if wrapWidth is
+// above zero also at the last space that fits, a word longer than the line is split where it runs out
+static std::vector<TextLine> wrapLines(const std::string& text, const TextMetrics& metrics, bool multiline, float wrapWidth)
+{
+    std::vector<TextLine> lines;
+    const bool wrap = multiline && wrapWidth > 0;
+    size_t start = 0;
+    size_t pos = 0;
+    size_t breakPos = 0;  // the offset after the last space of the line, 0 for none
+    float x = 0;
+    while (pos < text.size()) {
+        int size = 0;
+        const int codepoint = codepointAt(text, pos, &size);
+        if (multiline && codepoint == '\n') {
+            lines.push_back({start, pos});
+            pos += size;
+            start = pos;
+            breakPos = 0;
+            x = 0;
+            continue;
+        }
+        const float glyphWidth = metrics.advance(codepoint);
+        // spaces may stand out of the line, so a line never starts with the space it was wrapped at
+        if (wrap && codepoint != ' ' && pos > start && x + glyphWidth > wrapWidth) {
+            const size_t end = breakPos > start ? breakPos : pos;
+            lines.push_back({start, end});
+            start = end;
+            breakPos = 0;
+            x = metrics.width(text, start, pos);
+            continue;
+        }
+        x += glyphWidth;
+        pos += size;
+        if (codepoint == ' ' || codepoint == '\t')
+            breakPos = pos;
+    }
+    lines.push_back({start, text.size()});
+    return lines;
+}
+
 class TextEditor
 {
 public:
@@ -2041,41 +2208,19 @@ public:
         , _text(text)
         , _maxLength(maxLength)
         , _multiline(multiline)
-        , _font(GuiGetFont())
-        , _fontSize(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SIZE)))
-        , _spacing(static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SPACING)))
+        , _lineHeight(std::floor(_metrics.fontSize * 1.5f))
     {
-        if (_font.texture.id == 0)
-            _font = GetFontDefault();
-        _scale = _font.baseSize > 0 ? _fontSize / static_cast<float>(_font.baseSize) : 1.0f;
-        _lineHeight = std::floor(_fontSize * 1.5f);
     }
 
     const std::string& text() const { return _text; }
-    const Font& font() const { return _font; }
-    float fontSize() const { return _fontSize; }
+    const Font& font() const { return _metrics.font; }
+    float fontSize() const { return _metrics.fontSize; }
     float lineHeight() const { return _lineHeight; }
     bool changed() const { return _changed; }
 
-    float advance(int codepoint) const
-    {
-        if (codepoint == '\t' || codepoint == '\n')
-            codepoint = ' ';
-        const int index = GetGlyphIndex(_font, codepoint);
-        const float width = _font.glyphs[index].advanceX ? static_cast<float>(_font.glyphs[index].advanceX) : _font.recs[index].width;
-        return width * _scale + _spacing;
-    }
+    float advance(int codepoint) const { return _metrics.advance(codepoint); }
 
-    float width(size_t start, size_t end) const
-    {
-        float result = 0;
-        for (size_t pos = start; pos < end;) {
-            int size = 0;
-            result += advance(codepointAt(_text, pos, &size));
-            pos += size;
-        }
-        return result;
-    }
+    float width(size_t start, size_t end) const { return _metrics.width(_text, start, end); }
 
     void setWrapWidth(float wrapWidth)
     {
@@ -2321,39 +2466,7 @@ private:
     // Breaks the text into lines at line breaks, a TextBoxMulti also wraps at spaces (or inside words longer than a line)
     void layout()
     {
-        _lines.clear();
-        const bool wrap = _multiline && _wrapWidth > 0;
-        size_t start = 0;
-        size_t pos = 0;
-        size_t breakPos = 0;  // the offset after the last space of the line, 0 for none
-        float x = 0;
-        while (pos < _text.size()) {
-            int size = 0;
-            const int codepoint = codepointAt(_text, pos, &size);
-            if (_multiline && codepoint == '\n') {
-                _lines.push_back({start, pos});
-                pos += size;
-                start = pos;
-                breakPos = 0;
-                x = 0;
-                continue;
-            }
-            const float glyphWidth = advance(codepoint);
-            // spaces may stand out of the line, so a line never starts with the space it was wrapped at
-            if (wrap && codepoint != ' ' && pos > start && x + glyphWidth > _wrapWidth) {
-                const size_t end = breakPos > start ? breakPos : pos;
-                _lines.push_back({start, end});
-                start = end;
-                breakPos = 0;
-                x = width(start, pos);
-                continue;
-            }
-            x += glyphWidth;
-            pos += size;
-            if (codepoint == ' ' || codepoint == '\t')
-                breakPos = pos;
-        }
-        _lines.push_back({start, _text.size()});
+        _lines = wrapLines(_text, _metrics, _multiline, _wrapWidth);
         _dirty = false;
     }
 
@@ -2361,10 +2474,7 @@ private:
     std::string& _text;
     size_t _maxLength{0};
     bool _multiline{false};
-    Font _font{};
-    float _fontSize{10};
-    float _spacing{0};
-    float _scale{1};
+    TextMetrics _metrics;
     float _lineHeight{15};
     float _wrapWidth{0};
     std::vector<TextLine> _lines;
@@ -2710,6 +2820,31 @@ TextEditResult textEdit(Id id, Rectangle bounds, std::string& text, size_t maxLe
 }
 
 }  // namespace detail
+
+void LabelWrapped(const char* text)
+{
+    auto& ctx = detail::context();
+    const auto size = ctx.standardSize();
+    std::string content = text ? text : "";
+    std::erase(content, '\r');
+    const detail::TextMetrics metrics;
+    const Rectangle textArea = GetTextBounds(LABEL, {0, 0, size.x, size.y});
+    const auto lines = detail::wrapLines(content, metrics, true, textArea.width);
+    const float lineHeight = size.y;
+    const Vector2 pos{ctx.currentPos.x + ctx.scrollOffset.x, ctx.currentPos.y + ctx.scrollOffset.y};
+    for (size_t index = 0; index < lines.size(); ++index) {
+        const Rectangle bounds{pos.x, pos.y + static_cast<float>(index) * lineHeight, size.x, lineHeight};
+        if (!CheckCollisionRecs(bounds, g_clippingStack.empty() ? bounds : g_clippingStack.top()))
+            continue;
+        // a tab would be drawn as a missing glyph, the wrapping measured it like a space, and the space a line
+        // was wrapped at may stand out of the line, raygui would shorten the line with an ellipsis for it
+        std::string line = content.substr(lines[index].start, lines[index].end - lines[index].start);
+        std::ranges::replace(line, '\t', ' ');
+        line.erase(line.find_last_not_of(' ') + 1);
+        GuiLabel(bounds, line.c_str());
+    }
+    ctx.increment({size.x, static_cast<float>(lines.size()) * lineHeight});
+}
 
 bool TextBox(const char* id, std::string& text, int textSize)
 {
@@ -3716,6 +3851,9 @@ void clipRectangles(const Rectangle& destClipRect, Rectangle& srcRect, Rectangle
 
 void DrawTextCodepointClipped(Font font, int codepoint, Vector2 position, float fontSize, Color tint)
 {
+    // whole pixels like raygui's GuiDrawText(), at a fraction the point sampling of the font texture drops or doubles glyph
+    // columns (a fractional layout or scroll offset made an M look like an N)
+    position = {std::floor(position.x), std::floor(position.y)};
     // Character index position in sprite font
     // NOTE: In case a codepoint is not available in the font, index returned points to '?'
     int index = GetGlyphIndex(font, codepoint);

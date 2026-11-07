@@ -144,6 +144,8 @@ RLGUIPP_API bool BeginTab(const char* label, Vector2 padding = {5, 5});         
 RLGUIPP_API void EndTab();                                                                                                // end the description of a Tab group
 RLGUIPP_API void BeginScrollPanel(float height, Rectangle content, Vector2* scroll);                                      // start a scrollable panel with the given content size (pos is ignored), and scrolled to offset scroll
 RLGUIPP_API void EndScrollPanel();                                                                                        // end the description of the scroll panel
+RLGUIPP_API void BeginScrollView(float height, const char* id);                                                           // start a borderless view identified by id that measures its content and shows a vertical scroll bar only when it is higher, height <= 0 uses the remaining height
+RLGUIPP_API void EndScrollView();                                                                                         // end the description of the scroll view
 RLGUIPP_API void BeginTableView(float height, const char* id, std::initializer_list<TableColumn> columns, Vector2 *scroll); // start a table view identified by id with the given columns, row heights can vary per row but must not change during table drawing
 RLGUIPP_API bool TableNextRow(float height, Color background = {0, 0, 0, 0});                                 // start a new row, returns false if the table row would not be visible due to scroll position
 RLGUIPP_API bool TableNextRow(float height, const std::function<void(Rectangle rect)>& handler);                          // start a new row, returns false if the table row would not be visible due to scroll position, calls the handler if visible
@@ -176,12 +178,14 @@ RLGUIPP_API Vector2 GetCurrentPos();                                            
 RLGUIPP_API Rectangle GetContentAvailable();                                                                              // Get the area from current position to content edges
 RLGUIPP_API Rectangle GetLastWidgetRect();                                                                                // Get the position and dimensions of the previous widget
 RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                                  // Set a tooltip for the rectangle of the previously defined widget
-RLGUIPP_API void Space(float size = -1);                                                                                  // Depending on the parent it inserts a vertical or horizontal space, defaulting to the spacing
+RLGUIPP_API void Space();                                                                                                 // Depending on the parent it inserts a vertical or horizontal space of the spacing
+RLGUIPP_API void Space(float size);                                                                                       // Depending on the parent it inserts a vertical or horizontal space of size (plus the spacing), a negative size inserts nothing
 RLGUIPP_API void Separator(float size = -1);                                                                              // Insert a seperator line
 // Widgets
 // All widgets that edit a value take a pointer to it and return true when the user changed it in this frame.
 // Widgets with an edit mode (TextBox, Spinner, ValueBox) additionally report the end of editing via IsLastWidgetEditFinished().
 RLGUIPP_API void Label(const char* text);                                                                                 // Label control, shows text
+RLGUIPP_API void LabelWrapped(const char* text);                                                                          // Label that keeps line breaks and wraps at spaces to its width, one row height per line
 RLGUIPP_API bool Button(const char* text);                                                                                // Button control, returns true when clicked
 RLGUIPP_API std::optional<MouseButton> ButtonMulti(const char* text);                                                     // Button control, returns the mouse button when clicked
 RLGUIPP_API bool LabelButton(const char* text);                                                                           // Label button control, returns true when clicked
