@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New command line options `--export-metadata-db` (library without ROMs and local data, for
   sharing), `--update-program-database` (compare with the chip-8-database `programs.json`) and
   `--opcode-stats`
+- Searches can be started directly: `--search "uses 5xy2 or uses 5xy3"` opens the library with
+  that search, also listing missing ROMs, and with `--list` the ROMs found are printed instead of
+  opening a window. The web version takes it as URL parameter (`?search=uses+5xy2+or+uses+5xy3`)
+  and has a button next to the search field to copy a link to the current search for sharing
 - Generic cores have a new "Rotation" option (`--screen-rotation 0/90/180/270`) for programs
   played sideways, taken from the library, the chip-8-database and Octo cartridges
 - [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed

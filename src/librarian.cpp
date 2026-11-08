@@ -46,9 +46,7 @@ inline std::chrono::system_clock::time_point convertClock(TP tp)
     using namespace std::chrono;
     return time_point_cast<system_clock::duration>(tp - TP::clock::now() + system_clock::now());
 }
-#include "knownfiles.ipp"
 
-static constexpr int g_knownRomNum = sizeof(g_knownRoms) / sizeof(g_knownRoms[0]);
 static std::atomic<const Librarian::MetadataSource*> g_metadataSource{nullptr};
 
 void Librarian::setMetadataSource(const MetadataSource* source)
@@ -63,49 +61,7 @@ std::optional<RomMetadata> Librarian::findRomMetadata(const Sha1::Digest& sha1)
             return metadata;
         }
     }
-    if (const auto* romInfo = findKnownRom(sha1)) {
-        return RomMetadata{romInfo->preset, romInfo->options ? romInfo->options : ""};
-    }
     return std::nullopt;
-}
-
-size_t Librarian::numKnownRoms()
-{
-    return g_knownRomNum;
-}
-
-const KnownRomInfo& Librarian::getRomInfo(size_t index)
-{
-    return index < g_knownRomNum ? g_knownRoms[index] : g_knownRoms[0];
-}
-
-const KnownRomInfo* Librarian::getKnownRoms()
-{
-    return g_knownRoms;
-}
-
-const KnownRomInfo* Librarian::findKnownRom(const Sha1::Digest& sha1)
-{
-    for(auto & g_knownRom : g_knownRoms) {
-        if(sha1 == g_knownRom.sha1) {
-            return &g_knownRom;
-        }
-    }
-    return nullptr;
-}
-
-size_t Librarian::findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms)
-{
-    outKnownRoms.clear();
-    for(auto & g_knownRom : g_knownRoms) {
-        if(sha1 == g_knownRom.sha1) {
-            outKnownRoms.push_back(&g_knownRom);
-        }
-        else if(!outKnownRoms.empty()) {
-            break;
-        }
-    }
-    return outKnownRoms.size();
 }
 
 std::string Librarian::Info::minimumOpcodeProfile() const
@@ -137,11 +93,6 @@ emu::Chip8EmulatorOptions::SupportedPreset Librarian::Info::minimumOpcodePreset(
 Librarian::Librarian(const CadmiumConfiguration& cfg)
 : _cfg(cfg)
 {
-    static bool once = false;
-    if(!once) {
-        once = true;
-        TraceLog(LOG_INFO, "Internal database contains `%d` different program checksums.", g_knownRomNum);
-    }
 }
 
 std::string Librarian::fullPath(std::string file) const

@@ -167,9 +167,24 @@ TEST_CASE("HEX malformed empty overlapping and oversized files are rejected")
 }
 
 #ifdef ETI660_EXAMPLES
+// The library (or the starter metadata) knows Wipeout in Cadmium, the tests have no database.
+class WipeoutMetadataSource : public Librarian::MetadataSource
+{
+public:
+    std::optional<RomMetadata> romMetadata(const Sha1::Digest& sha1) const override
+    {
+        if (sha1.to_hex() == "2fb4c14104b58b0df28368393b3fc0aaabe9e8ae")
+            return RomMetadata{"eti-chip-8", ""};
+        return std::nullopt;
+    }
+};
+
 TEST_CASE("HEX known Wipeout selects ETI by parsed content rather than encoding")
 {
     HexFixture fixture;
+    WipeoutMetadataSource metadataSource;
+    Librarian::setMetadataSource(&metadataSource);
+    struct ResetSource { ~ResetSource() { Librarian::setMetadataSource(nullptr); } } resetSource;
     const auto binary = loadFile(std::string(ETI660_EXAMPLES) +
         "/Chip-8 ETI660 Hybrids/Wipeout (ETI660 hybrid) [W.F. Kreykes, 1982].ch8");
     REQUIRE(binary);

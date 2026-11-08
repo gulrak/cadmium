@@ -3136,6 +3136,11 @@ void SetClipboardHandler(std::function<std::string()> getText, std::function<voi
     g_clipboardHandler = {std::move(getText), std::move(setText), std::move(pasteRequested)};
 }
 
+void CopyToClipboard(const std::string& text)
+{
+    detail::setClipboardText(text);
+}
+
 Color ColorFromHsv(Vector3 hsv)
 {
     Vector3 rgbHue = ConvertHSVtoRGB(hsv);

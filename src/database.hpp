@@ -70,6 +70,11 @@ public:
     // Selects the library entry of a ROM (and scrolls the list to it), a ROM only known from metadata gets the
     // given data, as with a drop, so it can be loaded from the library, used on the web when a ROM is opened.
     std::string showRom(const Sha1::Digest& sha1, std::span<const uint8_t> data);
+    // Sets the search as if typed into the search field and lists missing ROMs too, so the same search finds the
+    // same programs on every system, used by --search and the web's ?search=.
+    void setSearch(const std::string& query);
+    // Prints the ROMs of a search to stdout, one per line, and returns 1 if the query is invalid, used by --search with --list.
+    int printSearchResults(const std::string& query);
     std::string storeSettings(const Sha1::Digest& sha1, const emu::Properties& properties);
     std::string addFiles(const std::vector<std::string>& paths);
     // Compares the library with programs.json of the chip-8-database (https://github.com/chip-8/chip-8-database,

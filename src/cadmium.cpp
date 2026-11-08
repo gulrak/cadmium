@@ -2891,6 +2891,17 @@ public:
         return _shouldClose || WindowShouldClose();
     }
 
+#ifdef CADMIUM_WITH_DATABASE
+    void openLibrarySearch(const std::string& query)
+    {
+        if (_database) {
+            _database->setSearch(query);
+            _mainView = eLIBRARY;
+            _chipEmu->setExecMode(ExecMode::ePAUSED);
+        }
+    }
+#endif
+
 private:
     std::mutex _audioMutex;
     ResourceManager _resources;
@@ -3383,6 +3394,15 @@ int main(int argc, char* argv[])
     cli.option({"-u", "--url"}, urlLoad, "An url that will be tried to load a rom or source from");
 #endif
 #endif
+#ifdef CADMIUM_WITH_DATABASE
+    std::string searchQuery;
+    bool hasSearch = false;
+    cli.option({"--search"}, searchQuery, "Open the library with this search, like: \"uses 5xy2 or uses 5xy3\" (on the web: ?search=uses+5xy2+or+uses+5xy3)", [&hasSearch](std::string) { hasSearch = true; });
+#ifndef PLATFORM_WEB
+    bool listSearch = false;
+    cli.optionEnable({"--list"}, listSearch, "Print the ROMs found by --search to stdout (a count to stderr) instead of opening a window");
+#endif
+#endif
     cli.option({"-r", "--run"}, startRom, "if a ROM is given (positional) start it");
     emu::CoreRegistry reg{};
     std::string coresAvailable;
@@ -3552,6 +3572,20 @@ int main(int argc, char* argv[])
     if(opcodeStats) {
         exit(Database::printOpcodeStatistics(dataPath(), romFile));
     }
+#ifndef PLATFORM_WEB
+    if(listSearch) {
+        if(!hasSearch) {
+            std::cerr << "ERROR: --list requires --search" << std::endl;
+            return 1;
+        }
+        // stdout is for the results, but without Cadmium's log handler raylib logs there, and the database setup prints its tables
+        SetTraceLogLevel(LOG_NONE);
+        auto* coutBuffer = std::cout.rdbuf(nullptr);
+        emu::HeadlessHost host;
+        std::cout.rdbuf(coutBuffer);
+        return host.library()->printSearchResults(searchQuery);
+    }
+#endif
 #endif
     if(!dumpInterpreter.empty()) {
         // TODO: Fix this
@@ -3619,6 +3653,11 @@ int main(int argc, char* argv[])
                 loadOpt |= Cadmium::LoadOptions::DontChangeOptions;
             cadmium.loadRom(romFile.front().c_str(), loadOpt);
         }
+#ifdef CADMIUM_WITH_DATABASE
+        if (hasSearch) {
+            cadmium.openLibrarySearch(searchQuery);
+        }
+#endif
         //SetTargetFPS(60);
         while (!cadmium.windowShouldClose()) {
             cadmium.updateAndDraw();
@@ -3626,6 +3665,11 @@ int main(int argc, char* argv[])
 #else
         try {
             Cadmium cadmium(config, coreProperties);
+#ifdef CADMIUM_WITH_DATABASE
+            if (hasSearch) {
+                cadmium.openLibrarySearch(searchQuery);
+            }
+#endif
 #ifdef WEB_WITH_FETCHING
             if(!urlLoad.empty()) {
                 emscripten_fetch_attr_t attr;

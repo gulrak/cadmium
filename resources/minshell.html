@@ -74,7 +74,10 @@
         else if(param[0].length === 1)
           result.push('-' + param[0]);
         if(param.length > 1)
-          result.push(decodeURIComponent(param[1]));
+          // in a search a plus is a space, that keeps links readable, a literal plus would be %2B
+          result.push(decodeURIComponent(param[0] === 'search' ? param[1].replace(/\+/g, ' ') : param[1]));
+        else if(param[0] === 'search')
+          result.push('');  // the option needs a value, ?search alone just opens the library
       }
       console.log('ARGUMENTS: '+result.join(' '));
       return result;

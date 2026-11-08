@@ -90,6 +90,8 @@ endif()
 if(CADMIUM_WITH_DATABASE)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_DATABASE)
     target_link_libraries(cadmium PUBLIC ghc::sqlite)
+    # the C API of SQLite, ghc::sqlite doesn't export it, the starter metadata is read from memory with sqlite3_deserialize
+    target_include_directories(cadmium PRIVATE "${PROJECT_SOURCE_DIR}/external/ghc/sqlite/src/sqlite3")
     if(NOT EMSCRIPTEN)
         # only for fetching the chip-8-database, not available on the web
         target_link_libraries(cadmium PUBLIC ssl httplib::httplib)

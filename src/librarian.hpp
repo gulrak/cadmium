@@ -37,14 +37,6 @@
 #include <string>
 #include <vector>
 
-struct KnownRomInfo {
-    Sha1::Digest sha1;
-    const char* preset;
-    const char* name;
-    const char* options;
-    const char* url;
-};
-
 // The config of a known ROM: a preset and the changes of its properties.
 struct RomMetadata
 {
@@ -111,13 +103,8 @@ public:
     static bool isPrefixedTPDRom(std::span<const uint8_t> data);
     static std::mutex& decompilerMutex();
     static bool isPrefixedRSTDPRom(std::span<const uint8_t> dat);
-    static size_t numKnownRoms();
-    static const KnownRomInfo& getRomInfo(size_t index);
-    static const KnownRomInfo* getKnownRoms();
-    static const KnownRomInfo* findKnownRom(const Sha1::Digest& sha1);
-    static size_t findKnownRoms(const Sha1::Digest& sha1, std::vector<const KnownRomInfo*>& outKnownRoms);
     static void setMetadataSource(const MetadataSource* source);
-    // the metadata source first, then the compiled in list
+    // the metadata of the source (the library and the starter metadata of Cadmium), none without a source
     static std::optional<RomMetadata> findRomMetadata(const Sha1::Digest& sha1);
 private:
     int _activeEntry{-1};

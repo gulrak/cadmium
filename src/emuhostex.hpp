@@ -247,6 +247,9 @@ public:
     int getKeyPressed() override { return 0; }
     bool isKeyDown(uint8_t key) override { return false; }
     const std::array<bool,16>& getKeyStates() const override { static const std::array<bool,16> keys{}; return keys; }
+#ifdef CADMIUM_WITH_DATABASE
+    Database* library() const { return _database.get(); }
+#endif
     void updateScreen() override {}
     void vblank() override {}
     void updatePalette(const std::array<uint8_t,16>& palette) override {}

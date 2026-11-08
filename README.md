@@ -113,6 +113,11 @@ Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, 
 Octo sources (`.8o`), or Octo cartridges (`.gif`), or even COSMAC VIP programs
 (`.bin` or `.ram`) onto the window to load them.
 
+Builds with the library can open it with a search, so a search result can be shared as a link, for example
+[`?search=uses+5xy2+or+uses+5xy3`](https://games.gulrak.net/cadmium-wip/?search=uses+5xy2+or+uses+5xy3). The link
+button next to the search field copies such a link. The desktop version takes the same search with
+`--search "uses 5xy2 or uses 5xy3"`, and with `--list` it prints the ROMs found instead of opening a window.
+
 ## Features
 
 The emulation behavior used in Cadmium is based on opcode information documented

@@ -35,6 +35,10 @@
 
 #include <raylib.h>
 #include <ghc/sqlite.hpp>
+#include <sqlite3.h>
+#ifdef PLATFORM_WEB
+#include <emscripten/emscripten.h>
+#endif
 #include <rlguipp/rlguipp.hpp>
 
 
@@ -46,6 +50,8 @@
 
 #include <atomic>
 #include <charconv>
+#include <functional>
+#include <unordered_map>
 
 namespace db = ghc::sqlite;
 
@@ -521,35 +527,136 @@ public:
 static constexpr bool HAS_LIVE_PREVIEW = false;
 #endif
 
-// The library answers the Librarian's questions about known ROMs, its configs come before the compiled in list.
+// The metadata of the starter library compiled into Cadmium, read once from the resource. It knows the ROMs a
+// library doesn't (anymore): libraries from before the starter existed, or ROMs the user removed and adds again.
+class StarterMetadata
+{
+public:
+    struct Rom
+    {
+        DBProgram program;  // only the columns of its row, without an id
+        std::vector<std::string> authors;
+        std::string release;
+        std::string description;
+        std::vector<RomMetadata> configs;  // in the order of their ids, the first is the default
+    };
+
+    static const StarterMetadata& instance()
+    {
+        static const StarterMetadata starter;
+        return starter;
+    }
+
+    const Rom* find(const std::string& sha1) const
+    {
+        auto iter = _roms.find(sha1);
+        return iter != _roms.end() ? &iter->second : nullptr;
+    }
+
+private:
+    StarterMetadata()
+    {
+        if (!ResourceManager::instance().resourceAvailable(STARTER_LIBRARY)) {
+            return;
+        }
+        const auto resource = ResourceManager::instance().resourceForName(STARTER_LIBRARY);
+        sqlite3* connection = nullptr;
+        // read-only, so SQLite never writes to (or frees) the compiled in data
+        if (sqlite3_open(":memory:", &connection) != SQLITE_OK ||
+            sqlite3_deserialize(connection, "main", const_cast<unsigned char*>(resource.data()), static_cast<sqlite3_int64>(resource.size()), static_cast<sqlite3_int64>(resource.size()),
+                                SQLITE_DESERIALIZE_READONLY) != SQLITE_OK) {
+            TraceLog(LOG_WARNING, fmt::format("Could not read the starter metadata: {}", connection ? sqlite3_errmsg(connection) : "out of memory").c_str());
+            sqlite3_close(connection);
+            return;
+        }
+        auto forEachRow = [connection](const char* sql, const std::function<void(sqlite3_stmt*)>& handler) {
+            sqlite3_stmt* statement = nullptr;
+            if (sqlite3_prepare_v2(connection, sql, -1, &statement, nullptr) != SQLITE_OK) {
+                TraceLog(LOG_WARNING, fmt::format("Could not read the starter metadata: {}", sqlite3_errmsg(connection)).c_str());
+                return;
+            }
+            while (sqlite3_step(statement) == SQLITE_ROW) {
+                handler(statement);
+            }
+            sqlite3_finalize(statement);
+        };
+        auto text = [](sqlite3_stmt* statement, int column) {
+            const auto* value = sqlite3_column_text(statement, column);
+            return value ? std::string(reinterpret_cast<const char*>(value)) : std::string();
+        };
+        std::optional<int> version;
+        forEachRow("SELECT starter_version FROM version WHERE starter_version IS NOT NULL LIMIT 1;", [&](sqlite3_stmt* statement) { version = sqlite3_column_int(statement, 0); });
+        std::unordered_map<int, std::vector<std::string>> authors;
+        forEachRow("SELECT program_authors.program_id, authors.name FROM program_authors JOIN authors ON authors.id = program_authors.author_id ORDER BY program_authors.program_id, program_authors.position;",
+                   [&](sqlite3_stmt* statement) { authors[sqlite3_column_int(statement, 0)].push_back(text(statement, 1)); });
+        forEachRow("SELECT binaries.sha1, binaries.release, binaries.description, programs.id, programs.name, programs.origin, programs.origin_reference, programs.description, programs.release, "
+                   "programs.url, programs.license, programs.copyright FROM binaries JOIN programs ON programs.id = binaries.program_id;",
+                   [&](sqlite3_stmt* statement) {
+                       Rom rom{.program = {.name = text(statement, 4),
+                                           .origin = text(statement, 5),
+                                           .origin_reference = text(statement, 6),
+                                           .description = text(statement, 7),
+                                           .release = text(statement, 8),
+                                           .url = text(statement, 9),
+                                           .license = text(statement, 10),
+                                           .copyright = text(statement, 11),
+                                           .starter_version = version},
+                               .release = text(statement, 1),
+                               .description = text(statement, 2)};
+                       if (auto iter = authors.find(sqlite3_column_int(statement, 3)); iter != authors.end()) {
+                           rom.authors = iter->second;
+                       }
+                       _roms.emplace(text(statement, 0), std::move(rom));
+                   });
+        forEachRow("SELECT binaries.sha1, binary_configs.preset, binary_configs.properties FROM binary_configs JOIN binaries ON binaries.id = binary_configs.binary_id ORDER BY binary_configs.id;",
+                   [&](sqlite3_stmt* statement) {
+                       if (auto iter = _roms.find(text(statement, 0)); iter != _roms.end()) {
+                           iter->second.configs.push_back(RomMetadata{text(statement, 1), text(statement, 2)});
+                       }
+                   });
+        sqlite3_close(connection);
+        // not LOG_INFO, without Cadmium's log handler raylib writes to stdout, where --opcode-stats has its JSON
+        TraceLog(LOG_DEBUG, fmt::format("Starter metadata knows {} ROMs", _roms.size()).c_str());
+    }
+
+    std::unordered_map<std::string, Rom> _roms;  // by the SHA1 in hex
+};
+
+// The library answers the Librarian's questions about known ROMs, the starter metadata the ones it can't.
 class LibraryMetadataSource : public Librarian::MetadataSource
 {
 public:
-    explicit LibraryMetadataSource(db::Database& database)
+    // without a database (no library file yet) only the starter metadata answers
+    explicit LibraryMetadataSource(db::Database* database)
         : _database(database)
     {
     }
 
     std::optional<RomMetadata> romMetadata(const Sha1::Digest& sha1) const override
     {
-        try {
-            auto session = db::Session(_database);
-            // the first config of a ROM is its default, as in the library's preview
-            db::Statement query(session, "SELECT binary_configs.preset, binary_configs.properties FROM binary_configs JOIN binaries ON binaries.id = binary_configs.binary_id "
-                                         "WHERE binaries.sha1 = ? ORDER BY binary_configs.id LIMIT 1");
-            query << sha1.to_hex();
-            if (query.step()) {
-                return RomMetadata{std::string(query.column(0)), std::string(query.column(1))};
+        if (_database) {
+            try {
+                auto session = db::Session(*_database);
+                // the first config of a ROM is its default, as in the library's preview
+                db::Statement query(session, "SELECT binary_configs.preset, binary_configs.properties FROM binary_configs JOIN binaries ON binaries.id = binary_configs.binary_id "
+                                             "WHERE binaries.sha1 = ? ORDER BY binary_configs.id LIMIT 1");
+                query << sha1.to_hex();
+                if (query.step()) {
+                    return RomMetadata{std::string(query.column(0)), std::string(query.column(1))};
+                }
+            }
+            catch (const db::Exception& ex) {
+                TraceLog(LOG_WARNING, fmt::format("Looking up {} in the library failed: {}", sha1.to_hex(), ex.what()).c_str());
             }
         }
-        catch (const db::Exception& ex) {
-            TraceLog(LOG_WARNING, fmt::format("Looking up {} in the library failed: {}", sha1.to_hex(), ex.what()).c_str());
+        if (const auto* rom = StarterMetadata::instance().find(sha1.to_hex()); rom && !rom->configs.empty()) {
+            return rom->configs.front();
         }
         return std::nullopt;
     }
 
 private:
-    db::Database& _database;
+    db::Database* _database;
 };
 
 struct Database::Private
@@ -578,6 +685,7 @@ struct Database::Private
         std::optional<DBProgram> program;
         DBBinary binary;
         std::string preset;
+        std::vector<DBAuthor> createdAuthors;  // the authors of its program that were new to the library
     };
     static constexpr gui::WindowBoxFlags DIALOG_FLAGS = gui::WindowBoxFlags(gui::WBF_CLOSABLE | gui::WBF_MOVABLE | gui::WBF_MODAL);
 
@@ -606,6 +714,9 @@ struct Database::Private
     std::vector<VariantGroup> variantGroups;
     std::string coresCombo;
     std::string queryLine;
+#ifdef PLATFORM_WEB
+    std::chrono::steady_clock::time_point linkCopiedUntil;  // until then the line under the search field says so
+#endif
 #ifdef PLATFORM_WEB
     bool showMissing{true};  // on the web the library starts with metadata only, all its ROMs are missing
 #else
@@ -662,7 +773,7 @@ struct Database::Private
     bool dragging{false};
     std::atomic<bool> cancelScan{false};
     PreviewHost backgroundHost;
-    LibraryMetadataSource metadataSource{database};
+    LibraryMetadataSource metadataSource{&database};
 
 
     explicit Private(CadmiumConfiguration& cfg, const std::string& path)
@@ -912,12 +1023,40 @@ struct Database::Private
         updateFilter();
     }
 
+#ifdef PLATFORM_WEB
+    // A link that opens Cadmium with the current search. Readable where a URL allows it, so it can be read in a chat:
+    // a space is a plus, the shell page turns that back for this parameter, see minshell.html.
+    std::string searchLink() const
+    {
+        std::string link = emscripten_run_script_string("location.origin + location.pathname");
+        link += "?search=";
+        for (const char c : queryLine) {
+            const auto byte = static_cast<unsigned char>(c);
+            if (c == ' ') {
+                link += '+';
+            }
+            else if (std::isalnum(byte) || std::string_view("-_.~?=()").find(c) != std::string_view::npos) {
+                link += c;
+            }
+            else {
+                link += fmt::format("%{:02X}", byte);
+            }
+        }
+        return link;
+    }
+#endif
+
     // The line under the search field: why its text is no valid query, or what the list shows.
     std::string queryFeedback() const
     {
         if (!queryError.empty()) {
             return fmt::format("Column {}: {} - the list shows the last valid query", queryErrorPosition + 1, queryError);
         }
+#ifdef PLATFORM_WEB
+        if (std::chrono::steady_clock::now() < linkCopiedUntil) {
+            return "Link to this search copied";
+        }
+#endif
         auto text = fmt::format("{} of {} programs", shownIndices.size(), programs.size());
         if (filter.usesRomFields()) {
             text += fmt::format(", {} matching ROM{}", shownRomCount, shownRomCount == 1 ? "" : "s");
@@ -1292,29 +1431,38 @@ struct Database::Private
 
     std::optional<NewEntry> insertBinary(db::Session& session, const std::string& path, const std::vector<uint8_t>& data, const Sha1::Digest& digest, int targetProgramId)
     {
-        std::vector<const KnownRomInfo*> foundRoms;
-        const bool isKnown = Librarian::findKnownRoms(digest, foundRoms);
+        // a ROM of the starter metadata the library doesn't know (anymore) gets its program and configs from there
+        const auto* starterRom = StarterMetadata::instance().find(digest.to_hex());
+        const bool isKnown = starterRom && !starterRom->configs.empty();
         NewEntry entry;
         try {
             db::Transaction transaction{session};
             int programId = targetProgramId;
             if (programId < 0) {
-                DBProgram program{.name = isKnown ? std::string(foundRoms.front()->name) : fs::path(path).filename().stem().string()};
+                DBProgram program = isKnown ? starterRom->program : DBProgram{.name = fs::path(path).filename().stem().string()};
                 session.insert(program);
                 session.insert(DBProgramTag{.program_id = program.id, .tag_id = newTagId});
                 program.tags.push_back(newTagId);
+                if (isKnown) {
+                    program.authors = storeAuthors(session, program.id, starterRom->authors, entry.createdAuthors);
+                }
                 programId = program.id;
                 entry.program = program;
             }
             entry.binary = DBBinary{.program_id = programId, .sha1 = digest.to_hex(), .data = db::Blob(data.begin(), data.end()), .size = static_cast<int>(data.size())};
+            if (isKnown) {
+                entry.binary.release = starterRom->release;
+                entry.binary.description = starterRom->description;
+                entry.binary.starter_version = starterRom->program.starter_version;
+            }
             session.insert(entry.binary);
             if (isKnown) {
-                for (const auto* romInfo : foundRoms) {
-                    auto config = DBBinaryConfig{.binary_id = entry.binary.id, .preset = std::string(romInfo->preset), .properties = std::string(romInfo->options ? romInfo->options : "")};
+                for (const auto& metadata : starterRom->configs) {
+                    auto config = DBBinaryConfig{.binary_id = entry.binary.id, .preset = metadata.preset, .properties = metadata.properties};
                     session.insert(config);
                     entry.binary.configs.push_back(config);
                 }
-                entry.preset = foundRoms.front()->preset;
+                entry.preset = starterRom->configs.front().preset;
             }
             else {
                 // unknown ROMs get a variant guessed from the extension and stay unclassified
@@ -1345,6 +1493,9 @@ struct Database::Private
     {
         if (entry.program) {
             programs.emplace(entry.program->id, *entry.program);
+        }
+        for (const auto& author : entry.createdAuthors) {
+            authors.emplace(author.id, author);
         }
         binaries.emplace(entry.binary.id, entry.binary);
         programs.at(entry.binary.program_id).binaries.push_back(entry.binary.id);
@@ -3160,7 +3311,12 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         SetSpacing(4);
 
-        SetNextWidth(area.width - 2 * 60 - 4 * 20 - 6 * 4);
+#ifdef PLATFORM_WEB
+        constexpr int numIconButtons = 5;  // with the one for copying a link
+#else
+        constexpr int numIconButtons = 4;
+#endif
+        SetNextWidth(area.width - 2 * 60 - numIconButtons * 20 - (numIconButtons + 2) * 4);
         if (TextBox("query", _pimpl->queryLine, 4096)) {
             _pimpl->setQuery(_pimpl->queryLine);
         }
@@ -3172,6 +3328,18 @@ Database::Action Database::render(Font& font)
             DrawTextEx(font, text.c_str(), {box.x + 6, std::floor(box.y + (box.height - size.y) / 2)}, 8, 1, StyleManager::mappedColor(GRAY));
         }
         SetTooltip("WORDS, OR FIELDS LIKE: release < 1980, author ~ winter, tag = new, variant = xo-chip, ipf > 100, wrap = true, size < 1k, uses F?75, missing - COMBINE WITH and, or, not/-, ( )");
+#ifdef PLATFORM_WEB
+        SetNextWidth(20);
+        if (trim(_pimpl->queryLine).empty() || !_pimpl->queryError.empty()) {
+            GuiDisable();
+        }
+        if (Button(IconText(ICON_LINK, ""))) {
+            CopyToClipboard(_pimpl->searchLink());
+            _pimpl->linkCopiedUntil = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        }
+        GuiEnable();
+        SetTooltip("COPY A LINK TO THIS SEARCH");
+#endif
         SetNextWidth(20);
         const bool editSmartTag = _pimpl->editableSmartTag() >= 0;
         if (!editSmartTag && _pimpl->selectedTags.empty() && trim(_pimpl->queryLine).empty()) {
@@ -3805,18 +3973,60 @@ static bool upgradeLibrary(db::Database& database)
     return true;
 }
 
+void Database::setSearch(const std::string& query)
+{
+    std::lock_guard lock(_pimpl->mutex);
+    _pimpl->queryLine = query;
+    _pimpl->showMissing = true;
+    _pimpl->setQuery(query);
+}
+
+int Database::printSearchResults(const std::string& query)
+{
+    setSearch(query);
+    if (!_pimpl->queryError.empty()) {
+        std::cerr << fmt::format("ERROR: Column {}: {}", _pimpl->queryErrorPosition + 1, _pimpl->queryError) << std::endl;
+        return 1;
+    }
+    size_t romCount = 0;
+    for (const auto programId : _pimpl->shownIndices) {
+        const auto& program = _pimpl->programs.at(programId);
+        std::string details;
+        for (const auto authorId : program.authors) {
+            if (auto iter = _pimpl->authors.find(authorId); iter != _pimpl->authors.end()) {
+                details += (details.empty() ? "" : ", ") + iter->second.name;
+            }
+        }
+        if (!program.release.empty()) {
+            details += (details.empty() ? "" : ", ") + program.release;
+        }
+        const auto matching = _pimpl->matchingBinaries.find(programId);
+        for (const auto binaryId : program.binaries) {
+            if (matching != _pimpl->matchingBinaries.end() && !matching->second.contains(binaryId)) {
+                continue;
+            }
+            const auto& binary = _pimpl->binaries.at(binaryId);
+            std::cout << fmt::format("{}  {:20}  {}{}{}", binary.sha1.substr(0, 8), binary.configs.empty() ? std::string("???") : binary.configs.front().preset, program.name,
+                                     details.empty() ? "" : " (" + details + ")", binary.data ? "" : " [missing]")
+                      << std::endl;
+            ++romCount;
+        }
+    }
+    std::cerr << fmt::format("{} programs, {} ROMs", _pimpl->shownIndices.size(), romCount) << std::endl;
+    return 0;
+}
+
 int Database::printOpcodeStatistics(const std::string& dataPath, const std::vector<std::string>& files)
 {
     // the configs of the library come first, like when it analyzes its ROMs itself
     const auto library = fs::path(dataPath) / "cadmium_library.cd48db";
     std::unique_ptr<db::Database> database;
-    std::unique_ptr<LibraryMetadataSource> metadataSource;
     if (fs::exists(library)) {
         registerTables();
         database = std::make_unique<db::Database>(library.string(), 1);
-        metadataSource = std::make_unique<LibraryMetadataSource>(*database);
-        Librarian::setMetadataSource(metadataSource.get());
     }
+    LibraryMetadataSource metadataSource{database.get()};
+    Librarian::setMetadataSource(&metadataSource);
     nlohmann::ordered_json roms = nlohmann::ordered_json::object();
     int failed = 0;
     for (const auto& file : files) {

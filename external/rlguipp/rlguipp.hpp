@@ -232,6 +232,7 @@ RLGUIPP_API bool IsShortcutPressed(char letter);  // True if the system key is d
 // Clipboard used by the text widgets, by default raylib's GetClipboardText()/SetClipboardText() and the shortcut Sys+V.
 // pasteRequested (optional) replaces the shortcut check, e.g. for the web, where the text only arrives with the browser's paste event.
 RLGUIPP_API void SetClipboardHandler(std::function<std::string()> getText, std::function<void(const std::string&)> setText, std::function<bool()> pasteRequested = {});
+RLGUIPP_API void CopyToClipboard(const std::string& text);  // Puts text on the clipboard the text widgets use
 
 // Custom widgets
 RLGUIPP_API Rectangle AllocateWidget(Vector2 naturalSize);  // Reserve space for a custom widget at the current position, advance the layout and return the screen rectangle to draw in.
