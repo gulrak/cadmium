@@ -29,7 +29,6 @@
 
 #include <algorithm>
 #include <bit>
-#include <cmath>
 #include <cstring>
 
 namespace emu {
@@ -46,6 +45,15 @@ constexpr int64_t REALTIME_CYCLES = 169;
 constexpr int64_t REALTIME_SOUND_CYCLES = 103;
 constexpr int64_t REALTIME_TICK_CYCLES = 385;
 constexpr int64_t REALTIME_TIMER_CYCLES = 12;
+// Where the interpreter writes the OUT register, whose bit 11 drives the buzzer. Only the speaker
+// write can set the bit, the key tests have it clear, so they end a high phase early.
+constexpr int64_t OUT_SPEAKER_OFFSET = 134;         // from the start of the real-time chores
+constexpr int64_t OUT_TICK_KEYS_BEFORE_END = 160;   // before the end of the real-time chores of a tick
+constexpr int64_t OUT_KEY_OPCODE_OFFSET = 188;      // from the start of the EX9E/EXA1 execute part
+constexpr int64_t OUT_KEY_WAIT_OFFSET = 268;        // from the start of the FX0A execute part
+constexpr int64_t OUT_KEY_SCAN_OFFSET = 104;        // from the end of the real-time chores of a scan round
+constexpr int64_t OUT_KEY_HELD_OFFSET = 89;         // from the end of the real-time chores of a held key round
+constexpr int16_t BUZZER_AMPLITUDE = 16384;
 constexpr int64_t TIMER_READ_OFFSET = 79;
 constexpr int64_t DISPATCH_CYCLES = 242;
 
@@ -245,8 +253,14 @@ void SchipStrictEmulator::handleReset(bool)
     _nextTick = STARTUP_TICK_PHASE - STARTUP_PENDING_TICKS * TICK_CYCLES;
     _nextFrame = TICK_CYCLES;
     _waitState = WaitState::NONE;
-    _speakerToggles = 0;
-    _wavePhase = 0;
+    {
+        std::lock_guard lock(_audioMutex);
+        _speakerDataHigh = false;
+        _buzzerHigh = false;
+        _buzzerCycle = 0;
+        _buzzerSamples.reset();
+        resetBuzzerOutput();
+    }
     _execMode = _host.isHeadless() ? eRUNNING : ePAUSED;
     _cpuState = eNORMAL;
     _errorMessage.clear();
@@ -265,7 +279,8 @@ bool SchipStrictEmulator::realtime()
     int64_t cycles = REALTIME_CYCLES;
     if (_rST) {
         cycles += REALTIME_SOUND_CYCLES;
-        ++_speakerToggles;
+        setBuzzer(_speakerDataHigh, _machineCycles + OUT_SPEAKER_OFFSET);
+        _speakerDataHigh = !_speakerDataHigh;
     }
     const auto readCycle = _machineCycles + TIMER_READ_OFFSET + (_rST ? REALTIME_SOUND_CYCLES : 0);
     const bool tick = readCycle >= _nextTick;
@@ -276,6 +291,8 @@ bool SchipStrictEmulator::realtime()
             --_rDT;
         if (_rST)
             --_rST;
+        // the tick also scans the ENTER, backstep and +/- keys
+        setBuzzer(false, _machineCycles + cycles - OUT_TICK_KEYS_BEFORE_END);
     }
     addCycles(cycles);
     return tick;
@@ -283,13 +300,13 @@ bool SchipStrictEmulator::realtime()
 
 void SchipStrictEmulator::handleFrame()
 {
+    {
+        // The host fetches the samples of this frame in vblank().
+        std::lock_guard lock(_audioMutex);
+        advanceBuzzer(_nextFrame);
+    }
     _nextFrame += TICK_CYCLES;
     ++_frameCounter;
-    if (_speakerToggles) {
-        // a frame is 1/64 s and two toggles are one period of the square wave
-        _toneFrequency = static_cast<float>(_speakerToggles) * 32.0f;
-        _speakerToggles = 0;
-    }
     _host.vblank();
     _host.updateScreen();
 }
@@ -393,6 +410,7 @@ void SchipStrictEmulator::continueWait()
         case WaitState::KEY_SCAN:
             // one key is tested per round, cycling through 0..F
             realtime();
+            setBuzzer(false, _machineCycles + OUT_KEY_SCAN_OFFSET);
             addCycles(210);
             _waitKey = (_waitKey + 1) & 0xF;
             if (keyDown(_waitKey)) {
@@ -404,6 +422,7 @@ void SchipStrictEmulator::continueWait()
             // beep while the key is held, return right after release
             _rST = 4;
             realtime();
+            setBuzzer(false, _machineCycles + OUT_KEY_HELD_OFFSET);
             if (keyDown(_waitKey)) {
                 addCycles(308);
             }
@@ -591,9 +610,11 @@ void SchipStrictEmulator::execute(uint16_t opcode)
             break;
         case 0xE:
             if ((opcode & 0xFF) == 0x9E) {
+                setBuzzer(false, _machineCycles + OUT_KEY_OPCODE_OFFSET);
                 skipIf(vx < 16 && keyDown(vx), 397, 449);
             }
             else if ((opcode & 0xFF) == 0xA1) {
+                setBuzzer(false, _machineCycles + OUT_KEY_OPCODE_OFFSET);
                 skipIf(!(vx < 16 && keyDown(vx)), 409, 450);
             }
             else {
@@ -607,6 +628,7 @@ void SchipStrictEmulator::execute(uint16_t opcode)
                     addCycles(282);
                     break;
                 case 0x0A:
+                    setBuzzer(false, _machineCycles + OUT_KEY_WAIT_OFFSET);
                     addCycles(374);
                     _waitKey = 0;
                     startWait(WaitState::KEY_SCAN, opcode);
@@ -813,20 +835,69 @@ void SchipStrictEmulator::scrollRight()
     refreshScreen();
 }
 
+void SchipStrictEmulator::setBuzzer(bool high, int64_t cycle)
+{
+    if (high == _buzzerHigh)
+        return;
+    std::lock_guard lock(_audioMutex);
+    advanceBuzzer(cycle);
+    _buzzerHigh = high;
+}
+
+void SchipStrictEmulator::advanceBuzzer(int64_t cycle)
+{
+    // Generates the samples between the last edge and cycle, the remainder keeps the
+    // fractional samples so the audio stays locked to the machine cycles.
+    if (cycle <= _buzzerCycle)
+        return;
+    const auto scaledSamples = (cycle - _buzzerCycle) * _audioSampleFrequency + _buzzerSampleRemainder;
+    const auto sampleCount = scaledSamples / static_cast<int64_t>(CPU_CLOCK_FREQUENCY);
+    _buzzerSampleRemainder = scaledSamples % static_cast<int64_t>(CPU_CLOCK_FREQUENCY);
+    for (int64_t index = 0; index < sampleCount; ++index) {
+        if (!_buzzerSamples.push(nextBuzzerSample()))
+            break;
+    }
+    _buzzerCycle = cycle;
+}
+
+int16_t SchipStrictEmulator::nextBuzzerSample()
+{
+    return _buzzerHighPass(_buzzerLowPass(_buzzerHigh ? BUZZER_AMPLITUDE : 0));
+}
+
+void SchipStrictEmulator::configureBuzzer(int sampleFrequency)
+{
+    const auto rate = static_cast<uint32_t>(sampleFrequency);
+    _audioSampleFrequency = sampleFrequency;
+    _buzzerLowPass = LowPassButterworthFilter(rate, BUZZER_LOW_PASS_CUTOFF_HZ);
+    _buzzerHighPass = HighPassButterworthFilter(rate, BUZZER_HIGH_PASS_CUTOFF_HZ);
+    _buzzerSamples.reset();
+    resetBuzzerOutput();
+}
+
+void SchipStrictEmulator::resetBuzzerOutput()
+{
+    const int16_t steadySample = _buzzerHigh ? BUZZER_AMPLITUDE : 0;
+    _buzzerSampleRemainder = 0;
+    _buzzerLowPass.reset(steadySample);
+    _buzzerHighPass.reset(steadySample);
+}
+
 void SchipStrictEmulator::renderAudio(int16_t* samples, size_t frames, int sampleFrequency)
 {
-    // The speaker is toggled once per instruction while the sound timer runs, so the pitch
-    // follows the instruction rate, measured over the last emulated frame.
-    if (_rST && sampleFrequency > 0) {
-        const float step = _toneFrequency / static_cast<float>(sampleFrequency);
-        for (size_t index = 0; index < frames; ++index) {
-            *samples++ = _wavePhase > 0.5f ? 16384 : -16384;
-            _wavePhase = std::fmod(_wavePhase + step, 1.0f);
-        }
-    }
-    else {
+    if (sampleFrequency <= 0) {
         IEmulationCore::renderAudio(samples, frames, sampleFrequency);
+        return;
     }
+    std::lock_guard lock(_audioMutex);
+    if (sampleFrequency != _audioSampleFrequency)
+        configureBuzzer(sampleFrequency);
+    // Samples nobody fetched, e.g. from single stepping, would otherwise delay the sound for good.
+    while (_buzzerSamples.size() > frames + BUZZER_MAX_BACKLOG)
+        (void)_buzzerSamples.pop();
+    const auto fetched = _buzzerSamples.pop(samples, frames);
+    for (size_t index = fetched; index < frames; ++index)
+        samples[index] = nextBuzzerSample();
 }
 
 }  // namespace emu

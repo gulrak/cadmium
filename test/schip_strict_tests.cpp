@@ -73,6 +73,52 @@ struct SchipStrictFixture
     emu::SchipStrictEmulator core;
 };
 
+// Renders whole frames of the core and returns the buzzer output.
+std::vector<int16_t> renderFrames(SchipStrictFixture& fixture, int frames)
+{
+    std::vector<int16_t> output;
+    double samplesDue = 0;
+    for (int frame = 0; frame < frames; ++frame) {
+        fixture.core.executeFrame();
+        samplesDue += 44100.0 / 64.0;
+        const auto samples = static_cast<size_t>(samplesDue);
+        samplesDue -= static_cast<double>(samples);
+        const auto offset = output.size();
+        output.resize(offset + samples);
+        fixture.core.renderAudio(output.data() + offset, samples, 44100);
+    }
+    return output;
+}
+
+struct BuzzerPhase
+{
+    bool high{};
+    int length{};
+};
+
+// The phases between the sign changes of the output, the partial ones at the ends left out.
+std::vector<BuzzerPhase> buzzerPhases(const std::vector<int16_t>& samples)
+{
+    std::vector<BuzzerPhase> phases;
+    size_t start = 0;
+    for (size_t index = 1; index < samples.size(); ++index) {
+        if ((samples[index] > 0) != (samples[index - 1] > 0)) {
+            if (start)
+                phases.push_back({samples[index - 1] > 0, static_cast<int>(index - start)});
+            start = index;
+        }
+    }
+    return phases;
+}
+
+// The filters and the whole-sample edges move a phase end by up to two samples.
+void checkPhase(const BuzzerPhase& phase, int64_t cycles)
+{
+    const auto expected = static_cast<double>(cycles) * 44100.0 / 1630208.0;
+    CHECK(static_cast<double>(phase.length) >= expected - 2.0);
+    CHECK(static_cast<double>(phase.length) <= expected + 2.0);
+}
+
 }  // namespace
 
 TEST_CASE("STRICT-SCHIP-1.1 preset is registered")
@@ -263,4 +309,50 @@ TEST_CASE("STRICT-SCHIP-1.1 renders on the emulated HP-48SX display by default")
     CHECK_FALSE(fixture.core.updateProperties(fixture.properties, display));
     CHECK(fixture.core.getRGBASpan({buffer.data(), 600, 300}).empty());
     CHECK(fixture.pixel(0, 0) == 1);
+}
+
+TEST_CASE("STRICT-SCHIP-1.1 buzzer")
+{
+    SUBCASE("the speaker toggles once per instruction")
+    {
+        // 621 cycles per jump, so the high and the low phase are 621 cycles each
+        SchipStrictFixture fixture({0x60, 0x40, 0xF0, 0x18, 0x12, 0x06, 0x12, 0x04});
+        const auto phases = buzzerPhases(renderFrames(fixture, 8));
+        REQUIRE(phases.size() > 100);
+        for (const auto& phase : phases)
+            checkPhase(phase, 621);
+    }
+    SUBCASE("a key test ends the high phase early")
+    {
+        // The EX9E toggle goes high, its key test pulls it low 272 - 134 + 242 + 188 = 568
+        // cycles later, the EX9E takes 911 cycles and the jump 621.
+        SchipStrictFixture fixture({0x60, 0x40, 0xF0, 0x18, 0x61, 0x05, 0xE1, 0x9E, 0x12, 0x06});
+        const auto phases = buzzerPhases(renderFrames(fixture, 8));
+        REQUIRE(phases.size() > 50);
+        for (const auto& phase : phases)
+            checkPhase(phase, phase.high ? 568 : 911 + 621 - 568);
+    }
+    SUBCASE("a 64 Hz tick ends the high phase early")
+    {
+        // Instruction 5 goes high and takes the tick, its key scan pulls the buzzer low
+        // 669 - 160 - 134 = 375 cycles later, the next high phase starts in instruction 7.
+        SchipStrictFixture fixture({0x60, 0x40, 0xF0, 0x18, 0x12, 0x06, 0x12, 0x04});
+        fixture.core.executeInstructions(5);
+        fixture.core.setTickSchedule(fixture.core.machineCycles());
+        const auto phases = buzzerPhases(renderFrames(fixture, 1));
+        REQUIRE(phases.size() > 4);
+        REQUIRE(phases[0].high);
+        checkPhase(phases[0], 621);
+        checkPhase(phases[1], 621);
+        REQUIRE(phases[2].high);
+        checkPhase(phases[2], 375);
+        checkPhase(phases[3], 1018 - 509 + 621 + 134);
+        checkPhase(phases[4], 621);
+    }
+    SUBCASE("no sound without the sound timer")
+    {
+        SchipStrictFixture fixture({0x12, 0x02, 0x12, 0x00});
+        for (const auto sample : renderFrames(fixture, 4))
+            CHECK(sample == 0);
+    }
 }

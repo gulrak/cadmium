@@ -30,11 +30,14 @@
 
 #include <emulation/chip8genericbase.hpp>
 #include <emulation/emulatorhost.hpp>
+#include <emulation/filter.hpp>
 #include <emulation/hardware/hp48/display.hpp>
 #include <emulation/hardware/hp48/stack.hpp>
+#include <emulation/ringbuffer.hpp>
 #include <emulation/videoscreen.hpp>
 
 #include <array>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -64,6 +67,11 @@ public:
     static constexpr int64_t STARTUP_TICK_PHASE = TICK_CYCLES / 2;
     static constexpr int HP48_DISPLAY_WIDTH = 540;              // the LCD rendered by hp48::Hp48Display at scale 4
     static constexpr int HP48_DISPLAY_HEIGHT = 296;
+    static constexpr int AUDIO_SAMPLE_FREQUENCY = 44100;
+    static constexpr uint32_t BUZZER_LOW_PASS_CUTOFF_HZ = 10000;  // same filters as the HP-48SX core
+    static constexpr uint32_t BUZZER_HIGH_PASS_CUTOFF_HZ = 80;
+    static constexpr size_t BUZZER_BUFFER_SAMPLES = 4096;
+    static constexpr size_t BUZZER_MAX_BACKLOG = 1024;            // more than the longest instruction produces past a frame end
 
     SchipStrictEmulator(EmulatorHost& host, Properties& properties, IEmulationCore* other = nullptr);
     ~SchipStrictEmulator() override = default;
@@ -128,6 +136,11 @@ private:
     void setLcdPixel(int x, int y, bool on);
     void refreshScreen();
     void handleFrame();
+    void setBuzzer(bool high, int64_t cycle);
+    void advanceBuzzer(int64_t cycle);
+    int16_t nextBuzzerSample();
+    void configureBuzzer(int sampleFrequency);
+    void resetBuzzerOutput();
 
     EmulatorHost& _host;
     SchipStrictOptions _options;
@@ -145,9 +158,15 @@ private:
     std::array<uint8_t, 16> _registers{};
     std::array<uint8_t, SCREEN_WIDTH * SCREEN_HEIGHT> _lcd{};
     uint32_t _randomState{0x2B7E1516};
-    int _speakerToggles{};
-    float _toneFrequency{1300.0f};
-    float _wavePhase{};
+    bool _speakerDataHigh{};  // what the next speaker write outputs, the interpreter alternates #400 and #800
+    bool _buzzerHigh{};       // bit 11 of the OUT register
+    int64_t _buzzerCycle{};   // the samples up to this cycle are generated
+    int64_t _buzzerSampleRemainder{};
+    int _audioSampleFrequency{AUDIO_SAMPLE_FREQUENCY};
+    std::mutex _audioMutex;
+    RingBuffer<int16_t, BUZZER_BUFFER_SAMPLES> _buzzerSamples;
+    LowPassButterworthFilter _buzzerLowPass{AUDIO_SAMPLE_FREQUENCY, BUZZER_LOW_PASS_CUTOFF_HZ};
+    HighPassButterworthFilter _buzzerHighPass{AUDIO_SAMPLE_FREQUENCY, BUZZER_HIGH_PASS_CUTOFF_HZ};
     VideoType _screen{SCREEN_WIDTH, SCREEN_HEIGHT};
     mutable std::array<uint8_t, 17 * SCREEN_HEIGHT> _hp48FrameBuffer{};  // 131 LCD pixels per row, 17 bytes stride
     hp48::ObjectStack _hp48Stack;
