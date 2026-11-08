@@ -1,10 +1,17 @@
+; ---------------------------------------------------------------------------------------
 ; Cadmium HP-48SX replacement ROM for the CHIP-8 interpreters
 ;
 ; Copyright (c) 2026, Steffen Schuemann <s.schuemann@pobox.com>
 ; Distributed under the MIT license, see the LICENSE file of Cadmium.
 ;
-; A clean-room ROM for Cadmium's HP-48SX core, written from
-; docs/HP48-Replacement-ROM-Spec.md and the black-box test hp48-rom-conformance.
+; A clean-room ROM for Cadmium's HP-48SX core, written from just a specification. That
+; specification was generated using my disassembler and Claude Opus 5.5 for just
+; those parts of the rom, needed for the interpreters.
+;
+; The implementation was black-box tested against the real RevE ROM for behavioral
+; conformance and that the calls took exactly the same amount of cycles to not.
+; change the timing.
+;
 ; It is not a calculator: it boots to the idle state the loader expects, enters a
 ; code object on EVAL and provides the ROM routines and the TIMER1 interrupt the
 ; five HP-48 CHIP-8 interpreters use, with the same register, RAM and cycle effects.
@@ -17,7 +24,10 @@
 ; Cycle counts in the comments are those of Cadmium's SaturnL2 model: fetch costs one
 ; cycle per opcode nibble, plus the instruction's own cost. Routines assume P = 0 and
 ; HEX mode, as the interpreters call them.
-; REVIEW: P = 0 and HEX mode on entry of the routines are assumptions, not in the spec.
+;
+; NOTE: P = 0 and HEX mode on entry of the routines are assumptions, not in the spec.
+; ---------------------------------------------------------------------------------------
+
 
 ; ---------------------------------------------------------------------------------------
 ; Addresses

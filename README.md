@@ -198,10 +198,7 @@ The family tree below shows where the variants came from and which presets imple
 each of them, either as high level emulation or as the original interpreter running on
 the emulated hardware:
 
-<p align="center"><picture>
-  <source media="(prefers-color-scheme: dark)" srcset="media/cadmium_preset_tree_dark.svg">
-  <img src="media/cadmium_preset_tree.svg" alt="Family tree of the Cadmium presets">
-</picture></p>
+<p align="center"><img src="media/cadmium_preset_tree.svg" alt="Family tree of the Cadmium presets"></p>
 
 ### Roadmap of upcoming variants that are currently in development (no promises on a date):
 
@@ -252,7 +249,7 @@ The `hp-48-*` presets activate a core that is emulating an HP-48SX with its
 Saturn CPU, running the original CHIP-48, SUPER-CHIP 1.0 beta, 1.0, 1.1 and
 Chromatophore's SCHPC interpreters, assembled from source (SUPER-CHIP 1.0 beta,
 1.1 and SCHPC are source reconstructions from the binaries, as the originals are
-lost). Cadmium comes with its own clean-room replacement ROM for it, so the
+lost).  Cadmium comes with its own clean-room replacement ROM for it, so the
 interpreters run in every build, including the web version, but it is not a
 calculator, so `hp-48-none` needs HP's revision E ROM. The debugger works on the
 CHIP-8 level as well as on the Saturn CPU.
@@ -784,6 +781,13 @@ and CMake builds the core and compiles the ROM into Cadmium, on all platforms
 including the web. Without the ROM, Cadmium is built without the HP-48SX core.
 To leave the core out even with the ROM present (e.g. for builds you want to
 pass on), configure with `-DCADMIUM_DISABLE_HP48=ON`.
+
+The included clean-room replacement ROM for the HP-48SX is built from the source
+at `src/emulation/hardware/hp48/cadmium-hp48sx-rom.asap`. That ROM ony contains
+the parts needed to run the interpreters, not the full calculator functionality.
+Its implementation was done with the help of Claude Opus 5.5 using my own disassembler
+for the analysis and writing a specification, that was then used by me and a
+clean session to reconstruct a cycle exact functional replica of these routines.
 
 ## Used Resources
 
