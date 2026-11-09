@@ -53,6 +53,7 @@
 #include <emulation/timecontrol.hpp>
 #include <ghc/cli.hpp>
 #include <ghc/utf8.hpp>
+#include <gifrecorder.hpp>
 #include <headlessrun.hpp>
 #include <logview.hpp>
 #include <nlohmann/json.hpp>
@@ -69,7 +70,10 @@
 #include <cstring>
 #include <iomanip>
 #include <list>
+#include <ctime>
 #include <memory>
+#include <optional>
+#include <span>
 #include <mutex>
 #include <new>
 #include <regex>
@@ -327,6 +331,9 @@ public:
     enum MainView { eVIDEO, eDEBUGGER, eEDITOR, eTRACELOG, eSETTINGS, eROM_SELECTOR, eROM_EXPORT, eLIBRARY };
     enum EmulationMode { eCOSMAC_VIP_CHIP8, eGENERIC_CHIP8 };
     enum VideoRenderMode { eFAST, eHIRES };
+    enum class GifCapture { GAME_SCREEN, WINDOW };
+    static constexpr size_t MAX_GIF_BYTES = 512u * 1024u * 1024u;
+    static constexpr float GIF_MESSAGE_SECONDS = 5.0f;
     enum FileBrowserMode { eLOAD, eSAVE, eWEB_SAVE };
     static constexpr int MIN_SCREEN_WIDTH = 640; // 512;
     static constexpr int MIN_SCREEN_HEIGHT = 480; // 192*2+36;
@@ -531,6 +538,8 @@ public:
         if (_database)
             _database.reset();
 #endif
+        if (_gifRecorder)
+            stopGifRecording();
         _textureScaler.reset();
         UnloadFont(_font);
         UnloadImage(_fontImage);
@@ -1156,6 +1165,7 @@ public:
         BeginTextureMode(_textureScaler->getRenderTexture());
         drawGui();
         EndTextureMode();
+        updateGifRecording(deltaT);
         _textureScaler->updateIntermediateTexture();
         guiRenderTime.stop();
         _avgGuiRenderTime = guiRenderTime.getElapsedAvgString();
@@ -1210,6 +1220,220 @@ public:
             // DrawFPS(10,45);
         }
         EndDrawing();
+    }
+
+    void toggleGifRecording(GifCapture capture)
+    {
+        _gifRequest = capture;
+    }
+
+    // Everything that starts or stops a recording is done here, between the render passes,
+    // as loading a render texture while drawing the GUI would unbind the target of the GUI.
+    void updateGifRecording(float deltaT)
+    {
+        if(_gifRequest) {
+            if(_gifRecorder)
+                stopGifRecording();
+            else
+                startGifRecording(*_gifRequest);
+            _gifRequest.reset();
+            updateMainMenu();
+        }
+        if(_gifRecorder) {
+            // Every update has to look at the mouse, a click can fall between two captured frames.
+            if(_gifCapture == GifCapture::WINDOW)
+                trackGifClicks(deltaT);
+            if(const auto delay = _gifPacer.advance(deltaT))
+                captureGifFrame(delay);
+            if(!_gifRecorder->good() || _gifRecorder->bytesWritten() > MAX_GIF_BYTES) {
+                stopGifRecording();
+                updateMainMenu();
+            }
+        }
+        drawGifStatus();
+    }
+
+    void startGifRecording(GifCapture capture)
+    {
+        int width = MIN_SCREEN_WIDTH;
+        int height = MIN_SCREEN_HEIGHT;
+        if(capture == GifCapture::GAME_SCREEN) {
+            // the canvas follows the screen at the start, later size changes get stretched into it, and screenRotation() is not applied here
+            const int screenWidth = static_cast<int>(_screenSize.x);
+            const int screenHeight = static_cast<int>(_screenSize.y) / std::max(1, _screenRatio);
+            if(screenWidth <= 0 || screenHeight <= 0) {
+                setGifMessage("Nothing to record yet", false);
+                return;
+            }
+            const int zoom = std::max(1, MIN_SCREEN_WIDTH / screenWidth);
+            width = screenWidth * zoom;
+            height = screenHeight * zoom;
+            _gifPixels.resize(static_cast<size_t>(width) * height);
+        }
+        else {
+            // Only the hires mode has more details than the GUI texture.
+            _gifWindowScale = _videoRenderMode == eHIRES ? std::clamp(_scaleMode, 1, 2) : 1;
+            width *= _gifWindowScale;
+            height *= _gifWindowScale;
+            _gifTexture = LoadRenderTexture(width, height);
+        }
+        auto stem = fs::path(_romName).stem().string();
+        if(stem.empty())
+            stem = "cadmium";
+        char stamp[32]{};
+        const auto now = std::time(nullptr);
+        std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
+        _gifName = fmt::format("{}-{}.gif", stem, stamp);
+#ifdef PLATFORM_WEB
+        _gifBuffer.clear();
+        GifRecorder::Sink sink = [this](std::span<const uint8_t> bytes) {
+            _gifBuffer.insert(_gifBuffer.end(), bytes.begin(), bytes.end());
+            return true;
+        };
+#else
+        const auto& gifDirectory = !_cfg.recordingDirectory.empty() ? _cfg.recordingDirectory : _currentDirectory;
+        _gifPath = fs::path(gifDirectory.empty() ? dataPath() : gifDirectory) / _gifName;
+        _gifFile.open(_gifPath, std::ios::binary | std::ios::trunc);
+        if(!_gifFile) {
+            setGifMessage("Can't write " + _gifName, false);
+            releaseGifCapture();
+            return;
+        }
+        GifRecorder::Sink sink = [this](std::span<const uint8_t> bytes) {
+            _gifFile.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+            return !_gifFile.fail();
+        };
+#endif
+        _gifCapture = capture;
+        _gifPacer = GifFramePacer{};
+        _gifClickMarks.clear();
+        _gifElapsed = 0.0f;
+        _gifRecorder = std::make_unique<GifRecorder>(width, height, std::move(sink));
+        _gifMessageTime = 0.0f;
+    }
+
+    void trackGifClicks(float deltaT)
+    {
+        _gifClickMarks.advance(deltaT);
+        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            const auto mouse = GetMousePosition();
+            _gifClickMarks.add(mouse.x, mouse.y);
+        }
+    }
+
+    // The positions are the ones the GUI uses, the system cursor isn't part of any texture.
+    void drawGifPointer(int scale) const
+    {
+        const Color clickColor{255, 200, 0, 255};
+        for(const auto& mark : _gifClickMarks.marks()) {
+            const auto progress = mark.age / GifClickMarks::DURATION;
+            const auto outer = (4.0f + 12.0f * progress) * scale;
+            const auto thickness = (progress < 0.5f ? 2.0f : 1.0f) * scale;
+            DrawRing({mark.x * scale, mark.y * scale}, outer - thickness, outer, 0.0f, 360.0f, 32, clickColor);
+        }
+        if(!IsCursorOnScreen())
+            return;
+        constexpr int ICON_TIP = 3;  // the arrow tip inside of the icon
+        const auto mouse = GetMousePosition();
+        const int x = (static_cast<int>(mouse.x) - ICON_TIP) * scale;
+        const int y = (static_cast<int>(mouse.y) - ICON_TIP) * scale;
+        for(int dy = -1; dy <= 1; ++dy) {
+            for(int dx = -1; dx <= 1; ++dx) {
+                if(dx || dy)
+                    GuiDrawIcon(ICON_CURSOR_CLASSIC, x + dx * scale, y + dy * scale, scale, BLACK);
+            }
+        }
+        GuiDrawIcon(ICON_CURSOR_CLASSIC, x, y, scale, WHITE);
+    }
+
+    void captureGifFrame(int delay)
+    {
+        const int width = _gifRecorder->width();
+        const int height = _gifRecorder->height();
+        if(_gifCapture == GifCapture::GAME_SCREEN) {
+            const int screenWidth = std::clamp(static_cast<int>(_screenSize.x), 1, _screen.width);
+            const int screenHeight = std::clamp(static_cast<int>(_screenSize.y), 1, _screen.height);
+            scaleNearest(static_cast<const uint32_t*>(_screen.data), screenWidth, screenHeight, _screen.width, _gifPixels.data(), width, height);
+            _gifRecorder->addFrame(_gifPixels.data(), width, delay);
+            return;
+        }
+        const auto& gui = _textureScaler->getRenderTexture().texture;
+        BeginTextureMode(_gifTexture);
+        ClearBackground(BLACK);
+        if(_videoRenderMode == eHIRES && _screenOverlay.width > 0 && _screenOverlay.height > 0) {
+            const auto scale = static_cast<float>(_gifWindowScale);
+            drawScreen({_screenOverlay.x * scale, _screenOverlay.y * scale, _screenOverlay.width * scale, _screenOverlay.height * scale}, _screenScale);
+        }
+        DrawTexturePro(gui, {0, 0, static_cast<float>(gui.width), -static_cast<float>(gui.height)}, {0, 0, static_cast<float>(width), static_cast<float>(height)}, {0, 0}, 0.0f, WHITE);
+        drawGifPointer(_gifWindowScale);
+        rlDrawRenderBatchActive();
+        // Reads the bound texture and brings its rows into top to bottom order.
+        auto* pixels = rlReadScreenPixels(width, height);
+        EndTextureMode();
+        _gifRecorder->addFrame(reinterpret_cast<const uint32_t*>(pixels), width, delay);
+        MemFree(pixels);
+    }
+
+    void stopGifRecording()
+    {
+        bool success = _gifRecorder->finish();
+#ifdef PLATFORM_WEB
+        if(success)
+            webDownloadFile(_gifName.c_str(), _gifBuffer.data(), _gifBuffer.size(), "image/gif");
+        _gifBuffer = {};
+#else
+        _gifFile.close();
+        success = success && !_gifFile.fail();
+        _gifFile.clear();
+        if(!success) {
+            std::error_code ec;
+            fs::remove(_gifPath, ec);
+        }
+#endif
+        setGifMessage(success ? "Saved " + _gifName : "Couldn't write " + _gifName, success);
+        _gifRecorder.reset();
+        releaseGifCapture();
+    }
+
+    void releaseGifCapture()
+    {
+        if(_gifTexture.id)
+            UnloadRenderTexture(_gifTexture);
+        _gifTexture = {};
+        _gifPixels = {};
+    }
+
+    void setGifMessage(std::string message, bool success)
+    {
+        _gifMessage = std::move(message);
+        _gifMessageSuccess = success;
+        _gifMessageTime = GIF_MESSAGE_SECONDS;
+    }
+
+    // Drawn after the capture, so it shows up in the window but not in the recording.
+    void drawGifStatus()
+    {
+        std::string text;
+        Color color;
+        if(_gifRecorder) {
+            _gifElapsed += GetFrameTime();
+            text = fmt::format("REC {:.0f}s {:.1f} MiB", std::floor(_gifElapsed), _gifRecorder->bytesWritten() / 1048576.0);
+            color = RED;
+        }
+        else if(_gifMessageTime > 0.0f) {
+            _gifMessageTime -= GetFrameTime();
+            text = _gifMessage;
+            color = _gifMessageSuccess ? GREEN : RED;
+        }
+        else {
+            return;
+        }
+        constexpr float fontSize = 8.0f;
+        const auto size = MeasureTextEx(_font, text.c_str(), fontSize, 0.0f);
+        BeginTextureMode(_textureScaler->getRenderTexture());
+        DrawRectangleRec({2, 22, size.x + 8, size.y + 6}, BLACK);
+        DrawTextEx(_font, text.c_str(), {6, 25}, fontSize, 0.0f, color);
+        EndTextureMode();
     }
 
     void drawScreen(Rectangle dest, int /*gridScale*/)
@@ -1457,11 +1681,20 @@ public:
         _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Separator(),
             PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
+        });
+        if(_gifRecorder) {
+            _mainMenu.push_back(PopupMenu::Action("Stop GIF recording", [this]() { toggleGifRecording(_gifCapture); }, "⌘G"));
+        }
+        else {
+            _mainMenu.push_back(PopupMenu::Action("Record game screen as GIF", [this]() { toggleGifRecording(GifCapture::GAME_SCREEN); }, "⌘G"));
+            _mainMenu.push_back(PopupMenu::Action("Record window as GIF", [this]() { toggleGifRecording(GifCapture::WINDOW); }, "Shift+⌘G"));
+        }
 #ifndef PLATFORM_WEB
+        _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Separator(),
             PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, "⌘Q")
-#endif
         });
+#endif
     }
 
     void drawGui()
@@ -1576,6 +1809,10 @@ public:
                     if (IsKeyPressed(KEY_K)) {
                         PopupMenu::Close();
                         _showKeyMap = !_showKeyMap;
+                    }
+                    if (IsKeyPressed(KEY_G)) {
+                        PopupMenu::Close();
+                        toggleGifRecording(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? GifCapture::WINDOW : GifCapture::GAME_SCREEN);
                     }
 #ifndef PLATFORM_WEB
                     if (IsKeyPressed(KEY_Q)) {
@@ -1830,6 +2067,7 @@ public:
                 }
                 case eSETTINGS: {
                     static FileDialogInfo fdi{FileDialogInfo::SelectFolder, "Select Directory", fs::current_path().string()};
+                    static bool selectingRecordingDirectory = false;
                     static Vector2 scrollPos = {};
                     static int activeEntry = -1;
                     _lastView = _mainView;
@@ -1895,6 +2133,29 @@ public:
                             EndColumns();
                             SimpleListView(15*5+4, "libraryPath", _cfg.libraryPath, &scrollPos, &activeEntry);
                             Space(4);
+#ifndef PLATFORM_WEB
+                            BeginColumns();
+                            SetSpacing(0);
+                            SetNextWidth(GetContentAvailable().width - 20*2);
+                            Label("Recording Output Directory (empty: next to the program):");
+                            SetDefaultWidth(20);
+                            if (Button(GuiIconText(ICON_PENCIL, ""))) {
+                                fdi.path = _cfg.recordingDirectory.empty() ? _currentDirectory : _cfg.recordingDirectory;
+                                selectingRecordingDirectory = true;
+                                selectorOpen = true;
+                            }
+                            if (_cfg.recordingDirectory.empty()) GuiDisable();
+                            if (Button("-")) {
+                                _cfg.recordingDirectory.clear();
+                                saveConfig();
+                            }
+                            GuiEnable();
+                            EndColumns();
+                            GuiDisable();
+                            TextBox("recordingDirectory", _cfg.recordingDirectory, 4096);
+                            GuiEnable();
+                            Space(4);
+#endif
                             /*
                             if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
@@ -1917,7 +2178,11 @@ public:
                             selectorOpen = false;
                             if (fdi.action == FileDialogInfo::CloseAction::Okay) {
                                 if (!fdi.path.empty()) {
-                                    if (activeEntry == -1 || activeEntry >= _cfg.libraryPath.size())
+                                    if (selectingRecordingDirectory) {
+                                        _cfg.recordingDirectory = fdi.path;
+                                        saveConfig();
+                                    }
+                                    else if (activeEntry == -1 || activeEntry >= _cfg.libraryPath.size())
                                         _cfg.libraryPath.push_back(fdi.path);
                                     else
                                         _cfg.libraryPath[activeEntry] = fdi.path;
@@ -1925,6 +2190,8 @@ public:
                             }
                         }
                     }
+                    if (!selectorOpen)
+                        selectingRecordingDirectory = false;
                     break;
                 }
 #ifndef PLATFORM_WEB
@@ -2914,6 +3181,25 @@ private:
     ResourceManager _resources;
     gui::StyleManager _styleManager;
     gui::PopupMenu::Menu _mainMenu{};
+    std::unique_ptr<GifRecorder> _gifRecorder;
+    GifFramePacer _gifPacer;
+    GifClickMarks _gifClickMarks;
+    std::optional<GifCapture> _gifRequest;
+    GifCapture _gifCapture{GifCapture::GAME_SCREEN};
+    RenderTexture _gifTexture{};
+    int _gifWindowScale{1};
+    std::vector<uint32_t> _gifPixels;
+    std::string _gifName;
+#ifdef PLATFORM_WEB
+    std::vector<uint8_t> _gifBuffer;
+#else
+    fs::path _gifPath;
+    std::ofstream _gifFile;
+#endif
+    float _gifElapsed{0.0f};
+    std::string _gifMessage;
+    float _gifMessageTime{0.0f};
+    bool _gifMessageSuccess{true};
     Image _fontImage{};
     Image _microFont{};
     Image _titleImage{};

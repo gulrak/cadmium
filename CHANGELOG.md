@@ -168,6 +168,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New main menu with "Open recent" files (and "Clear recent files") and shown hotkeys
 - Keyboard shortcuts: `Ctrl`/`Cmd` + `N`/`O`/`S`/`K`/`Q` for New, Open, Save, Key Map and Quit,
   `F5` run, `Shift+F5` pause, `F7` step into, `Shift+F7` step out, `F8` step over
+- The game screen or the whole window can be recorded as an animated GIF from the main menu or with
+  `Ctrl`/`Cmd` + `G` and `Ctrl`/`Cmd` + `Shift` + `G`, the file goes to the recording directory from
+  the Misc settings, without one next to the current programs, and is downloaded in the web version,
+  window recordings also show the mouse pointer and its clicks
 - Toolbar buttons for opening the library, opening and saving a program
 - Saving lets you choose between saving the ROM file or the source code and asks before
   overwriting an existing file

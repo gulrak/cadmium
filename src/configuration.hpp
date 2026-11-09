@@ -43,6 +43,7 @@ struct CadmiumConfiguration
     uint8_t guiSat{80};
     std::string workingDirectory;
     std::vector<std::string> libraryPath;
+    std::string recordingDirectory;
     RecentFiles recentFiles;
     emu::Properties emuProperties;
     std::map<Sha1::Digest,emu::Properties> romConfigs;

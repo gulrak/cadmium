@@ -3508,8 +3508,9 @@ void System::openSubmenu(int parent_level, int item_index) {
     // Try to position to the right
     float x = parentBounds.x + parentBounds.width - 2;  // slight overlap
     if (x + submenu.width > guiWidth) {
-        // Flip to left
-        x = parentBounds.x - submenu.width + 2;
+        // Flip to left, without room there either stay at the edge to cover as little of the parent as possible
+        float leftXPos = parentBounds.x - submenu.width + 2;
+        x = leftXPos >= 0 ? leftXPos : guiWidth - submenu.width;
     }
     if (x < 0) x = 0;
 

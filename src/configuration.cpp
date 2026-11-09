@@ -69,6 +69,7 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
         {"guiSaturation", cc.guiSat},
         {"workingDirectory", cc.workingDirectory},
         {"libraryPath", cc.libraryPath},
+        {"recordingDirectory", cc.recordingDirectory},
         {"recentFiles", cc.recentFiles},
         {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
@@ -101,6 +102,7 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
             }
         }
     }
+    cc.recordingDirectory = j.value("recordingDirectory", "");
     if (j.contains("recentFiles")) {
         j.at("recentFiles").get_to(cc.recentFiles);
     }

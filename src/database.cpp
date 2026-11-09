@@ -3200,7 +3200,7 @@ std::string Database::storeSettings(const Sha1::Digest& sha1, const emu::Propert
 
 std::string Database::addFiles(const std::vector<std::string>& paths)
 {
-    std::lock_guard lock(_pimpl->mutex);
+    std::unique_lock lock(_pimpl->mutex);
     int targetId = -1;
     if (const auto mouse = GetMousePosition(); CheckCollisionPointRec(mouse, _pimpl->visibleListRect)) {
         if (auto iter = std::ranges::find_if(_pimpl->visibleRows, [&](const auto& row) { return CheckCollisionPointRec(mouse, row.first); }); iter != _pimpl->visibleRows.end() && _pimpl->programs.contains(iter->second)) {
@@ -3261,7 +3261,10 @@ std::string Database::addFiles(const std::vector<std::string>& paths)
             TraceLog(LOG_WARNING, fmt::format("Adding '{}' to the library failed: {}", path, ex.what()).c_str());
         }
     }
+    // takes the mutex itself
+    lock.unlock();
     _pimpl->analyzeBinaries(session);
+    lock.lock();
     _pimpl->updateFilter();
     updatePreview();
     return fmt::format("Added {} new and {} known ROM{} to the library.", added, known, added + known == 1 ? "" : "s");
@@ -3350,8 +3353,8 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         SetSpacing(4);
 
-        constexpr int numIconButtons = 5;
-        SetNextWidth(area.width - 2 * 60 - numIconButtons * 20 - (numIconButtons + 2) * 4);
+        constexpr int numIconButtons = 7;
+        SetNextWidth(area.width - numIconButtons * 20 - (numIconButtons + 1) * 4);
         if (TextBox("query", _pimpl->queryLine, 4096)) {
             _pimpl->setQuery(_pimpl->queryLine);
         }
@@ -3389,22 +3392,25 @@ Database::Action Database::render(Font& font)
             _pimpl->updateFilter();
         }
         SetTooltip(_pimpl->showMissing ? "HIDE MISSING ROMS" : "SHOW MISSING ROMS");
+        Space(0);  // adds one more spacing, to set the search buttons apart from the ones acting on programs
         if (!_pimpl->programs.contains(_pimpl->selectedProgramId)) {
             GuiDisable();
         }
-        SetNextWidth(60);
-        if (Button("Edit...")) {
+        SetNextWidth(20);
+        if (Button(IconText(ICON_PENCIL, ""))) {
             _pimpl->openEditor();
         }
         GuiEnable();
+        SetTooltip("Edit...");
         if (_pimpl->markedProgramIds.size() < 2) {
             GuiDisable();
         }
-        SetNextWidth(60);
-        if (Button("Merge...")) {
+        SetNextWidth(20);
+        if (Button(IconText(ICON_MERGE, ""))) {
             _pimpl->openMerge();
         }
         GuiEnable();
+        SetTooltip("Merge...");
         if (!_selectedProgram) {
             GuiDisable();
         }
@@ -3535,7 +3541,14 @@ Database::Action Database::render(Font& font)
                             }
                         }
                     }
-                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, isSelected ? selectedCol : (_pimpl->isPresent(program) ? lightgrayCol : grayCol));
+                    const bool isPresent = _pimpl->isPresent(program);
+                    DrawTextClipped(font, fmt::format("{}", program.name.c_str()).c_str(), {itemRect.x, itemRect.y}, isSelected ? selectedCol : (isPresent ? lightgrayCol : grayCol));
+                    if (const auto authors = _pimpl->authorNames(program); !authors.empty()) {
+                        // behind the name and a shade darker, program rects are wider than the visible part of the list
+                        const float authorsX = std::floor(itemRect.x + MeasureTextEx(font, program.name.c_str(), font.baseSize, 0).x + 8);
+                        const auto text = fitText(authors, listRect.x + listRect.width - 12 - authorsX);
+                        DrawTextClipped(font, text.c_str(), {authorsX, itemRect.y}, isSelected ? selectedCol : (isPresent ? grayCol : missingCol));
+                    }
                     for (size_t i = 0; i < program.binaries.size(); ++i) {
                         const auto& binary = _pimpl->binaries.at(program.binaries[i]);
                         if (pid == _pimpl->selectedProgramId && binary.id == _pimpl->selectedBinaryId) {
@@ -3604,6 +3617,8 @@ Database::Action Database::render(Font& font)
                 };
                 if (rightClicked->second >= 0) {
                     auto detachItem = PopupMenu::Action("Detach as new program", [this]() { _pimpl->request = Private::Request::DETACH; });
+                    menu.push_back(PopupMenu::Separator());
+                    menu.push_back(PopupMenu::Action("Copy SHA1", [sha1 = _pimpl->binaries.at(rightClicked->second).sha1]() { CopyToClipboard(sha1); }));
                     menu.push_back(PopupMenu::Separator());
                     menu.push_back(_pimpl->programs.at(rightClicked->first).binaries.size() > 1 ? detachItem : PopupMenu::Disabled(detachItem));
                     menu.push_back(PopupMenu::Action("Move to program...", [this]() { _pimpl->request = Private::Request::MOVE; }));

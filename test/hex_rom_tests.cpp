@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <emuhostex.hpp>
 #include <configuration.hpp>
+#include <nlohmann/json.hpp>
 #include <emulation/eti660.hpp>
 #include <chiplet/utility.hpp>
 
@@ -246,3 +247,14 @@ TEST_CASE("HEX known Wipeout selects ETI by parsed content rather than encoding"
     }
 }
 #endif
+
+TEST_CASE("The recording directory is kept in the configuration and optional in old ones")
+{
+    CadmiumConfiguration config;
+    config.workingDirectory = "work";
+    config.recordingDirectory = "/some/where";
+    nlohmann::json stored = config;
+    CHECK(stored.get<CadmiumConfiguration>().recordingDirectory == "/some/where");
+    stored.erase("recordingDirectory");
+    CHECK(stored.get<CadmiumConfiguration>().recordingDirectory.empty());
+}

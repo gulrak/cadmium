@@ -22,6 +22,8 @@ set(CADMIUM_SOURCE
     editor.hpp
     emuhostex.cpp
     emuhostex.hpp
+    gifrecorder.cpp
+    gifrecorder.hpp
     highlighter.cpp
     highlighter.hpp
     headlessrun.cpp

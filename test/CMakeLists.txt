@@ -47,6 +47,11 @@ target_include_directories(libraryquery-tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(libraryquery-tests PRIVATE doctest fmt::fmt)
 doctest_discover_tests(libraryquery-tests)
 
+add_executable(gifrecorder-tests main.cpp gifrecorder_tests.cpp ${PROJECT_SOURCE_DIR}/src/gifrecorder.cpp)
+target_include_directories(gifrecorder-tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(gifrecorder-tests PRIVATE doctest fmt::fmt)
+doctest_discover_tests(gifrecorder-tests)
+
 add_executable(schip-strict-tests main.cpp schip_strict_tests.cpp)
 target_compile_definitions(schip-strict-tests PRIVATE WITHOUT_STB_IMAGE)
 target_link_libraries(schip-strict-tests PRIVATE doctest emulation)
