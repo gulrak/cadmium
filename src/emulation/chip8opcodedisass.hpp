@@ -42,7 +42,7 @@ class Chip8OpcodeDisassembler
 public:
     using SymbolResolver = std::function<std::string(uint16_t)>;
     explicit Chip8OpcodeDisassembler(chip8::VariantSet variant, SymbolResolver resolver = {});
-    void setVariant(chip8::VariantSet variant) { _opcodeSet = detail::OpcodeSet(variant, _labelOrAddress); }
+    void setVariant(chip8::VariantSet variant);
     void setSymbolResolver(SymbolResolver resolver) { _labelOrAddress = std::move(resolver); }
     std::tuple<uint16_t, uint16_t, std::string> disassembleInstruction(const uint8_t* code, const uint8_t* end) const;
 protected:

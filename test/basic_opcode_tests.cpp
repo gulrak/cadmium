@@ -221,6 +221,28 @@ TEST_CASE("Generic core limits an instructions per frame value that is still bei
     CHECK(emu::Chip8GenericOptions::fromProperties(props).instructionsPerFrame == ipf.getIntMin());
 }
 
+TEST_CASE("Generic core disassembles the SCHIP opcodes of the SCHIP 1.0 beta")
+{
+    for (const auto preset : {"SCHIP-1.0-BETA", "SCHIP-1.0"}) {
+        INFO(std::string(preset));
+        auto props = emu::CoreRegistry::propertiesForPreset(preset);
+        REQUIRE(props);
+        HeadlessTestHost host(props);
+        auto [name, core] = emu::CoreRegistry::create(host, props, nullptr);
+        REQUIRE(core);
+        auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(core->executionUnit(0));
+        REQUIRE(chip8);
+        host.setCore(std::move(core));
+        chip8->reset();
+        write(chip8, 0x200, {0x00FF, 0xD010, 0xF530, 0xF775, 0x00C4});
+        std::string lines;
+        for (int32_t address = 0x200; address < 0x20A; address += 2) {
+            lines += chip8->disassembleInstructionWithBytes(address, nullptr).substr(chip8->disassemblyPrefixSize()) + ';';
+        }
+        CHECK(lines == "hires;sprite v0 v1 0x0;i := bighex v5;saveflags v7;invalid;");
+    }
+}
+
 TEST_CASE("Generic core ends the frame while waiting for a key")
 {
     // XO-CHIP/SCHIP-MODERN use the instant Dxyn fast path, MEGACHIP with 0011 the MegaChip loop,

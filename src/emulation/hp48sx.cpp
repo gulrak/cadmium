@@ -400,6 +400,9 @@ Hp48sxEmulationCore::Hp48sxEmulationCore(EmulatorHost& host, Properties& propert
 {
     _execChip8 = _impl->options.interpreter != Interpreter::NONE;
     _isHybridChipMode = _execChip8;
+    if (_isHybridChipMode) {
+        setVariant(variantFor(_impl->options.interpreter));
+    }
     if (other) {
         if (auto chip8 = other->chip8Core()) {
             swapBreakpoints(*chip8);

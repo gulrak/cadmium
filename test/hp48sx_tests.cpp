@@ -282,6 +282,26 @@ TEST_CASE("HP48 SCHIP 1.0 beta selects the large font through Fx29")
     CHECK(fontAddress("hp-48-schip-1-0", 0x05, 0x30) == 0x82);
 }
 
+TEST_CASE("HP48 interpreters disassemble the opcodes of their own CHIP-8 variant")
+{
+    const auto disassemble = [](const char* preset) {
+        const std::array<uint8_t, 10> program{0x00, 0xff, 0xd0, 0x10, 0xf5, 0x30, 0xf7, 0x75, 0x00, 0xc4};
+        Hp48Fixture fixture(preset);
+        REQUIRE(fixture.core.loadData(program, {}));
+        std::string lines;
+        for (int32_t address = 0x200; address < 0x200 + static_cast<int32_t>(program.size()); address += 2) {
+            lines += fixture.core.disassembleInstructionWithBytes(address, nullptr).substr(fixture.core.disassemblyPrefixSize()) + ';';
+        }
+        return lines;
+    };
+
+    CHECK(disassemble("hp-48-chip-48") == "invalid;sprite v0 v1 0x0;invalid;invalid;invalid;");
+    CHECK(disassemble("hp-48-schip-1-0-beta") == "hires;sprite v0 v1 0x0;i := bighex v5;saveflags v7;invalid;");
+    CHECK(disassemble("hp-48-schip-1-0") == "hires;sprite v0 v1 0x0;i := bighex v5;saveflags v7;invalid;");
+    CHECK(disassemble("hp-48-schip-1-1") == "hires;sprite v0 v1 0x0;i := bighex v5;saveflags v7;scroll-down 0x4;");
+    CHECK(disassemble("hp-48-schpc") == "hires;sprite v0 v1 0x0;i := bighex v5;saveflags v7;scroll-down 0x4;");
+}
+
 TEST_CASE("HP48 interpreters see every host key under its own CHIP-8 key number")
 {
     // Scans all keys in a loop, on a pressed one it sets I to its font digit.

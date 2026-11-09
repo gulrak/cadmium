@@ -3542,7 +3542,7 @@ int main(int argc, char* argv[])
     }
     // No preset given and no configuration yet (e.g. first start), use a default.
     if (!coreProperties) {
-        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "schipc" : presetName);
+        coreProperties = emu::CoreRegistry::propertiesForPreset(presetName.empty() ? "chip-8" : presetName);
     }
     if (!customPalette.empty()) {
         emu::Palette palette;

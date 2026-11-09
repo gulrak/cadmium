@@ -10,12 +10,29 @@
 
 namespace emu {
 
+namespace {
+
+chip8::VariantSet decodableVariants(chip8::VariantSet variant)
+{
+    // Chiplet's opcode table has no SCHIP entries for the beta, it decodes the same opcodes as SCHIP 1.0
+    if(variant.contains(chip8::Variant::SCHIP_1_0_BETA))
+        variant |= chip8::Variant::SCHIP_1_0;
+    return variant;
+}
+
+}
+
 Chip8OpcodeDisassembler::Chip8OpcodeDisassembler(chip8::VariantSet variant, SymbolResolver resolver)
 : _labelOrAddress(std::move(resolver))
-, _opcodeSet(variant)
+, _opcodeSet(decodableVariants(variant))
 {
     if(!_labelOrAddress)
         _labelOrAddress = [](uint16_t addr){ return fmt::format("0x{:04X}", addr); };
+}
+
+void Chip8OpcodeDisassembler::setVariant(chip8::VariantSet variant)
+{
+    _opcodeSet = detail::OpcodeSet(decodableVariants(variant), _labelOrAddress);
 }
 
 std::tuple<uint16_t, uint16_t, std::string> Chip8OpcodeDisassembler::disassembleInstruction(const uint8_t* code, const uint8_t* end) const
