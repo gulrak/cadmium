@@ -177,7 +177,7 @@ RLGUIPP_API void SetSpacing(float spacing);                                     
 RLGUIPP_API Vector2 GetCurrentPos();                                                                                      // Get the position that will be used by the next widget
 RLGUIPP_API Rectangle GetContentAvailable();                                                                              // Get the area from current position to content edges
 RLGUIPP_API Rectangle GetLastWidgetRect();                                                                                // Get the position and dimensions of the previous widget
-RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                                  // Set a tooltip for the rectangle of the previously defined widget
+RLGUIPP_API void SetTooltip(const std::string& tooltip);                                                                  // Set a tooltip for the rectangle of the previously defined widget, '\n' starts a new line
 RLGUIPP_API void Space();                                                                                                 // Depending on the parent it inserts a vertical or horizontal space of the spacing
 RLGUIPP_API void Space(float size);                                                                                       // Depending on the parent it inserts a vertical or horizontal space of size (plus the spacing), a negative size inserts nothing
 RLGUIPP_API void Separator(float size = -1);                                                                              // Insert a seperator line

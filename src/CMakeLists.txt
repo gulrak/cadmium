@@ -80,8 +80,18 @@ if (NOT ${PLATFORM} MATCHES "Web")
 endif()
 target_compile_definitions(cadmium PUBLIC
         CADMIUM_VERSION="${PROJECT_VERSION}"
-        CADMIUM_VERSION_DECIMAL=${PROJECT_VERSION_DECIMAL}
-        CADMIUM_GIT_HASH="${GIT_COMMIT_HASH}")
+        CADMIUM_VERSION_DECIMAL=${PROJECT_VERSION_DECIMAL})
+# The hash is refreshed on every build, without configuring again, and a new one only recompiles cadmium.cpp.
+set(CADMIUM_GIT_HASH_FILE "${CMAKE_CURRENT_BINARY_DIR}/generated/cadmium_git_hash.hpp")
+set(CADMIUM_GIT_HASH_COMMAND ${CMAKE_COMMAND}
+        -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
+        -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DOUTPUT_FILE=${CADMIUM_GIT_HASH_FILE}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GitHash.cmake)
+execute_process(COMMAND ${CADMIUM_GIT_HASH_COMMAND})
+add_custom_target(cadmium_git_hash COMMAND ${CADMIUM_GIT_HASH_COMMAND} BYPRODUCTS ${CADMIUM_GIT_HASH_FILE} VERBATIM)
+add_dependencies(cadmium cadmium_git_hash)
+target_include_directories(cadmium PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if(NOT EMSCRIPTEN)
     target_compile_definitions(cadmium PUBLIC CADMIUM_WITH_BACKGROUND_EMULATION)
     target_include_directories(cadmium PRIVATE
@@ -92,10 +102,6 @@ if(CADMIUM_WITH_DATABASE)
     target_link_libraries(cadmium PUBLIC ghc::sqlite)
     # the C API of SQLite, ghc::sqlite doesn't export it, the starter metadata is read from memory with sqlite3_deserialize
     target_include_directories(cadmium PRIVATE "${PROJECT_SOURCE_DIR}/external/ghc/sqlite/src/sqlite3")
-    if(NOT EMSCRIPTEN)
-        # only for fetching the chip-8-database, not available on the web
-        target_link_libraries(cadmium PUBLIC ssl httplib::httplib)
-    endif()
 endif()
 if(WEB_WITH_FETCHING)
     target_compile_definitions(cadmium PUBLIC WEB_WITH_FETCHING)

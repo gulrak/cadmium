@@ -268,7 +268,7 @@ private:
                 SetSpacing(4);
                 Label("Button  /  LabelButton:");
                 if (Button("Regular Button")) {}
-                SetTooltip("Tooltip set via SetTooltip()");
+                SetTooltip("Tooltip set via SetTooltip()\nA line break makes it a multi-line one");
                 if (LabelButton("Label Button (clickable text)")) {}
 
                 Space(4);

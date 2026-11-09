@@ -48,6 +48,7 @@
 #include <emulation/coreregistry.hpp>
 //#include <emulation/dream6800.hpp>
 #include <c8db/database.hpp>
+#include <cadmium_git_hash.hpp>
 #include <emulation/time.hpp>
 #include <emulation/timecontrol.hpp>
 #include <ghc/cli.hpp>
@@ -1111,6 +1112,9 @@ public:
             _traceFrame = false;
         }
         if(_chipEmu->execMode() != ExecMode::ePAUSED) {
+            const bool measureFps = _chipEmu->execMode() == ExecMode::eRUNNING;
+            if(measureFps)
+                _fpsRunTime_s += GetFrameTime();
             _partialFrameTime += GetFrameTime()*1000 * _chipEmu->frameRate();
             if(_partialFrameTime > 10000) {
                 _fps.reset();
@@ -1137,7 +1141,8 @@ public:
                         if (!breakpoint)
                             _debugger.setBreakpointTriggered(false);
                     }
-                    _fps.add(GetTime()*1000);
+                    if(measureFps)
+                        _fps.add(static_cast<int64_t>(_fpsRunTime_s * 1000));
                 }
             }
             if(_chipEmu->needsScreenUpdate())
@@ -1497,7 +1502,8 @@ public:
             SetSpacing(0);
             auto instructionsThisUpdate = _chipEmu->executedInstructions() - lastInstructionCount;
             auto framesThisUpdate = _chipEmu->frames() - lastFrameCount;
-            if (_chipEmu->execMode() == emu::GenericCpu::eRUNNING) {
+            // The counters restart with the core, and a negative delta would wrap around in the unsigned average.
+            if (_chipEmu->execMode() == emu::GenericCpu::eRUNNING && instructionsThisUpdate >= 0) {
                 _ipfAverage.add(instructionsThisUpdate);
                 _frameTimeAverage_us.add(GetFrameTime() * 1000000);
                 _frameDelta.add(framesThisUpdate);
@@ -2721,6 +2727,7 @@ public:
         _ipfAverage.reset();
         _frameTimeAverage_us.reset();
         _frameDelta.reset();
+        _fps.reset();
         updateScreen();
     }
 
@@ -2954,9 +2961,10 @@ private:
     float _volumeSlider{0.5f};
     float _volume{0.5f};
     SMA<60,uint64_t> _ipfAverage;
-    SMA<120,uint32_t> _frameTimeAverage_us;
+    SMA<60,uint32_t> _frameTimeAverage_us;
     SMA<120,int> _frameDelta;
     emu::FpsMeasure _fps;
+    double _fpsRunTime_s{0};
     double _partialFrameTime{0};
     double _audioSamplesDue{0};
     int _scaleMode{1};

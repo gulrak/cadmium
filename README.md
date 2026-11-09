@@ -106,17 +106,17 @@ the CRT effect.</td>
 ## Online Version
 
 Emscripten builds are available here for testing:
-* https://games.gulrak.net/cadmium - This is the most current release version
-* https://games.gulrak.net/cadmium-wip/?p=xochip - this is the current work in progress
+* https://chip8.gulrak.net/cadmium - This is the most current version
 
 Simply drag rom files (`.ch8`, `.hc8`, `.ch10`, `.c8h`, `.c8e`, `.c8x`, `.sc8`, `.mc8`, `.xo8`) or
 Octo sources (`.8o`), or Octo cartridges (`.gif`), or even COSMAC VIP programs
 (`.bin` or `.ram`) onto the window to load them.
 
 Builds with the library can open it with a search, so a search result can be shared as a link, for example
-[`?search=uses+5xy2+or+uses+5xy3`](https://games.gulrak.net/cadmium-wip/?search=uses+5xy2+or+uses+5xy3). The link
-button next to the search field copies such a link. The desktop version takes the same search with
-`--search "uses 5xy2 or uses 5xy3"`, and with `--list` it prints the ROMs found instead of opening a window.
+[`?search=uses+5xy2+or+uses+5xy3`](https://chip8.gulrak.net/cadmium/?search=uses+5xy2+or+uses+5xy3). The link
+button next to the search field copies such a link, in the desktop version too, so a search done locally can be
+shared. The desktop version takes the same search with `--search "uses 5xy2 or uses 5xy3"`, and with `--list` it
+prints the ROMs found instead of opening a window.
 
 ## Features
 
@@ -783,12 +783,9 @@ The HP-48SX core runs the original CHIP-48 and SUPER-CHIP interpreters on an
 emulated HP-48SX. It needs HP's revision E ROM, which is not part of this
 repository. Put it as `resources/files/sxrom-rev-e` (the file is in `.gitignore`)
 and CMake builds the core and compiles the ROM into Cadmium, on all platforms
-including the web. Without the ROM, Cadmium is built without the HP-48SX core.
-To leave the core out even with the ROM present (e.g. for builds you want to
-pass on), configure with `-DCADMIUM_DISABLE_HP48=ON`.
-
-The included clean-room replacement ROM for the HP-48SX is built from the source
-at `src/emulation/hardware/hp48/cadmium-hp48sx-rom.asap`. That ROM ony contains
+excluding the web. Without the ROM, Cadmium is built with the included clean-room
+replacement ROM for the HP-48SX is built from the source  at
+`src/emulation/hardware/hp48/cadmium-hp48sx-rom.asap`. That ROM only contains
 the parts needed to run the interpreters, not the full calculator functionality.
 Its implementation was done with the help of Claude Opus 5.5 using my own disassembler
 for the analysis and writing a specification, that was then used by me and a

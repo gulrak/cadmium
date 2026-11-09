@@ -42,10 +42,6 @@
 #include <rlguipp/rlguipp.hpp>
 
 
-#if !defined(_WIN32) && !defined(PLATFORM_WEB)
-#include <httplib.h>
-#endif
-
 #include "fmt/os.h"
 
 #include <atomic>
@@ -83,6 +79,7 @@ struct DBProgram
     std::string copyright;  // free text, for programs without a known license
     std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
     int user_modified{0};                // changed by the user, so newer starter metadata doesn't overwrite it
+    std::optional<int64_t> modified_at;  // when the user last changed it (see editTimestamp), none if never or before schema 6
 
     Rectangle rect{};
     std::vector<int> tags;
@@ -109,6 +106,7 @@ struct DBBinary
     int size{0};                   // known without the data, too
     std::optional<int> starter_version;  // the starter metadata version the row came from, none if added here
     int user_modified{0};                // its program, configs or tags were changed by the user
+    std::optional<int64_t> modified_at;  // when the user last changed them (see editTimestamp), none if never or before schema 6
     std::optional<int> analysis_version;  // the version of the opcode analysis its binary_opcodes come from
 
     std::vector<std::string> filenames;
@@ -176,6 +174,12 @@ struct DBIgnoredBinary
     std::string name;
 };
 
+// The value of modified_at for an edit made now: UTC seconds since 1970.
+static int64_t editTimestamp()
+{
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 void registerTables()
 {
     static bool registered = false;
@@ -199,6 +203,7 @@ void registerTables()
         .column("copyright", &DBProgram::copyright)
         .column("starter_version", &DBProgram::starter_version)
         .column("user_modified", &DBProgram::user_modified)
+        .column("modified_at", &DBProgram::modified_at)
         .registerTable();
 
     db::Table<DBBinary>("binaries")
@@ -211,6 +216,7 @@ void registerTables()
         .column("size", &DBBinary::size)
         .column("starter_version", &DBBinary::starter_version)
         .column("user_modified", &DBBinary::user_modified)
+        .column("modified_at", &DBBinary::modified_at)
         .column("analysis_version", &DBBinary::analysis_version)
         .registerTable();
 
@@ -328,6 +334,12 @@ void migrateData(db::Database& database)
         version.schema_version = 5;
         session.insertOrUpdate(version);
         transaction.commit();
+    }
+    if (version.schema_version < 6) {
+        // The modified_at columns are added by syncTables(). They stay empty for what is already
+        // in the library, as the time of an earlier edit is not known.
+        version.schema_version = 6;
+        session.insertOrUpdate(version);
     }
 }
 
@@ -714,9 +726,7 @@ struct Database::Private
     std::vector<VariantGroup> variantGroups;
     std::string coresCombo;
     std::string queryLine;
-#ifdef PLATFORM_WEB
     std::chrono::steady_clock::time_point linkCopiedUntil;  // until then the line under the search field says so
-#endif
 #ifdef PLATFORM_WEB
     bool showMissing{true};  // on the web the library starts with metadata only, all its ROMs are missing
 #else
@@ -1023,12 +1033,16 @@ struct Database::Private
         updateFilter();
     }
 
-#ifdef PLATFORM_WEB
     // A link that opens Cadmium with the current search. Readable where a URL allows it, so it can be read in a chat:
     // a space is a plus, the shell page turns that back for this parameter, see minshell.html.
     std::string searchLink() const
     {
+#ifdef PLATFORM_WEB
         std::string link = emscripten_run_script_string("location.origin + location.pathname");
+#else
+        // A desktop search is shared through the web version, the only one others can open from a link.
+        std::string link = "https://chip8.gulrak.net/cadmium/";
+#endif
         link += "?search=";
         for (const char c : queryLine) {
             const auto byte = static_cast<unsigned char>(c);
@@ -1044,7 +1058,6 @@ struct Database::Private
         }
         return link;
     }
-#endif
 
     // The line under the search field: why its text is no valid query, or what the list shows.
     std::string queryFeedback() const
@@ -1052,11 +1065,9 @@ struct Database::Private
         if (!queryError.empty()) {
             return fmt::format("Column {}: {} - the list shows the last valid query", queryErrorPosition + 1, queryError);
         }
-#ifdef PLATFORM_WEB
         if (std::chrono::steady_clock::now() < linkCopiedUntil) {
             return "Link to this search copied";
         }
-#endif
         auto text = fmt::format("{} of {} programs", shownIndices.size(), programs.size());
         if (filter.usesRomFields()) {
             text += fmt::format(", {} matching ROM{}", shownRomCount, shownRomCount == 1 ? "" : "s");
@@ -1163,15 +1174,15 @@ struct Database::Private
     static constexpr int ROMS_TAB = 1;
     static constexpr int CONFIGS_TAB = 2;
 
-    static void setProgramOfBinary(db::Session& session, int binaryId, int programId)
+    static void setProgramOfBinary(db::Session& session, int binaryId, int programId, int64_t modifiedAt)
     {
         // an update of just the column, session.update() would also write the ROM data
-        db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1 WHERE id = ?");
-        relink << programId << binaryId;
+        db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1, modified_at = ? WHERE id = ?");
+        relink << programId << modifiedAt << binaryId;
         relink.execute();
     }
 
-    void relinkBinary(int binaryId, int programId)
+    void relinkBinary(int binaryId, int programId, int64_t modifiedAt)
     {
         auto& binary = binaries.at(binaryId);
         if (auto iter = programs.find(binary.program_id); iter != programs.end()) {
@@ -1179,6 +1190,7 @@ struct Database::Private
         }
         binary.program_id = programId;
         binary.user_modified = 1;  // in sync with setProgramOfBinary() and the relink of mergePrograms()
+        binary.modified_at = modifiedAt;
         programs.at(programId).binaries.push_back(binaryId);
     }
 
@@ -1247,7 +1259,8 @@ struct Database::Private
         if (source.binaries.size() < 2) {
             return "The only ROM of a program can't be detached.";
         }
-        DBProgram program{.name = source.name, .origin = source.origin, .origin_reference = source.origin_reference, .description = source.description, .release = source.release, .url = source.url, .license = source.license, .copyright = source.copyright};
+        const auto now = editTimestamp();
+        DBProgram program{.name = source.name, .origin = source.origin, .origin_reference = source.origin_reference, .description = source.description, .release = source.release, .url = source.url, .license = source.license, .copyright = source.copyright, .modified_at = now};
         try {
             auto session = db::Session(database);
             db::Transaction transaction{session};
@@ -1258,7 +1271,7 @@ struct Database::Private
             for (size_t i = 0; i < source.authors.size(); ++i) {
                 session.insert(DBProgramAuthor{.program_id = program.id, .author_id = source.authors[i], .position = static_cast<int>(i)});
             }
-            setProgramOfBinary(session, binaryId, program.id);
+            setProgramOfBinary(session, binaryId, program.id, now);
             transaction.commit();
         }
         catch (const db::Exception& ex) {
@@ -1267,7 +1280,7 @@ struct Database::Private
         program.tags = source.tags;
         program.authors = source.authors;
         programs.emplace(program.id, program);
-        relinkBinary(binaryId, program.id);
+        relinkBinary(binaryId, program.id, now);
         if (selectedBinaryId == binaryId) {
             selectedProgramId = program.id;
             markedProgramIds = {program.id};
@@ -1287,10 +1300,11 @@ struct Database::Private
             return {};
         }
         const bool removeSource = programs.at(sourceId).binaries.size() == 1;
+        const auto now = editTimestamp();
         try {
             auto session = db::Session(database);
             db::Transaction transaction{session};
-            setProgramOfBinary(session, binaryId, targetId);
+            setProgramOfBinary(session, binaryId, targetId, now);
             if (removeSource) {
                 session.remove<DBProgram>(sourceId);
             }
@@ -1299,7 +1313,7 @@ struct Database::Private
         catch (const db::Exception& ex) {
             return ex.what();
         }
-        relinkBinary(binaryId, targetId);
+        relinkBinary(binaryId, targetId, now);
         if (removeSource) {
             forgetProgram(sourceId);
         }
@@ -1319,6 +1333,7 @@ struct Database::Private
         }
         std::set<int> tagIds(programs.at(survivorId).tags.begin(), programs.at(survivorId).tags.end());
         auto authorIds = programs.at(survivorId).authors;
+        const auto now = editTimestamp();
         try {
             auto session = db::Session(database);
             db::Transaction transaction{session};
@@ -1326,8 +1341,8 @@ struct Database::Private
                 if (programId == survivorId || !programs.contains(programId)) {
                     continue;
                 }
-                db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1 WHERE program_id = ?");
-                relink << survivorId << programId;
+                db::Statement relink(session, "UPDATE binaries SET program_id = ?, user_modified = 1, modified_at = ? WHERE program_id = ?");
+                relink << survivorId << now << programId;
                 relink.execute();
                 for (const auto tagId : programs.at(programId).tags) {
                     if (tagIds.insert(tagId).second) {
@@ -1343,8 +1358,8 @@ struct Database::Private
                 }
                 session.remove<DBProgram>(programId);
             }
-            db::Statement modified(session, "UPDATE programs SET user_modified = 1 WHERE id = ?");
-            modified << survivorId;
+            db::Statement modified(session, "UPDATE programs SET user_modified = 1, modified_at = ? WHERE id = ?");
+            modified << now << survivorId;
             modified.execute();
             transaction.commit();
         }
@@ -1352,12 +1367,13 @@ struct Database::Private
             return ex.what();
         }
         programs.at(survivorId).user_modified = 1;
+        programs.at(survivorId).modified_at = now;
         for (const auto programId : programIds) {
             if (programId == survivorId || !programs.contains(programId)) {
                 continue;
             }
             for (const auto binaryId : std::vector<int>(programs.at(programId).binaries)) {
-                relinkBinary(binaryId, survivorId);
+                relinkBinary(binaryId, survivorId, now);
             }
             forgetProgram(programId);
         }
@@ -1899,6 +1915,11 @@ struct Database::Private
 
     void storeConfigs(db::Session& session, DBBinary& binary, std::vector<DBBinaryConfig> configs)
     {
+        // Saving the editor also stores the configs of every ROM it showed, unchanged ones are not an edit.
+        if (std::ranges::equal(binary.configs, configs, [](const DBBinaryConfig& a, const DBBinaryConfig& b) { return a.preset == b.preset && a.properties == b.properties; })) {
+            updateUnclassifiedTag(session, binary);
+            return;
+        }
         db::Statement removeConfigs(session, "DELETE FROM binary_configs WHERE binary_id = ?");
         removeConfigs << binary.id;
         removeConfigs.execute();
@@ -1907,11 +1928,13 @@ struct Database::Private
             config.binary_id = binary.id;
             session.insert(config);
         }
-        db::Statement modified(session, "UPDATE binaries SET user_modified = 1 WHERE id = ?");
-        modified << binary.id;
+        const auto now = editTimestamp();
+        db::Statement modified(session, "UPDATE binaries SET user_modified = 1, modified_at = ? WHERE id = ?");
+        modified << now << binary.id;
         modified.execute();
         binary.configs = std::move(configs);
         binary.user_modified = 1;
+        binary.modified_at = now;
         updateUnclassifiedTag(session, binary);
     }
 
@@ -1922,6 +1945,16 @@ struct Database::Private
             return nullptr;
         }
         return &edit.configs.try_emplace(edit.binaryId, iter->second.configs).first->second;
+    }
+
+    // Saving the editor also writes a program nobody changed, that must not count as an edit.
+    // REVIEW: this also applies to user_modified now, an unchanged save used to set it.
+    bool isProgramEdited(const DBProgram& program, const std::set<int>& tagIds) const
+    {
+        const auto& stored = programs.at(program.id);
+        return program.name != stored.name || program.origin != stored.origin || program.origin_reference != stored.origin_reference || program.description != stored.description || program.release != stored.release ||
+               program.url != stored.url || program.license != stored.license || program.copyright != stored.copyright || tagIds != std::set<int>(stored.tags.begin(), stored.tags.end()) ||
+               parseAuthors(edit.authors) != parseAuthors(authorNames(stored));
     }
 
     bool saveEditor()
@@ -1990,7 +2023,10 @@ struct Database::Private
                     tagIds.insert(tag.id);
                 }
             }
-            program.user_modified = 1;
+            if (isProgramEdited(program, tagIds)) {
+                program.user_modified = 1;
+                program.modified_at = editTimestamp();
+            }
             session.update(program);
             db::Statement removeTags(session, "DELETE FROM program_tags WHERE program_id = ?");
             removeTags << program.id;
@@ -2025,6 +2061,7 @@ struct Database::Private
         stored.license = program.license;
         stored.copyright = program.copyright;
         stored.user_modified = program.user_modified;
+        stored.modified_at = program.modified_at;
         stored.tags.assign(tagIds.begin(), tagIds.end());
         stored.authors = authorIds;
         updateFilter();
@@ -2182,6 +2219,7 @@ struct Database::Private
         auto& binary = binaries.at(binaryId);
         std::optional<DBTags> createdTag;
         int tagId = iter != tags.end() ? iter->first : 0;
+        const auto now = editTimestamp();
         try {
             auto session = db::Session(database);
             db::Transaction transaction{session};
@@ -2198,8 +2236,8 @@ struct Database::Private
                 removeTag << binaryId << tagId;
                 removeTag.execute();
             }
-            db::Statement modified(session, "UPDATE binaries SET user_modified = 1 WHERE id = ?");
-            modified << binaryId;
+            db::Statement modified(session, "UPDATE binaries SET user_modified = 1, modified_at = ? WHERE id = ?");
+            modified << now << binaryId;
             modified.execute();
             transaction.commit();
         }
@@ -2219,6 +2257,7 @@ struct Database::Private
             std::erase(binary.tags, tagId);
         }
         binary.user_modified = 1;
+        binary.modified_at = now;
         romTagsChanged = true;
         updateFilter();
         return {};
@@ -3311,11 +3350,7 @@ Database::Action Database::render(Font& font)
         BeginColumns();
         SetSpacing(4);
 
-#ifdef PLATFORM_WEB
-        constexpr int numIconButtons = 5;  // with the one for copying a link
-#else
-        constexpr int numIconButtons = 4;
-#endif
+        constexpr int numIconButtons = 5;
         SetNextWidth(area.width - 2 * 60 - numIconButtons * 20 - (numIconButtons + 2) * 4);
         if (TextBox("query", _pimpl->queryLine, 4096)) {
             _pimpl->setQuery(_pimpl->queryLine);
@@ -3327,8 +3362,7 @@ Database::Action Database::render(Font& font)
             const auto size = MeasureTextEx(font, text.c_str(), 8, 1);
             DrawTextEx(font, text.c_str(), {box.x + 6, std::floor(box.y + (box.height - size.y) / 2)}, 8, 1, StyleManager::mappedColor(GRAY));
         }
-        SetTooltip("WORDS, OR FIELDS LIKE: release < 1980, author ~ winter, tag = new, variant = xo-chip, ipf > 100, wrap = true, size < 1k, uses F?75, missing - COMBINE WITH and, or, not/-, ( )");
-#ifdef PLATFORM_WEB
+        SetTooltip("WORDS, OR FIELDS LIKE:\nrelease < 1980, author ~ winter, tag = new, variant = xo-chip,\nipf > 100, wrap = true, size < 1k, uses F?75, missing\nCOMBINE WITH and, or, not/-, ( )");
         SetNextWidth(20);
         if (trim(_pimpl->queryLine).empty() || !_pimpl->queryError.empty()) {
             GuiDisable();
@@ -3339,7 +3373,6 @@ Database::Action Database::render(Font& font)
         }
         GuiEnable();
         SetTooltip("COPY A LINK TO THIS SEARCH");
-#endif
         SetNextWidth(20);
         const bool editSmartTag = _pimpl->editableSmartTag() >= 0;
         if (!editSmartTag && _pimpl->selectedTags.empty() && trim(_pimpl->queryLine).empty()) {
@@ -3593,7 +3626,7 @@ Database::Action Database::render(Font& font)
         //BeginScrollPanel(listRect.height, {0,0,area.width-6, (float)(_core->memSize()/8 + 1) * lineSpacing}, &memScroll);
         auto pos = GetCurrentPos();
         SetNextWidth(area.width - 135);
-        // REVIEW: no Begin()/End() group around it, as a group inside a panel copies the panel's padding and EndImpl() adds
+        // no Begin()/End() group around it, as a group inside a panel copies the panel's padding and EndImpl() adds
         // it below the group, so a view filling the remaining height would push the panel's border over the status bar
         _pimpl->renderProgramInfo();
         auto previewRect = Rectangle{pos.x + area.width - 131.0f, pos.y, 130.0f, 98.0f};
@@ -3657,19 +3690,6 @@ Database::Action Database::render(Font& font)
         const auto action = std::exchange(_pimpl->requestedAction, Action::NONE);
         return _selectedProgram ? action : Action::NONE;
     }
-}
-
-bool Database::fetchC8PDB()
-{
-#if !defined(_WIN32) && !defined(PLATFORM_WEB)
-    httplib::Client cli("https://raw.githubusercontent.com");
-    //cli.enable_server_certificate_verification(false);
-    //cli.enable_server_hostname_verification(false);
-    auto res = cli.Get("/chip-8/chip-8-database/refs/heads/master/database/programs.json");
-    res->status;
-    res->body;
-#endif
-    return false;
 }
 
 //---------------------------------------------------------------------------------------
@@ -4101,6 +4121,7 @@ int Database::exportMetadata(const std::string& dataPath, const std::string& out
         db::Statement(session, "DELETE FROM ignored_binaries;").execute();
         db::Statement(session, "DELETE FROM program_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'new');").execute();
         db::Statement(session, "DELETE FROM binary_tags WHERE tag_id IN (SELECT id FROM tags WHERE name = 'new');").execute();
+        // modified_at is kept, so a later merge can tell which side of a row is newer
         for (const auto* table : {"programs", "binaries"}) {
             db::Statement mark(session, fmt::format("UPDATE {} SET starter_version = ?, user_modified = 0;", table));
             mark << starterVersion;

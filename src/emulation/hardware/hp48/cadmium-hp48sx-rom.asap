@@ -90,7 +90,7 @@
 ; Short path (ST bit 15 clear): 23 cycles, 28 with carry set, returns with RET so the
 ; interrupts stay disabled. Full path: both carry cases reach irq_common at +39 with
 ; ST bit 14 holding the interrupted carry.
-; REVIEW: the full path ends with ST bit 14 clear, so it assumes bit 14 was clear
+; the full path ends with ST bit 14 clear, so it assumes bit 14 was clear
 ; whenever bit 15 is set (the HP-48 convention, true for the five interpreters).
 
 #0000F:
@@ -112,10 +112,10 @@ irq_full:
 ; instruction. Saves A, C, D0, P and the mode, switches TIMER1 off, then reads TIMER2's
 ; low nibble at +1508 and polls it every 32 cycles from +1534 until it has counted down
 ; by 5.
-; REVIEW: the spec has the reference read at +1509. At +1509 a decrement 116 cycles
+; The spec has the reference read at +1509. At +1509 a decrement 116 cycles
 ; after the interrupt is already seen, the conformance test's cost model wants it at
-; 116 not to be seen, which +1508 gives. It resumes the interrupted code 3634 cycles after the matching poll (3633 with
-; carry set). It uses one return stack level (C[A]).
+; 116 not to be seen, which +1508 gives. It resumes the interrupted code 3634 cycles after the matching poll
+; (3633 with carry set). It uses one return stack level (C[A]).
 irq_common:
         push.a  c                   ; 8     47
         swap.a  c,d0                ; 8     55: C[A] = D0
@@ -277,7 +277,7 @@ endmacro
 ; C[0-14] = DSKTOP, D[A] = DSKTOP - RSKTOP, D1 = DSKTOP, carry clear. 1336 cycles.
 #05B70:
 as_full:
-        jump.a  rpl_exit            ; REVIEW: out of memory just ends idle, no error message
+        jump.a  rpl_exit            ; out of memory just ends idle, no error message
 
 #05B7D:
 alloc_str:
@@ -486,7 +486,7 @@ check_1:
         nop3                        ; 8
         retclrc                     ; 9: 334 cycles
 ck_empty:
-        jump.a  rpl_exit            ; REVIEW: an empty stack just ends idle, no error message
+        jump.a  rpl_exit            ; an empty stack just ends idle, no error message
 
 ; ---------------------------------------------------------------------------------------
 ; Boot, idle and EVAL
@@ -664,7 +664,7 @@ wait_release:
         move.a  c,@d0
 
 ; TEMPTOP = code object end + 1141, then 35 nibbles of return stack
-; REVIEW: the 35 nibbles of return stack are zeros (the spec leaves their content open).
+; the 35 nibbles of return stack are zeros (the spec leaves their content open).
         move.a  r0,c
         add.a   5,c
         move.a  c,d0

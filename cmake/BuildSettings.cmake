@@ -121,37 +121,6 @@ FetchContent_MakeAvailable(raylib)
 # Chiplet also provides stb_image; keep Raylib's decoder symbols private.
 target_compile_definitions(raylib PRIVATE STB_IMAGE_STATIC)
 
-if(PLATFORM STREQUAL "Desktop")
-    set(LIBRESSL_TESTS OFF CACHE BOOL "" FORCE)
-    set(LIBRESSL_APPS OFF CACHE BOOL "" FORCE)
-    if(APPLE)
-      set(ENABLE_ASM OFF CACHE BOOL "" FORCE)
-    endif()
-    FetchContent_Declare(
-        libressl
-        URL "https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-4.0.0.tar.gz"
-        URL_MD5 4775b6b187a93c527eeb95a13e6ebd64
-        EXCLUDE_FROM_ALL
-    )
-    FetchContent_MakeAvailable(libressl)
-    #target_compile_definitions(crypto PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
-    #target_compile_definitions(ssl PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
-    #target_compile_definitions(tls PUBLIC LIBRESSL_TESTS=OFF LIBRESSL_APPS=OFF)
-
-    if(APPLE)
-        set(HTTPLIB_USE_BROTLI_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
-    endif()
-    FetchContent_Declare(
-        CppHttplib
-        GIT_REPOSITORY "https://github.com/yhirose/cpp-httplib.git"
-        GIT_TAG "v0.18.3"
-        GIT_SHALLOW TRUE
-        EXCLUDE_FROM_ALL
-    )
-    FetchContent_MakeAvailable(CppHttplib)
-    include_directories(${cpphttplib_INCLUDE_DIR})
-endif()
-
 FetchContent_Declare(
         DocTest
         GIT_REPOSITORY "https://github.com/doctest/doctest.git"

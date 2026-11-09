@@ -65,7 +65,6 @@ public:
     std::optional<Program> getSelectedProgram() const;
     enum class Action { NONE, LOAD, RUN };
     Action render(Font& font); // LOAD or RUN if getSelectedProgram() should be loaded (and run)
-    bool fetchC8PDB();
     bool containsBinary(const Sha1::Digest& sha1) const;
     // Selects the library entry of a ROM (and scrolls the list to it), a ROM only known from metadata gets the
     // given data, as with a drop, so it can be loaded from the library, used on the web when a ROM is opened.

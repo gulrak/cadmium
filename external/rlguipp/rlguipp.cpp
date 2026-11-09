@@ -375,28 +375,47 @@ struct GuiContext
             }
         }
     }
-    static void drawTooltip(Rectangle controlRec, const char* tooltipText)
+    static void drawTooltip(Rectangle controlRec, const std::string& text)
     {
-        if (!guiLocked && (tooltipText != nullptr) && !guiControlExclusiveMode)
+        if (!guiLocked && !guiControlExclusiveMode)
         {
-            Vector2 textSize = GetTextSize(tooltipText);
-            textSize.x += 16;
+            // Every line is a label of its own, raygui would step multiple lines by the style's TEXT_LINE_SPACING,
+            // which is meant for bigger blocks of text and differs from what MeasureTextEx() assumes.
+            std::vector<std::string> lines;
+            for (std::size_t start = 0; start <= text.size();) {
+                const auto end = std::min(text.find('\n', start), text.size());
+                lines.push_back(text.substr(start, end - start));
+                start = end + 1;
+            }
+            float textWidth = 0;
+            for (const auto& line : lines) {
+                textWidth = std::max(textWidth, GetTextSize(line.c_str()).x);
+            }
+            const auto fontHeight = static_cast<float>(GuiGetStyle(DEFAULT, TEXT_SIZE));
+            const float lineStep = fontHeight + 2;
+            const float width = textWidth + 16;
+            const float height = fontHeight + 8 + static_cast<float>(lines.size() - 1) * lineStep;
 
-            controlRec.x -= (textSize.x - controlRec.width) / 2;
+            controlRec.x -= (width - controlRec.width) / 2;
             if (controlRec.x < 0) {
                 controlRec.x = 0;
             }
-            if ((controlRec.x + textSize.x) > positionLimits.x)
-                controlRec.x = positionLimits.x - textSize.x;
+            if ((controlRec.x + width) > positionLimits.x)
+                controlRec.x = positionLimits.x - width;
+            float y = controlRec.y + controlRec.height + 2;
+            if ((y + height) > positionLimits.y)  // no room below the widget
+                y = std::max(controlRec.y - height - 2, 0.f);
 
-            DrawRectangleRec({controlRec.x + 3, controlRec.y + controlRec.height + 5, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, {0, 0, 0, 64});
-            GuiPanel(RAYGUI_CLITERAL(Rectangle){ controlRec.x, controlRec.y + controlRec.height + 2, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, NULL);
+            DrawRectangleRec({controlRec.x + 3, y + 3, width, height}, {0, 0, 0, 64});
+            GuiPanel(RAYGUI_CLITERAL(Rectangle){ controlRec.x, y, width, height }, NULL);
 
             int textPadding = GuiGetStyle(LABEL, TEXT_PADDING);
             int textAlignment = GuiGetStyle(LABEL, TEXT_ALIGNMENT);
             GuiSetStyle(LABEL, TEXT_PADDING, 0);
-            GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_CENTER);
-            GuiLabel(RAYGUI_CLITERAL(Rectangle){ controlRec.x, controlRec.y + controlRec.height + 2, textSize.x, GuiGetStyle(DEFAULT, TEXT_SIZE) + 8.f }, tooltipText);
+            GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+            for (std::size_t i = 0; i < lines.size(); ++i) {
+                GuiLabel(RAYGUI_CLITERAL(Rectangle){ controlRec.x + 8, y + 4 + static_cast<float>(i) * lineStep, width - 8, fontHeight }, lines[i].c_str());
+            }
             GuiSetStyle(LABEL, TEXT_ALIGNMENT, textAlignment);
             GuiSetStyle(LABEL, TEXT_PADDING, textPadding);
         }
@@ -452,13 +471,14 @@ struct GuiContext
             else {
                 GuiContext::tooltipTimer -= GetFrameTime();
             }
-            if(GuiContext::tooltipTimer >= 0.0f) {
+            // a tooltip of several lines stays longer, to have the time to read it
+            if(GuiContext::tooltipTimer >= -2.0f * static_cast<float>(std::ranges::count(tooltipText, '\n'))) {
                 // SetTooltip() only takes tooltips of unlocked widgets, the root stays locked while the mouse is over a popup
                 const bool locked = GuiIsLocked();
                 if (locked) {
                     GuiUnlock();
                 }
-                drawTooltip(tooltipParentRect, tooltipText.c_str());
+                drawTooltip(tooltipParentRect, tooltipText);
                 if (locked) {
                     GuiLock();
                 }

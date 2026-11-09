@@ -66,8 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--opcode-stats`
 - Searches can be started directly: `--search "uses 5xy2 or uses 5xy3"` opens the library with
   that search, also listing missing ROMs, and with `--list` the ROMs found are printed instead of
-  opening a window. The web version takes it as URL parameter (`?search=uses+5xy2+or+uses+5xy3`)
-  and has a button next to the search field to copy a link to the current search for sharing
+  opening a window. The web version takes it as URL parameter (`?search=uses+5xy2+or+uses+5xy3`),
+  and a button next to the search field copies a link to the current search for sharing, the
+  desktop version gives a link to the web version
 - Generic cores have a new "Rotation" option (`--screen-rotation 0/90/180/270`) for programs
   played sideways, taken from the library, the chip-8-database and Octo cartridges
 - [Desktop only] Cadmium now remembers window position and scaling and starts like it was closed
@@ -242,6 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- FPS calculation got confused by pausing or stepping (thanks @JanitorRaus for reporting)
 - Memory view "Follow" showed wrong position
 - Disassembly sometimes only showed hex bytes instead of opcodes
 - The VIP-CHIP-8E interpreter had a typo leading to `BBnn` not working ([#12](https://github.com/gulrak/cadmium/issues/12))
@@ -342,7 +344,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix: The `clear` opcode (`00E0`) didn't respect the plane mask in XO-CHIP mode
 * Fix: The scrolling was not respecting the plane mask in XO-CHIP mode
 
-## [1.0.6] - 2923-02-17
+## [1.0.6] - 2023-02-17
 
 * Real-Dream support, this is a CHIP-8 mode that runs the CHIPOS CHIP-8 interpreter from
   Michael J Bauer on an emulated M6800 driven 2k RAM equipped DREAM 6800 computer. It is

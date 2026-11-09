@@ -160,14 +160,12 @@ struct BinaryExpr final : emu::Expressionist::Expr
     std::unique_ptr<Expr> lhs;
     std::unique_ptr<Expr> rhs;
     std::string opName;
-    BinaryExpr(const BinaryOperation bop, std::unique_ptr<Expr>&& lhs, std::unique_ptr<Expr>&& rhs, std::string name)
+    BinaryExpr(const BinaryOperation bop, std::unique_ptr<Expr>&& lhs_, std::unique_ptr<Expr>&& rhs_, std::string name)
     : op(bop)
-    , lhs(std::move(lhs))
-    , rhs(std::move(rhs))
+    , lhs(std::move(lhs_))
+    , rhs(std::move(rhs_))
     , opName(std::move(name))
     {
-        // REVIEW: The parameters shadow the members, the old checks looked at the moved-from parameters
-        // and never fired, so `v + 1` silently evaluated to v0 + 1.
         if (auto literal = dynamic_cast<LiteralExpr*>(this->lhs.get()); literal && literal->isIndexBase()) {
             throw std::runtime_error("Index base cannot be used in binary operator");
         }
@@ -247,8 +245,6 @@ struct IndexExpr final : emu::Expressionist::Expr
     uint32_t mask;
     IndexExpr(std::unique_ptr<LiteralExpr>&& literalExpr, std::unique_ptr<Expr>&& indexExpr, uint32_t mask) : base(std::move(literalExpr)), index(std::move(indexExpr)), mask(mask)
     {
-        // REVIEW: These checks were in eval(), so they threw from inside the running emulation,
-        // now they make parseExpression fail instead.
         if (!base->isIndexBase()) {
             throw std::runtime_error("Operand is not indexable");
         }
