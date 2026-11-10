@@ -50,5 +50,17 @@ set(CPACK_GENERATOR "ZIP" CACHE STRING "Generators to support. semi-colon delimi
 else()
 set(CPACK_GENERATOR "TGZ" CACHE STRING "Generators to support. semi-colon delimited list")
 endif()
+# Only what Cadmium installs itself, dependencies like fast_float, tl-expected and Chiplet bring
+# install rules of their own that would add headers, CMake files and a second README and LICENSE.
+set(CPACK_INSTALL_CMAKE_PROJECTS "${CMAKE_BINARY_DIR};${PROJECT_NAME};cadmium_app;/")
+# Both macOS builds would be named cadmium-x.y.z-Darwin, the architecture keeps their packages apart.
+if(APPLE)
+    if(CMAKE_OSX_ARCHITECTURES)
+        string(REPLACE ";" "-" CADMIUM_PACKAGE_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+    else()
+        set(CADMIUM_PACKAGE_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    set(CPACK_SYSTEM_NAME "macOS-${CADMIUM_PACKAGE_ARCH}")
+endif()
 include(CPack)
 cpack_add_component(cadmium_app)

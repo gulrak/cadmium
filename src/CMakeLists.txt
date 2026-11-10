@@ -127,6 +127,14 @@ if(APPLE)
     install(TARGETS cadmium DESTINATION "." COMPONENT cadmium_app)
     install(FILES ${PROJECT_SOURCE_DIR}/LICENSE DESTINATION "." COMPONENT cadmium_app)
     install(FILES ${PROJECT_SOURCE_DIR}/README.md DESTINATION "." COMPONENT cadmium_app)
+    # The linker only signs the executable, a bundle without a signature over its Info.plist and
+    # resources is reported as damaged after a download. Ad-hoc, so it still needs "Open Anyway".
+    install(CODE [[
+        execute_process(COMMAND codesign --force --sign - "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/cadmium.app" RESULT_VARIABLE result)
+        if(NOT result EQUAL 0)
+            message(FATAL_ERROR "Signing cadmium.app failed")
+        endif()
+    ]] COMPONENT cadmium_app)
 else()
     install(TARGETS cadmium DESTINATION . COMPONENT cadmium_app)
     install(FILES ${PROJECT_SOURCE_DIR}/LICENSE DESTINATION "." COMPONENT cadmium_app)
@@ -134,4 +142,8 @@ else()
     if(UNIX)
         set(CPACK_COMPONENT_CADMIUM_APP_DESCRIPTION "A CHIP-8 variant emulation and development environment")
     endif()
+endif()
+# The Chiplet command line tool is part of the package, but without its own README and LICENSE.
+if(TARGET chiplet)
+    install(TARGETS chiplet DESTINATION . COMPONENT cadmium_app)
 endif()
