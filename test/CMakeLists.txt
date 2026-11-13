@@ -74,6 +74,11 @@ target_compile_definitions(highlighter-tests PRIVATE WITHOUT_STB_IMAGE)
 target_link_libraries(highlighter-tests PRIVATE doctest emulation rlguipp)
 doctest_discover_tests(highlighter-tests PROPERTIES TIMEOUT 30)
 
+add_executable(editor-tests main.cpp editor_tests.cpp ../src/editor.cpp ../src/sourcefile.cpp ../src/highlighter.cpp ../src/stylemanager.cpp)
+target_compile_definitions(editor-tests PRIVATE WITHOUT_STB_IMAGE)
+target_link_libraries(editor-tests PRIVATE doctest emulation rlguipp)
+doctest_discover_tests(editor-tests PROPERTIES TIMEOUT 30)
+
 add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp cartridge_tests.cpp display_wait_tests.cpp host_lifecycle_tests.cpp multipage_display_tests.cpp property_ids_tests.cpp property_rules_tests.cpp
     ../src/emuhostex.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/systemtools.cpp)
 target_compile_definitions(hex-rom-tests PRIVATE WITHOUT_STB_IMAGE CADMIUM_VERSION="${PROJECT_VERSION}")

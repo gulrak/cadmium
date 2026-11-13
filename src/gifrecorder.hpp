@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <string>
 #include <vector>
 
 // Spreads a recording over GIF delays, these are whole hundredths of a second
@@ -66,6 +67,26 @@ public:
 
 private:
     std::vector<Mark> _marks;
+};
+
+// The last keyboard shortcut of a recording, shown for a while. The same shortcut again
+// while it is still shown counts up and starts the time over.
+class GifShortcutCaption
+{
+public:
+    static constexpr float DURATION = 1.5f;
+
+    void clear();
+    void show(const std::string& text);
+    void advance(float seconds);
+    bool visible() const { return !_text.empty(); }
+    const std::string& text() const { return _text; }
+    int count() const { return _count; }
+
+private:
+    std::string _text;
+    int _count{0};
+    float _age{0.0f};
 };
 
 // Writes an animated GIF frame by frame. Every frame only stores the rectangle that changed,

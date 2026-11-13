@@ -375,11 +375,52 @@ following options gives a basic VIP CHIP-8:
 * XO-CHIP sound engine
 
 
+### Source Editor
+
+The editor view shows the Octo source of the loaded program with syntax highlighting, and assembles it while
+you type: once the text was unchanged for a second, the program is compiled and replaces the one in the
+emulator, errors show up in the message area below the text (a click on the location goes there, also in an
+included file). A binary program shows its disassembly, which compiles back to the same binary.
+
+In the native builds the editor works with the files on disk:
+
+- **Auto-save:** a source that was loaded from a file is saved automatically, a second after the last change,
+  when Cadmium loses the focus, when another view is shown and before another program is loaded. The undo
+  history stays, so saving doesn't make edits final, closing a file does. A disassembly, a new source and the
+  source of a cartridge are not saved automatically, they need a first save with <kbd>Cmd/Ctrl</kbd> +
+  <kbd>S</kbd>.
+- **Local history:** before a file is saved for the first time after opening it, the version it had is copied
+  into the `history` folder in Cadmium's configuration directory (the last 10 per file, for 30 days). The
+  context menu has *Revert to Opened Version*.
+- **Changes on disk:** a file changed by another program is reloaded (as an undoable edit). If it has unsaved
+  changes in Cadmium too, the editor says so and doesn't overwrite it automatically, *Reload from Disk* in the
+  context menu or <kbd>Cmd/Ctrl</kbd> + <kbd>S</kbd> decide.
+- **Several files:** files included with `:include "file.8o"` open with <kbd>Cmd/Ctrl</kbd> + click on the name
+  (or the context menu). The main file is the one that is compiled, all open files are saved before. The panel
+  title shows the current file, a click on it lists the open files, <kbd>Ctrl</kbd> + <kbd>Tab</kbd> switches
+  to the one used before and <kbd>Cmd/Ctrl</kbd> + <kbd>W</kbd> closes the current one.
+- **Project folders:** *Open Folder...* in the main menu (or *Open recent folder*) makes a folder the project.
+  Its main file is the one used last there, else its only `.8o` file, the only one no other includes, or the
+  one named like the folder. <kbd>Cmd/Ctrl</kbd> + <kbd>1</kbd> shows its file tree over the editor, it
+  marks the main file, the open files and the files of the build, its context menu sets the main file and
+  creates new files. Loading a program from the project keeps its open files open, also included files from
+  outside the folder. Without a project folder the tree shows the folder of the main file.
+- **Several programs in a project:** a project `.8o` file that defines `: main` is a program of its own (like
+  the tests of a test suite), showing it makes it the main file, so it is compiled and loaded. Files without
+  `: main` only change the build they are included in.
+- **Quick open:** <kbd>Cmd/Ctrl</kbd> + <kbd>P</kbd> finds a file of the project by some letters of its name.
+- **Back and Forward:** showing another file (an include, an error location, the file list, the tree or quick
+  open) remembers the place left, *Back* in the panel title menu returns there and *Forward* undoes that, also
+  with the keys below and the side buttons of the mouse (not on the web, the browser uses them). Closed files
+  are opened again.
+
+The web version edits the one source of the loaded program in memory, saving downloads it.
+
 ### Keyboard Shortcuts
 
 | Function      |          Windows/Linux           |              macOS               |
 |:--------------|:--------------------------------:|:--------------------------------:|
-| New           |  <kbd>Ctrl</kbd> + <kbd>O</kbd>  |  <kbd>Cmd</kbd> + <kbd>O</kbd>   |
+| New           |  <kbd>Ctrl</kbd> + <kbd>N</kbd>  |  <kbd>Cmd</kbd> + <kbd>N</kbd>   |
 | Open File     |  <kbd>Ctrl</kbd> + <kbd>O</kbd>  |  <kbd>Cmd</kbd> + <kbd>O</kbd>   |
 | Save File     |  <kbd>Ctrl</kbd> + <kbd>S</kbd>  |  <kbd>Cmd</kbd> + <kbd>S</kbd>   |
 | Key Map       |  <kbd>Ctrl</kbd> + <kbd>K</kbd>  |  <kbd>Cmd</kbd> + <kbd>K</kbd>   |
@@ -395,7 +436,17 @@ following options gives a basic VIP CHIP-8:
 | Replace       |  <kbd>Ctrl</kbd> + <kbd>R</kbd>  |  <kbd>Cmd</kbd> + <kbd>R</kbd>   |
 | Copy          |  <kbd>Ctrl</kbd> + <kbd>C</kbd>  |  <kbd>Cmd</kbd> + <kbd>C</kbd>   |
 | Cut           |  <kbd>Ctrl</kbd> + <kbd>X</kbd>  |  <kbd>Cmd</kbd> + <kbd>X</kbd>   |
-| Paste         |  <kbd>Ctrl</kbd> + <kbd>X</kbd>  |  <kbd>Cmd</kbd> + <kbd>X</kbd>   |
+| Paste         |  <kbd>Ctrl</kbd> + <kbd>V</kbd>  |  <kbd>Cmd</kbd> + <kbd>V</kbd>   |
+| Undo          |  <kbd>Ctrl</kbd> + <kbd>Z</kbd>  |  <kbd>Cmd</kbd> + <kbd>Z</kbd>   |
+| Redo          | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> or <kbd>Ctrl</kbd> + <kbd>Y</kbd> | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> |
+| Context Menu  | <kbd>Shift</kbd> + <kbd>F10</kbd> | <kbd>Shift</kbd> + <kbd>F10</kbd> |
+| Open Include  | <kbd>Ctrl</kbd> + click | <kbd>Cmd</kbd> + click |
+| Previous File | <kbd>Ctrl</kbd> + <kbd>Tab</kbd> | <kbd>Ctrl</kbd> + <kbd>Tab</kbd> |
+| Back          | <kbd>Alt</kbd> + <kbd>Left</kbd> | <kbd>Cmd</kbd> + <kbd>Opt</kbd> + <kbd>Left</kbd> |
+| Forward       | <kbd>Alt</kbd> + <kbd>Right</kbd> | <kbd>Cmd</kbd> + <kbd>Opt</kbd> + <kbd>Right</kbd> |
+| Close File    |  <kbd>Ctrl</kbd> + <kbd>W</kbd>  |  <kbd>Cmd</kbd> + <kbd>W</kbd>   |
+| Project Files |  <kbd>Ctrl</kbd> + <kbd>1</kbd>  |  <kbd>Cmd</kbd> + <kbd>1</kbd>   |
+| Quick Open    |  <kbd>Ctrl</kbd> + <kbd>P</kbd>  |  <kbd>Cmd</kbd> + <kbd>P</kbd>   |
 
 
 ## Command-line

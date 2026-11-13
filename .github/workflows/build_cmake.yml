@@ -232,6 +232,11 @@ jobs:
         shell: bash
         run: |
           ls -l dist
-          gh release create "${{ github.ref_name }}" --generate-notes dist/cadmium-*
+          # A release created in the GitHub UI already exists, then only attach the packages and keep its title and notes
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" --clobber dist/cadmium-*
+          else
+            gh release create "${{ github.ref_name }}" --generate-notes dist/cadmium-*
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

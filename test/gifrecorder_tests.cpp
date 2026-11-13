@@ -256,6 +256,28 @@ TEST_CASE("GifClickMarks ages clicks and drops them when their animation is over
     CHECK(marks.marks().empty());
 }
 
+TEST_CASE("GifShortcutCaption counts repeated shortcuts and hides after its duration")
+{
+    GifShortcutCaption caption;
+    CHECK_FALSE(caption.visible());
+    caption.show("Ctrl+Z");
+    caption.advance(GifShortcutCaption::DURATION * 0.8f);
+    caption.show("Ctrl+Z");
+    CHECK(caption.text() == "Ctrl+Z");
+    CHECK(caption.count() == 2);
+    // the repetition started the time over
+    caption.advance(GifShortcutCaption::DURATION * 0.8f);
+    CHECK(caption.visible());
+    caption.show("F5");
+    CHECK(caption.text() == "F5");
+    CHECK(caption.count() == 1);
+    caption.advance(GifShortcutCaption::DURATION);
+    CHECK_FALSE(caption.visible());
+    CHECK(caption.count() == 0);
+    caption.show("F5");
+    CHECK(caption.count() == 1);
+}
+
 TEST_CASE("scaleNearest handles integer and non-uniform scaling")
 {
     const Pixels source{1, 2, 9, 3, 4, 9};

@@ -8,6 +8,7 @@
 #define RAYGUI_IMPLEMENTATION
 #define RLGUIPP_IMPLEMENTATION
 #include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp_detail.hpp>
 #include <ghc/fs_fwd.hpp>
 #include <ghc/utf8.hpp>
 
@@ -187,6 +188,8 @@ struct PopupContext
         , _isOpen(other._isOpen)
         , _inDrag(other._inDrag)
         , _visible(other._visible)
+        , _pressedOutside(other._pressedOutside)
+        , _menuWasOpen(other._menuWasOpen)
     {
     }
     ~PopupContext() { UnloadRenderTexture(_content); }
@@ -213,6 +216,8 @@ struct PopupContext
             _isOpen = other._isOpen;
             _inDrag = other._inDrag;
             _visible = other._visible;
+            _pressedOutside = other._pressedOutside;
+            _menuWasOpen = other._menuWasOpen;
         }
         return *this;
     }
@@ -228,6 +233,8 @@ struct PopupContext
     bool* _isOpen;          // only valid in the frame given in _lastUpdate, never dereferenced later
     bool _inDrag{false};
     bool _visible{false};   // drawn at the end of the last frame
+    bool _pressedOutside{false};  // a drawer: the last mouse press was outside of it
+    bool _menuWasOpen{false};     // a drawer: a popup menu was open in the last frame
 };
 
 // Only used while the tab view is described, it keeps no state between frames
@@ -1490,6 +1497,10 @@ PopupContext* beginPopup(Rectangle area, Id id, bool* isOpen)
     if (!popup) {
         popup = &g_popupMap.emplace(id, PopupContext{area, isOpen}).first->second;
     }
+    else if (popup->texture().texture.width != (int)area.width || popup->texture().texture.height != (int)area.height) {
+        UnloadRenderTexture(popup->texture());
+        popup->texture() = LoadRenderTexture((int)area.width, (int)area.height);
+    }
     popup->_isOpen = isOpen;
     ctx.mouseOffset = {ctxParent.mouseOffset.x - popup->position().x * GuiContext::guiScale.x, ctxParent.mouseOffset.y - popup->position().y * GuiContext::guiScale.y};
     ctx.contextData = &popup->texture();
@@ -1512,6 +1523,41 @@ PopupContext* beginPopup(Rectangle area, Id id, bool* isOpen)
 bool BeginPopup(Rectangle area, const char* id, bool* isOpen)
 {
     return detail::beginPopup(area, GetId(id), isOpen) != nullptr;
+}
+
+bool BeginDrawer(Rectangle area, const char* id, bool* isOpen)
+{
+    if (!*isOpen) {
+        return false;
+    }
+    const auto drawerId = GetId(id);
+    if (auto* popup = PopupContext::find(drawerId)) {
+        // a click on another popup above it (or a modal window) is not outside, nor is the click that closes a popup menu
+        const bool menuOpen = PopupMenu::IsOpen() || popup->_menuWasOpen;
+        popup->_menuWasOpen = PopupMenu::IsOpen();
+        if (menuOpen) {
+            popup->_pressedOutside = false;
+        }
+        else if (popup->_visible && (!g_popupUnderMouse || g_popupUnderMouse == popup)) {
+            const bool outside = !g_popupUnderMouse && !CheckCollisionPointRec(GetMousePosition(), popup->bounds());
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+                popup->_pressedOutside = outside;
+            }
+            const bool released = IsMouseButtonReleased(MOUSE_BUTTON_LEFT) || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT);
+            if (IsKeyPressed(KEY_ESCAPE) || (released && popup->_pressedOutside && outside)) {
+                popup->_pressedOutside = false;
+                *isOpen = false;
+                return false;
+            }
+        }
+        popup->_position = {area.x, area.y};  // it follows the area, e.g. after a resize of the window
+    }
+    return detail::beginPopup(area, drawerId, isOpen) != nullptr;
+}
+
+void EndDrawer()
+{
+    detail::endContext(GuiContext::ctPOPUP);
 }
 
 static void EndPopupImpl()
@@ -2032,8 +2078,6 @@ bool ValueBox(const char* label, int* value, int minValue, int maxValue)
 namespace detail {
 
 static constexpr size_t TEXT_UNDO_LIMIT = 100;
-static constexpr double TEXT_MULTI_CLICK_TIME = 0.4;    // seconds between clicks of a double or triple click
-static constexpr double TEXT_CURSOR_BLINK_TIME = 0.53;  // seconds the cursor is shown and hidden
 
 std::string clipboardText()
 {
@@ -3131,6 +3175,34 @@ Vector2 GetTextSize(const char* text)
     return MeasureTextEx(GuiGetFont(), text, (float)GuiGetStyle(DEFAULT, TEXT_SIZE), (float)GuiGetStyle(DEFAULT, TEXT_SPACING));
 }
 
+bool IsMacLike()
+{
+    return detail::isMacLike();
+}
+
+std::string ShortcutText(const std::string& key, int modifiers)
+{
+    std::string text;
+    if (detail::isMacLike()) {
+        if (modifiers & SHORTCUT_CTRL)
+            text += "⌃";
+        if (modifiers & SHORTCUT_ALT)
+            text += "⌥";
+        if (modifiers & SHORTCUT_SHIFT)
+            text += "⇧";
+        if (modifiers & SHORTCUT_SYS)
+            text += "⌘";
+        return text + key;
+    }
+    if (modifiers & (SHORTCUT_SYS | SHORTCUT_CTRL))
+        text += "Ctrl+";
+    if (modifiers & SHORTCUT_ALT)
+        text += "Alt+";
+    if (modifiers & SHORTCUT_SHIFT)
+        text += "Shift+";
+    return text + key;
+}
+
 bool IsSysKeyDown()
 {
     if (detail::isMacLike())
@@ -3159,6 +3231,16 @@ void SetClipboardHandler(std::function<std::string()> getText, std::function<voi
 void CopyToClipboard(const std::string& text)
 {
     detail::setClipboardText(text);
+}
+
+std::string PasteFromClipboard()
+{
+    return detail::clipboardText();
+}
+
+bool IsPasteRequested()
+{
+    return detail::isPasteRequested();
 }
 
 Color ColorFromHsv(Vector3 hsv)
@@ -3665,6 +3747,12 @@ void System::drawItem(Item const& item, Rectangle bounds, bool hovered) const {
 
 void Open(Vector2 position, const Menu& menu)
 {
+    if (!g_contextStack.empty()) {
+        const auto& root = g_contextStack.front();
+        const auto& ctx = g_contextStack.back();
+        position.x += (root.mouseOffset.x - ctx.mouseOffset.x) / GuiContext::guiScale.x;
+        position.y += (root.mouseOffset.y - ctx.mouseOffset.y) / GuiContext::guiScale.y;
+    }
     GuiContext::popup.open(position, menu);
 }
 

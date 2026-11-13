@@ -24,431 +24,1055 @@
 //
 //---------------------------------------------------------------------------------------
 #include <editor.hpp>
-#include <GLFW/glfw3.h>
-#include <rlguipp/rlguipp.hpp>
 #include <stylemanager.hpp>
-#include <algorithm>
-#include <cassert>
-#include <cctype>
-#include <cmath>
-#include <regex>
 #include <chiplet/utility.hpp>
-#include <chiplet/octocompiler.hpp>
-#include <ghc/utf8.hpp>
 
-namespace utf8 = ghc::utf8;
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <fstream>
+#include <limits>
+#include <numeric>
 
-extern void copyClip(const char*);
-extern const char* pasteClip();
+namespace {
 
-static int getKeySymbol(int key)
+std::string lowerExtension(const std::string& file)
 {
-#ifndef PLATFORM_WEB
-    const char* keyName = glfwGetKeyName(key,0);
-    return keyName ? *keyName : key;
+    auto extension = fs::path(file).extension().string();
+    std::ranges::transform(extension, extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return extension;
+}
+
+// Files the tree doesn't open in the editor: images, sounds, binaries and programs
+bool isBinaryFile(const std::string& file)
+{
+    static const std::vector<std::string> binary{".png", ".gif", ".bmp", ".jpg", ".jpeg", ".tga", ".wav", ".bin", ".ram", ".ch8", ".ch10", ".hc8",
+                                                 ".sc8", ".xo8", ".mc8", ".c8b", ".c8x", ".c8e", ".zip", ".pdf"};
+    return std::ranges::find(binary, lowerExtension(file)) != binary.end();
+}
+
+// A file that has a NUL byte in its start is no text, whatever its extension says
+bool looksLikeText(const std::string& file)
+{
+    std::ifstream input(file, std::ios::binary);
+    char buffer[4096];
+    input.read(buffer, sizeof(buffer));
+    return input.gcount() >= 0 && std::find(buffer, buffer + input.gcount(), '\0') == buffer + input.gcount();
+}
+
+bool isWordStart(std::string_view text, size_t pos)
+{
+    if (pos == 0)
+        return true;
+    const auto before = static_cast<unsigned char>(text[pos - 1]);
+    const auto current = static_cast<unsigned char>(text[pos]);
+    return before == '/' || before == '\\' || before == '_' || before == '-' || before == '.' || before == ' ' || (std::islower(before) && std::isupper(current));
+}
+
+// The best score of the pattern's letters in order in the text from the start position, -1 if they aren't all there:
+// each letter 1, at a word start 8 more, right after the previous letter 5 more, after a gap 1 less
+int matchScore(std::string_view pattern, std::string_view text, size_t start)
+{
+    constexpr int NONE = std::numeric_limits<int>::min() / 2;
+    const size_t n = text.size();
+    if (pattern.empty())
+        return 0;
+    if (start >= n)
+        return -1;
+    // at[j]: the best score with the current letter at j, before: with the previous one
+    std::vector<int> before(n, NONE), at(n, NONE);
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        const auto letter = std::tolower(static_cast<unsigned char>(pattern[i]));
+        int bestEarlier = NONE;  // the best previous letter at least two places before j
+        for (size_t j = start; j < n; ++j) {
+            if (i > 0 && j >= start + 2)
+                bestEarlier = std::max(bestEarlier, before[j - 2]);
+            at[j] = NONE;
+            if (std::tolower(static_cast<unsigned char>(text[j])) != letter)
+                continue;
+            const int own = 1 + (isWordStart(text, j) ? 8 : 0);
+            if (i == 0) {
+                at[j] = own;
+                continue;
+            }
+            int previous = NONE;
+            if (j > start && before[j - 1] > NONE)
+                previous = before[j - 1] + 5;
+            if (bestEarlier > NONE)
+                previous = std::max(previous, bestEarlier - 1);
+            if (previous > NONE)
+                at[j] = own + previous;
+        }
+        std::swap(before, at);
+    }
+    const int best = *std::ranges::max_element(before);
+    return best > NONE ? best : -1;
+}
+
+std::string withoutCarriageReturns(std::string text)
+{
+    std::erase(text, '\r');
+    return text;
+}
+
+}
+
+Editor::Editor()
+{
+    updateTextStyle({});
+    resetFiles(std::make_unique<SourceFile>());
+    _fileTree.setMarkHandler([this](const std::string& path, bool isDirectory) { return fileMark(path, isDirectory); });
+    _fileTree.setContextMenuHandler([this](gui::PopupMenu::Menu& menu, const std::string& path, bool isDirectory) { fileTreeMenu(menu, path, isDirectory); });
+}
+
+void Editor::updateTextStyle(const Font& font)
+{
+    _textStyle.font = font;
+    _textStyle.fontSize = 8;
+    _textStyle.cellWidth = 6;
+    _textStyle.lineHeight = LINE_SIZE;
+    _textStyle.palette.resize(Highlighter::NUM_STYLES);
+    for (int i = 0; i < Highlighter::NUM_STYLES; ++i)
+        _textStyle.palette[i] = gui::StyleManager::mappedColor(Highlighter::DEFAULT_PALETTE[i]);
+    _textStyle.selection = gui::StyleManager::mappedColor(Highlighter::DEFAULT_SELECTION);
+    for (auto& file : _files)
+        file->code().setTextStyle(_textStyle);
+}
+
+// Takes the file into the open files as the current one
+SourceFile& Editor::addFile(std::unique_ptr<SourceFile> file)
+{
+    file->code().setHighlighter(&_highlighter);
+    file->code().setTextStyle(_textStyle);
+    file->setHistoryDirectory(_historyDirectory);
+    auto* entry = file.get();
+    file->code().setLinkHandler([this, entry](const gui::CodeContext& context) { return includeLinkAt(*entry, context.offset); });
+    file->code().setShortcutHandler([this]() { return _pendingNavigation != 0; });
+    _files.insert(_files.begin(), std::move(file));
+    return *_files.front();
+}
+
+// The folder an include of the file is relative to
+std::string Editor::includeBase(const SourceFile& file) const
+{
+    std::error_code ec;
+    if (!file.path().empty())
+        return fs::path(file.path()).parent_path().string();
+    return _filename.empty() ? std::string{} : fs::absolute(_filename, ec).parent_path().string();
+}
+
+// Chiplet includes these as images, binaries and sounds, all other files are sources
+static bool isSourceInclude(const std::string& file)
+{
+    static const std::vector<std::string> binary{".png", ".gif", ".bmp", ".jpg", ".jpeg", ".tga", ".bin", ".ch8", ".wav"};
+    return std::ranges::find(binary, lowerExtension(file)) == binary.end();
+}
+
+std::optional<gui::CodeLink> Editor::includeLinkAt(SourceFile& file, uint32_t offset)
+{
+    const auto context = file.code().contextAt(offset);
+    const auto line = context.lineText;
+    // the byte offset of the line start, the column counts code points
+    uint32_t lineStart = context.offset;
+    for (uint32_t column = 1; column < context.column && lineStart > 0; ++column) {
+        do {
+            --lineStart;
+        } while (lineStart > 0 && (static_cast<unsigned char>(file.getText()[lineStart]) & 0xC0) == 0x80);
+    }
+    // ":include" as a token outside of a comment, followed by the quoted file name
+    const auto comment = line.find('#');
+    auto pos = line.find(":include");
+    if (pos == std::string_view::npos || (comment != std::string_view::npos && comment < pos) || (pos > 0 && static_cast<unsigned char>(line[pos - 1]) > ' '))
+        return std::nullopt;
+    pos += 8;
+    if (pos >= line.size() || static_cast<unsigned char>(line[pos]) > ' ')
+        return std::nullopt;
+    while (pos < line.size() && static_cast<unsigned char>(line[pos]) <= ' ')
+        ++pos;
+    if (pos >= line.size() || line[pos] != '"')
+        return std::nullopt;
+    const auto close = line.find('"', pos + 1);
+    if (close == std::string_view::npos || close == pos + 1)
+        return std::nullopt;
+    const uint32_t start = lineStart + static_cast<uint32_t>(pos + 1);
+    const uint32_t end = lineStart + static_cast<uint32_t>(close);
+    const std::string name(line.substr(pos + 1, close - pos - 1));
+    if (context.offset < start || context.offset >= end || !isSourceInclude(name))
+        return std::nullopt;
+    std::error_code ec;
+    auto target = (fs::path(includeBase(file)) / name).lexically_normal().string();
+    if (!fs::is_regular_file(target, ec)) {
+        // found through the include paths, the last compilation knows where
+        const auto included = std::ranges::find_if(includedFiles(), [&](const auto& path) { return fs::path(path).filename() == fs::path(name).filename(); });
+        if (included == includedFiles().end())
+            return std::nullopt;
+        target = *included;
+    }
+    return gui::CodeLink{start, end, "Open " + fs::path(name).filename().string(),
+                         [this, target]() { openFile(target); setFocus(); }};
+}
+
+bool Editor::isInBuild(const SourceFile& file) const
+{
+    return &file == _main || std::ranges::find(includedFiles(), file.path()) != includedFiles().end();
+}
+
+// Saves and closes all files, the given one is the main file then
+void Editor::resetFiles(std::unique_ptr<SourceFile> main)
+{
+    const bool focused = !_files.empty() && hasFocus();
+    autoSave();
+    _revisionBase = contentRevision() + 1;
+    _files.clear();
+    _main = &addFile(std::move(main));
+    if (focused)
+        setFocus();
+}
+
+void Editor::setText(std::string text, const std::string& diskFile)
+{
+    std::error_code ec;
+    const auto path = diskFile.empty() ? std::string{} : fs::absolute(diskFile, ec).lexically_normal().string();
+    if (path.empty() || !isInProject(path)) {
+        resetFiles(std::make_unique<SourceFile>(std::move(text)));
+        if (!diskFile.empty())
+            _main->setDiskFile(diskFile);
+        return;
+    }
+    // a program of the project, the open files of the project stay open
+    const bool focused = hasFocus();
+    autoSave();
+    text = withoutCarriageReturns(std::move(text));
+    for (auto iter = _files.begin(); iter != _files.end();) {
+        const auto& file = **iter;
+        const bool related = isInProject(file.path()) || (!file.path().empty() && std::ranges::find(includedFiles(), file.path()) != includedFiles().end());
+        const bool keep = related && (file.path() != path || file.getText() == text);
+        if (keep) {
+            ++iter;
+            continue;
+        }
+        _revisionBase += file.contentRevision() + 1;
+        iter = _files.erase(iter);
+    }
+    auto iter = std::ranges::find_if(_files, [&](const auto& file) { return file->path() == path; });
+    if (iter != _files.end()) {
+        _main = iter->get();
+        switchTo(*_main);
+        ++_revisionBase;  // the build changed, it is compiled again
+    }
+    else {
+        auto file = std::make_unique<SourceFile>(std::move(text));
+        file->setDiskFile(path);
+        _main = &addFile(std::move(file));
+    }
+    if (focused)
+        setFocus();
+}
+
+void Editor::setGeneratedText(std::string text)
+{
+    setText(std::move(text));
+    _compiler.reset();
+    _compiledSourceSha1 = {};
+    _compiledRevision = contentRevision() - 1;
+    _checkedRevision = _lastSeenRevision = contentRevision();
+}
+
+uint32_t Editor::contentRevision() const
+{
+    return std::accumulate(_files.begin(), _files.end(), _revisionBase, [](uint32_t sum, const auto& file) { return sum + file->contentRevision(); });
+}
+
+bool Editor::openFile(const std::string& path, uint32_t line, uint32_t column)
+{
+    std::error_code ec;
+    const auto normalized = fs::absolute(path, ec).lexically_normal().string();
+    if (line > 0 && currentFile().path() == normalized)
+        rememberPlace(currentPlace());  // a jump in the shown file, other files are noticed by trackPlace()
+    auto iter = std::ranges::find_if(_files, [&](const auto& file) { return !file->path().empty() && file->path() == normalized; });
+    if (iter != _files.end()) {
+        switchTo(**iter);
+    }
+    else {
+        auto file = SourceFile::open(normalized);
+        if (!file)
+            return false;
+        const bool focused = hasFocus();
+        addFile(std::move(file));
+        if (focused)
+            setFocus();
+    }
+    if (line > 0)
+        currentFile().code().goTo(line, std::max(column, 1u));
+    return true;
+}
+
+void Editor::switchTo(SourceFile& file)
+{
+    auto iter = std::ranges::find_if(_files, [&](const auto& entry) { return entry.get() == &file; });
+    if (iter == _files.end() || iter == _files.begin())
+        return;
+    const bool focused = hasFocus();
+    std::rotate(_files.begin(), iter, iter + 1);
+    if (focused)
+        setFocus();
+}
+
+void Editor::closeCurrentFile()
+{
+    if (&currentFile() == _main)
+        return;
+    const bool focused = hasFocus();
+    currentFile().autoSave();
+    _revisionBase += currentFile().contentRevision() + 1;
+    _files.erase(_files.begin());
+    if (focused)
+        setFocus();
+}
+
+std::string Editor::title() const
+{
+    const auto& current = currentFile();
+    std::string title = "Editor - " + (&current == _main && current.path().empty() && !_filename.empty() ? fs::path(_filename).filename().string() : current.name());
+    if (&current != _main)
+        title += " (main: " + (_main->path().empty() && !_filename.empty() ? fs::path(_filename).filename().string() : _main->name()) + ")";
+    if (_files.size() > 1)
+        title += " [" + std::to_string(_files.size()) + " open]";
+    return title;
+}
+
+void Editor::openFileMenu(Vector2 position)
+{
+    gui::PopupMenu::Menu menu;
+    for (const auto& file : _files) {
+        auto* entry = file.get();
+        auto label = (entry == &currentFile() ? "> " : "  ") + entry->name() + (entry == _main ? "  (main)" : isInBuild(*entry) ? "" : "  (not in build)");
+        const auto previous = _files.size() > 1 && entry == _files[1].get() ? gui::ShortcutText("Tab", gui::SHORTCUT_CTRL) : std::string{};
+        menu.push_back(gui::PopupMenu::Action(label, [this, entry]() { switchTo(*entry); }, previous));
+    }
+    menu.push_back(gui::PopupMenu::Separator());
+    auto close = gui::PopupMenu::Action("Close " + currentFile().name(), [this]() { closeCurrentFile(); }, gui::ShortcutText("W"));
+    menu.push_back(&currentFile() != _main ? close : gui::PopupMenu::Disabled(close));
+    // the keys of navigationRequest(), the browser keeps them for itself
+#ifdef PLATFORM_WEB
+    const std::string backShortcut;
+    const std::string forwardShortcut;
+#elif defined(__APPLE__)
+    const auto backShortcut = gui::ShortcutText("←", gui::SHORTCUT_ALT | gui::SHORTCUT_SYS);
+    const auto forwardShortcut = gui::ShortcutText("→", gui::SHORTCUT_ALT | gui::SHORTCUT_SYS);
 #else
-    return key >= KEY_A && key <= KEY_Z ? key - KEY_A + 'A' : key;
+    const auto backShortcut = gui::ShortcutText("Left", gui::SHORTCUT_ALT);
+    const auto forwardShortcut = gui::ShortcutText("Right", gui::SHORTCUT_ALT);
+#endif
+    auto back = gui::PopupMenu::Action("Back", [this]() { goBack(); }, backShortcut);
+    menu.push_back(canGoBack() ? back : gui::PopupMenu::Disabled(back));
+    auto forward = gui::PopupMenu::Action("Forward", [this]() { goForward(); }, forwardShortcut);
+    menu.push_back(canGoForward() ? forward : gui::PopupMenu::Disabled(forward));
+#ifndef PLATFORM_WEB
+    if (_mainFileHandler) {
+        const auto path = currentFile().diskFile();
+        auto setMain = gui::PopupMenu::Action("Set " + currentFile().name() + " as Main File", [this, path]() { switchMain(path); });
+        menu.push_back(&currentFile() != _main && lowerExtension(path) == ".8o" ? setMain : gui::PopupMenu::Disabled(setMain));
+    }
+    menu.push_back(gui::PopupMenu::Separator());
+    menu.push_back(gui::PopupMenu::Action("Project Files", [this]() { openFileTree(); }, gui::ShortcutText("1")));
+    menu.push_back(gui::PopupMenu::Action("Quick Open...", [this]() { openQuickOpen(); }, gui::ShortcutText("P")));
+    // a new file goes next to the current one, or into the folder of the tree
+    const auto folder = !currentFile().path().empty() ? fs::path(currentFile().path()).parent_path().string() : treeRoot();
+    auto newFile = gui::PopupMenu::Action("New File...", [this, folder]() { startNewFile(folder); });
+    menu.push_back(folder.empty() ? gui::PopupMenu::Disabled(newFile) : newFile);
+    if (_openFolderHandler)
+        menu.push_back(gui::PopupMenu::Action("Open Folder...", [this]() { _openFolderHandler(); }));
+#endif
+    gui::PopupMenu::Open(position, menu);
+}
+
+void Editor::setProjectFolder(const std::string& path)
+{
+    std::error_code ec;
+    auto folder = path.empty() ? fs::path() : fs::absolute(path, ec).lexically_normal();
+    if (folder.has_relative_path() && !folder.has_filename())
+        folder = folder.parent_path();
+    _projectFolder = folder.string();
+}
+
+bool Editor::isInProject(const std::string& path) const
+{
+    if (_projectFolder.empty() || path.empty())
+        return false;
+    const auto relative = fs::path(path).lexically_relative(_projectFolder);
+    return !relative.empty() && *relative.begin() != ".." && relative != ".";
+}
+
+std::string Editor::treeRoot() const
+{
+    if (!_projectFolder.empty())
+        return _projectFolder;
+    if (!_main->path().empty())
+        return fs::path(_main->path()).parent_path().string();
+    if (!currentFile().path().empty())
+        return fs::path(currentFile().path()).parent_path().string();
+    return {};
+}
+
+void Editor::openFileTree()
+{
+    _fileTree.setRoot(treeRoot());
+    _fileTree.refresh();
+    if (!currentFile().path().empty())
+        _fileTree.reveal(currentFile().path());
+    _fileTree.setFocus();
+    _quickOpenOpen = false;
+    _fileTreeOpen = true;
+}
+
+gui::FileTreeMark Editor::fileMark(const std::string& path, bool isDirectory) const
+{
+    gui::FileTreeMark mark;
+    if (isDirectory)
+        return mark;
+    if (path == _main->path())
+        mark.suffix = "(main)";
+    else if (std::ranges::find(includedFiles(), path) != includedFiles().end())
+        mark.suffix = "(in build)";
+    if (std::ranges::any_of(_files, [&](const auto& file) { return file->path() == path; }))
+        mark.color = gui::StyleManager::mappedColor(Highlighter::DEFAULT_PALETTE[Highlighter::eLABEL]);
+    else if (isBinaryFile(path))
+        mark.color = GetColor(gui::GetStyle(DEFAULT, TEXT_COLOR_DISABLED));
+    return mark;
+}
+
+void Editor::fileTreeMenu(gui::PopupMenu::Menu& menu, const std::string& path, bool isDirectory)
+{
+    using namespace gui;
+    if (!isDirectory) {
+        auto open = PopupMenu::Action("Open", [this, path]() { pickFile(path); });
+        menu.push_back(isBinaryFile(path) ? PopupMenu::Disabled(open) : open);
+        if (_mainFileHandler) {
+            auto setMain = PopupMenu::Action("Set as Main File", [this, path]() {
+                _fileTreeOpen = false;
+                switchMain(path);
+            });
+            menu.push_back(lowerExtension(path) == ".8o" && path != _main->path() ? setMain : PopupMenu::Disabled(setMain));
+        }
+        menu.push_back(PopupMenu::Separator());
+    }
+    const auto folder = isDirectory ? path : fs::path(path).parent_path().string();
+    menu.push_back(PopupMenu::Action("New File...", [this, folder]() { startNewFile(folder); }));
+    menu.push_back(PopupMenu::Action("Refresh", [this]() { _fileTree.refresh(); }));
+    if (_openFolderHandler) {
+        menu.push_back(PopupMenu::Separator());
+        menu.push_back(PopupMenu::Action("Open Folder...", [this]() {
+            _fileTreeOpen = false;
+            _openFolderHandler();
+        }));
+    }
+    if (!_projectFolder.empty())
+        menu.push_back(PopupMenu::Action("Close Folder", [this]() {
+            setProjectFolder({});
+            openFileTree();
+        }));
+}
+
+int Editor::fuzzyScore(std::string_view pattern, std::string_view path)
+{
+    if (pattern.empty())
+        return 0;
+    const auto nameStart = path.find_last_of("/\\");
+    const size_t name = nameStart == std::string_view::npos ? 0 : nameStart + 1;
+    // all letters in the file name count most, the whole name more
+    if (const int inName = matchScore(pattern, path, name); inName >= 0)
+        return inName + 20 + (pattern.size() == path.size() - name ? 10 : 0);
+    return matchScore(pattern, path, 0);
+}
+
+std::string Editor::displayPath(const std::string& path) const
+{
+    const auto root = treeRoot();
+    if (!root.empty()) {
+        const auto relative = fs::path(path).lexically_relative(root);
+        if (!relative.empty() && *relative.begin() != "..")
+            return relative.generic_string();
+    }
+    return path;
+}
+
+void Editor::openQuickOpen()
+{
+    _quickOpenFiles.clear();
+    const auto root = treeRoot();
+    std::error_code ec;
+    if (!root.empty()) {
+        fs::recursive_directory_iterator iter(root, fs::directory_options::skip_permission_denied, ec);
+        for (const fs::recursive_directory_iterator end; !ec && iter != end && _quickOpenFiles.size() < QUICK_OPEN_FILES; iter.increment(ec)) {
+            const auto name = iter->path().filename().string();
+            if (!name.empty() && name.front() == '.') {
+                if (iter->is_directory(ec))
+                    iter.disable_recursion_pending();
+                continue;
+            }
+            if (iter->is_regular_file(ec) && !isBinaryFile(name))
+                _quickOpenFiles.push_back(iter->path().lexically_normal().string());
+        }
+    }
+    for (const auto& file : _files) {
+        if (!file->path().empty() && std::ranges::find(_quickOpenFiles, file->path()) == _quickOpenFiles.end())
+            _quickOpenFiles.push_back(file->path());
+    }
+    _fileTreeOpen = false;
+    _quickOpenText.clear();
+    _quickOpenSearched = "\n";
+    _quickOpenSelected = 0;
+    _quickOpenScroll = {};
+    _quickOpenFocus = true;
+    _quickOpenOpen = true;
+}
+
+std::vector<std::string> Editor::quickOpenMatches(const std::string& pattern) const
+{
+    struct Match
+    {
+        int score;
+        int openRank;  // the position in the recently used files, INT_MAX for files that aren't open
+        std::string display;
+        const std::string* path;
+    };
+    std::vector<Match> matches;
+    for (const auto& path : _quickOpenFiles) {
+        auto display = displayPath(path);
+        const int score = fuzzyScore(pattern, display);
+        if (score < 0)
+            continue;
+        const auto open = std::ranges::find_if(_files, [&](const auto& file) { return file->path() == path; });
+        const int openRank = open == _files.end() ? std::numeric_limits<int>::max() : static_cast<int>(open - _files.begin());
+        matches.push_back({score + (openRank != std::numeric_limits<int>::max() ? 3 : 0), openRank, std::move(display), &path});
+    }
+    std::ranges::sort(matches, [&pattern](const Match& a, const Match& b) {
+        if (pattern.empty()) {
+            // without a pattern the open files first, the recently used first, then by path
+            if (a.openRank != b.openRank)
+                return a.openRank < b.openRank;
+            return a.display < b.display;
+        }
+        if (a.score != b.score)
+            return a.score > b.score;
+        if (a.display.size() != b.display.size())
+            return a.display.size() < b.display.size();
+        return a.display < b.display;
+    });
+    std::vector<std::string> result;
+    for (size_t i = 0; i < matches.size() && i < QUICK_OPEN_MATCHES; ++i)
+        result.push_back(*matches[i].path);
+    return result;
+}
+
+void Editor::drawQuickOpen(Rectangle codeArea)
+{
+    using namespace gui;
+    constexpr float rowHeight = 16;
+    const float width = std::min(420.0f, codeArea.width - 16);
+    const float height = std::min(260.0f, codeArea.height - 16);
+    const bool wasOpen = _quickOpenOpen;
+    if (!BeginDrawer({std::floor(codeArea.x + (codeArea.width - width) / 2), codeArea.y + 8, width, height}, "quick-open", &_quickOpenOpen)) {
+        if (wasOpen && IsKeyPressed(KEY_ESCAPE))
+            setFocus();
+        return;
+    }
+    SetSpacing(2);
+    SetRowHeight(18);
+    if (_quickOpenSearched != _quickOpenText) {
+        _quickOpenResults = quickOpenMatches(_quickOpenText);
+        _quickOpenSearched = _quickOpenText;
+        _quickOpenSelected = 0;
+        _quickOpenScroll = {};
+    }
+    const int count = static_cast<int>(_quickOpenResults.size());
+    auto activated = [](int key) { return IsKeyPressed(key) || IsKeyPressedRepeat(key); };
+    const int page = std::max(1, static_cast<int>((height - 26) / rowHeight) - 1);
+    int move = 0;
+    if (activated(KEY_DOWN))
+        move = 1;
+    else if (activated(KEY_UP))
+        move = -1;
+    else if (activated(KEY_PAGE_DOWN))
+        move = page;
+    else if (activated(KEY_PAGE_UP))
+        move = -page;
+    if (move && count) {
+        _quickOpenSelected = std::clamp(_quickOpenSelected + move, 0, count - 1);
+        // keep the selected row in view
+        const float top = static_cast<float>(_quickOpenSelected) * rowHeight;
+        const float view = height - 26 - 6;
+        if (top < -_quickOpenScroll.y)
+            _quickOpenScroll.y = -top;
+        else if (top + rowHeight > -_quickOpenScroll.y + view)
+            _quickOpenScroll.y = -(top + rowHeight - view);
+    }
+    std::optional<std::string> picked;
+    if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && _quickOpenSelected < count)
+        picked = _quickOpenResults[_quickOpenSelected];
+    if (_quickOpenFocus) {
+        SetKeyboardFocus(GetId("search"));
+        _quickOpenFocus = false;
+    }
+    // the search field keeps the focus, but the keys of the list don't move its cursor
+    const bool lockField = move != 0 && !GuiIsLocked();
+    if (lockField)
+        GuiLock();
+    TextBox("search", _quickOpenText, 255);
+    if (lockField)
+        GuiUnlock();
+    if (!HasKeyboardFocus(GetId("search")) && !picked)
+        _quickOpenFocus = true;  // e.g. after Enter in an empty list, typing goes on in the field
+    const auto font = GuiGetFont();
+    BeginTableView(-1, "results", {TableColumn::Stretch()}, &_quickOpenScroll);
+    for (int row = 0; row < count; ++row) {
+        const auto& path = _quickOpenResults[row];
+        Color textColor = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_NORMAL));
+        if (!TableNextRow(rowHeight, [&](Rectangle rect) {
+                if (row == _quickOpenSelected) {
+                    DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_PRESSED)));
+                    textColor = GetColor(GetStyle(LISTVIEW, TEXT_COLOR_PRESSED));
+                }
+                else if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), rect)) {
+                    DrawRectangleClipped(rect.x, rect.y, rect.width, rect.height, GetColor(GetStyle(LISTVIEW, BASE_COLOR_NORMAL)));
+                }
+                if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), rect) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+                    picked = path;
+            })) {
+            continue;
+        }
+        TableNextColumn([&](Rectangle rect) {
+            const auto mark = fileMark(path, false);
+            const auto display = displayPath(path);
+            const auto slash = display.find_last_of('/');
+            const auto name = slash == std::string::npos ? display : display.substr(slash + 1);
+            const auto color = mark.color.a && row != _quickOpenSelected ? mark.color : textColor;
+            DrawTextClipped(font, name.c_str(), {rect.x + 4, rect.y + 4}, color);
+            float x = rect.x + 4 + GetTextSize(name.c_str()).x + 8;
+            if (!mark.suffix.empty()) {
+                DrawTextClipped(font, mark.suffix.c_str(), {x, rect.y + 4}, ColorAlpha(color, 0.6f));
+                x += GetTextSize(mark.suffix.c_str()).x + 8;
+            }
+            if (slash != std::string::npos)
+                DrawTextClipped(font, display.substr(0, slash).c_str(), {x, rect.y + 4}, ColorAlpha(textColor, 0.5f));
+        });
+    }
+    EndTableView();
+    EndDrawer();
+    if (picked) {
+        _quickOpenOpen = false;
+        pickFile(*picked);
+    }
+}
+
+void Editor::pickFile(const std::string& path)
+{
+    if (isBinaryFile(path) || !looksLikeText(path))
+        return;
+    if (adoptAsMain(path)) {
+        _fileTreeOpen = false;
+        return;
+    }
+    if (openFile(path)) {
+        _fileTreeOpen = false;
+        setFocus();
+    }
+}
+
+bool Editor::isMainReplaceable() const
+{
+    if (_projectFolder.empty() || isInProject(_main->path()))
+        return false;
+    return _main->diskFile().empty() ? !_main->code().canUndo() : !_main->hasUnsavedChanges();
+}
+
+bool Editor::adoptAsMain(const std::string& path)
+{
+    std::error_code ec;
+    const auto normalized = fs::absolute(path, ec).lexically_normal().string();
+    if (!_mainFileHandler || lowerExtension(normalized) != ".8o" || !isInProject(normalized) || !isMainReplaceable())
+        return false;
+    switchMain(normalized);
+    return true;
+}
+
+bool Editor::switchMain(const std::string& path)
+{
+    // the app loads the program from disk, so the shown text has to be saved first
+    autoSave();
+    auto iter = std::ranges::find_if(_files, [&](const auto& file) { return file->path() == path; });
+    if (!_mainFileHandler || (iter != _files.end() && (*iter)->hasUnsavedChanges()))
+        return false;
+    _mainFileHandler(path);
+    return true;
+}
+
+bool Editor::definesMain(std::string_view text)
+{
+    for (size_t pos = 0; pos < text.size();) {
+        auto end = text.find('\n', pos);
+        if (end == std::string_view::npos)
+            end = text.size();
+        auto line = text.substr(pos, end - pos);
+        pos = end + 1;
+        const auto start = line.find_first_not_of(" \t");
+        if (start == std::string_view::npos || line[start] != ':')
+            continue;
+        const auto name = line.find_first_not_of(" \t", start + 1);
+        if (name == start + 1 || name == std::string_view::npos || line.substr(name, 4) != "main")
+            continue;
+        if (name + 4 == line.size() || std::string_view(" \t\r#").find(line[name + 4]) != std::string_view::npos)
+            return true;
+    }
+    return false;
+}
+
+Editor::Place Editor::currentPlace() const
+{
+    const auto& code = currentFile().code();
+    return {currentFile().path(), code.line(), code.column()};
+}
+
+void Editor::rememberPlace(const Place& place)
+{
+    if (_navigating || place.path.empty())
+        return;
+    if (!_backPlaces.empty() && _backPlaces.back().path == place.path && _backPlaces.back().line == place.line)
+        _backPlaces.back() = place;
+    else
+        _backPlaces.push_back(place);
+    if (_backPlaces.size() > MAX_PLACES)
+        _backPlaces.erase(_backPlaces.begin());
+    _forwardPlaces.clear();
+}
+
+void Editor::trackPlace()
+{
+    auto place = currentPlace();
+    if (_lastPlace && _lastPlace->path != place.path)
+        rememberPlace(*_lastPlace);
+    _lastPlace = std::move(place);
+}
+
+bool Editor::showPlace(const Place& place)
+{
+    _navigating = true;
+    const bool shown = openFile(place.path, place.line, place.column);
+    _navigating = false;
+    if (shown) {
+        _lastPlace = currentPlace();
+        setFocus();
+    }
+    return shown;
+}
+
+void Editor::goBack()
+{
+    const auto current = currentPlace();
+    while (!_backPlaces.empty()) {
+        const auto place = std::move(_backPlaces.back());
+        _backPlaces.pop_back();
+        if (place.path == current.path && place.line == current.line)
+            continue;
+        if (showPlace(place)) {
+            if (!current.path.empty())
+                _forwardPlaces.push_back(current);
+            return;
+        }
+    }
+}
+
+void Editor::goForward()
+{
+    const auto current = currentPlace();
+    while (!_forwardPlaces.empty()) {
+        const auto place = std::move(_forwardPlaces.back());
+        _forwardPlaces.pop_back();
+        if (place.path == current.path && place.line == current.line)
+            continue;
+        if (showPlace(place)) {
+            if (!current.path.empty())
+                _backPlaces.push_back(current);
+            return;
+        }
+    }
+}
+
+int Editor::navigationRequest() const
+{
+#ifdef PLATFORM_WEB
+    return 0;  // the browser uses these keys and buttons for its own Back and Forward
+#else
+    if (GuiIsLocked() || gui::PopupMenu::IsOpen() || _newFileOpen || _quickOpenOpen || _fileTreeOpen)
+        return 0;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_SIDE) || IsMouseButtonPressed(MOUSE_BUTTON_BACK))
+        return -1;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_EXTRA) || IsMouseButtonPressed(MOUSE_BUTTON_FORWARD))
+        return 1;
+    if (!hasFocus())
+        return 0;
+    const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+    const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+#ifdef __APPLE__
+    const bool keys = gui::IsSysKeyDown() && alt && !ctrl && !shift;
+#else
+    const bool keys = alt && !ctrl && !shift;
+#endif
+    if (keys && IsKeyPressed(KEY_LEFT))
+        return -1;
+    if (keys && IsKeyPressed(KEY_RIGHT))
+        return 1;
+    return 0;
 #endif
 }
 
-void Editor::fixLinefeed(std::string& text)
+void Editor::followShownProgram()
 {
-    size_t pos = 0;
-    while ((pos = text.find("\r\n", pos)) != std::string::npos) {
-        text.replace(pos, 2, "\n");
-        pos += 1;
+    auto& file = currentFile();
+    if (file.path() == _checkedProgramPath)
+        return;
+    _checkedProgramPath = file.path();
+    if (&file == _main || !_mainFileHandler || file.diskFile().empty() || lowerExtension(file.path()) != ".8o" || !isInProject(file.path()) || !definesMain(file.getText()))
+        return;
+    if (_main->diskFile().empty() && _main->code().canUndo())
+        return;
+    switchMain(file.path());
+}
+
+std::string Editor::findMainFile(const std::string& folder)
+{
+    // the .8o files directly in the folder, and the ones they include
+    std::error_code ec;
+    std::vector<std::string> sources;
+    for (const auto& entry : fs::directory_iterator(folder, ec)) {
+        const auto name = entry.path().filename().string();
+        if (entry.is_regular_file(ec) && lowerExtension(name) == ".8o" && name.front() != '.')
+            sources.push_back(fs::absolute(entry.path(), ec).lexically_normal().string());
     }
-}
-
-void Editor::setFocus()
-{
-    gui::SetKeyboardFocus(_focusId);
-}
-
-bool Editor::hasFocus() const
-{
-    return gui::HasKeyboardFocus(_focusId);
-}
-
-void Editor::cursorLeft(int steps)
-{
-    for (int i = 0; i < steps; ++i) {
-        if (_cursorX > 0)
-            --_cursorX;
-        else if (_cursorY > 0)
-            --_cursorY, _cursorX = lineLength(_cursorY);
-    }
-    _cursorVirtX = _cursorX;
-    _cursorChanged = true;
-}
-
-void Editor::cursorRight(int steps)
-{
-    for (int i = 0; i < steps; ++i) {
-        if (_cursorX < lineLength(_cursorY))
-            ++_cursorX;
-        else if (_cursorY + 1 < _lines.size())
-            ++_cursorY, _cursorX = 0;
-    }
-    _cursorVirtX = _cursorX;
-    _cursorChanged = true;
-}
-
-void Editor::cursorUp(int steps)
-{
-    for (int i = 0; i < steps; ++i) {
-        if (_cursorY > 0)
-            --_cursorY;
-    }
-    _cursorX = _cursorVirtX;
-    if (_cursorX > lineLength(_cursorY))
-        _cursorX = lineLength(_cursorY);
-    _cursorChanged = true;
-}
-
-void Editor::cursorDown(int steps)
-{
-    for (int i = 0; i < steps; ++i) {
-        if (_cursorY + 1 < _lines.size())
-            ++_cursorY;
-    }
-    _cursorX = _cursorVirtX;
-    if (_cursorX > lineLength(_cursorY))
-        _cursorX = lineLength(_cursorY);
-    _cursorChanged = true;
-}
-
-void Editor::cursorHome()
-{
-    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
-        _cursorX = _cursorY = _cursorVirtX = 0, _cursorChanged = true;
-    else
-        _cursorX = _cursorVirtX = 0, _cursorChanged = true;
-}
-
-void Editor::cursorEnd()
-{
-    if(IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {
-        _cursorY = _lines.size() - 1;
-        _cursorX = _cursorVirtX = lineLength(_cursorY);
-        _cursorChanged = true;
-    }
-    else
-        _cursorX = _cursorVirtX = lineLength(_cursorY), _cursorChanged = true;
-}
-
-char* Editor::pointerFromOffset(uint32_t offset)
-{
-    // find line from offset
-    auto iter=std::upper_bound(_lines.begin(), _lines.end(), offset);
-    if (iter!=_lines.begin()) {
-        --iter;
-    }
-    offset -= *iter;
-    return _text.data() + offset;
-}
-
-uint32_t Editor::offsetFromCursor()
-{
-    const char* text = _text.data() + _lines[_cursorY];
-    const char* end = _text.data() + _text.size();
-    unsigned i = 0;
-    while(text < end && i < _cursorX && *text != '\n')
-        utf8::fetchCodepoint(text, end), ++i;
-    return text - _text.data();
-}
-
-std::pair<int,int> Editor::cursorFromOffset(uint32_t offset)
-{
-    int cx = 0, cy = 0;
-    auto iter=std::upper_bound(_lines.begin(), _lines.end(), offset);
-    if (iter!=_lines.begin()) {
-        --iter;
-    }
-    cy = int(iter - _lines.begin());
-    offset -= *iter;
-    const char* text = lineStart(cy);
-    const char* end = text + offset;
-    while(text < end && *text != '\n')
-        utf8::fetchCodepoint(text, end), ++cx;
-    return {cx, cy};
-}
-
-int Editor::lineLength(uint32_t line)
-{
-    if(line >= _lines.size()) return 0;
-    const char* text = _text.data() + _lines[line];
-    const char* end = _text.data() + _text.size();
-    int len = 0;
-    while(text < end && *text != '\n')
-        utf8::fetchCodepoint(text, end), ++len;
-    return len;
-}
-
-void Editor::updateAlphaKeys()
-{
-    int key;
-    for(auto& f : _alphabetKeys) f = 0;
-    do {
-        key = GetKeyPressed();
-        if(key && key != GLFW_KEY_UNKNOWN) {
-            int keySym = getKeySymbol(key);
-            if (keySym >= 'A' && keySym <= 'Z') {
-                _alphabetKeys[keySym - 'A'] = true;
-                //TraceLog(LOG_INFO, "Alpha-Key pressed: %c", keySym);
-            }
-            else if (keySym >= 'a' && keySym <= 'z') {
-                _alphabetKeys[keySym - 'a'] = true;
-                //TraceLog(LOG_INFO, "Alpha-Key pressed: %c", keySym);
+    std::ranges::sort(sources);
+    if (sources.size() <= 1)
+        return sources.empty() ? std::string{} : sources.front();
+    std::vector<std::string> included;
+    for (const auto& source : sources) {
+        std::ifstream input(source, std::ios::binary);
+        std::string line;
+        while (std::getline(input, line)) {
+            line = line.substr(0, line.find('#'));
+            for (auto pos = line.find(":include"); pos != std::string::npos; pos = line.find(":include", pos + 8)) {
+                const auto open = line.find_first_not_of(" \t", pos + 8);
+                if (open == std::string::npos || line[open] != '"')
+                    continue;
+                const auto close = line.find('"', open + 1);
+                if (close == std::string::npos)
+                    continue;
+                const auto file = fs::path(source).parent_path() / fs::path(line.substr(open + 1, close - open - 1));
+                included.push_back(fs::absolute(file, ec).lexically_normal().string());
             }
         }
     }
-    while(key);
+    // the ones no other includes, if that are several, the one named like the folder
+    std::vector<std::string> roots;
+    std::ranges::copy_if(sources, std::back_inserter(roots), [&](const auto& source) { return std::ranges::find(included, source) == included.end(); });
+    if (roots.size() == 1)
+        return roots.front();
+    auto folderName = fs::absolute(folder, ec).lexically_normal();
+    if (!folderName.has_filename())
+        folderName = folderName.parent_path();
+    const auto& candidates = roots.empty() ? sources : roots;
+    auto named = std::ranges::find_if(candidates, [&](const auto& source) { return fs::path(source).stem() == folderName.filename(); });
+    return named != candidates.end() ? *named : std::string{};
 }
 
-void Editor::updateLineInfo(uint32_t fromLine)
+void Editor::startNewFile(const std::string& folder)
 {
-    if (fromLine >= _lines.size())
-        fromLine = 0;
-    if (fromLine == 0)
-        _longestLineSize = 0;
-    const char* str = _text.data() + (fromLine ? _lines[fromLine] : 0);
-    const char* end = _text.data() + _text.size();
-    auto state = fromLine < _lineStates.size() ? _lineStates[fromLine] : LineState{};
-    _lines.erase(_lines.begin() + fromLine, _lines.end());
-    _lineStates.resize(fromLine);
-    auto length = str - _text.data();
-    auto lastOffset = length;
-    _lines.push_back(length);
-    _lineStates.push_back(state);
-    while (str < end) {
-        if (*str++ == '\n') {
-            state = scanLineState(_text.data() + lastOffset, str, state);
-            _lines.push_back(str - _text.data());
-            _lineStates.push_back(state);
-            length = _lines.back() - lastOffset;
-            if(length > _longestLineSize)
-                _longestLineSize = length;
-            lastOffset = _lines.back();
-        }
+    _newFileFolder = folder;
+    _newFileName.clear();
+    _newFileError.clear();
+    _newFileOpen = true;
+    _newFileFocus = true;
+}
+
+std::string Editor::createFile(const std::string& folder, std::string name)
+{
+    const auto first = name.find_first_not_of(" \t");
+    name = first == std::string::npos ? std::string{} : name.substr(first, name.find_last_not_of(" \t") - first + 1);
+    if (name.empty())
+        return "Enter a file name";
+    if (fs::path(name).extension().empty())
+        name += ".8o";
+    std::error_code ec;
+    const auto path = (fs::path(folder) / name).lexically_normal();
+    const auto relative = path.lexically_relative(folder);
+    if (relative.empty() || *relative.begin() == ".." || !path.has_filename())
+        return "The file must be in the folder";
+    if (fs::exists(path, ec))
+        return "There is already a file " + relative.string();
+    fs::create_directories(path.parent_path(), ec);
+    {
+        std::ofstream output(path.string(), std::ios::binary);
+        if (!output)
+            return "Couldn't create " + relative.string();
+    }
+    if (!openFile(path.string()))
+        return "Couldn't open " + relative.string();
+    _fileTree.refresh();
+    _fileTree.reveal(currentFile().path());
+    setFocus();
+    return {};
+}
+
+bool Editor::hasUnsavedChanges() const
+{
+    return std::ranges::any_of(_files, [](const auto& file) { return file->hasUnsavedChanges(); });
+}
+
+bool Editor::autoSave()
+{
+    bool ok = true;
+    for (auto& file : _files)
+        ok = file->autoSave() && ok;
+    return ok;
+}
+
+bool Editor::save()
+{
+    bool ok = true;
+    for (auto& file : _files)
+        ok = file->save() && ok;
+    return ok;
+}
+
+std::string Editor::saveError() const
+{
+    if (!currentFile().saveError().empty())
+        return currentFile().saveError();
+    for (const auto& file : _files) {
+        if (!file->saveError().empty())
+            return file->name() + ": " + file->saveError();
+    }
+    return {};
+}
+
+void Editor::setHistoryDirectory(const std::string& path)
+{
+    _historyDirectory = path;
+    for (auto& file : _files)
+        file->setHistoryDirectory(path);
+    std::error_code ec;
+    if (path.empty() || !fs::is_directory(path, ec))
+        return;
+    const auto oldest = fs::file_time_type::clock::now() - std::chrono::hours(24 * SourceFile::MAX_HISTORY_DAYS);
+    for (const auto& entry : fs::directory_iterator(path, ec)) {
+        if (entry.is_regular_file(ec) && entry.last_write_time(ec) < oldest)
+            fs::remove(entry.path(), ec);
     }
 }
 
-void Editor::ensureCursorVisibility()
+void Editor::checkDiskFile(bool force)
 {
-    if (_visibleLines && _cursorY >= _tosLine + _visibleLines - 1)
-        _tosLine = _cursorY - _visibleLines + 2;
-    else if (_visibleLines && _cursorY < _tosLine)
-        _tosLine = _cursorY;
-    if (_visibleCols && _cursorX >= _losCol + _visibleCols)
-        _losCol = _cursorX - _visibleCols + 1;
-    else if (_visibleCols && _cursorX < _losCol)
-        _losCol = _cursorX;
+#ifndef PLATFORM_WEB
+    if (!force) {
+        const bool focused = IsWindowFocused();
+        const double now = GetTime();
+        if (!focused || (_wasFocused && now - _lastDiskCheck < 1.0)) {
+            _wasFocused = focused;
+            return;
+        }
+        _wasFocused = true;
+        _lastDiskCheck = now;
+    }
+    for (auto& file : _files)
+        file->checkDiskFile();
+    // an included file that isn't open but was changed by another program needs a compilation
+    for (const auto& [path, time] : _includedFileTimes) {
+        std::error_code ec;
+        const auto now = fs::last_write_time(path, ec);
+        if (now != time && std::ranges::none_of(_files, [&](const auto& file) { return file->path() == path; })) {
+            _compiledRevision = contentRevision() - 1;
+            _checkedRevision = contentRevision() - 1;
+            _compiledSourceSha1 = {};
+            _includedFileTimes.clear();
+            break;
+        }
+    }
+#endif
+}
+
+// A digest of the texts of all open files, a compile result is still valid if it didn't change
+Sha1::Digest Editor::sourcesDigest() const
+{
+    std::vector<const SourceFile*> files;
+    for (const auto& file : _files)
+        files.push_back(file.get());
+    std::ranges::sort(files, [](const auto* a, const auto* b) { return a->path() < b->path(); });
+    std::string all = _main->path() + '\0';  // another main file is another build
+    for (const auto* file : files)
+        all += file->path() + '\0' + file->getText() + '\0';
+    return calculateSha1(all);
 }
 
 void Editor::update()
 {
-    using namespace gui;
-    auto oldRepeat = _repeatTimer;
-    ++_editId;
-    _repeatTimer -= GetFrameTime();
-    _isRepeat = (_repeatTimer <= 0 && oldRepeat > 0);
-    _cursorChanged = false;
-    updateAlphaKeys();
-    if(StyleManager::instance().isInvertedTheme() != _isInvertedTheme) {
-        _isInvertedTheme = StyleManager::instance().isInvertedTheme();
-        for(int i = 0; i < 8; ++i) {
-            _colors[i] = StyleManager::mappedColor(_defaultColors[i]);
-        }
-        _selected = StyleManager::mappedColor(_defaultSelected);
+    trackPlace();
+    followShownProgram();
+    if(gui::StyleManager::instance().isInvertedTheme() != _isInvertedTheme) {
+        _isInvertedTheme = gui::StyleManager::instance().isInvertedTheme();
+        updateTextStyle(_textStyle.font);
     }
-    bool altPressed = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
-    bool shiftPressed = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    //bool ctrlPressed = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    //bool superPressed = IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
-    bool sysKeyPressed = gui::IsSysKeyDown();
-    bool selectionChange = false;
-
-    if(IsMouseButtonDown(0) && CheckCollisionPointRec(GetMousePosition(), {_textArea.x + 1, _textArea.y + 1, _textArea.width - 6, _textArea.height - 6})) {
-        setFocus();
-        if(_mouseDownInText || IsMouseButtonPressed(0)) {
-            auto clickPos = GetMousePosition();
-            auto cx = (clickPos.x - _textArea.x - _lineNumberWidth) / COLUMN_WIDTH;
-            auto cy = (clickPos.y - _textArea.y - 4) / LINE_SIZE;
-            if (cx > 0 && cy + _tosLine >= 0) {
-                _cursorX = cx + _losCol;
-                _cursorY = cy + _tosLine;
-                if (_cursorY >= _lines.size())
-                    _cursorY = _lines.size() - 1;
-                if (_cursorX > lineLength(_cursorY))
-                    _cursorX = lineLength(_cursorY);
-                _cursorVirtX = _cursorX;
-                _cursorChanged = true;
-            }
-        }
-        if(IsMouseButtonPressed(0)) {
-            _selectionEnd = _selectionStart = offsetFromCursor();
-            _mouseDownInText = true;
-            selectionChange = true;
-        }
-        else if(_mouseDownInText) {
-            _selectionEnd = offsetFromCursor();
-            selectionChange = true;
-        }
-    }
-    if(IsMouseButtonUp(0))
-        _mouseDownInText = false;
-    if (sysKeyPressed && isAlphaPressed('F')) {
-        _findOrReplace = _findOrReplace == eFIND ? eNONE : eFIND;
-        _findUpdateRevision = ~0u; // select the current match again when the bar opens
-    }
-    else if (sysKeyPressed && isAlphaPressed('R')) {
-        _findOrReplace = _findOrReplace == eFIND_REPLACE ? eNONE : eFIND_REPLACE;
-        _findUpdateRevision = ~0u;
-    }
-    else if (sysKeyPressed && isAlphaPressed('S')) {
-        // Saving is done by the host, it knows where the source belongs.
-    }
-    else if (IsKeyPressed(KEY_ESCAPE)) {
-        _selectionStart = _selectionEnd = 0;
-        _findOrReplace = eNONE;
-        _toolArea = {0, 0, 0, 0};
-        selectionChange = true;
-    }
-    if(hasFocus()) {
-        if (isKeyActivated(KEY_UP)) {
-            selectionChange |= cursorWrapper([this]() { cursorUp(); });
-        }
-        else if (isKeyActivated(KEY_DOWN)) {
-            selectionChange |= cursorWrapper([this]() { cursorDown(); });
-        }
-        else if (isKeyActivated(KEY_LEFT)) {
-            selectionChange |= cursorWrapper([this]() { cursorLeft(); });
-        }
-        else if (isKeyActivated(KEY_RIGHT)) {
-            selectionChange |= cursorWrapper([this]() { cursorRight(); });
-        }
-        else if (isKeyActivated(KEY_PAGE_UP)) {
-            selectionChange |= cursorWrapper([this]() { cursorUp(_visibleLines); });
-        }
-        else if (isKeyActivated(KEY_PAGE_DOWN)) {
-            selectionChange |= cursorWrapper([this]() { cursorDown(_visibleLines); });
-        }
-        else if (IsKeyPressed(KEY_HOME)) {
-            selectionChange |= cursorWrapper([this]() { cursorHome(); });
-        }
-        else if (IsKeyPressed(KEY_END)) {
-            selectionChange |= cursorWrapper([this]() { cursorEnd(); });
-        }
-        else if (sysKeyPressed && isAlphaPressed('Z')) {
-            if (shiftPressed)
-                redo();
-            else
-                undo();
-        }
-        else if (sysKeyPressed && isAlphaPressed('C')) {
-            auto [selStart, selEnd] = selection();
-            SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
-        }
-#if defined(PLATFORM_WEB)
-        else if (isClipboardPaste()) {
-            insert(GetClipboardTextX());
-        }
-#else
-        else if (sysKeyPressed && isAlphaPressed('V')) {
-            insert(GetClipboardTextX());
-        }
-#endif
-        else if (sysKeyPressed && isAlphaPressed('X')) {
-            auto [selStart, selEnd] = selection();
-            SetClipboardTextX(std::string(_text.begin() + selStart, _text.begin() + selEnd).c_str());
-            deleteSelectedText();
-        }
-        else if (sysKeyPressed && isAlphaPressed('A')) {
-            _selectionStart = 0;
-            _selectionEnd = _text.size();
-            selectionChange = true;
-        }
-        else if(isKeyActivated(KEY_TAB)) {
-            auto numSpace = ((_cursorX / 4) + 1) * 4 - _cursorX;
-            insert(std::string(numSpace, ' '));
-        }
-        else if (isKeyActivated(KEY_BACKSPACE)) {
-            if (_selectionStart != _selectionEnd) {
-                deleteSelectedText();
-            }
-            else {
-                auto end = offsetFromCursor();
-                cursorLeft();
-                auto start = offsetFromCursor();
-                deleteText(start, end - start);
-                updateLineInfo(_cursorY);
-            }
-        }
-        else if (isKeyActivated(KEY_ENTER)) {
-            insert("\n");
-        }
-        else {
-            // raylib drops characters that are not fetched in this frame, so take all of them
-            std::string s;
-            while (auto codepoint = GetCharPressed()) {
-                if (codepoint >= 32 && codepoint < 255)
-                    utf8::append(s, codepoint);
-            }
-            if (!s.empty())
-                insert(s);
-        }
-    }
-    if(_cursorChanged) {
-        _blinkTimer = BLINK_RATE;
-        ensureCursorVisibility();
-        if(!selectionChange)
-            _selectionStart = _selectionEnd = 0;
-    }
-
-    if(_undoStack.empty() || _contentRevision != _lastSeenRevision) {
-        // text changed in this frame (or nothing to undo yet), restart the inactivity delay
-        _lastSeenRevision = _contentRevision;
-        _blinkTimer = BLINK_RATE;
+    const auto revision = contentRevision();
+    if(revision != _lastSeenRevision) {
+        // text changed since the last frame, restart the inactivity delay
+        _lastSeenRevision = revision;
         _inactiveEditTimer = 0;
     }
-    else if(_contentRevision != _checkedRevision) {
+    else if(revision != _checkedRevision) {
         // text changed earlier, check it once after the inactivity delay
         _inactiveEditTimer += GetFrameTime();
         if(_inactiveEditTimer > INACTIVITY_DELAY) {
             _inactiveEditTimer = 0;
-            _checkedRevision = _contentRevision;
-            if(_compiledRevision != _contentRevision) {
-                if(calculateSha1(_text) == _compiledSourceSha1)
-                    _compiledRevision = _contentRevision; // e.g. edits undone, compile result still matches
+            _checkedRevision = revision;
+            _checkedProgramPath.clear();  // an edit may have given the shown file a main label
+            autoSave();
+            if(_compiledRevision != revision) {
+                if(sourcesDigest() == _compiledSourceSha1)
+                    _compiledRevision = revision; // e.g. edits undone, compile result still matches
                 else
-                    recompile();
+                    compile();
             }
         }
     }
-    _lineNumberCols = _lines.empty() ? 5 : std::max(3,int(std::log10(_lines.size())) + 3);
-    _lineNumberWidth = _lineNumberCols * COLUMN_WIDTH;
 }
 
-void Editor::recompile()
+// The open files are saved first, the compiler reads included files from disk
+void Editor::compile()
 {
-    _compiledRevision = _contentRevision;
-    _compiledSourceSha1 = calculateSha1(_text);
+    autoSave();
+    _compiledRevision = contentRevision();
+    _compiledSourceSha1 = sourcesDigest();
     try {
         auto start = std::chrono::steady_clock::now();
         _compiler.reset();
-        if(_text.empty() || _text.back() != '\n') {
-            auto text = _text + '\n';
-            _compiler.compile(_filename, text);
+        const auto& text = _main->getText();
+        if(text.empty() || text.back() != '\n') {
+            auto terminated = text + '\n';
+            _compiler.compile(_filename, terminated);
         }
         else {
-            _compiler.compile(_filename, _text);
+            _compiler.compile(_filename, text);
         }
         auto time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         TraceLog(LOG_INFO, "Recompilation took %dms", (int)time_ms);
     }
     catch(std::exception& ex)
     {}
+    _includedFileTimes.clear();
+    for (const auto& path : includedFiles()) {
+        std::error_code ec;
+        if (const auto time = fs::last_write_time(path, ec); !ec)
+            _includedFileTimes[path] = time;
+    }
 }
 
 void Editor::updateCompilerOptions(int startAddress)
@@ -456,379 +1080,126 @@ void Editor::updateCompilerOptions(int startAddress)
     if(_compiler.setStartAddress(startAddress) && isCompiledUpToDate()) {
         // Compile again at the next check instead of right now, the text might be big
         // and the editor might not even be visible.
-        _compiledRevision = _contentRevision - 1;
-        _checkedRevision = _contentRevision - 1;
+        _compiledRevision = contentRevision() - 1;
+        _checkedRevision = contentRevision() - 1;
         _compiledSourceSha1 = {};
     }
 }
 
-void Editor::setGeneratedText(std::string text)
+void Editor::draw(Font& font, float height)
 {
-    setText(std::move(text));
-    _undoStack = std::stack<EditInfo>();
-    _redoStack = std::stack<EditInfo>();
-    _compiler.reset();
-    _compiledSourceSha1 = {};
-    _compiledRevision = _contentRevision - 1;
-    _checkedRevision = _lastSeenRevision = _contentRevision;
-}
-
-void Editor::draw(Font& font, Rectangle rect)
-{
-    using namespace gui;
-    int lineNumber = int(_tosLine) - 1;
-    _totalArea = rect;
-    _toolArea = drawToolArea();
-    _messageArea = layoutMessageArea();
-    _textArea = {_totalArea.x, _totalArea.y + _toolArea.height, _totalArea.width, _totalArea.height - _toolArea.height - _messageArea.height};
-    float ypos = _textArea.y - 4;
-    _visibleLines = uint32_t((_textArea.height - 6) / LINE_SIZE);
-    _visibleCols = uint32_t(_textArea.width - _lineNumberWidth - 6) / COLUMN_WIDTH;
-    _scrollPos = {-(float)_losCol * COLUMN_WIDTH, -(float)_tosLine * LINE_SIZE};
-    gui::SetStyle(DEFAULT, BORDER_WIDTH, 0);
-    gui::BeginScrollPanel(_textArea.height, {0,0,std::max(_textArea.width, (float)(_longestLineSize+8) * COLUMN_WIDTH), (float)std::max((uint32_t)_textArea.height, uint32_t(_lines.size()+1)*LINE_SIZE)}, &_scrollPos);
-    gui::SetStyle(DEFAULT, BORDER_WIDTH, 1);
-    //gui::Space(rect.height -50);
-    DrawRectangleClipped(_lineNumberWidth - COLUMN_WIDTH/2, _textArea.y, 1, _textArea.height, GetColor(GetStyle(DEFAULT,BORDER_COLOR_NORMAL)));
-    std::string lineNumberFormat = fmt::format("%{}d", _lineNumberCols - 1);
-    auto textColor = StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL);
-    while(lineNumber < int(_lines.size()) && ypos < _textArea.y + _textArea.height) {
-        if(lineNumber >= 0) {
-            DrawTextClipped(font, TextFormat(lineNumberFormat.c_str(), lineNumber + 1), {_textArea.x, ypos}, textColor);
-            drawHighlightedTextLine(font, _text.data(), lineStart(lineNumber), lineEnd(lineNumber), {_textArea.x + _lineNumberWidth, ypos}, _textArea.width - _lineNumberWidth, _losCol, LINE_SIZE, _lineStates[lineNumber]);
-        }
-        ++lineNumber;
-        ypos += LINE_SIZE;
+    if(font.texture.id != _textStyle.font.texture.id)
+        updateTextStyle(font);
+    if (!GuiIsLocked() && hasFocus()) {
+        const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        if (ctrl && IsKeyPressed(KEY_TAB) && _files.size() > 1)
+            switchTo(*_files[1]);
+        else if (gui::IsShortcutPressed('W'))
+            closeCurrentFile();
     }
-    _blinkTimer -= GetFrameTime();
-    if(_blinkTimer < 0)
-        _blinkTimer = BLINK_RATE;
-    if(hasFocus() && _blinkTimer >= BLINK_RATE/2) {
-        auto cx = (_cursorX - _losCol) * COLUMN_WIDTH;
-        auto cy = (_cursorY - _tosLine) * LINE_SIZE + LINE_SIZE - 4;
-        if(cx >= 0 && cx < _textArea.width - _lineNumberWidth - 3 && cy >= 0 && cy + 8 < _textArea.height) {
-            DrawRectangleClipped(_textArea.x + _lineNumberWidth + cx, _textArea.y + cy - 2, 2, LINE_SIZE, StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED));
-        }
-    }
-
-    auto handle = verticalScrollHandle();
-    //DrawRectangleRec(handle, {128,128,128, uint8_t(CheckCollisionPointRec(GetMousePosition(), handle) ? 200 : 128)});
-#ifndef NDEBUG
-    static char ModBuf[16];
-    char* mbp = ModBuf;
-    if(IsKeyDown(KEY_LEFT_ALT)) *mbp++ = 'a';
-    if(IsKeyDown(KEY_RIGHT_ALT)) *mbp++ = 'A';
-    if(IsKeyDown(KEY_LEFT_CONTROL)) *mbp++ = 'c';
-    if(IsKeyDown(KEY_RIGHT_CONTROL)) *mbp++ = 'C';
-    if(IsKeyDown(KEY_LEFT_SHIFT)) *mbp++ = 's';
-    if(IsKeyDown(KEY_RIGHT_SHIFT)) *mbp++ = 'S';
-    if(IsKeyDown(KEY_LEFT_SUPER)) *mbp++ = 'x';
-    if(IsKeyDown(KEY_RIGHT_SUPER)) *mbp++ = 'X';
-    *mbp = 0;
-    if(mbp != ModBuf)
-        DrawTextEx(font, ModBuf, {_textArea.x, _textArea.y}, 8, 0, RED);
-    DrawTextEx(font, TextFormat("%d:%d,%d", _selectionStart, _selectionEnd, _findResults), {_textArea.x, _textArea.y+8}, 8, 0, RED);
-#endif
-    gui::EndScrollPanel();
-    _tosLine = -_scrollPos.y / LINE_SIZE;
-    _losCol = -_scrollPos.x / COLUMN_WIDTH;
-    drawMessageArea();
-}
-
-Rectangle Editor::verticalScrollHandle()
-{
-    float scrollLength = _textArea.height * _visibleLines / _lines.size();
-    if(scrollLength < 6) scrollLength = 6;
-    float step = (_textArea.height - scrollLength) / std::max(float(_lines.size()) - float(_visibleLines), 1.0f);
-    return {_textArea.x + _textArea.width - 5, _textArea.y + step * _tosLine, 4, float(scrollLength)};
-}
-
-#if 0
-void Editor::highlightLine(const char* text, const char* end)
-{
-    static emu::OctoCompiler::Lexer lexer;
-    lexer.setRange("", text, end);
-    _highlighting.resize(end - text);
-    size_t index = 0;
-    bool wasColon = false;
-    const char* token;
-    while(text < end && *text != '\n') {
-        token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if(cp == ' ')
-            ++index;
-        else if (cp == '#') {
-            while(text < end)
-                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+#ifndef PLATFORM_WEB
+    // the digit is the same key in all layouts, the mouse may be over the drawer, that locks the GUI
+    if (!_newFileOpen && !gui::PopupMenu::IsOpen() && gui::IsShortcutPressed('P')) {
+        if (_quickOpenOpen) {
+            _quickOpenOpen = false;
+            setFocus();
         }
         else {
-            auto start = index++;
-            bool isColon = false;
-            while(text < end && *text > ' ')
-                utf8::fetchCodepoint(text, end), ++index;
-            auto len = index - start;
-            Color col = _colors[eNORMAL];
-            if(cp == ':' && len == 1 || wasColon)
-                col = _colors[eLABEL], isColon = true;
-            else if(cp >= '0' && cp <= '9')
-                col = _colors[eNUMBER];
-            else if(len == 1 && (cp == 'i' || cp == 'I'))
-                col = _colors[eREGISTER];
-            else if(len == 2 && (cp == 'v' || cp == 'V') && isHexDigit(*(token + 1)))
-                col = _colors[eREGISTER];
-            else if(_opcodes.count(std::string(token, text - token)))
-                col = _colors[eOPCODE];
-            else if(_directives.count(std::string(token, text - token)))
-                col = _colors[eDIRECTIVE];
-            while(start < index)
-                _highlighting[start++].front = col;
-            wasColon = isColon;
+            openQuickOpen();
         }
     }
-}
-
-void Editor::drawHighlightedTextLine(Font& font, const char* text, const char* end, Vector2 position, float width, int columnOffset)
-{
-    uint32_t selStart = _selectionStart > _selectionEnd ? _selectionEnd : _selectionStart;
-    uint32_t selEnd = _selectionStart > _selectionEnd ? _selectionStart : _selectionEnd;
-    highlightLine(text, end);
-    float textOffsetX = 0.0f;
-    size_t index = 0;
-    while(text < end && textOffsetX < width && *text != '\n') {
-        uint32_t offset = text - _text.data();
-        int codepointByteCount = 0;
-        int codepoint = (int)utf8::fetchCodepoint(text, end);
-        if(columnOffset <= 0) {
-            if(offset >= selStart && offset < selEnd)
-                DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)LINE_SIZE}, _selected);
-            if ((codepoint != ' ') && (codepoint != '\t')) {
-                DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
-            }
+    else if (!_newFileOpen && !gui::PopupMenu::IsOpen() && gui::IsSysKeyDown() && IsKeyPressed(KEY_ONE)) {
+        _quickOpenOpen = false;
+        if (_fileTreeOpen) {
+            _fileTreeOpen = false;
+            setFocus();
         }
-        --columnOffset;
-        if(columnOffset < 0)
-            textOffsetX += COLUMN_WIDTH;
-        text += codepointByteCount;
-        ++index;
+        else {
+            openFileTree();
+        }
     }
-    uint32_t offset = text - _text.data();
-    if(textOffsetX < width && offset >= selStart && offset < selEnd)
-        DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)LINE_SIZE}, _selected);
-}
 #endif
-
-void Editor::safeInsert(uint32_t offset, const std::string& text)
-{
-    assert(offset <= _text.size() && "Text offset is actually in text");
-    if(offset > _text.size()) {
-        TraceLog(LOG_ERROR, "Trying to insert after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
-    }
-    else {
-        _text.insert(offset, text);
-        ++_contentRevision;
-    }
+    const float codeHeight = height - (_messageWindowVisible ? LINE_SIZE * 2 + 2 : 0);
+    const Rectangle codeArea{gui::GetCurrentPos().x, gui::GetCurrentPos().y, gui::GetContentAvailable().width, codeHeight};
+    _pendingNavigation = navigationRequest();  // the code editor ignores the keys then
+    currentFile().code().render(codeHeight);
+    if (_pendingNavigation < 0)
+        goBack();
+    else if (_pendingNavigation > 0)
+        goForward();
+    _pendingNavigation = 0;
+    drawMessageArea();
+#ifndef PLATFORM_WEB
+    drawFileTree(codeArea);
+    drawQuickOpen(codeArea);
+    drawNewFileDialog();
+#endif
 }
 
-void Editor::safeErase(uint32_t offset, uint32_t length)
-{
-    assert(offset <= _text.size() && "Text offset is actually in text");
-    if(offset > _text.size()) {
-        TraceLog(LOG_ERROR, "Trying to erase after end at offset: %d, (size: %d)", offset, (uint32_t)_text.size());
-        return;
-    }
-    else if(offset + length > _text.size()) {
-        TraceLog(LOG_WARNING, "Trying to erase until after end at offset: %d, length: %d, (size: %d)", offset, length, (uint32_t)_text.size());
-    }
-    _text.erase(offset, length);
-    ++_contentRevision;
-}
-
-void Editor::deleteSelectedText()
-{
-    if(_selectionStart != _selectionEnd) {
-        uint32_t selStart = _selectionStart > _selectionEnd ? _selectionEnd : _selectionStart;
-        uint32_t selEnd = _selectionStart > _selectionEnd ? _selectionStart : _selectionEnd;
-        deleteText(selStart, selEnd - selStart);
-    }
-}
-
-void Editor::deleteText(uint32_t offset, uint32_t length)
-{
-    if(length) {
-        auto [cx, cy] = cursorFromOffset(offset);
-        _undoStack.push({eDELETE, _editId, offsetFromCursor(), offset, offset + length, std::string(_text.begin() + offset, _text.begin() + offset + length)});
-        safeErase(offset, length);
-        _cursorX = _cursorVirtX = cx;
-        _cursorY = cy;
-        _selectionStart = _selectionEnd = 0;
-        updateLineInfo(cy);
-        _redoStack = std::stack<EditInfo>();
-    }
-}
-
-uint32_t Editor::insert(std::string text)
-{
-    fixLinefeed(text);
-    deleteSelectedText();
-    auto offset = offsetFromCursor();
-    _undoStack.push({eINSERT, _editId, offsetFromCursor(), offset, offset, text});
-    safeInsert(offset, text);
-    updateLineInfo(_cursorY);
-    cursorRight(utf8::length(text));
-    _redoStack = std::stack<EditInfo>();
-    return text.size();
-}
-
-void Editor::undo()
-{
-    if(_undoStack.empty()) return;
-    auto id = _undoStack.top().id;
-    while(!_undoStack.empty() && _undoStack.top().id == id) {
-        auto op = _undoStack.top().operation;
-        if(op == eDELETE) {
-            safeInsert(_undoStack.top().startOffset, _undoStack.top().text);
-            auto startLine = cursorFromOffset(_undoStack.top().startOffset).second;
-            auto [cx, cy] = cursorFromOffset(_undoStack.top().cursorPos);
-            _cursorX = _cursorVirtX = cx; _cursorY = cy;
-            _cursorChanged = true;
-            updateLineInfo(startLine);
-        }
-        else if(op == eINSERT) {
-            safeErase(_undoStack.top().startOffset, _undoStack.top().text.length());
-            auto [cx, cy] = cursorFromOffset(_undoStack.top().cursorPos);
-            _cursorX = _cursorVirtX = cx; _cursorY = cy;
-            _cursorChanged = true;
-            updateLineInfo(_cursorY);
-        }
-        _redoStack.push(_undoStack.top());
-        _undoStack.pop();
-    }
-}
-
-void Editor::redo()
-{
-    if(_redoStack.empty()) return;
-    auto id = _redoStack.top().id;
-    while(!_redoStack.empty() && _redoStack.top().id == id) {
-        auto op = _redoStack.top().operation;
-        if(op == eDELETE) {
-            safeErase(_redoStack.top().startOffset, _redoStack.top().endOffset - _redoStack.top().startOffset);
-            auto [cx, cy] = cursorFromOffset(_redoStack.top().startOffset);
-            _cursorX = _cursorVirtX = cx; _cursorY = cy;
-            _cursorChanged = true;
-            updateLineInfo(_cursorY);
-        }
-        else if(op == eINSERT) {
-            safeInsert(_redoStack.top().startOffset, _redoStack.top().text);
-            auto startLine = cursorFromOffset(_redoStack.top().startOffset).second;
-            auto [cx, cy] = cursorFromOffset(_redoStack.top().startOffset + _redoStack.top().text.length());
-            _cursorX = _cursorVirtX = cx; _cursorY = cy;
-            _cursorChanged = true;
-            updateLineInfo(startLine);
-        }
-        _undoStack.push(_redoStack.top());
-        _undoStack.top().id = _editId;
-        _redoStack.pop();
-    }
-}
-
-Rectangle Editor::drawToolArea()
+void Editor::drawFileTree(Rectangle codeArea)
 {
     using namespace gui;
-    Rectangle toolArea{};
-    bool toolOpened = false;
-    switch (_findOrReplace) {
-        case eNONE:
-            toolArea = {0,0,0,0};
-            break;
-        case eFIND:
-            toolOpened = _toolArea.height == 0;
-            toolArea = {_totalArea.x, _totalArea.y, _totalArea.width, 18};
-            break;
-        case eFIND_REPLACE:
-            toolOpened = _toolArea.height == 0;
-            toolArea = {_totalArea.x, _totalArea.y, _totalArea.width, 36};
-            break;
-    }
-    if(_findOrReplace != eNONE) {
-        SetRowHeight(18);
-        BeginColumns();
+    const bool wasOpen = _fileTreeOpen;
+    if (BeginDrawer({codeArea.x, codeArea.y, std::min(260.0f, std::floor(codeArea.width / 2)), codeArea.height}, "file-tree", &_fileTreeOpen)) {
+        SetRowHeight(16);
         SetSpacing(0);
-        SetNextWidth(18);
-        Button(GuiIconText(ICON_LENS_BIG,""));
-        SetNextWidth(toolArea.width - 18*5);
-        {
-            StyleManager::Scope guard;
-            if (_findRegex && !_findRegexValid)
-                guard.setStyle(Style::TEXT_COLOR_PRESSED, RED);
-            if (TextBox("find", _findString, 4096))
-                updateFindResults();
-            if (toolOpened)
-                SetKeyboardFocus(GetId("find"));
+        const auto root = _fileTree.root();
+        const auto title = root.empty() ? std::string("No folder") : (_projectFolder.empty() ? "Folder: " : "Project: ") + fs::path(root).filename().string();
+        StatusBar(title.c_str());
+        if (root.empty()) {
+            Space(4);
+            Label(" Open a folder or a source file first.");
+            if (_openFolderHandler) {
+                SetNextWidth(100);
+                if (Button("Open Folder...")) {
+                    _fileTreeOpen = false;
+                    _openFolderHandler();
+                }
+            }
         }
-        SetNextWidth(18);
-        if (Toggle("Aa", &_findCaseSensitive))
-            updateFindResults();
-        SetNextWidth(18);
-        if (Toggle(".*", &_findRegex))
-            updateFindResults();
-        SetNextWidth(18);
-        if(!_findResults || _findCurrentResult == _findResults) GuiDisable();
-        if(Button(GuiIconText(ICON_ARROW_DOWN,"")) && _findCurrentResult < _findResults) {
-            ++_findCurrentResult;
-            updateFindResults();
+        else if (auto file = _fileTree.render()) {
+            pickFile(*file);
         }
-        GuiEnable();
-        SetNextWidth(18);
-        if(!_findResults || _findCurrentResult == 1) GuiDisable();
-        if(Button(GuiIconText(ICON_ARROW_UP,"")) && _findCurrentResult > 1) {
-            --_findCurrentResult;
-            updateFindResults();
-        }
-        GuiEnable();
-        EndColumns();
-        if(_findUpdateRevision != _contentRevision)
-            updateFindResults();
+        EndDrawer();
     }
-    if(_findOrReplace == eFIND_REPLACE) {
-        SetRowHeight(18);
-        BeginColumns();
-        SetSpacing(0);
-        SetNextWidth(18);
-        Button("R");
-        SetNextWidth(toolArea.width - 96 - 18);
-        if(TextBox("replace", _replaceString, 4096))
-            updateFindResults();
-        SetNextWidth(48);
-        if(!_findResults || _findCurrentOffset != _selectionStart || _selectionEnd - _selectionStart != _findCurrentLength)
-            GuiDisable();
-        if(Button("Replace") && _findCurrentOffset == _selectionStart && _selectionEnd - _selectionStart == _findCurrentLength) {
-            insert(_replaceString);
-            updateFindResults();
-        }
-        GuiEnable();
-        SetNextWidth(48);
-        GuiDisable();
-        Button("Rep.all");
-        GuiEnable();
-        SetNextWidth(18);
-        Button(GuiIconText(ICON_ARROW_DOWN,""));
-        EndColumns();
-        if(IsKeyPressed(KEY_TAB)) {
-            if(HasKeyboardFocus(GetId("find")))
-                SetKeyboardFocus(GetId("replace"));
-            else if(HasKeyboardFocus(GetId("replace")))
-                SetKeyboardFocus(GetId("find"));
-        }
+    else if (wasOpen && IsKeyPressed(KEY_ESCAPE)) {
+        setFocus();
     }
-    return toolArea;
 }
 
-Rectangle Editor::layoutMessageArea()
+void Editor::drawNewFileDialog()
 {
-    if(_messageWindowVisible)
-        return {_textArea.x, _totalArea.y + _totalArea.height - LINE_SIZE*2 - 2, _totalArea.width, LINE_SIZE*2 + 2};
-    return {0,0,0,0};
+    using namespace gui;
+    if (!_newFileOpen)
+        return;
+    if (BeginWindowBox({-1, -1, 320, 100}, "New File", &_newFileOpen, WindowBoxFlags(WBF_CLOSABLE | WBF_MODAL))) {
+        SetSpacing(2);
+        SetRowHeight(18);
+        const auto base = treeRoot().empty() ? fs::path(_newFileFolder) : fs::path(_newFileFolder).lexically_relative(fs::path(treeRoot()).parent_path());
+        Label(("In " + base.string() + ":").c_str());
+        if (_newFileFocus) {
+            SetKeyboardFocus(GetId("name"));
+            _newFileFocus = false;
+        }
+        TextBox("name", _newFileName, 255);
+        bool create = IsLastWidgetEditFinished() && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER));
+        BeginColumns();
+        SetSpacing(4);
+        SetNextWidth(GetContentAvailable().width - 128);
+        Label(_newFileError.c_str());
+        SetNextWidth(60);
+        create |= Button("Create");
+        SetNextWidth(GetContentAvailable().width);
+        if (Button("Cancel") || IsKeyPressed(KEY_ESCAPE))
+            _newFileOpen = false;
+        EndColumns();
+        if (create && _newFileOpen) {
+            _newFileError = createFile(_newFileFolder, _newFileName);
+            if (_newFileError.empty())
+                _newFileOpen = false;
+        }
+        EndWindowBox();
+    }
 }
 
 static void DrawRectangleX(Rectangle rec, int borderWidth, Color borderColor, Color color)
@@ -854,94 +1225,46 @@ void Editor::drawMessageArea()
     if(!_messageWindowVisible)
         return;
     using namespace gui;
-    static float w = 0, h = 0;
     auto area = GetContentAvailable();
     DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
     BeginClipping({area.x, area.y + 1, area.width, area.height - 1});
     const auto& compileResult = _compiler.compileResult();
-    if(compileResult.resultType == emu::CompileResult::eOK) {
+    const auto saveProblem = saveError();
+    if(!saveProblem.empty()) {
+        // a source that couldn't be saved is more important than the compile result, which is still shown in short
+        DrawTextClipped(GuiGetFont(), ("Not saved: " + saveProblem).c_str(), {area.x + 2, area.y + 4}, StyleManager::mappedColor(ORANGE));
+        const auto status = compileResult.resultType == emu::CompileResult::eOK ? std::string("No errors.") : compileResult.errorMessage;
+        DrawTextClipped(GuiGetFont(), status.c_str(), {area.x + 2, area.y + 15}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+    }
+    else if(compileResult.resultType == emu::CompileResult::eOK) {
         DrawTextClipped(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        if (!_programWarning.empty())
+            DrawTextClipped(GuiGetFont(), _programWarning.c_str(), {area.x + 2, area.y + 15}, StyleManager::mappedColor(ORANGE));
     }
     else {
+        const auto& location = compileResult.locations.front();
         std::error_code ec;
         auto baseDir = fs::path(fs::absolute(_filename, ec)).parent_path();
-        auto relFile = fs::relative(compileResult.locations.back().file, baseDir, ec);
-        if(ec) relFile = compileResult.locations.back().file;
-        DrawTextClipped(GuiGetFont(), fmt::format("{}:{}:{}:", relFile.string(), compileResult.locations.back().line, compileResult.locations.back().column).c_str(), {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        auto relFile = fs::relative(location.file, baseDir, ec);
+        if(ec) relFile = location.file;
+        // a click on the location goes there, also into an included file
+        const auto text = fmt::format("{}:{}:{}:", relFile.string(), location.line, location.column);
+        const Rectangle textRect{area.x + 2, area.y + 2, GetTextSize(text.c_str()).x, 11};
+        const bool hover = !GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), textRect);
+        DrawTextClipped(GuiGetFont(), text.c_str(), {area.x + 2, area.y + 4}, hover ? StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED) : StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
         DrawTextClipped(GuiGetFont(), compileResult.errorMessage.c_str(), {area.x + 2, area.y + 15}, StyleManager::mappedColor(ORANGE));
+        if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            const auto line = static_cast<uint32_t>(std::max(location.line, 1));
+            const auto column = static_cast<uint32_t>(std::max(location.column, 1));
+            if (location.file == _filename || fs::absolute(location.file, ec).lexically_normal().string() == _main->path()) {
+                switchTo(*_main);
+                _main->code().goTo(line, column);
+            }
+            else {
+                openFile(location.file, line, column);
+            }
+            setFocus();
+        }
     }
     EndClipping();
-}
-
-std::pair<std::string::const_iterator, int> findSubstr(bool caseSense, std::regex* regEx, std::string::const_iterator from, std::string::const_iterator to, std::string::const_iterator patternStart, std::string::const_iterator patternEnd)
-{
-    if(regEx) {
-        auto iter = std::sregex_iterator(from, to, *regEx);
-        if(iter ==  std::sregex_iterator())
-            return {to, 0};
-        return {from + iter->position(0), iter->length(0)};
-    }
-    else {
-        std::string::const_iterator iter;
-        if(caseSense)
-            iter = std::search(from, to, patternStart, patternEnd);
-        else
-            iter = std::search(from, to, patternStart, patternEnd, [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
-        if(iter == to)
-            return {to, 0};
-        return {iter, patternEnd - patternStart};
-    }
-
-}
-
-void Editor::updateFindResults()
-{
-    static std::regex regEx;
-    static std::string regExStr;
-    static bool caseSense{false};
-    _findResults = 0;
-    _findCurrentLength = 0;
-    _findCurrentOffset = 0;
-    _selectionStart = _selectionEnd = 0;
-    _findUpdateRevision = _contentRevision;
-    if(_findString.empty())
-        return;
-    if(_findRegex) {
-        if(_findString != regExStr || caseSense != _findCaseSensitive) {
-            regExStr = _findString;
-            caseSense = _findCaseSensitive;
-            try {
-                if (_findCaseSensitive)
-                    regEx = std::regex(_findString);
-                else
-                    regEx = std::regex(_findString, std::regex::icase);
-                _findRegexValid = true;
-            }
-            catch (...)
-            {
-                _findRegexValid = false;
-            }
-        }
-    }
-    auto iter = _text.cbegin();
-    int len = 0;
-    while (true) {
-        std::tie(iter, len) = findSubstr(_findCaseSensitive, _findRegex&&_findRegexValid ? &regEx : nullptr, iter, _text.cend(), _findString.cbegin(), _findString.cend());
-        if(!len)
-            break;
-        ++_findResults;
-        if (_findCurrentResult <= 0)
-            _findCurrentResult = _findResults;
-        if (_findCurrentResult == _findResults) {
-            _selectionStart = _findCurrentOffset = iter - _text.cbegin();
-            _findCurrentLength = len;
-            _selectionEnd = _selectionStart + _findCurrentLength;
-            auto [cx, cy] = cursorFromOffset(_selectionStart);
-            _cursorX = _cursorVirtX = cx; _cursorY = cy;
-            ensureCursorVisibility();
-        }
-        iter += len;
-    }
-    if(_findCurrentResult > _findResults)
-        _findCurrentResult = _findResults;
 }

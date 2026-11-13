@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The source editor saves sources that were loaded from a file automatically (native builds): a second
+  after the last change, when Cadmium loses the focus, when another view is shown and before another
+  program is loaded. The undo history stays, closing a file makes its edits final. Disassemblies, new
+  sources and cartridge sources still need a first save.
+- Local history: the version a file had when it was opened is copied into the `history` folder of the
+  configuration directory before its first save (10 versions per file, 30 days), the editor's context
+  menu can revert to it
+- Files changed by another program are reloaded as an undoable edit, with own unsaved changes the editor
+  shows the conflict and offers *Reload from Disk* or saving over it
+- The editor has a context menu (right-click, `Shift+F10` or the menu key) with the edit actions, find
+  and replace, opening an included file, reload and revert
+- Several files can be open in the editor: `Cmd/Ctrl+click` (or the context menu) on the file name of an
+  `:include` line opens an included source, the panel title lists the open files, `Ctrl+Tab` switches to
+  the previous one, `Cmd/Ctrl+W` closes the current one. All open files are saved before the main file is
+  compiled, a change of an included file on disk compiles again, and a click on an error location opens
+  the file it is in.
+- Project folders: *Open Folder...* and *Open recent folder* in the main menu, Cadmium remembers the main
+  file of each folder; loading a program from the project keeps its open files
+- Projects with several programs (like a test suite): a shown project file that defines `: main` becomes
+  the main file; opening a folder finds its main file also among several sources (the one no other
+  includes, or named like the folder)
+- Back and Forward in the editor (`Cmd+Opt+Left/Right` on macOS, `Alt+Left/Right` on Windows and Linux,
+  the mouse side buttons, the panel title menu) return to the places left when another file was shown
+- A file tree over the editor (`Cmd/Ctrl+1`) that marks the main file, the open files and the files of
+  the build, with a context menu to open files, set the main file and create new files
+- Quick open (`Cmd/Ctrl+P`) finds a file of the project by some letters of its name
+- The web version keeps editing the one source of the loaded program, the file features above are for
+  the native builds
+- Window GIF recordings show the pressed keyboard shortcuts (with `Cmd`/`Ctrl`/`Alt`, or `Esc`, `F1`-`F12`)
+  as a caption over the status bar, repetitions count up; a checkbox in the Misc settings turns it off
+
+### Changed
+
+- The editor is now the reusable `CodeEditor` of rlguipp (with a `FileTree` and a drawer popup), it edits
+  like the text fields: `Delete` key, word movement and deletion, double click selects a word, triple click
+  a line, `Shift`+click extends the selection, `Cmd/Ctrl` jumps to line and text ends
+- Typing is undone word by word (and after a pause of a second) instead of whole runs of typing
+- *Rep.all* in the replace bar is one undo step, the replace row lost its arrow button that had no function
+- Requires Chiplet with `CompileResult::includedFiles` (newer than v2.0.0)
+
+### Fixed
+
+- A compile error in an included file showed the location of the `:include` line in the main file instead
+  of the error
+- The editor text and cursor were placed with a pixel offset
+- The keyboard shortcut table in the README listed wrong keys for *New* and *Paste*
+- A source whose program doesn't fit into the selected core (a MegaChip program with a CHIP-8 core e.g.)
+  wasn't loaded into the editor at all, now it is, the editor says it doesn't fit, and it is loaded once
+  another core is chosen
+
 ## [2.0.0] - 2026-11-10
 
 ### Added

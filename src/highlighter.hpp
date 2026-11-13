@@ -26,51 +26,30 @@
 
 #pragma once
 
-#include <raylib.h>
-#include <cstdint>
-#include <vector>
-#include <string>
-#include <unordered_set>
+#include <rlguipp/rlguipp_codeeditor.hpp>
 
-class Highlighter
+#include <array>
+#include <cstdint>
+
+// Highlights Octo source and the disassembly of the CPUs Cadmium shows. In Octo source, the body of an
+// `:asm <cpu> { ... }` block is highlighted in the dialect of that CPU.
+class Highlighter : public gui::SyntaxHighlighter
 {
 public:
-    static constexpr int COLUMN_WIDTH = 6;
-
-protected:
     enum Dialect { eNONE, eCHIP8OCTO, eCHIP8CHIPPER, eCDP1802, eM6800, eSATURN };
-    // Progress of an Octo `:asm <cpu> { ... }` block, carried from line to line
-    enum AsmPhase : uint8_t { ASM_NONE, ASM_EXPECT_CPU, ASM_EXPECT_BRACE, ASM_BODY };
-    struct LineState { // value-initialized state is ASM_NONE / eNONE
-        AsmPhase asmPhase;
-        Dialect asmDialect;
-        bool operator==(const LineState&) const = default;
-    };
-    Highlighter();
-    LineState highlightLine(const char* text, const char* end, LineState state = {});
-    size_t highlightSegment(Dialect dialect, const char* text, const char* end, size_t index);
-    size_t highlightLineOcto(const char* text, const char* end, size_t index);
-    size_t highlightLineChipper(const char* text, const char* end, size_t index);
-    size_t highlightLine1802(const char* text, const char* end, size_t index);
-    size_t highlightLine6800(const char* text, const char* end, size_t index);
-    size_t highlightLineSaturn(const char* text, const char* end, size_t index);
-    size_t highlightPlain(const char* text, const char* end, size_t index);
-    const char* nextModeChange(const char* text, const char* end, LineState& state) const;
-    LineState scanLineState(const char* text, const char* end, LineState state) const;
-    void drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight, LineState state = {});
-    void setDialect(Dialect dialect);
-    enum { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
-    struct ColorPair {
-        Color front;
-        Color back;
-    };
-    inline static Color _defaultColors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _defaultSelected{100, 100, 120, 255};
-    inline static Color _colors[]{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}};
-    inline static Color _selected{100, 100, 120, 255};
+    // The style ids written by highlightLine(), the index into the palette
+    enum Style : uint8_t { eNORMAL, eNUMBER, eSTRING, eOPCODE, eREGISTER, eLABEL, eDIRECTIVE, eCOMMENT };
+    static constexpr int NUM_STYLES = eCOMMENT + 1;
+    // The colors of the styles in the dark theme, Cadmium maps them for the current theme
+    static constexpr std::array<Color, NUM_STYLES> DEFAULT_PALETTE{{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}}};
+    static constexpr Color DEFAULT_SELECTION{100, 100, 120, 255};
 
-    uint32_t _selectionStart{0};
-    uint32_t _selectionEnd{0};
-    std::vector<ColorPair> _highlighting;
+    void setDialect(Dialect dialect) { _dialect = dialect; }
+    Dialect dialect() const { return _dialect; }
+
+    LineState nextLineState(std::string_view line, LineState state) const override;
+    void highlightLine(std::string_view line, LineState state, std::span<uint8_t> styles) const override;
+
+private:
     Dialect _dialect{eCHIP8OCTO};
 };

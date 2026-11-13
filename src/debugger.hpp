@@ -35,7 +35,7 @@
 #include <raylib.h>
 
 
-class Debugger : public Highlighter
+class Debugger
 {
 public:
     using ExecMode = emu::GenericCpu::ExecMode;
@@ -91,5 +91,7 @@ private:
     std::vector<emu::OctoCompiler::MonitorInfo> _octoMonitors;
     std::vector<std::string> _userWatches;
     std::string _newWatch;
+    Highlighter _highlighter;
+    gui::CodeTextStyle _codeStyle;
 };
 

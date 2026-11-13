@@ -1948,7 +1948,6 @@ struct Database::Private
     }
 
     // Saving the editor also writes a program nobody changed, that must not count as an edit.
-    // REVIEW: this also applies to user_modified now, an unchanged save used to set it.
     bool isProgramEdited(const DBProgram& program, const std::set<int>& tagIds) const
     {
         const auto& stored = programs.at(program.id);

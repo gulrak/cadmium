@@ -26,6 +26,8 @@ set(CADMIUM_SOURCE
     gifrecorder.hpp
     highlighter.cpp
     highlighter.hpp
+    sourcefile.cpp
+    sourcefile.hpp
     headlessrun.cpp
     headlessrun.hpp
     librarian.cpp

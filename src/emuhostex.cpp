@@ -315,6 +315,11 @@ bool EmuHostEx::applyRequests()
         else {
             TraceLog(LOG_WARNING, "Program `%s` does not fit into the selected core", program->name.c_str());
             programOk = false;
+            if (!program->source.empty() && program->origin == ProgramOrigin::FILE) {
+                _romName = program->name;
+                _romOrigin = ProgramOrigin::FILE;
+                whenRomLoaded(_romName, false, program->compiler.get(), program->source);
+            }
         }
     }
     const bool coreChanged = std::exchange(_coreChanged, false);
@@ -351,6 +356,15 @@ bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1:
     program.origin = ProgramOrigin::EDITOR;
     requestProgram(std::move(program));
     return scope.finish();
+}
+
+bool EmuHostEx::fitsIntoMemory(size_t size) const
+{
+    if (!_chipEmu)
+        return true;
+    const auto memSize = static_cast<uint64_t>(_chipEmu->memSize());
+    const uint64_t address = _chipEmu->defaultLoadAddress();
+    return address < memSize && size <= memSize - address;
 }
 
 bool EmuHostEx::programFits(const Program& program) const

@@ -157,6 +157,8 @@ RLGUIPP_API void BeginGroupBox(const char* text = nullptr);                     
 RLGUIPP_API void EndGroupBox();                                                                                           // end the description of a group box
 RLGUIPP_API bool BeginPopup(Rectangle area, const char* id, bool* isOpen);                                                // show the popup identified by id at the given area (negative x/y center it), returns `*isOpen`, only if true it must be closed with EndPopup()
 RLGUIPP_API void EndPopup();                                                                                              // end of the popup description
+RLGUIPP_API bool BeginDrawer(Rectangle area, const char* id, bool* isOpen);                                               // a popup identified by id that sits at the area (it follows it), Escape or a click outside of it set `*isOpen` to false, returns `*isOpen`, only if true it must be closed with EndDrawer()
+RLGUIPP_API void EndDrawer();                                                                                             // end of the drawer description
 RLGUIPP_API bool BeginWindowBox(Rectangle area, const char* label, bool* isOpen, WindowBoxFlags flags = WBF_NONE);        // same as a popup, but with a title bar showing the label (also the id), the close button (WBF_CLOSABLE) sets `*isOpen` to false, only if true is returned it must be closed with EndWindowBox()
 RLGUIPP_API void EndWindowBox();                                                                                          // end of the WindowBox
 RLGUIPP_API void BeginClipping(const Rectangle& clipArea);                                                                // set a new clipping area (it will be clipped to the previous one, potentially setting an area of size 0)
@@ -226,6 +228,11 @@ RLGUIPP_API Vector3 HsvFromColor(Color col);
 
 RLGUIPP_API const char* IconText(int icon, const char* text);
 
+enum ShortcutModifier { SHORTCUT_SYS = 1, SHORTCUT_SHIFT = 2, SHORTCUT_ALT = 4, SHORTCUT_CTRL = 8 };
+RLGUIPP_API bool IsMacLike();  // macOS, or a browser on a Mac in the web build, the system key is Cmd there, else Ctrl
+// The text of a shortcut for a menu or tooltip: on macOS the modifier symbols in their order before the key ("⌥⇧⌘G", they are
+// in the default font), elsewhere "Ctrl+Alt+Shift+G" (SHORTCUT_SYS is Ctrl there, SHORTCUT_CTRL is Ctrl everywhere)
+RLGUIPP_API std::string ShortcutText(const std::string& key, int modifiers = SHORTCUT_SYS);
 RLGUIPP_API bool IsSysKeyDown();  // If macOS same as "IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER)" else "IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)"
 RLGUIPP_API bool IsShortcutPressed(char letter);  // True if the system key is down and the key showing the letter (A-Z) in the current keyboard layout was pressed or repeated
 
@@ -233,6 +240,8 @@ RLGUIPP_API bool IsShortcutPressed(char letter);  // True if the system key is d
 // pasteRequested (optional) replaces the shortcut check, e.g. for the web, where the text only arrives with the browser's paste event.
 RLGUIPP_API void SetClipboardHandler(std::function<std::string()> getText, std::function<void(const std::string&)> setText, std::function<bool()> pasteRequested = {});
 RLGUIPP_API void CopyToClipboard(const std::string& text);  // Puts text on the clipboard the text widgets use
+RLGUIPP_API std::string PasteFromClipboard();               // The text on the clipboard the text widgets use
+RLGUIPP_API bool IsPasteRequested();                        // True if the user asked to paste in this frame (Sys+V, or the pasteRequested of the clipboard handler)
 
 // Custom widgets
 RLGUIPP_API Rectangle AllocateWidget(Vector2 naturalSize);  // Reserve space for a custom widget at the current position, advance the layout and return the screen rectangle to draw in.
@@ -367,7 +376,7 @@ inline Item Disabled(Item item) {
 // Popup menu functions
 // ============================================================================
 
-RLGUIPP_API void Open(Vector2 position, const Menu& menu);  // Open the menu at the given position, the menu is copied, so it can be changed or destroyed while open
+RLGUIPP_API void Open(Vector2 position, const Menu& menu);  // Open the menu at the given position (like GetMousePosition(), also in a popup or window), the menu is copied, so it can be changed or destroyed while open
 RLGUIPP_API void Close();                                   // Close all open menus
 RLGUIPP_API bool IsOpen();                                  // Check if any menu is open
 RLGUIPP_API bool IsMenuOpen(const Menu& menu);              // Check if the menu that was opened from `menu` is open

@@ -127,6 +127,32 @@ void GifClickMarks::advance(float seconds)
     std::erase_if(_marks, [](const Mark& mark) { return mark.age >= DURATION; });
 }
 
+void GifShortcutCaption::clear()
+{
+    _text.clear();
+    _count = 0;
+    _age = 0.0f;
+}
+
+void GifShortcutCaption::show(const std::string& text)
+{
+    if(text != _text) {
+        _text = text;
+        _count = 0;
+    }
+    ++_count;
+    _age = 0.0f;
+}
+
+void GifShortcutCaption::advance(float seconds)
+{
+    if(_text.empty())
+        return;
+    _age += seconds;
+    if(_age >= DURATION)
+        clear();
+}
+
 GifRecorder::GifRecorder(int width, int height, Sink sink)
     : _width(width)
     , _height(height)
