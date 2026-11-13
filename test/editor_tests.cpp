@@ -2,6 +2,7 @@
 #include <editor.hpp>
 #include <sourcefile.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
