@@ -89,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Without HP's ROM (builds with the replacement ROM only, like the web build) a loaded Saturn source put its
+  HP object into the current CHIP-8 core, the raw HP-48SX needs HP's ROM, so the source now only goes into the
+  editor
+- A Saturn build error in a file on a Windows drive lost the drive letter of its location and kept the file
+  name in the message
 - `strict-chip-8`: after a key, `Fx0A` went on to the next instruction while the tone of the key still sounded,
   and the next `Fx0A` then ended without waiting for a key
 - A compile error in an included file showed the location of the `:include` line in the main file instead

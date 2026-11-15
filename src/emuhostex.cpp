@@ -875,13 +875,14 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         }
 #ifdef CADMIUM_WITH_HP48
         else if (language == emu::SourceLanguage::SATURN) {
+            const auto rawHp48 = changeMachine ? CoreRegistry::propertiesForPreset("hp-48-none") : Properties{};
             emu::AsaCpp assembler;
-            if (assembler.compile(fs::path(std::string(filename)), std::span<const char>(program.source.data(), program.source.size())).resultType != emu::CompileResult::eERROR) {
+            if ((!changeMachine || rawHp48) && assembler.compile(fs::path(std::string(filename)), std::span<const char>(program.source.data(), program.source.size())).resultType != emu::CompileResult::eERROR) {
                 const auto code = assembler.code();
                 program.image.assign(code.begin(), code.end());
                 program.sha1 = assembler.sha1();
                 if (changeMachine)
-                    requestConfig(CoreRegistry::propertiesForPreset("hp48-none"));
+                    requestConfig(rawHp48);
                 built = true;
             }
         }

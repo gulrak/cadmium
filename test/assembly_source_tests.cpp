@@ -147,11 +147,19 @@ TEST_CASE("A Saturn source goes as an HP object onto the raw HP-48SX")
     SourceTestHost host(emu::CoreRegistry::propertiesForPreset("chip-8"));
     const auto data = bytesOf(RETURN_OBJECT);
     REQUIRE(host.loadBinary("return.asap", data, emu::EmuHostEx::LoadOptions::None));
-    CHECK(host.nativeSourceLanguage() == emu::SourceLanguage::SATURN);
-    CHECK(host.emuCore().errorMessage().empty());
     CHECK(host.loads == 1);
     CHECK_FALSE(host.hadCompiler);
     CHECK(host.loadedSource == RETURN_OBJECT);
+    if (emu::CoreRegistry::propertiesForPreset("hp-48-none")) {
+        CHECK(host.nativeSourceLanguage() == emu::SourceLanguage::SATURN);
+        CHECK(host.emuCore().errorMessage().empty());
+        CHECK(host.lifecycleCounters().programLoads == 1);
+    }
+    else {
+        // without HP's ROM there is no raw HP-48SX, the source only goes into the editor
+        CHECK(host.nativeSourceLanguage() == emu::SourceLanguage::OCTO);
+        CHECK(host.lifecycleCounters().programLoads == 0);
+    }
 
     // a Saturn source with an error only goes into the editor
     SourceTestHost other(emu::CoreRegistry::propertiesForPreset("chip-8"));

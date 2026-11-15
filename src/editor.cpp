@@ -1232,7 +1232,7 @@ void Editor::compile()
         _saturnResult.reset();
         _saturnResult.resultType = result.resultType;
         // asacpp writes "file:line: " for every file of the include chain, outermost first, the error is the innermost
-        static const std::regex locationPrefix(R"(^[^:\n]+:[0-9]+: )");
+        static const std::regex locationPrefix(R"(^(?:[A-Za-z]:)?[^:\n]+:[0-9]+: )");
         _saturnResult.errorMessage = result.errorMessage;
         std::smatch match;
         while (std::regex_search(_saturnResult.errorMessage, match, locationPrefix))

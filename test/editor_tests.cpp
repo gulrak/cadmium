@@ -927,6 +927,22 @@ TEST_CASE("Saturn main files are built with asacpp, included files are part of t
     CHECK(editor.buildResult().errorMessage.find(".asap:") == std::string::npos);
     CHECK(editor.programSize() == 0);
 }
+
+TEST_CASE("A Saturn error keeps the drive letter of a Windows path")
+{
+    // no file is read, the source is only named like one on Windows
+    const std::string path = "C:\\project\\prog.asap";
+    Editor editor;
+    editor.setFilename(path);
+    editor.setText("; a program\n        move.a  @d0,a\n        frobnicate.a c\n", path);
+    REQUIRE(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::SATURN);
+    editor.compile();
+    CHECK(editor.isBuildError());
+    REQUIRE_FALSE(editor.buildResult().locations.empty());
+    CHECK(editor.buildResult().locations.front().file.starts_with("C:"));
+    CHECK(editor.buildResult().locations.front().line == 3);
+    CHECK(editor.buildResult().errorMessage.find("prog.asap:") == std::string::npos);
+}
 #endif
 
 TEST_CASE("New files are created in their folder and opened")
