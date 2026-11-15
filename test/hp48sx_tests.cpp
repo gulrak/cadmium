@@ -458,6 +458,46 @@ TEST_CASE("HP48 state files with the removed HDW stall fields still load")
     CHECK(machine.saveStateBytes(false) == stateBytes);
 }
 
+TEST_CASE("HP48 LCD line counter counts down from 63 to 0 while the display is on")
+{
+    constexpr uint32_t HDW_BASE = 0x00100;
+    uint64_t cycles = 0;
+    hp48::HdwController hdw;
+    hdw.configure(HDW_BASE);
+    hdw.setCycleCounter(&cycles);
+    const uint64_t cyclesPerLine = uint64_t{hdw.timer2CyclesPerTick()} * 2;
+
+    // Menu split at line 55 (0x37) plus the M32 bit, as the ROM would write it
+    hdw.writeNibble(HDW_BASE + 0x28, 0x7);
+    hdw.writeNibble(HDW_BASE + 0x29, 0x4 | 0x3);
+
+    SUBCASE("display off reads back the written value")
+    {
+        hdw.writeNibble(HDW_BASE + 0x00, 0x0);
+        cycles = cyclesPerLine * 10;
+        CHECK(hdw.readNibble(HDW_BASE + 0x28) == 0x7);
+        CHECK(hdw.readNibble(HDW_BASE + 0x29) == 0x7);
+    }
+
+    SUBCASE("display on reads the current scan line")
+    {
+        hdw.writeNibble(HDW_BASE + 0x00, 0x8);
+        auto line = [&] { return (hdw.readNibble(HDW_BASE + 0x28) & 0xf) | ((hdw.readNibble(HDW_BASE + 0x29) & 0x3) << 4); };
+        cycles = 0;
+        CHECK(line() == 63);
+        cycles = cyclesPerLine * 8;
+        CHECK(line() == 55);
+        cycles = cyclesPerLine * 63;
+        CHECK(line() == 0);
+        cycles = cyclesPerLine * 64;
+        CHECK(line() == 63);
+        CHECK((hdw.readNibble(HDW_BASE + 0x29) & 0xc) == 0x4);
+        // The written split line stays available for rendering
+        CHECK(hdw.peekRegister(0x28) == 0x7);
+        CHECK(hdw.peekRegister(0x29) == 0x7);
+    }
+}
+
 namespace {
 
 bool originalRomAvailable()

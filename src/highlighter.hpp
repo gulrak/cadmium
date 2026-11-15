@@ -31,8 +31,6 @@
 #include <array>
 #include <cstdint>
 
-// Highlights Octo source and the disassembly of the CPUs Cadmium shows. In Octo source, the body of an
-// `:asm <cpu> { ... }` block is highlighted in the dialect of that CPU.
 class Highlighter : public gui::SyntaxHighlighter
 {
 public:
@@ -44,6 +42,10 @@ public:
     static constexpr std::array<Color, NUM_STYLES> DEFAULT_PALETTE{{{200, 200, 200, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {247, 83, 20, 255}, {219, 167, 39, 255}, {66, 176, 248, 255}, {183, 212, 247, 255}, {115, 154, 202, 255}}};
     static constexpr Color DEFAULT_SELECTION{100, 100, 120, 255};
 
+    explicit Highlighter(Dialect dialect = eCHIP8OCTO)
+        : _dialect(dialect)
+    {
+    }
     void setDialect(Dialect dialect) { _dialect = dialect; }
     Dialect dialect() const { return _dialect; }
 

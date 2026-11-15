@@ -26,13 +26,18 @@
 #include <editor.hpp>
 #include <stylemanager.hpp>
 #include <chiplet/utility.hpp>
+#ifdef CADMIUM_WITH_HP48
+#include <chiplet/asacpp.hpp>
+#endif
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <numeric>
+#include <regex>
 
 namespace {
 
@@ -125,6 +130,17 @@ Editor::Editor()
     _fileTree.setContextMenuHandler([this](gui::PopupMenu::Menu& menu, const std::string& path, bool isDirectory) { fileTreeMenu(menu, path, isDirectory); });
 }
 
+Editor::~Editor() = default;
+
+bool Editor::canBuildSaturn()
+{
+#ifdef CADMIUM_WITH_HP48
+    return true;
+#else
+    return false;
+#endif
+}
+
 void Editor::updateTextStyle(const Font& font)
 {
     _textStyle.font = font;
@@ -142,14 +158,78 @@ void Editor::updateTextStyle(const Font& font)
 // Takes the file into the open files as the current one
 SourceFile& Editor::addFile(std::unique_ptr<SourceFile> file)
 {
-    file->code().setHighlighter(&_highlighter);
     file->code().setTextStyle(_textStyle);
     file->setHistoryDirectory(_historyDirectory);
     auto* entry = file.get();
     file->code().setLinkHandler([this, entry](const gui::CodeContext& context) { return includeLinkAt(*entry, context.offset); });
     file->code().setShortcutHandler([this]() { return _pendingNavigation != 0; });
     _files.insert(_files.begin(), std::move(file));
+    updateLanguage(*entry);
     return *_files.front();
+}
+
+emu::SourceLanguage Editor::languageOf(const SourceFile& file) const
+{
+    if (file.languageOverride())
+        return *file.languageOverride();
+    if (file.detectedLanguage() != emu::SourceLanguage::UNKNOWN)
+        return file.detectedLanguage();
+    return _fallbackLanguage;
+}
+
+bool Editor::updateLanguage(SourceFile& file)
+{
+    const auto before = languageOf(file);
+    if (!file.path().empty()) {
+        const auto chosen = _languageOverrides.find(file.path());
+        file.setLanguageOverride(chosen != _languageOverrides.end() ? std::optional(chosen->second) : std::nullopt);
+    }
+    file.updateDetectedLanguage();
+    const Highlighter* highlighter = nullptr;
+    switch (languageOf(file)) {
+        case emu::SourceLanguage::OCTO: highlighter = &_highlighter; break;
+        case emu::SourceLanguage::CDP1802: highlighter = &_cdp1802Highlighter; break;
+        case emu::SourceLanguage::M6800: highlighter = &_m6800Highlighter; break;
+        case emu::SourceLanguage::SATURN: highlighter = &_saturnHighlighter; break;
+        default: break;
+    }
+    if (file.code().highlighter() != highlighter)
+        file.code().setHighlighter(highlighter);
+    return &file == _main && languageOf(file) != before;
+}
+
+void Editor::forceRebuild()
+{
+    _compiledRevision = contentRevision() - 1;
+    _checkedRevision = contentRevision() - 1;
+    _compiledSourceSha1 = {};
+}
+
+void Editor::setFallbackLanguage(emu::SourceLanguage language)
+{
+    if (language == emu::SourceLanguage::UNKNOWN || language == _fallbackLanguage)
+        return;
+    _fallbackLanguage = language;
+    bool rebuild = false;
+    for (auto& file : _files)
+        rebuild |= updateLanguage(*file);
+    if (rebuild)
+        forceRebuild();
+}
+
+void Editor::setLanguage(SourceFile& file, std::optional<emu::SourceLanguage> language)
+{
+    if (!file.path().empty()) {
+        if (language)
+            _languageOverrides[file.path()] = *language;
+        else
+            _languageOverrides.erase(file.path());
+    }
+    const auto before = languageOf(file);
+    file.setLanguageOverride(language);
+    updateLanguage(file);
+    if (&file == _main && languageOf(file) != before)
+        forceRebuild();
 }
 
 // The folder an include of the file is relative to
@@ -235,8 +315,10 @@ void Editor::setText(std::string text, const std::string& diskFile)
     const auto path = diskFile.empty() ? std::string{} : fs::absolute(diskFile, ec).lexically_normal().string();
     if (path.empty() || !isInProject(path)) {
         resetFiles(std::make_unique<SourceFile>(std::move(text)));
-        if (!diskFile.empty())
+        if (!diskFile.empty()) {
             _main->setDiskFile(diskFile);
+            updateLanguage(*_main);  // the path may have a chosen language
+        }
         return;
     }
     // a program of the project, the open files of the project stay open
@@ -272,7 +354,12 @@ void Editor::setText(std::string text, const std::string& diskFile)
 void Editor::setGeneratedText(std::string text)
 {
     setText(std::move(text));
+    _main->setDetectedLanguage(emu::SourceLanguage::OCTO);
+    updateLanguage(*_main);
     _compiler.reset();
+    _cdp1802.reset();
+    _buildLanguage = emu::SourceLanguage::OCTO;
+    _buildProblem.clear();
     _compiledSourceSha1 = {};
     _compiledRevision = contentRevision() - 1;
     _checkedRevision = _lastSeenRevision = contentRevision();
@@ -368,11 +455,30 @@ void Editor::openFileMenu(Vector2 position)
     menu.push_back(canGoBack() ? back : gui::PopupMenu::Disabled(back));
     auto forward = gui::PopupMenu::Action("Forward", [this]() { goForward(); }, forwardShortcut);
     menu.push_back(canGoForward() ? forward : gui::PopupMenu::Disabled(forward));
+    {
+        auto* file = &currentFile();
+        const auto detected = file->detectedLanguage();
+        const auto detectedText = detected != emu::SourceLanguage::UNKNOWN ? std::string(emu::sourceLanguageName(detected))
+                                                                            : fmt::format("unclear, {} for this machine", emu::sourceLanguageName(_fallbackLanguage));
+        _languageMenuChecks.fill(false);
+        _languageMenuChecks[file->languageOverride() ? static_cast<size_t>(*file->languageOverride()) : 0] = true;
+        auto choose = [this, file](std::optional<emu::SourceLanguage> language) {
+            if (std::ranges::any_of(_files, [file](const auto& entry) { return entry.get() == file; }))
+                setLanguage(*file, language);
+        };
+        gui::PopupMenu::Menu languages{gui::PopupMenu::Toggle("Detect (" + detectedText + ")", &_languageMenuChecks[0], [choose]() { choose(std::nullopt); }),
+                                       gui::PopupMenu::Separator()};
+        for (auto language : {emu::SourceLanguage::OCTO, emu::SourceLanguage::CDP1802, emu::SourceLanguage::M6800, emu::SourceLanguage::SATURN}) {
+            languages.push_back(gui::PopupMenu::Toggle(emu::sourceLanguageName(language), &_languageMenuChecks[static_cast<size_t>(language)],
+                                                       [choose, language]() { choose(language); }));
+        }
+        menu.push_back(gui::PopupMenu::Submenu(std::string("Language: ") + emu::sourceLanguageName(languageOf(*file)), std::move(languages)));
+    }
 #ifndef PLATFORM_WEB
     if (_mainFileHandler) {
         const auto path = currentFile().diskFile();
         auto setMain = gui::PopupMenu::Action("Set " + currentFile().name() + " as Main File", [this, path]() { switchMain(path); });
-        menu.push_back(&currentFile() != _main && lowerExtension(path) == ".8o" ? setMain : gui::PopupMenu::Disabled(setMain));
+        menu.push_back(&currentFile() != _main && !path.empty() && canBeMainFile(currentFile()) ? setMain : gui::PopupMenu::Disabled(setMain));
     }
     menu.push_back(gui::PopupMenu::Separator());
     menu.push_back(gui::PopupMenu::Action("Project Files", [this]() { openFileTree(); }, gui::ShortcutText("1")));
@@ -453,7 +559,7 @@ void Editor::fileTreeMenu(gui::PopupMenu::Menu& menu, const std::string& path, b
                 _fileTreeOpen = false;
                 switchMain(path);
             });
-            menu.push_back(lowerExtension(path) == ".8o" && path != _main->path() ? setMain : PopupMenu::Disabled(setMain));
+            menu.push_back(path != _main->path() && canBeMainFile(path) ? setMain : PopupMenu::Disabled(setMain));
         }
         menu.push_back(PopupMenu::Separator());
     }
@@ -691,7 +797,7 @@ bool Editor::adoptAsMain(const std::string& path)
 {
     std::error_code ec;
     const auto normalized = fs::absolute(path, ec).lexically_normal().string();
-    if (!_mainFileHandler || lowerExtension(normalized) != ".8o" || !isInProject(normalized) || !isMainReplaceable())
+    if (!_mainFileHandler || !canBeMainFile(normalized) || !isInProject(normalized) || !isMainReplaceable())
         return false;
     switchMain(normalized);
     return true;
@@ -828,13 +934,54 @@ int Editor::navigationRequest() const
 #endif
 }
 
+bool Editor::canBeMainFile(const SourceFile& file) const
+{
+    const auto language = languageOf(file);
+    if (language == emu::SourceLanguage::OCTO)
+        return lowerExtension(file.path()) == ".8o";
+    // the app's loader detects the language itself, a chosen one it wouldn't see
+    if (language != emu::SourceLanguage::CDP1802 && (language != emu::SourceLanguage::SATURN || !canBuildSaturn()))
+        return false;
+    return file.detectedLanguage() == language || (file.detectedLanguage() == emu::SourceLanguage::UNKNOWN && _fallbackLanguage == language);
+}
+
+bool Editor::canBeMainFile(const std::string& path) const
+{
+    if (const auto open = std::ranges::find_if(_files, [&](const auto& file) { return file->path() == path; }); open != _files.end())
+        return canBeMainFile(**open);
+    if (lowerExtension(path) == ".8o")
+        return !_languageOverrides.contains(path) || _languageOverrides.at(path) == emu::SourceLanguage::OCTO;
+    if (isBinaryFile(path) || !looksLikeText(path))
+        return false;
+    std::ifstream input(path, std::ios::binary);
+    const std::string text{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    const auto detected = emu::detectSourceLanguage(path, text).language;
+    const auto chosen = _languageOverrides.find(path);
+    const auto language = chosen != _languageOverrides.end() ? chosen->second : detected != emu::SourceLanguage::UNKNOWN ? detected : _fallbackLanguage;
+    if (language != emu::SourceLanguage::CDP1802 && (language != emu::SourceLanguage::SATURN || !canBuildSaturn()))
+        return false;
+    return detected == language || (detected == emu::SourceLanguage::UNKNOWN && _fallbackLanguage == language);
+}
+
+bool Editor::isProgramFile(const SourceFile& file) const
+{
+    if (!canBeMainFile(file))
+        return false;
+    switch (languageOf(file)) {
+        case emu::SourceLanguage::OCTO: return definesMain(file.getText());
+        // Saturn sources include others, a file the build reads isn't a program of its own
+        case emu::SourceLanguage::SATURN: return std::ranges::find(includedFiles(), file.path()) == includedFiles().end();
+        default: return true;  // CDP1802 assembly has no includes
+    }
+}
+
 void Editor::followShownProgram()
 {
     auto& file = currentFile();
     if (file.path() == _checkedProgramPath)
         return;
     _checkedProgramPath = file.path();
-    if (&file == _main || !_mainFileHandler || file.diskFile().empty() || lowerExtension(file.path()) != ".8o" || !isInProject(file.path()) || !definesMain(file.getText()))
+    if (&file == _main || !_mainFileHandler || file.diskFile().empty() || !isInProject(file.path()) || !isProgramFile(file))
         return;
     if (_main->diskFile().empty() && _main->code().canUndo())
         return;
@@ -1007,7 +1154,8 @@ Sha1::Digest Editor::sourcesDigest() const
     for (const auto& file : _files)
         files.push_back(file.get());
     std::ranges::sort(files, [](const auto* a, const auto* b) { return a->path() < b->path(); });
-    std::string all = _main->path() + '\0';  // another main file is another build
+    // another main file or another language of it is another build
+    std::string all = _main->path() + '\0' + emu::sourceLanguageId(languageOf(*_main)) + '\0';
     for (const auto* file : files)
         all += file->path() + '\0' + file->getText() + '\0';
     return calculateSha1(all);
@@ -1034,6 +1182,8 @@ void Editor::update()
             _inactiveEditTimer = 0;
             _checkedRevision = revision;
             _checkedProgramPath.clear();  // an edit may have given the shown file a main label
+            for (auto& file : _files)
+                updateLanguage(*file);  // the text may tell its language now
             autoSave();
             if(_compiledRevision != revision) {
                 if(sourcesDigest() == _compiledSourceSha1)
@@ -1051,6 +1201,59 @@ void Editor::compile()
     autoSave();
     _compiledRevision = contentRevision();
     _compiledSourceSha1 = sourcesDigest();
+    _buildProblem.clear();
+    _cdp1802.reset();
+    _buildLanguage = languageOf(*_main);
+    if (_buildLanguage == emu::SourceLanguage::CDP1802) {
+        _compiler.reset();
+        _includedFileTimes.clear();
+        const auto start = std::chrono::steady_clock::now();
+        _cdp1802.compile(_main->path().empty() ? _filename : _main->path(), _main->getText());
+        TraceLog(LOG_INFO, "Assembly took %dms", static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count()));
+        return;
+    }
+#ifdef CADMIUM_WITH_HP48
+    if (_buildLanguage == emu::SourceLanguage::SATURN) {
+        _compiler.reset();
+        if (!_saturn)
+            _saturn = std::make_shared<emu::AsaCpp>();
+        const auto file = _main->path().empty() ? _filename : _main->path();
+        std::vector<std::string> includePaths;
+        std::error_code ec;
+        if (!file.empty())
+            includePaths.push_back(fs::absolute(file, ec).parent_path().string());
+        if (!_projectFolder.empty())
+            includePaths.push_back(_projectFolder);
+        _saturn->setIncludePaths(includePaths);
+        const auto& text = _main->getText();
+        const auto start = std::chrono::steady_clock::now();
+        const auto& result = _saturn->compile(file, std::span<const char>(text.data(), text.size()));
+        TraceLog(LOG_INFO, "Assembly took %dms", static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count()));
+        _saturnResult.reset();
+        _saturnResult.resultType = result.resultType;
+        // asacpp writes "file:line: " for every file of the include chain, outermost first, the error is the innermost
+        static const std::regex locationPrefix(R"(^[^:\n]+:[0-9]+: )");
+        _saturnResult.errorMessage = result.errorMessage;
+        std::smatch match;
+        while (std::regex_search(_saturnResult.errorMessage, match, locationPrefix))
+            _saturnResult.errorMessage = match.suffix();
+        for (auto location = result.locations.rbegin(); location != result.locations.rend(); ++location)
+            _saturnResult.locations.push_back(*location);
+        _saturnResult.includedFiles = result.includedFiles;
+        _includedFileTimes.clear();
+        for (const auto& path : includedFiles()) {
+            if (const auto time = fs::last_write_time(path, ec); !ec)
+                _includedFileTimes[path] = time;
+        }
+        return;
+    }
+#endif
+    if (_buildLanguage != emu::SourceLanguage::OCTO) {
+        _compiler.reset();
+        _buildProblem = fmt::format("{} is {} assembly, Cadmium can't assemble it yet.", _main->name(), emu::sourceLanguageName(_buildLanguage));
+        _includedFileTimes.clear();
+        return;
+    }
     try {
         auto start = std::chrono::steady_clock::now();
         _compiler.reset();
@@ -1073,6 +1276,62 @@ void Editor::compile()
         if (const auto time = fs::last_write_time(path, ec); !ec)
             _includedFileTimes[path] = time;
     }
+}
+
+const emu::CompileResult& Editor::buildResult() const
+{
+    switch (_buildLanguage) {
+        case emu::SourceLanguage::CDP1802: return _cdp1802.compileResult();
+        case emu::SourceLanguage::SATURN: return _saturnResult;
+        default: return _compiler.compileResult();
+    }
+}
+
+const uint8_t* Editor::programCode() const
+{
+    switch (_buildLanguage) {
+        case emu::SourceLanguage::CDP1802: return _cdp1802.code();
+#ifdef CADMIUM_WITH_HP48
+        case emu::SourceLanguage::SATURN: return _saturn ? _saturn->code().data() : nullptr;
+#endif
+        default: return _compiler.code();
+    }
+}
+
+uint32_t Editor::programSize() const
+{
+    if (isBuildError())
+        return 0;
+    switch (_buildLanguage) {
+        case emu::SourceLanguage::CDP1802: return _cdp1802.codeSize();
+#ifdef CADMIUM_WITH_HP48
+        case emu::SourceLanguage::SATURN: return _saturn ? static_cast<uint32_t>(_saturn->code().size()) : 0;
+#endif
+        default: return _compiler.codeSize();
+    }
+}
+
+const Sha1::Digest& Editor::programSha1() const
+{
+    switch (_buildLanguage) {
+        case emu::SourceLanguage::CDP1802: return _cdp1802.sha1();
+#ifdef CADMIUM_WITH_HP48
+        case emu::SourceLanguage::SATURN:
+            if (_saturn)
+                return _saturn->sha1();
+            break;
+#endif
+        default: return _compiler.sha1();
+    }
+    static const Sha1::Digest none{};
+    return none;
+}
+
+std::optional<uint32_t> Editor::programLoadAddress() const
+{
+    if (_buildLanguage == emu::SourceLanguage::CDP1802)
+        return _cdp1802.startAddress();
+    return std::nullopt;
 }
 
 void Editor::updateCompilerOptions(int startAddress)
@@ -1228,13 +1487,17 @@ void Editor::drawMessageArea()
     auto area = GetContentAvailable();
     DrawRectangleX({area.x - 1, area.y, area.width + 2, area.height + 1}, 1, GetColor(gui::GetStyle(DEFAULT, LINE_COLOR)), {0,0,0,0});
     BeginClipping({area.x, area.y + 1, area.width, area.height - 1});
-    const auto& compileResult = _compiler.compileResult();
+    const auto& compileResult = buildResult();
     const auto saveProblem = saveError();
     if(!saveProblem.empty()) {
         // a source that couldn't be saved is more important than the compile result, which is still shown in short
         DrawTextClipped(GuiGetFont(), ("Not saved: " + saveProblem).c_str(), {area.x + 2, area.y + 4}, StyleManager::mappedColor(ORANGE));
-        const auto status = compileResult.resultType == emu::CompileResult::eOK ? std::string("No errors.") : compileResult.errorMessage;
+        const auto status = !_buildProblem.empty() ? _buildProblem : compileResult.resultType == emu::CompileResult::eOK ? std::string("No errors.") : compileResult.errorMessage;
         DrawTextClipped(GuiGetFont(), status.c_str(), {area.x + 2, area.y + 15}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+    }
+    else if(!_buildProblem.empty()) {
+        DrawTextClipped(GuiGetFont(), "Not built.", {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
+        DrawTextClipped(GuiGetFont(), _buildProblem.c_str(), {area.x + 2, area.y + 15}, StyleManager::mappedColor(ORANGE));
     }
     else if(compileResult.resultType == emu::CompileResult::eOK) {
         DrawTextClipped(GuiGetFont(), "No errors.", {area.x + 2, area.y + 4}, StyleManager::getStyleColor(Style::TEXT_COLOR_NORMAL));
@@ -1256,7 +1519,7 @@ void Editor::drawMessageArea()
         if (hover && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             const auto line = static_cast<uint32_t>(std::max(location.line, 1));
             const auto column = static_cast<uint32_t>(std::max(location.column, 1));
-            if (location.file == _filename || fs::absolute(location.file, ec).lexically_normal().string() == _main->path()) {
+            if (location.file == _filename || location.file == _main->path() || fs::absolute(location.file, ec).lexically_normal().string() == _main->path()) {
                 switchTo(*_main);
                 _main->code().goTo(line, column);
             }

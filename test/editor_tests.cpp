@@ -70,6 +70,12 @@ struct Source
 };
 
 const std::string original = ": main\n    jump main\n";
+
+Highlighter::Dialect dialectOf(const SourceFile& file)
+{
+    const auto* highlighter = dynamic_cast<const Highlighter*>(file.code().highlighter());
+    return highlighter ? highlighter->dialect() : Highlighter::eNONE;
+}
 const std::string edited = ": main\n    v0 := 1\n    jump main\n";
 
 }  // namespace
@@ -687,6 +693,241 @@ TEST_CASE("Back and forward return to the places left")
     CHECK(editor.currentFile().path() == lib);
     CHECK(editor.line() == 1);
 }
+
+TEST_CASE("Files have a language: chosen, detected or from the machine")
+{
+    Source source("languages", ": main\n    v0 := 1\n    loop again\n");
+    const auto main = source.file.string();
+    const auto monitor = (source.directory / "monitor.asm").string();
+    const auto unclear = (source.directory / "notes.asm").string();
+    writeFile(monitor, ".. a monitor\n        ORG #0000\nSTART:  GHI R0\n        PHI R2\n        LDI #FF\n        PLO R2\n        SEX R2\n        BR START\n");
+    writeFile(unclear, "; nothing to tell\n");
+
+    Editor editor;
+    editor.setFilename(main);
+    editor.setText(readFile(source.file), main);
+    CHECK(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::OCTO);
+    CHECK(dialectOf(editor.mainFile()) == Highlighter::eCHIP8OCTO);
+
+    // detected from the text, highlighted in its dialect
+    REQUIRE(editor.openFile(monitor));
+    auto& monitorFile = editor.currentFile();
+    CHECK(monitorFile.detectedLanguage() == emu::SourceLanguage::CDP1802);
+    CHECK(editor.languageOf(monitorFile) == emu::SourceLanguage::CDP1802);
+    CHECK(dialectOf(monitorFile) == Highlighter::eCDP1802);
+
+    // a file that doesn't tell takes the language of the machine
+    REQUIRE(editor.openFile(unclear));
+    auto& unclearFile = editor.currentFile();
+    CHECK(unclearFile.detectedLanguage() == emu::SourceLanguage::UNKNOWN);
+    CHECK(editor.languageOf(unclearFile) == emu::SourceLanguage::OCTO);
+    CHECK(dialectOf(unclearFile) == Highlighter::eCHIP8OCTO);
+    editor.setFallbackLanguage(emu::SourceLanguage::CDP1802);
+    CHECK(editor.languageOf(unclearFile) == emu::SourceLanguage::CDP1802);
+    CHECK(dialectOf(unclearFile) == Highlighter::eCDP1802);
+    CHECK(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::OCTO);  // detected, the machine doesn't matter
+
+    // the text tells once it was edited
+    unclearFile.setText("        LDI #10\n        PLO R7\n        DEC R7\n");
+    CHECK(unclearFile.updateDetectedLanguage());
+    CHECK(unclearFile.detectedLanguage() == emu::SourceLanguage::CDP1802);
+    CHECK_FALSE(unclearFile.updateDetectedLanguage());
+
+    // a chosen language wins and is remembered by the path, also after closing the file
+    editor.setLanguage(monitorFile, emu::SourceLanguage::M6800);
+    CHECK(editor.languageOf(monitorFile) == emu::SourceLanguage::M6800);
+    CHECK(dialectOf(monitorFile) == Highlighter::eM6800);
+    REQUIRE(editor.languageOverrides().contains(monitor));
+    CHECK(editor.languageOverrides().at(monitor) == emu::SourceLanguage::M6800);
+    editor.switchTo(monitorFile);
+    editor.closeCurrentFile();
+    REQUIRE(editor.openFile(monitor));
+    CHECK(editor.languageOf(editor.currentFile()) == emu::SourceLanguage::M6800);
+    editor.setLanguage(editor.currentFile(), std::nullopt);
+    CHECK(editor.languageOf(editor.currentFile()) == emu::SourceLanguage::CDP1802);
+    CHECK_FALSE(editor.languageOverrides().contains(monitor));
+    // an Editor gets the remembered ones from the app
+    Editor other;
+    other.setLanguageOverrides({{monitor, emu::SourceLanguage::SATURN}});
+    other.setText(readFile(monitor), monitor);
+    CHECK(other.languageOf(other.mainFile()) == emu::SourceLanguage::SATURN);
+    CHECK(dialectOf(other.mainFile()) == Highlighter::eSATURN);
+}
+
+TEST_CASE("Octo and CDP1802 main files are built, other languages not yet")
+{
+    Source source("language-build", ": main\n    v0 := 1\n    loop again\n");
+    const auto main = source.file.string();
+    Editor editor;
+    editor.setFilename(main);
+    editor.setText(readFile(source.file), main);
+    editor.compile();
+    REQUIRE_FALSE(editor.isBuildError());
+    CHECK(editor.buildLanguage() == emu::SourceLanguage::OCTO);
+    CHECK(editor.programSize() == editor.compiler().codeSize());
+    CHECK(editor.programSize() > 0);
+    CHECK_FALSE(editor.programLoadAddress().has_value());
+
+    // a main file chosen to be 6800 assembly isn't compiled as Octo, the build is an error without program
+    editor.setLanguage(editor.mainFile(), emu::SourceLanguage::M6800);
+    CHECK_FALSE(editor.isCompiledUpToDate());
+    editor.compile();
+    CHECK(editor.isBuildError());
+    CHECK(editor.buildLanguage() == emu::SourceLanguage::M6800);
+    CHECK(editor.programSize() == 0);
+    CHECK(editor.includedFiles().empty());
+    editor.setLanguage(editor.mainFile(), std::nullopt);
+    editor.compile();
+    CHECK_FALSE(editor.isBuildError());
+
+    // CDP1802 assembly is assembled, the program goes to its first ORG
+    const auto blink = (source.directory / "blink.asm").string();
+    writeFile(blink, ".. blink\n        ORG #0010\nSTART:  SEQ\n        REQ\n        BR START\n");
+    editor.setFilename(blink);
+    editor.setText(readFile(blink), blink);
+    CHECK(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::CDP1802);
+    editor.compile();
+    REQUIRE_MESSAGE(!editor.isBuildError(), editor.buildResult().errorMessage);
+    CHECK(editor.buildLanguage() == emu::SourceLanguage::CDP1802);
+    CHECK(editor.programLoadAddress() == 0x10u);
+    REQUIRE(editor.programSize() == 4);
+    CHECK(std::vector<uint8_t>(editor.programCode(), editor.programCode() + 4) == std::vector<uint8_t>{0x7B, 0x7A, 0x30, 0x10});
+    // an error points to its line in the file
+    editor.mainFile().setText(".. blink\n        ORG #0010\nSTART:  SEQ\n        FOO R1\n");
+    editor.compile();
+    CHECK(editor.isBuildError());
+    REQUIRE(editor.buildResult().locations.size() == 1);
+    CHECK(editor.buildResult().locations.front().file == blink);
+    CHECK(editor.buildResult().locations.front().line == 4);
+    CHECK(editor.programSize() == 0);
+
+    // a generated text (a disassembly) is Octo
+    editor.setGeneratedText("; nothing\n");
+    CHECK(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::OCTO);
+    CHECK(editor.buildLanguage() == emu::SourceLanguage::OCTO);
+    CHECK_FALSE(editor.isBuildError());
+}
+
+TEST_CASE("CDP1802 files are programs of their own")
+{
+    Source source("cdp1802-programs", ": main\n    loop again\n");
+    const auto main = source.file.string();
+    const auto monitor = (source.directory / "monitor.asm").string();
+    const auto unclear = (source.directory / "empty.asm").string();
+    const auto m6800 = (source.directory / "count.asm").string();
+    writeFile(monitor, "        ORG #0000\nSTART:  GHI R0\n        PHI R2\n        SEX R2\n        BR START\n");
+    writeFile(unclear, "; to do\n");
+    writeFile(m6800, "START   LDAA    #$10\n        STAA    $20\n        RTS\n");
+    Editor editor;
+    std::vector<std::string> loaded;
+    editor.setMainFileHandler([&](const std::string& path) {
+        loaded.push_back(path);
+        editor.setFilename(path);
+        editor.setText(readFile(path), path);
+    });
+    editor.setProjectFolder(source.directory.string());
+    editor.setFilename(main);
+    editor.setText(readFile(source.file), main);
+
+    // files on disk: the loader detects the language itself
+    CHECK(editor.canBeMainFile(main));
+    CHECK(editor.canBeMainFile(monitor));
+    CHECK_FALSE(editor.canBeMainFile(m6800));
+    CHECK_FALSE(editor.canBeMainFile(unclear));
+    editor.setFallbackLanguage(emu::SourceLanguage::CDP1802);  // a CDP1802 machine takes it as its source
+    CHECK(editor.canBeMainFile(unclear));
+    editor.setFallbackLanguage(emu::SourceLanguage::OCTO);
+
+    // shown, an 1802 file becomes the main file without a main label
+    REQUIRE(editor.openFile(monitor));
+    CHECK(editor.isProgramFile(editor.currentFile()));
+    editor.followShownProgram();
+    REQUIRE(loaded.size() == 1);
+    CHECK(editor.mainFile().path() == monitor);
+    // a 6800 file doesn't
+    REQUIRE(editor.openFile(m6800));
+    CHECK_FALSE(editor.isProgramFile(editor.currentFile()));
+    editor.followShownProgram();
+    CHECK(loaded.size() == 1);
+}
+
+TEST_CASE("A program of the project in another language doesn't become the main file")
+{
+    Source source("language-follow", ": main\n    loop again\n");
+    const auto main = source.file.string();
+    const auto other = (source.directory / "other.8o").string();
+    writeFile(other, ": main\n    v1 := 2\n    loop again\n");
+    Editor editor;
+    std::vector<std::string> loaded;
+    editor.setMainFileHandler([&](const std::string& path) {
+        loaded.push_back(path);
+        editor.setFilename(path);
+        editor.setText(readFile(path), path);
+    });
+    editor.setProjectFolder(source.directory.string());
+    editor.setFilename(main);
+    editor.setText(readFile(source.file), main);
+    editor.setLanguageOverrides({{other, emu::SourceLanguage::CDP1802}});
+    REQUIRE(editor.openFile(other));
+    editor.followShownProgram();
+    CHECK(loaded.empty());
+    editor.setLanguage(editor.currentFile(), std::nullopt);
+    editor.switchTo(editor.mainFile());
+    editor.followShownProgram();
+    REQUIRE(editor.openFile(other));
+    editor.followShownProgram();
+    CHECK(loaded.size() == 1);
+}
+
+#ifdef CADMIUM_WITH_HP48
+TEST_CASE("Saturn main files are built with asacpp, included files are part of the build")
+{
+    Source source("saturn-build", ": main\n    loop again\n");
+    const auto main = (source.directory / "prog.asap").string();
+    const auto lib = (source.directory / "lib.asap").string();
+    writeFile(main, "; a program\n        move.a  @d0,a\n        include \"lib.asap\"\n        jump.a  @a\n");
+    writeFile(lib, "; a library\n        add.a   5,d0\n");
+
+    Editor editor;
+    std::vector<std::string> loaded;
+    editor.setMainFileHandler([&](const std::string& path) {
+        loaded.push_back(path);
+        editor.setFilename(path);
+        editor.setText(readFile(path), path);
+    });
+    editor.setProjectFolder(source.directory.string());
+    editor.setFilename(main);
+    editor.setText(readFile(main), main);
+    CHECK(editor.languageOf(editor.mainFile()) == emu::SourceLanguage::SATURN);
+    CHECK(Editor::canBuildSaturn());
+    editor.compile();
+    REQUIRE_MESSAGE(!editor.isBuildError(), editor.buildResult().errorMessage);
+    CHECK(editor.buildLanguage() == emu::SourceLanguage::SATURN);
+    CHECK(editor.programSize() > 0);
+    CHECK(editor.programCode() != nullptr);
+    CHECK_FALSE(editor.programLoadAddress().has_value());
+    REQUIRE(editor.includedFiles().size() == 1);
+    CHECK(editor.includedFiles().front() == lib);
+
+    // the included file is no program of its own, showing it keeps the build
+    REQUIRE(editor.openFile(lib));
+    CHECK(editor.isInBuild(editor.currentFile()));
+    CHECK_FALSE(editor.isProgramFile(editor.currentFile()));
+    editor.followShownProgram();
+    CHECK(loaded.empty());
+    CHECK(editor.canBeMainFile(main));
+
+    // an error in the included file points there, the message without the file chain
+    editor.currentFile().setText("; a library\n        frobnicate.a c\n");
+    editor.compile();
+    CHECK(editor.isBuildError());
+    REQUIRE_FALSE(editor.buildResult().locations.empty());
+    CHECK(editor.buildResult().locations.front().file == lib);
+    CHECK(editor.buildResult().locations.front().line == 2);
+    CHECK(editor.buildResult().errorMessage.find(".asap:") == std::string::npos);
+    CHECK(editor.programSize() == 0);
+}
+#endif
 
 TEST_CASE("New files are created in their folder and opened")
 {

@@ -25,6 +25,7 @@
 //---------------------------------------------------------------------------------------
 
 #include "highlighter.hpp"
+#include <chiplet/sourcesyntax.hpp>
 #include <chiplet/utility.hpp>
 
 #include <ghc/utf8.hpp>
@@ -50,33 +51,6 @@ static std::unordered_set<std::string> g_octoOpcodes = {
 static std::unordered_set<std::string> g_octoDirectives = {
     ":alias", ":asm", ":assert", ":breakpoint", ":byte", ":calc", ":call", ":const", ":macro", ":monitor", ":next", ":org",
     ":pointer", ":proto", ":stringmode", ":unpack"
-};
-
-static std::unordered_set<std::string> g_chipperOpcodes = {
-    "add", "add", "add", "alpha", "and", "bmode", "call", "ccol", "cls", "digisnd", "drw", "exit", "high",
-    "jp", "jp", "jp", "ld", "ldhi", "ldpal", "low", "megaoff", "megaon", "or", "ret", "rnd", "scd", "scl", "scr",
-    "scru", "scu", "se", "se", "shl", "shr", "sknp", "skp", "sne", "sprh", "sprw", "stopsnd", "sub", "subn", "xor"
-};
-static std::unordered_set<std::string> g_chipperDirectives = {
-    "align", "da", "db", "define", "ds", "dw", "else", "end", "endif", "ifdef", "ifund", "include", "option",
-    "binary", "chip8", "chip48", "hpasc", "hpbin", "schip10", "schip11", "string",
-    "org", "undef", "used", "on", "off", "symbol", "xref", "yes", "no"
-};
-
-static std::unordered_set<std::string> g_cdp1802Opcodes = {
-    "ADC",  "ADCI", "ADD",  "ADI",  "AND",  "ANI",  "B1",   "B2",   "B3",  "B4",   "BDF",  "BN1",  "BN2",  "BN3",  "BN4", "BNF", "BNQ",  "BNZ", "BQ",  "BR",
-    "BZ",   "DEC",  "DIS",  "GHI",  "GLO",  "IDL",  "INC",  "INP",  "IRX", "LBDF", "LBNF", "LBNQ", "LBNZ", "LBQ",  "LBR", "LBZ", "LDA",  "LDI", "LDN", "LDX",
-    "LDXA", "LSDF", "LSIE", "LSKP", "LSNF", "LSNQ", "LSNZ", "LSQ",  "LSZ", "MARK", "NOP",  "OR",   "ORI",  "OUT",  "PHI", "PLO", "REQ",  "RET", "SAV", "SD",
-    "SDB",  "SDBI", "SDI",  "SEP",  "SEQ",  "SEX",  "SHL",  "SHLC", "SHR", "SHRC", "SKP",  "SM",   "SMB",  "SMBI", "SMI", "STR", "STXD", "XOR", "XRI"
-};
-
-static std::unordered_set<std::string> g_cdp1802Directives = {
-    "#include", "define", "#undef", "#if", "#ifdef", "#ifndef", "#else", "#elif", "#endif", "#error",
-    "ORG", "DC", "DB", "PAGE", "END", "EQU"
-};
-
-static std::unordered_set<std::string_view> g_saturnRegisters = {
-    "a", "b", "c", "d", "d0", "d1", "r0", "r1", "r2", "r3", "r4", "p", "pc", "st", "id"
 };
 
 // Progress of an Octo `:asm <cpu> { ... }` block, carried from line to line packed into the LineState
@@ -219,138 +193,110 @@ void highlightOcto(const char* text, const char* end, const LineStyles& out)
     }
 }
 
-// Follows Chiplet's CDP1802 syntax: `..` starts a comment, `;` separates statements,
-// `,` separates inline data, `'...'` are strings (or based numbers with X/D/B prefix)
-void highlight1802(const char* text, const char* end, const LineStyles& out)
+// Highlights assembly as Chiplet describes the language (emu::SourceSyntax, the words from the assemblers' own tables):
+// labels ("name:", and a first-column name that is no keyword where the language has those), the mnemonic or directive
+// of a statement, then its operands as numbers, registers, strings or plain words. A word the language doesn't know stays
+// plain, also where a mnemonic is expected; so does the "???" of a disassembler.
+void highlightAssembly(const emu::SourceSyntax& syntax, const char* text, const char* end, const LineStyles& out)
 {
-    while (text < end && *text != '\n') {
-        const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ';' || cp == ',') {
-            out.set(token, text, Highlighter::eNORMAL);
-        }
-        else if (cp == '.' && text < end && *text == '.') {
-            while (text < end && *text != '\n')
-                ++text;
-            out.set(token, text, Highlighter::eCOMMENT);
-        }
-        else {
-            const char* firstEnd = text;
-            size_t len = 1;
-            bool inString = cp == '\'';
-            bool hasString = inString;
-            while (text < end && *text != '\n') {
-                if (inString) {
-                    if (*text == '\\' && text + 1 < end && text[1] != '\n')
-                        utf8::fetchCodepoint(text, end), ++len;
-                    else if (*text == '\'')
-                        inString = false;
-                }
-                else {
-                    if (static_cast<unsigned char>(*text) <= ' ' || *text == ';' || *text == ',' || (*text == '.' && text + 1 < end && text[1] == '.'))
-                        break;
-                    if (*text == '\'')
-                        inString = hasString = true;
-                }
-                utf8::fetchCodepoint(text, end), ++len;
-            }
-            std::string tok(token, text - token);
-            for (auto& c : tok)
-                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            const char* styleStart = token;
-            auto style = Highlighter::eNORMAL;
-            if (hasString)
-                style = tok.size() > 1 && tok[1] == '\'' && (tok[0] == 'X' || tok[0] == 'D' || tok[0] == 'B') ? Highlighter::eNUMBER : Highlighter::eSTRING;
-            else if (tok.size() > 1 && tok.back() == ':')
-                style = Highlighter::eLABEL;
-            else if (cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
-                style = Highlighter::eNUMBER;
-            else if (len > 2 && (cp == '#' || (*(token + 1) >= '0' && *(token + 1) <= '9'))) {
-                // the prefix stays plain, the rest is the number
-                out.set(token, firstEnd, Highlighter::eNORMAL);
-                styleStart = firstEnd;
-                style = Highlighter::eNUMBER;
-            }
-            else if ((len == 2 || len == 3) && (cp == 'r' || cp == 'R') && isHexDigit(*(token + 1)))
-                style = Highlighter::eREGISTER;
-            else if (g_cdp1802Opcodes.contains(tok))
-                style = Highlighter::eOPCODE;
-            else if (g_cdp1802Directives.contains(tok))
-                style = Highlighter::eDIRECTIVE;
-            out.set(styleStart, text, style);
-        }
+    if (syntax.firstColumnComment && text == out.lineStart && text < end && *text == syntax.firstColumnComment) {
+        out.set(text, std::find(text, end, '\n'), Highlighter::eCOMMENT);
+        return;
     }
-}
-
-// Follows the M6800 disassembly: the mnemonic with its accumulator (`LDAA`), then one operand
-// where `#` marks immediate values, `$` hex numbers and `,X` indexed addressing. A `label:` and
-// `;` comments are taken as in common 6800 assemblers.
-void highlight6800(const char* text, const char* end, const LineStyles& out)
-{
-    bool expectOpcode = true;
+    const bool atIsSeparator = syntax.numberPrefixes.find('@') == std::string_view::npos;  // Saturn's @d0, but 6800's @17 octal
+    auto startsComment = [&](const char* at) { return !syntax.lineComment.empty() && std::string_view(at, end - at).starts_with(syntax.lineComment); };
+    auto isSeparator = [&](char c) { return c == ' ' || c == '\t' || c == ',' || (c == '@' && atIsSeparator); };
+    auto operandStyle = [&](std::string_view tok) {
+        const auto first = tok.empty() ? '\0' : tok.front();
+        if ((first >= '0' && first <= '9') || (first && syntax.numberPrefixes.find(first) != std::string_view::npos))
+            return Highlighter::eNUMBER;
+        return syntax.isRegister(tok) ? Highlighter::eREGISTER : Highlighter::eNORMAL;
+    };
+    bool expectKeyword = true;  // where the mnemonic or directive of a statement is
     while (text < end && *text != '\n') {
         const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ',') {
+        if (startsComment(text)) {
+            out.set(text, std::find(text, end, '\n'), Highlighter::eCOMMENT);
+            return;
+        }
+        if (syntax.statementSeparator && *text == syntax.statementSeparator) {
+            out.set(text, text + 1, Highlighter::eNORMAL);
+            ++text;
+            expectKeyword = true;
+            continue;
+        }
+        if (isSeparator(*text)) {
+            out.set(text, text + 1, Highlighter::eNORMAL);
+            ++text;
+            continue;
+        }
+        // a word, quoted parts belong to it with their spaces (T'TEXT', X'1F', "HI THERE")
+        char quote = 0;
+        bool quoted = false;
+        while (text < end && *text != '\n') {
+            if (!quote) {
+                if (isSeparator(*text) || startsComment(text) || (syntax.statementSeparator && *text == syntax.statementSeparator))
+                    break;
+                if (syntax.quotes.find(*text) != std::string_view::npos)
+                    quote = *text, quoted = true;
+            }
+            else if (*text == quote) {
+                quote = 0;
+            }
+            utf8::fetchCodepoint(text, end);
+        }
+        const std::string_view tok(token, text - token);
+        if (quoted) {
+            // a based number of the CDP1802 (X'1F'), or a string
+            const bool based = tok.size() > 2 && syntax.quotes.find(tok[1]) != std::string_view::npos &&
+                               syntax.basedNumberPrefixes.find(static_cast<char>(std::toupper(static_cast<unsigned char>(tok[0])))) != std::string_view::npos;
+            out.set(token, text, based ? Highlighter::eNUMBER : Highlighter::eSTRING);
+            expectKeyword = false;
+            continue;
+        }
+        if (const auto assign = tok.find(":="); assign != std::string_view::npos) {
+            // a symbol and its value (Saturn)
+            out.set(token, token + assign, Highlighter::eLABEL);
+            out.set(token + assign, token + assign + 2, Highlighter::eNORMAL);
+            out.set(token + assign + 2, text, operandStyle(tok.substr(assign + 2)));
+            expectKeyword = false;
+            continue;
+        }
+        if (tok.size() > 1 && tok.back() == ':') {
+            out.set(token, text, Highlighter::eLABEL);
+            continue;
+        }
+        if (tok == "???") {
             out.set(token, text, Highlighter::eNORMAL);
+            expectKeyword = false;
+            continue;
         }
-        else if (cp == ';') {
-            while (text < end && *text != '\n')
-                ++text;
-            out.set(token, text, Highlighter::eCOMMENT);
+        if (syntax.directivePrefix && tok.front() == syntax.directivePrefix) {
+            out.set(token, text, Highlighter::eDIRECTIVE);
+            expectKeyword = false;
+            continue;
         }
-        else {
-            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
-                utf8::fetchCodepoint(text, end);
-            std::string_view tok(token, text - token);
-            auto style = Highlighter::eNORMAL;
-            if (tok.size() > 1 && tok.back() == ':')
-                style = Highlighter::eLABEL;
-            else if (tok == "???")
-                expectOpcode = false;  // an invalid opcode or operand stays plain like CHIP-8's "invalid"
-            else if (expectOpcode)
-                style = Highlighter::eOPCODE, expectOpcode = false;
-            else if (cp == '#' || cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
-                style = Highlighter::eNUMBER;
-            else if (tok == "X" || tok == "x")
-                style = Highlighter::eREGISTER;
-            out.set(token, text, style);
+        if (expectKeyword) {
+            const auto name = syntax.nameOf(tok);
+            const bool directive = !name.empty() && syntax.isDirective(name);
+            const bool known = directive || (!name.empty() && (syntax.isMnemonic(name) || syntax.isRegisterOperandMnemonic(name)));
+            if (!known && token == out.lineStart && syntax.firstColumnLabels) {
+                out.set(token, text, Highlighter::eLABEL);
+                continue;
+            }
+            expectKeyword = false;
+            if (!known) {
+                out.set(token, text, Highlighter::eNORMAL);
+                continue;
+            }
+            // the size suffix belongs to the mnemonic ("move.a"), what follows a name otherwise is an operand ("LDI#00")
+            const char* keywordEnd = syntax.sizeSuffix ? text : token + name.size();
+            out.set(token, keywordEnd, directive ? Highlighter::eDIRECTIVE : Highlighter::eOPCODE);
+            if (keywordEnd < text)
+                out.set(keywordEnd, text, operandStyle(std::string_view(keywordEnd, text - keywordEnd)));
+            continue;
         }
-    }
-}
-
-// Follows the ASAP syntax the Saturn disassembler emits: an optional `label:`, the
-// mnemonic with its field suffix, then operands separated by `,`, where `#` marks
-// hex numbers and `@` memory access. `;` starts a comment.
-void highlightSaturn(const char* text, const char* end, const LineStyles& out)
-{
-    bool expectOpcode = true;
-    while (text < end && *text != '\n') {
-        const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ',' || cp == '@') {
-            out.set(token, text, Highlighter::eNORMAL);
-        }
-        else if (cp == ';') {
-            while (text < end && *text != '\n')
-                ++text;
-            out.set(token, text, Highlighter::eCOMMENT);
-        }
-        else {
-            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
-                utf8::fetchCodepoint(text, end);
-            std::string_view tok(token, text - token);
-            auto style = Highlighter::eNORMAL;
-            if (tok.size() > 1 && tok.back() == ':')
-                style = Highlighter::eLABEL;
-            else if (expectOpcode)
-                style = Highlighter::eOPCODE, expectOpcode = false;
-            else if (cp == '#' || (cp >= '0' && cp <= '9'))
-                style = Highlighter::eNUMBER;
-            else if (g_saturnRegisters.contains(tok))
-                style = Highlighter::eREGISTER;
-            out.set(token, text, style);
-        }
+        out.set(token, text, operandStyle(tok));
     }
 }
 
@@ -358,9 +304,9 @@ void highlightSegment(Dialect dialect, const char* text, const char* end, const 
 {
     switch (dialect) {
         case Highlighter::eCHIP8OCTO: highlightOcto(text, end, out); return;
-        case Highlighter::eCDP1802: highlight1802(text, end, out); return;
-        case Highlighter::eM6800: highlight6800(text, end, out); return;
-        case Highlighter::eSATURN: highlightSaturn(text, end, out); return;
+        case Highlighter::eCDP1802: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::CDP1802), text, end, out); return;
+        case Highlighter::eM6800: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::M6800), text, end, out); return;
+        case Highlighter::eSATURN: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::SATURN), text, end, out); return;
         case Highlighter::eCHIP8CHIPPER:
         case Highlighter::eNONE: break;
     }

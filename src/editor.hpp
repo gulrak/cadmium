@@ -25,9 +25,11 @@
 //---------------------------------------------------------------------------------------
 #pragma once
 
+#include <chiplet/cdp1802assembler.hpp>
 #include <chiplet/octocompiler.hpp>
 #include <chiplet/sha1.hpp>
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -40,6 +42,10 @@
 #include <raylib.h>
 
 #include <highlighter.hpp>
+
+namespace emu {
+class AsaCpp;
+}
 #include <sourcefile.hpp>
 #include <rlguipp/rlguipp_filetree.hpp>
 
@@ -57,6 +63,7 @@ public:
     static constexpr float INACTIVITY_DELAY{1.0f};
 
     Editor();
+    ~Editor();
     // The main file, its name is the one the compiler resolves includes from
     void setFilename(std::string filename) { _filename = std::move(filename); }
     const std::string& getFilename() const { return _filename; }
@@ -70,7 +77,11 @@ public:
     // until the user edits it, and it can't be undone into the previous program's text.
     void setGeneratedText(std::string text);
     // The file of the main text, see SourceFile::setDiskFile()
-    void setDiskFile(const std::string& path) { _main->setDiskFile(path); }
+    void setDiskFile(const std::string& path)
+    {
+        _main->setDiskFile(path);
+        updateLanguage(*_main);
+    }
     // A problem of the compiled program the app found (it doesn't fit into the core e.g.), shown below "No errors."
     void setProgramWarning(std::string warning) { _programWarning = std::move(warning); }
     const std::string& diskFile() const { return _main->diskFile(); }
@@ -102,8 +113,33 @@ public:
     // menu open it), none for other text and for included images, binaries and sounds
     std::optional<gui::CodeLink> includeLinkAt(SourceFile& file, uint32_t offset);
     // The files the last compilation read through :include (absolute), and if a file is one of them or the main file
-    const std::vector<std::string>& includedFiles() const { return _compiler.compileResult().includedFiles; }
+    const std::vector<std::string>& includedFiles() const { return buildResult().includedFiles; }
     bool isInBuild(const SourceFile& file) const;
+
+    // The language of a file: the one chosen for it, else the detected one (see SourceFile), else the fallback the app
+    // sets from the selected machine. Only Octo files are highlighted and built so far, a main file in another language
+    // makes isBuildError() true, the message area tells why.
+    emu::SourceLanguage languageOf(const SourceFile& file) const;
+    void setFallbackLanguage(emu::SourceLanguage language);
+    emu::SourceLanguage fallbackLanguage() const { return _fallbackLanguage; }
+    // Chooses the language of a file (std::nullopt: detect it again), remembered by the path of the file
+    void setLanguage(SourceFile& file, std::optional<emu::SourceLanguage> language);
+    // The chosen languages by absolute path, the app stores them
+    const std::map<std::string, emu::SourceLanguage>& languageOverrides() const { return _languageOverrides; }
+    void setLanguageOverrides(std::map<std::string, emu::SourceLanguage> overrides) { _languageOverrides = std::move(overrides); }
+    // The last build failed: a compile or assembly error, or there is no assembler for the language of the main file
+    bool isBuildError() const { return !_buildProblem.empty() || buildResult().resultType != emu::CompileResult::eOK; }
+    // The language the main file was built in (Octo, CDP1802, or Saturn with the HP-48SX core), the result and the
+    // program of that build: its code, size and SHA-1, and where it goes (the first ORG of CDP1802 assembly; std::nullopt
+    // for Octo, it goes to the core's default, and for Saturn, an HP object goes onto the stack)
+    emu::SourceLanguage buildLanguage() const { return _buildLanguage; }
+    const emu::CompileResult& buildResult() const;
+    const uint8_t* programCode() const;
+    uint32_t programSize() const;
+    const Sha1::Digest& programSha1() const;
+    std::optional<uint32_t> programLoadAddress() const;
+    // If Saturn sources can be built (the HP-48SX core is part of this build)
+    static bool canBuildSaturn();
     // The list of the open files to switch to, with the close action
     void openFileMenu(Vector2 position);
 
@@ -130,6 +166,12 @@ public:
     static std::string findMainFile(const std::string& folder);
     // If the source defines `: main` (on a line of its own start), it is a program then, not only included
     static bool definesMain(std::string_view text);
+    // If a file can be the main file, the app loads it then: an Octo `.8o` file, or CDP1802 assembly (detected as such, or
+    // not telling while the machine runs a CDP1802 without CHIP-8 interpreter); the path form looks at a file on disk
+    bool canBeMainFile(const SourceFile& file) const;
+    bool canBeMainFile(const std::string& path) const;
+    // A program of its own: an Octo file that defines `: main`, every CDP1802 file (there are no includes)
+    bool isProgramFile(const SourceFile& file) const;
     // Opens a file picked in the tree or the quick open: a project .8o file becomes the main file while the main file is
     // from outside of the project and can be closed without loss, the startup text e.g.
     void pickFile(const std::string& path);
@@ -201,6 +243,10 @@ private:
     bool adoptAsMain(const std::string& path);
     // Saves the open files and lets the app load the file as the program, false if it couldn't be saved
     bool switchMain(const std::string& path);
+    // Takes the chosen language of the file, detects it if needed and highlights it accordingly, true if the language of
+    // the main file changed, it has to be built again then
+    bool updateLanguage(SourceFile& file);
+    void forceRebuild();
     struct Place
     {
         std::string path;
@@ -216,6 +262,9 @@ private:
     void fileTreeMenu(gui::PopupMenu::Menu& menu, const std::string& path, bool isDirectory);
 
     Highlighter _highlighter;
+    Highlighter _cdp1802Highlighter{Highlighter::eCDP1802};
+    Highlighter _m6800Highlighter{Highlighter::eM6800};
+    Highlighter _saturnHighlighter{Highlighter::eSATURN};
     gui::CodeTextStyle _textStyle;
     std::vector<std::unique_ptr<SourceFile>> _files;  // the most recently used first
     SourceFile* _main{nullptr};
@@ -226,8 +275,16 @@ private:
     double _lastDiskCheck{0};
     bool _messageWindowVisible{true};
     std::string _programWarning;
+    std::string _buildProblem;            // why the main file wasn't compiled, e.g. no assembler for its language
+    emu::SourceLanguage _fallbackLanguage{emu::SourceLanguage::OCTO};
+    std::map<std::string, emu::SourceLanguage> _languageOverrides;
+    std::array<bool, emu::NUM_SOURCE_LANGUAGES> _languageMenuChecks{};  // the check marks of the Language menu
     bool _isInvertedTheme{};
     emu::OctoCompiler _compiler;
+    emu::Cdp1802Assembler _cdp1802;
+    std::shared_ptr<emu::AsaCpp> _saturn;  // created for the first Saturn build (shared_ptr: AsaCpp is incomplete here)
+    emu::CompileResult _saturnResult;      // the result of _saturn as a CompileResult
+    emu::SourceLanguage _buildLanguage{emu::SourceLanguage::OCTO};
     uint32_t _lastSeenRevision{0};
     uint32_t _checkedRevision{0};
     uint32_t _compiledRevision{0};

@@ -554,6 +554,14 @@ public:
             _mainView = eEDITOR;
         });
         _editor.setOpenFolderHandler([this]() { openFolderDialog(); });
+        {
+            std::map<std::string, emu::SourceLanguage> languages;
+            for (const auto& [path, id] : _cfg.sourceLanguages) {
+                if (const auto language = emu::sourceLanguageFromId(id))
+                    languages[path] = *language;
+            }
+            _editor.setLanguageOverrides(std::move(languages));
+        }
         _volume = _volumeSlider = _cfg.volume;
         _styleManager.updateStyle(_cfg.guiHue, _cfg.guiSat, false);
 #else
@@ -561,7 +569,7 @@ public:
         openFileCallback = [this](std::string_view filename, ghc::span<const uint8_t> data) {
             loadBinary(filename, data, LoadOptions::None);
         };
-        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
+        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.asm,.asap,.gif,.bin,.ram,.c8x,.c8e,.mc8";
         webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
 #endif
         // the text widgets use the clipboard of the editor, on the web the text arrives with the browser's paste event
@@ -1080,43 +1088,14 @@ public:
     {
         auto* pixel = (uint32_t*)_screen.data;
         if(pixel) {
-            auto rgbaSpan = _chipEmu->getRGBASpan(
-                {static_cast<uint32_t*>(_screen.data), static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)}
-                );
-            // The pre-rendered HP LCD (including the generic core's HP display
-            // option) contains a fine grid, not bare CHIP-8 pixels.
-            _screenIsPreRendered = !rgbaSpan.empty();
+            const auto rendered = emu::renderScreen(*_chipEmu, {pixel, static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)});
+            _screenIsPreRendered = rendered.preRendered;
             SetTextureFilter(_screenTexture, _screenIsPreRendered ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT);
-            if(!rgbaSpan.empty()) {
-                auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
-                for (size_t y = 0; y < rgbaSpan.height(); ++y) {
-                    std::memmove(textureSpan.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
-                }
+            if(!rendered.empty()) {
                 UpdateTexture(_screenTexture, _screen.data);
-                _screenRatio = 1;
-                _screenSize = {static_cast<float>(rgbaSpan.width()), static_cast<float>(rgbaSpan.height())};
-                _screenBorderColor = {0,0,0,255};
-            }
-            else {
-                const auto* screen = _chipEmu->getScreen();
-                if (screen) {
-                    screen->convert(pixel, _screen.width, 255, nullptr);
-                    UpdateTexture(_screenTexture, _screen.data);
-                    _screenRatio = screen->ratio();
-                    _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
-                    _screenBorderColor = GetColor(be32(screen->getBorderColor()));
-                }
-                else {
-                    // TraceLog(LOG_INFO, "Updating MC8 screen!");
-                    const auto* screenRgb = _chipEmu->getScreenRGBA();
-                    if(screenRgb) {
-                        screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                        UpdateTexture(_screenTexture, _screen.data);
-                        _screenRatio = screenRgb->ratio();
-                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
-                        _screenBorderColor = GetColor(be32(screenRgb->getBorderColor()));
-                    }
-                }
+                _screenRatio = rendered.ratio;
+                _screenSize = {static_cast<float>(rendered.width), static_cast<float>(rendered.height)};
+                _screenBorderColor = GetColor(be32(rendered.borderColor));
             }
         }
     }
@@ -1162,13 +1141,23 @@ public:
             _editor.autoSave();
         if(_mainView == eEDITOR) {
             _editor.update();
-            const auto codeSize = _editor.compiler().codeSize();
-            const bool fits = _editor.compiler().isError() || fitsIntoMemory(codeSize);
-            _editor.setProgramWarning(fits ? std::string{} : fmt::format("The program ({} bytes) doesn't fit into the memory of the selected core ({}).", codeSize, _variantName));
+            const auto codeSize = _editor.programSize();
+            const auto loadAddress = _editor.programLoadAddress();
+            const bool fits = _editor.isBuildError() || fitsIntoMemory(codeSize, loadAddress);
+            const auto language = _editor.buildLanguage();
+            const bool otherMachine = !_editor.isBuildError() && language != emu::SourceLanguage::OCTO && !isProgramTarget(language);
+            if (otherMachine)
+                _editor.setProgramWarning(fmt::format("Choose a machine with a {} and no CHIP-8 interpreter, like the {} with interpreter NONE.", emu::sourceLanguageName(language),
+                                                       language == emu::SourceLanguage::SATURN ? "HP-48SX" : "VIP"));
+            else if (!fits)
+                _editor.setProgramWarning(fmt::format("The program ({} bytes) doesn't fit into the memory of the selected core ({}).", codeSize, _variantName));
+            else
+                _editor.setProgramWarning({});
             if(_editor.contentRevision() != _loadedSourceRevision && _editor.isCompiledUpToDate() &&
-               !_editor.compiler().isError() && fits && _editor.compiler().sha1() != _romSha1) {
-                _debugger.updateOctoDebugInfo(_editor.compiler());
-                replaceProgramFromEditor({_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize()}, _editor.compiler().sha1());
+               !_editor.isBuildError() && fits && !otherMachine && _editor.programSha1() != _romSha1) {
+                if (language == emu::SourceLanguage::OCTO)
+                    _debugger.updateOctoDebugInfo(_editor.compiler());
+                replaceProgramFromEditor({_editor.programCode(), _editor.programCode() + codeSize}, _editor.programSha1(), loadAddress);
             }
         }
 
@@ -1877,7 +1866,7 @@ public:
 
             auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
             if (_mainView == eEDITOR) {
-                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.programSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
             }
             else if (_chipEmu->coreState() == emu::IEmulationCore::ECS_ERROR) {
                 StatusBar({{0.55f, fmt::format("{}, UI:{}", _chipEmu->errorMessage(), _avgGuiRenderTime).c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
@@ -2885,7 +2874,8 @@ public:
                 switch (info.type) {
                     case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
                     case Librarian::Info::eROM_FILE: icon = ICON_ROM; break;
-                    case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
+                    case Librarian::Info::eOCTO_SOURCE:
+                    case Librarian::Info::eASSEMBLY_SOURCE: icon = ICON_FILETYPE_TEXT; break;
                     default: icon = ICON_FILE_DELETE; break;
                 }
                 {
@@ -2914,7 +2904,7 @@ public:
                         selectedInfo.isKnown = false;
                         break;
                     }
-                    else if(info.type == Librarian::Info::eOCTO_SOURCE) {
+                    else if(info.type == Librarian::Info::eOCTO_SOURCE || info.type == Librarian::Info::eASSEMBLY_SOURCE) {
                         selectedInfo = info;
                         _currentFileName = info.filePath;
                     }
@@ -3110,6 +3100,13 @@ public:
             _cfg.recentFiles = _recentFiles;
             _cfg.recentFolders = _recentFolders;
             std::erase_if(_cfg.projectMainFiles, [this](const auto& entry) { return std::ranges::find(_recentFolders, entry.first) == _recentFolders.end(); });
+            // the chosen source languages, of files that still exist
+            _cfg.sourceLanguages.clear();
+            for (const auto& [path, language] : _editor.languageOverrides()) {
+                std::error_code ec;
+                if (fs::is_regular_file(path, ec))
+                    _cfg.sourceLanguages[path] = emu::sourceLanguageId(language);
+            }
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -3127,6 +3124,7 @@ public:
 
     void whenEmuChanged(emu::IEmulationCore& emu) override
     {
+        _editor.setFallbackLanguage(nativeSourceLanguage());
         _debugger.updateCore(&emu);
         _debugger.updateOctoDebugInfo(_editor.compiler());
         _propsMemento = *_properties;
@@ -3158,7 +3156,8 @@ public:
         }
         _editorDisassemblyKey.reset();
         _editor.setFilename(filename);
-        _sourcePath = compiler && fs::path(filename).extension() == ".8o" ? filename : std::string{};
+        // an Octo source, or an assembly source (it comes without compiler, the editor assembles it)
+        _sourcePath = (compiler && fs::path(filename).extension() == ".8o") || (!compiler && !source.empty()) ? filename : std::string{};
         if (!source.empty() || compiler) {
             _editor.setText(source, _sourcePath);
         }
@@ -3857,12 +3856,16 @@ int main(int argc, char* argv[])
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
-    cli.optionEnable({"--headless"}, headless, "Run a binary ROM deterministically without a window (generic CHIP-8 core)");
+    cli.optionEnable({"--headless"}, headless, "Run a ROM or source deterministically without a window (all cores, frame-driven unless the generic CHIP-8 core runs without --max-frames)");
     cli.option({"--until-presentations"}, headlessOptions.untilPresentations, "Stop after this many display updates; requires --headless").range(1, INT64_MAX);
-    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps (default 3000000)",
+    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps of the generic CHIP-8 core (default 3000000)",
+               [&](std::string) { headlessLimitSpecified = headlessOptions.maxInstructionsGiven = true; }).range(1, INT64_MAX);
+    cli.option({"--max-frames"}, headlessOptions.maxFrames, "Run headless for this many emulated frames, on every core (default 3600 for frame-driven runs)",
                [&headlessLimitSpecified](std::string) { headlessLimitSpecified = true; }).range(1, INT64_MAX);
     cli.option({"--dump-screen"}, headlessOptions.dumpScreen, "Export the last headless presentation as an image");
+    cli.option({"--dump-scale"}, headlessOptions.dumpScale, "Scale the --dump-screen image like the screen is shown: pixel aspect ratio and rotation applied, every pixel n times").range(1, 16);
     cli.option({"--dump-state"}, headlessOptions.dumpState, "Export headless machine state as JSON");
+    cli.option({"--keys"}, headlessOptions.keys, "Press CHIP-8 keys in a headless run: \"[+]<frame>:<hex keys>[+<frames held>] ...\", e.g. \"60:1 +30:16+300\", +<frame> counts from the previous release");
     cli.option({"--custom-palette"}, customPalette, "Set the colors of the palette, as comma separated list like \"#000000,#FFFFFF,...\"");
     cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
@@ -4126,7 +4129,7 @@ int main(int argc, char* argv[])
             return 1;
         }
     }
-    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified ||
+    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified || headlessOptions.dumpScale > 0 || !headlessOptions.keys.empty() ||
         !headlessOptions.dumpScreen.empty() || !headlessOptions.dumpState.empty()) {
         std::cerr << "ERROR: headless run options require --headless" << std::endl;
         return 1;

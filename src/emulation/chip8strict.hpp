@@ -397,6 +397,7 @@ public:
                     case 0x0A: {  // Fx0A - vX := key
                         if(_instructionCycles) {
                             if(_rST) {
+                                _rPC = uint16_t(_rPC - 2);
                                 addCycles(cyclesLeftInCurrentFrame());
                             }
                             else {

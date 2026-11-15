@@ -24,6 +24,7 @@
 //
 //---------------------------------------------------------------------------------------
 #include <chiplet/chip8decompiler.hpp>
+#include <chiplet/sourcelanguage.hpp>
 #include <chiplet/utility.hpp>
 #include <emuhostex.hpp>
 #include <emulation/iemulationcore.hpp>
@@ -174,6 +175,17 @@ bool Librarian::update(const emu::Properties& properties)
         for (auto& entry : _directoryEntries) {
             if (!entry.analyzed) {
                 foundOne = true;
+                constexpr size_t MAX_SOURCE_SIZE = 4 * 1024 * 1024;
+                if (entry.type == Info::eUNKNOWN_FILE && entry.fileSize < MAX_SOURCE_SIZE) {
+                    if (auto file = loadFile((fs::path(_currentPath) / entry.filePath).string()); file && std::ranges::find(*file, uint8_t{0}) == file->end()) {
+                        const auto language = emu::detectSourceLanguage(entry.filePath, {reinterpret_cast<const char*>(file->data()), file->size()}).language;
+                        if (language != emu::SourceLanguage::UNKNOWN && language != emu::SourceLanguage::OCTO) {
+                            entry.type = Info::eASSEMBLY_SOURCE;
+                            entry.variant = emu::sourceLanguageName(language);
+                            entry.sha1sum = calculateSha1(*file);
+                        }
+                    }
+                }
                 if(entry.type == Info::eROM_FILE && entry.fileSize < 1024 * 1024 * 16) {
                     if (entry.variant == "chip-8") {
                         auto file = loadFile((fs::path(_currentPath) / entry.filePath).string());

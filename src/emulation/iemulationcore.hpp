@@ -109,6 +109,7 @@ public:
 
     virtual uint32_t defaultLoadAddress() const = 0;
     virtual bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) = 0;
+    virtual bool canLoadPrograms() const { return true; }
 
     virtual bool needsScreenUpdate() { return true; }
     virtual uint16_t getCurrentScreenWidth() const { return 0; }

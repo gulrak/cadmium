@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Projects with several programs (like a test suite): a shown project file that defines `: main` becomes
   the main file; opening a folder finds its main file also among several sources (the one no other
   includes, or named like the folder)
+- Source languages in the editor: each file is Octo, CDP1802, M6800 or Saturn (ASAP) assembly, recognized by
+  Chiplet from its name and statements, else by the CPU of a machine without CHIP-8 interpreter; *Language* in
+  the panel title menu shows it and chooses another one per file, which is remembered. All four are
+  highlighted (6800 sources with first-column labels, `*` comment lines and directives, Saturn ASAP sources with
+  `name:=value`, `!` and data directives and strings), Octo, CDP1802 and Saturn are built, a main file in another
+  language says so instead of being compiled as Octo
+- CDP1802 programs: an 1802 source (any extension, recognized by its statements) is assembled with Chiplet
+  and loaded at its first `ORG` into a machine running the CDP1802 without CHIP-8 interpreter, the raw VIP is
+  chosen when another machine is selected; edits are built and loaded like Octo programs, every 1802 file of a
+  project is a program of its own; opening an M6800 source or a source with errors puts it into the editor
+  instead of refusing it as an unknown file
+- ETI-660: the raw machine (`eti-none`) has a *Code Start* option (`--code-start`) that calls machine code at
+  that address like the interpreter's `0MMM` once the monitor set up the machine (`R3` as program counter,
+  `X` = 2, `D4` returns to the monitor), loading a CDP1802 program sets it to the first `ORG`
+- Saturn programs: an ASAP source is assembled with `asacpp` (includes next to it and in the project
+  folder) and goes as an HP object onto the stack of the raw HP-48SX, which is chosen when another machine
+  is selected; the editor knows the files a Saturn build includes, they don't take over the build when shown
+- *Open...* lists assembly sources (`.asap`, or texts recognized as CDP1802, M6800 or Saturn assembly)
+  like Octo sources so they can be loaded, and the web version's file picker accepts `.asm` and `.asap`
 - Back and Forward in the editor (`Cmd+Opt+Left/Right` on macOS, `Alt+Left/Right` on Windows and Linux,
   the mouse side buttons, the panel title menu) return to the places left when another file was shown
 - A file tree over the editor (`Cmd/Ctrl+1`) that marks the main file, the open files and the files of
@@ -39,18 +58,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the native builds
 - Window GIF recordings show the pressed keyboard shortcuts (with `Cmd`/`Ctrl`/`Alt`, or `Esc`, `F1`-`F12`)
   as a caption over the status bar, repetitions count up; a checkbox in the Misc settings turns it off
+- `--headless` works with every core: `--max-frames` runs a number of emulated frames (the unit all cores
+  share, so results depend much less on the instructions per frame), cores without instructions per frame
+  (the strict and the hardware cores) always run frame-driven. `--dump-screen` writes what the GUI shows
+  (the HP LCD too), `--dump-state` has the core name, the run mode and the registers of all execution units.
+  A frame-driven run stops early when the program ends or waits in a jump to itself. Sources and the other
+  formats the GUI loads (`.8o`, `.c8b`, cartridges) can be run too.
+- `--dump-scale <n>` writes the `--dump-screen` image like the screen is shown, with the pixel aspect ratio
+  of the core (one row instead of the four lines per CHIP-8 row of the VIP) and the screen rotation applied,
+  every shown pixel as n x n pixels (`--dump-scale 12` gives 768x384 for a 64x32 screen)
+- `--keys` presses CHIP-8 keys in a headless run, for every core: `"60:1 +30:16+300"` holds key 1 from frame
+  60 for 4 frames, then keys 1 and 6 together for 300 frames, 30 frames after the release, so menus like the
+  ones of the test suite can be driven and screens with held keys captured
 
 ### Changed
 
 - The editor is now the reusable `CodeEditor` of rlguipp (with a `FileTree` and a drawer popup), it edits
   like the text fields: `Delete` key, word movement and deletion, double click selects a word, triple click
   a line, `Shift`+click extends the selection, `Cmd/Ctrl` jumps to line and text ends
+- Assembly is highlighted by one highlighter that follows Chiplet's syntax description of the language
+  (`chiplet/sourcesyntax.hpp`, the words from the assemblers' own tables) instead of three differently
+  made ones: a word the language doesn't know stays plain (Saturn colored any first word as an instruction
+  before), and a number's prefix is part of it in every language (`#12` of the CDP1802 too)
 - Typing is undone word by word (and after a pause of a second) instead of whole runs of typing
 - *Rep.all* in the replace bar is one undo step, the replace row lost its arrow button that had no function
-- Requires Chiplet with `CompileResult::includedFiles` (newer than v2.0.0)
+- The Saturn assembler `asacpp` moved from Cadmium's HP-48SX sources into Chiplet (`emu::AsaCpp`, on
+  Chiplet's Saturn decoder), the interpreters and the replacement ROM assemble byte-identically with it
+- Requires Chiplet with `CompileResult::includedFiles`, `chiplet/sourcelanguage.hpp`,
+  `chiplet/cdp1802assembler.hpp` and `chiplet/asacpp.hpp` (newer than v2.0.0)
 
 ### Fixed
 
+- `strict-chip-8`: after a key, `Fx0A` went on to the next instruction while the tone of the key still sounded,
+  and the next `Fx0A` then ended without waiting for a key
 - A compile error in an included file showed the location of the `:include` line in the main file instead
   of the error
 - The editor text and cursor were placed with a pixel offset

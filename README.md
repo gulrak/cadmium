@@ -267,7 +267,11 @@ roms that use machine code parts, and `dream-none` runs native M6800 programs
 without CHIPOS.
 
 The `eti-chip-8` preset emulates an ETI-660 (CDP1802 with CDP1864 video and
-sound) running its 64x48 CHIP-8, `eti-none` the raw machine.
+sound) running its 64x48 CHIP-8, `eti-none` the raw machine. Its monitor has no
+command to run machine code, so the raw machine's *Code Start* option calls
+machine code at that address like the interpreter's `0MMM` does, once the monitor
+set up the machine (`R3` is the program counter, `X` is 2, `D4` returns to the
+monitor); loading a CDP1802 source sets it to the program's first `ORG`.
 
 The `studio-2-builtin` preset emulates an RCA Studio II running its built-in
 games, this is still more of a preview.
@@ -377,10 +381,11 @@ following options gives a basic VIP CHIP-8:
 
 ### Source Editor
 
-The editor view shows the Octo source of the loaded program with syntax highlighting, and assembles it while
-you type: once the text was unchanged for a second, the program is compiled and replaces the one in the
-emulator, errors show up in the message area below the text (a click on the location goes there, also in an
-included file). A binary program shows its disassembly, which compiles back to the same binary.
+The editor view shows the source of the loaded program with syntax highlighting: Octo for CHIP-8 programs,
+assembly for programs of the emulated CPUs (see [Assembly Sources](#assembly-sources)). It builds the source while
+you type: once the text was unchanged for a second, the program is built and replaces the one in the emulator,
+errors show up in the message area below the text (a click on the location goes there, also in an included
+file). A binary program shows its disassembly, which compiles back to the same binary.
 
 In the native builds the editor works with the files on disk:
 
@@ -395,19 +400,20 @@ In the native builds the editor works with the files on disk:
 - **Changes on disk:** a file changed by another program is reloaded (as an undoable edit). If it has unsaved
   changes in Cadmium too, the editor says so and doesn't overwrite it automatically, *Reload from Disk* in the
   context menu or <kbd>Cmd/Ctrl</kbd> + <kbd>S</kbd> decide.
-- **Several files:** files included with `:include "file.8o"` open with <kbd>Cmd/Ctrl</kbd> + click on the name
-  (or the context menu). The main file is the one that is compiled, all open files are saved before. The panel
-  title shows the current file, a click on it lists the open files, <kbd>Ctrl</kbd> + <kbd>Tab</kbd> switches
-  to the one used before and <kbd>Cmd/Ctrl</kbd> + <kbd>W</kbd> closes the current one.
+- **Several files:** included files open with <kbd>Cmd/Ctrl</kbd> + click on the file name of an `:include`
+  line (or the context menu). The main file is the one that is built, all open files are saved before. The
+  panel title shows the current file, a click on it lists the open files, <kbd>Ctrl</kbd> + <kbd>Tab</kbd>
+  switches to the one used before and <kbd>Cmd/Ctrl</kbd> + <kbd>W</kbd> closes the current one.
 - **Project folders:** *Open Folder...* in the main menu (or *Open recent folder*) makes a folder the project.
   Its main file is the one used last there, else its only `.8o` file, the only one no other includes, or the
   one named like the folder. <kbd>Cmd/Ctrl</kbd> + <kbd>1</kbd> shows its file tree over the editor, it
   marks the main file, the open files and the files of the build, its context menu sets the main file and
   creates new files. Loading a program from the project keeps its open files open, also included files from
   outside the folder. Without a project folder the tree shows the folder of the main file.
-- **Several programs in a project:** a project `.8o` file that defines `: main` is a program of its own (like
-  the tests of a test suite), showing it makes it the main file, so it is compiled and loaded. Files without
-  `: main` only change the build they are included in.
+- **Programs in a project:** the build follows the program that is shown. An Octo `.8o` file that defines
+  `: main`, a CDP1802 file and a Saturn file the build doesn't include are programs of their own (like the
+  tests of a test suite), showing one makes it the main file, so it is built and loaded. Other files only
+  change the build that includes them.
 - **Quick open:** <kbd>Cmd/Ctrl</kbd> + <kbd>P</kbd> finds a file of the project by some letters of its name.
 - **Back and Forward:** showing another file (an include, an error location, the file list, the tree or quick
   open) remembers the place left, *Back* in the panel title menu returns there and *Forward* undoes that, also
@@ -415,6 +421,29 @@ In the native builds the editor works with the files on disk:
   are opened again.
 
 The web version edits the one source of the loaded program in memory, saving downloads it.
+
+#### Assembly Sources
+
+Every file has a language: Octo, CDP1802, M6800 or Saturn (in the ASAP syntax of Alonzo Gariepy's mnemonics,
+the one the HP-48 CHIP-8 interpreters are written in). `.8o` files are Octo and `.asap` files Saturn, other files
+like `.asm` are recognized by their statements; if they don't tell, the CPU of the selected machine decides when
+it runs without a CHIP-8 interpreter, Octo otherwise. *Language* in the panel title menu shows the language of a
+file and lets you choose another one, Cadmium remembers that. All four are highlighted. A CDP1802 or Saturn
+source that is opened like a program (with *Open...*, which lists assembly sources like `.8o` files, or from the
+project's file tree) is built, and Cadmium switches to a machine that runs its CPU without CHIP-8 interpreter if
+another one is selected; a source with errors only goes into the editor. In the web version *Open...* takes `.asm`
+and `.asap` files too, the browser hands over the file alone, so a Saturn source can't include others there.
+
+- **CDP1802:** RCA COSMAC Level I syntax, assembled with Chiplet's assembler and loaded at the first `ORG` into
+  the VIP with interpreter NONE or the raw ETI-660. The VIP starts at `0000` like its RUN switch, the ETI-660's
+  monitor has no command for machine code, so its *Code Start* option (set to the first `ORG` when a program is
+  loaded) calls it like the interpreter's `0MMM` once the monitor set up the machine.
+- **Saturn:** assembled with `asacpp` (part of Chiplet), the assembler the HP-48SX core uses for the CHIP-8
+  interpreters, includes are found next to the file and in the project folder. The result goes as an HP object
+  onto the stack of the raw HP-48SX (interpreter NONE), ready for EVAL like a downloaded object, so the source has
+  to make one (a code object with its header, like the interpreters do).
+- **M6800:** highlighted (also with labels in the first column and `*` comment lines), but there is no assembler
+  in Cadmium yet, the editor says so.
 
 ### Keyboard Shortcuts
 
@@ -472,6 +501,9 @@ General Options:
   --dump-interpreter <arg>
     Dump the given interpreter in a local file named '<interpreter>.ram' and exit
 
+  --dump-scale <arg>
+    Scale the --dump-screen image like the screen is shown: pixel aspect ratio and rotation applied, every pixel n times
+
   --dump-screen <arg>
     Export the last headless presentation as an image
 
@@ -482,10 +514,16 @@ General Options:
     Write the library without ROM data and file names to the given file, as starter library for the resources
 
   --headless
-    Run a binary ROM deterministically without a window (generic CHIP-8 core)
+    Run a ROM or source deterministically without a window (all cores, frame-driven unless the generic CHIP-8 core runs without --max-frames)
+
+  --keys <arg>
+    Press CHIP-8 keys in a headless run: "[+]<frame>:<hex keys>[+<frames held>] ...", e.g. "60:1 +30:16+300", +<frame> counts from the previous release
+
+  --max-frames <arg>
+    Run headless for this many emulated frames, on every core (default 3600 for frame-driven runs)
 
   --max-instructions <arg>
-    Limit headless instruction steps (default 3000000)
+    Limit headless instruction steps of the generic CHIP-8 core (default 3000000)
 
   --opcode-json
     Dump opcode information as JSON to stdout

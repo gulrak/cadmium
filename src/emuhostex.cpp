@@ -28,6 +28,11 @@
 
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/octocartridge.hpp>
+#include <chiplet/cdp1802assembler.hpp>
+#include <chiplet/sourcelanguage.hpp>
+#ifdef CADMIUM_WITH_HP48
+#include <chiplet/asacpp.hpp>
+#endif
 #include <sstream>
 #include <chiplet/utility.hpp>
 #include <configuration.hpp>
@@ -43,10 +48,50 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <ghc/span.hpp>
 
 namespace emu {
+
+RenderedScreen renderScreen(const IEmulationCore& core, ghc::span2d<uint32_t> target)
+{
+    RenderedScreen result;
+    if (target.empty())
+        return result;
+    // The pre-rendered HP LCD (including the generic core's HP display option) contains a fine grid, not bare CHIP-8 pixels.
+    if (const auto rgbaSpan = core.getRGBASpan(target); !rgbaSpan.empty()) {
+        if (rgbaSpan.data() != target.data()) {
+            for (size_t y = 0; y < rgbaSpan.height(); ++y)
+                std::memmove(target.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
+        }
+        result.width = static_cast<int>(rgbaSpan.width());
+        result.height = static_cast<int>(rgbaSpan.height());
+        result.borderColor = be32(0x000000FF);
+        result.preRendered = true;
+        return result;
+    }
+    auto takeScreen = [&](const auto& screen) {
+        if (screen.width() > static_cast<int>(target.width()) || screen.height() > static_cast<int>(target.height()))
+            return false;
+        const int currentWidth = core.getCurrentScreenWidth();
+        const int currentHeight = core.getCurrentScreenHeight();
+        result.width = currentWidth > 0 ? std::min(currentWidth, screen.width()) : screen.width();
+        result.height = currentHeight > 0 ? std::min(currentHeight, screen.height()) : screen.height();
+        result.ratio = screen.ratio();
+        result.borderColor = screen.getBorderColor();
+        return true;
+    };
+    if (const auto* screen = core.getScreen()) {
+        if (takeScreen(*screen))
+            screen->convert(target.data(), static_cast<int>(target.stride()), 255, nullptr);
+    }
+    else if (const auto* screenRgb = core.getScreenRGBA()) {
+        if (takeScreen(*screenRgb))
+            screenRgb->convert(target.data(), static_cast<int>(target.stride()), core.getScreenAlpha(), core.getWorkRGBA());
+    }
+    return result;
+}
 
 #ifdef CADMIUM_WITH_DATABASE
 std::unique_ptr<Database> EmuHostEx::_database;
@@ -345,26 +390,60 @@ bool EmuHostEx::applyRequests()
     return programOk;
 }
 
-bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1)
+bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1, std::optional<uint32_t> loadAddress)
 {
     RequestScope scope(*this);
     Program program;
     program.name = _romName;
     program.image = std::move(image);
     program.sha1 = sha1;
+    program.loadAddress = loadAddress;
+    if (loadAddress)
+        requestCodeStart(*loadAddress);
     program.isKnown = _romIsWellKnown;
     program.origin = ProgramOrigin::EDITOR;
     requestProgram(std::move(program));
     return scope.finish();
 }
 
-bool EmuHostEx::fitsIntoMemory(size_t size) const
+bool EmuHostEx::fitsIntoMemory(size_t size, std::optional<uint32_t> address) const
 {
     if (!_chipEmu)
         return true;
     const auto memSize = static_cast<uint64_t>(_chipEmu->memSize());
-    const uint64_t address = _chipEmu->defaultLoadAddress();
-    return address < memSize && size <= memSize - address;
+    const uint64_t start = address ? *address : _chipEmu->defaultLoadAddress();
+    return start < memSize && size <= memSize - start;
+}
+
+void EmuHostEx::requestCodeStart(uint32_t address)
+{
+    auto props = _pendingConfig ? *_pendingConfig : _properties ? *_properties : Properties{};
+    if (auto* start = props.find("codeStart"); start && start->getInt() != static_cast<int>(address)) {
+        start->setInt(static_cast<int>(address));
+        requestConfig(props);
+    }
+}
+
+bool EmuHostEx::isProgramTarget(emu::SourceLanguage language) const
+{
+    return _chipEmu && _chipEmu->canLoadPrograms() && nativeSourceLanguage() == language;
+}
+
+emu::SourceLanguage EmuHostEx::nativeSourceLanguage() const
+{
+    if (!_chipEmu || _chipEmu->numberOfExecutionUnits() != 1)
+        return emu::SourceLanguage::OCTO;
+    auto* unit = _chipEmu->executionUnit(0);
+    if (!unit || dynamic_cast<IChip8Emulator*>(unit))
+        return emu::SourceLanguage::OCTO;
+    const auto name = unit->name();
+    if (name == "CDP1802")
+        return emu::SourceLanguage::CDP1802;
+    if (name == "M6800")
+        return emu::SourceLanguage::M6800;
+    if (name.starts_with("SATURN"))
+        return emu::SourceLanguage::SATURN;
+    return emu::SourceLanguage::OCTO;
 }
 
 bool EmuHostEx::programFits(const Program& program) const
@@ -725,6 +804,16 @@ static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
 }
 #endif
 
+static emu::SourceLanguage assemblySourceLanguage(std::string_view filename, std::span<const uint8_t> data, emu::SourceLanguage native)
+{
+    if (std::ranges::find(data, uint8_t{0}) != data.end() || CoreRegistry::propertiesForExtension(fs::path(filename).extension().string()))
+        return emu::SourceLanguage::UNKNOWN;
+    auto language = emu::detectSourceLanguage(filename, {reinterpret_cast<const char*>(data.data()), data.size()}).language;
+    if (language == emu::SourceLanguage::UNKNOWN)
+        language = native;
+    return language == emu::SourceLanguage::OCTO ? emu::SourceLanguage::UNKNOWN : language;
+}
+
 bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt)
 {
     if (fs::path(filename).extension() == ".hex") {
@@ -766,6 +855,44 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         if ((loadOpt & DontChangeOptions) == 0) {
             isKnown = _librarian.isKnownFile(program.image);
         }
+    }
+    else if (const auto language = assemblySourceLanguage(filename, fileData, nativeSourceLanguage()); language != emu::SourceLanguage::UNKNOWN) {
+        program.source.assign(reinterpret_cast<const char*>(fileData.data()), fileData.size());
+        const bool changeMachine = (loadOpt & DontChangeOptions) == 0 && !isProgramTarget(language);
+        bool built = false;
+        if (language == emu::SourceLanguage::CDP1802) {
+            emu::Cdp1802Assembler assembler;
+            if (assembler.compile(std::string(filename), program.source).resultType == emu::CompileResult::eOK) {
+                program.image.assign(assembler.code(), assembler.code() + assembler.codeSize());
+                program.sha1 = assembler.sha1();
+                program.loadAddress = assembler.startAddress();
+                if (changeMachine)
+                    requestConfig(CoreRegistry::propertiesForPreset("vip-none"));
+                if ((loadOpt & DontChangeOptions) == 0)
+                    requestCodeStart(assembler.startAddress());
+                built = true;
+            }
+        }
+#ifdef CADMIUM_WITH_HP48
+        else if (language == emu::SourceLanguage::SATURN) {
+            emu::AsaCpp assembler;
+            if (assembler.compile(fs::path(std::string(filename)), std::span<const char>(program.source.data(), program.source.size())).resultType != emu::CompileResult::eERROR) {
+                const auto code = assembler.code();
+                program.image.assign(code.begin(), code.end());
+                program.sha1 = assembler.sha1();
+                if (changeMachine)
+                    requestConfig(CoreRegistry::propertiesForPreset("hp48-none"));
+                built = true;
+            }
+        }
+#endif
+        if (!built) {
+            _romName = filename;
+            _romOrigin = ProgramOrigin::FILE;
+            whenRomLoaded(_romName, false, nullptr, program.source);
+            return true;
+        }
+        isKnown = false;
     }
     else if (endsWith(filename, ".c8b")) {
         // A CBF container: the bytecode of the best supported variant, with the palette and

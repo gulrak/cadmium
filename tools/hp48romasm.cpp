@@ -33,7 +33,7 @@
 //---------------------------------------------------------------------------------------
 
 #include <ghc/fs_impl.hpp>
-#include <emulation/hardware/hp48/asacpp/asacpp.hpp>
+#include <chiplet/asacpp.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
         return 2;
     }
     const std::string source{std::istreambuf_iterator<char>(in), {}};
-    AsaCpp assembler;
+    emu::AsaCpp assembler;
     assembler.compile(sourcePath, std::span<const char>(source.data(), source.size()));
     if (assembler.isError()) {
         std::cerr << "error: " << assembler.compileResult().errorMessage << "\n";

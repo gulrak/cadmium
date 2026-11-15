@@ -56,7 +56,7 @@ public:
     };
     struct Info
     {
-        enum Type { eDIRECTORY, eUNKNOWN_FILE, eROM_FILE, eOCTO_SOURCE };
+        enum Type { eDIRECTORY, eUNKNOWN_FILE, eROM_FILE, eOCTO_SOURCE, eASSEMBLY_SOURCE };
         std::string filePath;
         Type type;
         std::string variant;

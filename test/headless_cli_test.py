@@ -85,6 +85,132 @@ def read_png(path):
     return width, height, channels, rows
 
 
+def check_frames(directory, mono):
+    """Frame-driven runs (--max-frames) on the generic and other cores."""
+    # A frame is the unit: 3 frames at 10 instructions each, no matter how
+    # many instructions the limit would allow.
+    counter = write_rom(directory / 'counter.ch8', [0x7001, 0x1200])
+    run(counter, directory, '--preset', 'chip-8',
+        '--instructions-per-frame', 10, '--max-frames', 3,
+        '--dump-state', 'counter.json')
+    state = json.loads((directory / 'counter.json').read_text())
+    assert state['mode'] == 'frames' and state['stopReason'] == 'frame-limit'
+    assert state['executedFrames'] == 3 and state['frames'] == 3
+    assert state['instructions'] == 30 and state['v'][0] == 15
+    assert state['executionUnits'][0]['pc'] == 0x200
+    run(counter, directory, '--preset', 'chip-8', '--max-frames', 3,
+        '--max-instructions', 100, expected_code=1)
+    run(counter, directory, '--preset', 'chip-8',
+        '--instructions-per-frame', 0, '--max-frames', 3, expected_code=1)
+    # The hardware VIP runs the original interpreter, the screen is the raw
+    # CDP1861 picture with four lines per CHIP-8 row. The interpreter core
+    # stops on the jump to itself at the end.
+    run(mono, directory, '--preset', 'vip-chip-8', '--max-frames', 120,
+        '--dump-screen', 'vip.png', '--dump-state', 'vip.json')
+    state = json.loads((directory / 'vip.json').read_text())
+    assert state['mode'] == 'frames' and state['stopReason'] == 'endless-loop'
+    assert state['pc'] == 0x208 and state['executedFrames'] < 120
+    assert 'CDP1802' in [unit['name'] for unit in state['executionUnits']]
+    width, height, channels, rows = read_png(directory / 'vip.png')
+    assert (width, height) == (64, 128)
+    assert any(rows[120][60 * channels:60 * channels + 3])
+    assert not any(rows[119][60 * channels:60 * channels + 3])
+    previous_png = (directory / 'vip.png').read_bytes()
+    run(mono, directory, '--preset', 'vip-chip-8', '--max-frames', 120,
+        '--dump-screen', 'vip.png', '--dump-state', 'vip2.json')
+    assert (directory / 'vip.png').read_bytes() == previous_png
+    assert json.loads((directory / 'vip2.json').read_text()) == state
+    run(mono, directory, '--preset', 'vip-chip-8', '--max-instructions', 100,
+        expected_code=1)
+    check_dump_scale(directory, mono)
+
+
+def lit(rows, channels, x, y):
+    return any(rows[y][x * channels:x * channels + 3])
+
+
+def check_dump_scale(directory, mono):
+    """--dump-scale writes the screen as shown: aspect ratio and rotation."""
+    # The VIP's four lines per CHIP-8 row become one shown row.
+    run(mono, directory, '--preset', 'vip-chip-8', '--max-frames', 120,
+        '--dump-screen', 'shown.png', '--dump-scale', 1)
+    width, height, channels, rows = read_png(directory / 'shown.png')
+    assert (width, height) == (64, 32)
+    assert lit(rows, channels, 60, 30) and not lit(rows, channels, 60, 29)
+    # Every shown pixel becomes 3x3 pixels.
+    run(mono, directory, '--preset', 'vip-chip-8', '--max-frames', 120,
+        '--dump-screen', 'shown.png', '--dump-scale', 3)
+    width, height, channels, rows = read_png(directory / 'shown.png')
+    assert (width, height) == (192, 96)
+    assert all(lit(rows, channels, x, y)
+               for x in range(180, 183) for y in range(90, 93))
+    assert not lit(rows, channels, 180, 89) and not lit(rows, channels, 179, 90)
+    # A clockwise rotation by 90 degrees puts pixel (60, 30) at (1, 60).
+    run(mono, directory, '--preset', 'chip-8', '--screen-rotation', 90,
+        '--instructions-per-frame', 1, '--until-presentations', 1,
+        '--dump-screen', 'shown.png', '--dump-scale', 1)
+    width, height, channels, rows = read_png(directory / 'shown.png')
+    assert (width, height) == (32, 64)
+    assert lit(rows, channels, 1, 60) and not lit(rows, channels, 30, 60)
+    run(mono, directory, '--preset', 'chip-8', '--dump-scale', 2,
+        expected_code=1)
+    check_keys(directory)
+
+
+def run_keys(rom, directory, preset, keys, frames, expected_code=0):
+    options = ['--preset', preset, '--max-frames', frames,
+               '--dump-state', 'keys.json']
+    if preset == 'chip-8':
+        options += ['--instructions-per-frame', 10]
+    if keys is not None:
+        options += ['--keys', keys]
+    result = run(rom, directory, *options, expected_code=expected_code)
+    return json.loads((directory / 'keys.json').read_text()), result
+
+
+def check_keys(directory):
+    """--keys presses CHIP-8 keys at given frames, on every core."""
+    # Ex9E: v1 := 1 once key 5 is down.
+    skip = write_rom(directory / 'skip.ch8', [
+        0x6005, 0xE09E, 0x1202, 0x6101, 0x1208,
+    ])
+    for preset in ('chip-8', 'vip-chip-8'):
+        state, _ = run_keys(skip, directory, preset, None, 60)
+        assert state['v'][1] == 0 and state['stopReason'] == 'frame-limit'
+        assert 'keys' not in state
+        state, _ = run_keys(skip, directory, preset, '20:5', 60)
+        assert state['v'][1] == 1 and state['stopReason'] == 'endless-loop'
+        # The program ends in its loop while key 5 is still down.
+        assert state['executedFrames'] > 20 and state['keys'] == '20:5'
+    # Several keys at once: only "16" holds 1 and 6 together.
+    both = write_rom(directory / 'both.ch8', [
+        0x6001, 0x6106, 0xE09E, 0x1204, 0xE19E, 0x1204, 0x6201, 0x120E,
+    ])
+    state, _ = run_keys(both, directory, 'chip-8', '10:16', 60)
+    assert state['v'][2] == 1
+    state, _ = run_keys(both, directory, 'chip-8', '10:1,+5:6', 60)
+    assert state['v'][2] == 0 and state['keysDone']
+    # Fx0A takes a held key with its release, the + start counts from the
+    # previous release.
+    wait = write_rom(directory / 'wait.ch8', [0xF30A, 0xF40A, 0x1204])
+    for preset in ('chip-8', 'strict-chip-8'):
+        state, _ = run_keys(wait, directory, preset, '5:A+3 +2:B', 60)
+        assert state['v'][3] == 0xA and state['v'][4] == 0xB
+        assert state['pc'] == 0x204
+        # Key A is still down at the end: the second Fx0A still waits.
+        state, result = run_keys(wait, directory, preset, '5:1 +2:A+50', 30)
+        assert state['v'][3] == 1 and state['v'][4] == 0
+        assert state['pc'] == 0x202
+        assert not state['keysDone'] and 'key script' in result.stderr
+    for bad in ('x', '60', '60:', '60:G', '60:1+0', '-5:1', '60:1+x'):
+        run_keys(wait, directory, 'chip-8', bad, 10, expected_code=1)
+    result = subprocess.run(
+        [str(BINARY), '--preset', 'chip-8', '--keys', '60:1'],
+        capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 1 and 'require --headless' in result.stderr
+
+
 def main():
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary)
@@ -185,7 +311,14 @@ def main():
         width, height, channels, rows = read_png(directory / 'mono.png')
         assert (width, height) == (64, 32)
         assert any(rows[30][60 * channels:60 * channels + 3])
-        run(rom, directory, '--preset', 'strict-chip-8', expected_code=1)
+        # Cores without instructions per frame run frame-driven, the strict
+        # core rejects the MegaChip opcode as an emulator error.
+        run(rom, directory, '--preset', 'strict-chip-8',
+            '--dump-state', 'strict.json', expected_code=1)
+        strict = json.loads((directory / 'strict.json').read_text())
+        assert strict['mode'] == 'frames'
+        assert strict['stopReason'] == 'emulator-error' and strict['error']
+        check_frames(directory, mono)
         run(directory / 'missing.mc8', directory, expected_code=1)
         empty = write_rom(directory / 'empty.mc8', [])
         run(empty, directory, expected_code=1)

@@ -238,6 +238,25 @@ void SourceFile::revertToOpened()
 }
 
 // Replaces the whole text as one undoable edit, the cursor stays in its line and column as far as possible
+bool SourceFile::updateDetectedLanguage()
+{
+    if (_detectedRevision == contentRevision() && _detectedPath == _path)
+        return false;
+    _detectedRevision = contentRevision();
+    _detectedPath = _path;
+    const auto language = emu::detectSourceLanguage(_path, getText()).language;
+    const bool changed = language != _detectedLanguage;
+    _detectedLanguage = language;
+    return changed;
+}
+
+void SourceFile::setDetectedLanguage(emu::SourceLanguage language)
+{
+    _detectedLanguage = language;
+    _detectedRevision = contentRevision();
+    _detectedPath = _path;
+}
+
 void SourceFile::replaceText(std::string text)
 {
     const auto line = _code.line();

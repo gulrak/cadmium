@@ -16,7 +16,7 @@
 ; code object on EVAL and provides the ROM routines and the TIMER1 interrupt the
 ; five HP-48 CHIP-8 interpreters use, with the same register, RAM and cycle effects.
 ;
-; The build assembles it with Cadmium's AsaCpp into a 256 KB image ("#xxxxx:" places
+; The build assembles it with Chiplet's AsaCpp into a 256 KB image ("#xxxxx:" places
 ; code) and compiles it in as the resource cadmium-hp48sx-rom. The HP-48SX core uses
 ; it when HP's ROM (sxrom-rev-e) isn't available. By hand:
 ;     hp48romasm cadmium-hp48sx-rom.asap cadmium-hp48sx-rom.bin

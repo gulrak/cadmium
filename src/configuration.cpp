@@ -74,6 +74,7 @@ void to_json(nlohmann::json& j, const CadmiumConfiguration& cc) {
         {"recentFiles", cc.recentFiles},
         {"recentFolders", cc.recentFolders},
         {"projectMainFiles", cc.projectMainFiles},
+        {"sourceLanguages", cc.sourceLanguages},
         {"emuProperties", cc.emuProperties},
         {"romConfigs", cc.romConfigs}
     };
@@ -119,6 +120,9 @@ void from_json(const nlohmann::json& j, CadmiumConfiguration& cc) {
     cc.projectMainFiles.clear();
     if (j.contains("projectMainFiles") && j.at("projectMainFiles").is_object())
         j.at("projectMainFiles").get_to(cc.projectMainFiles);
+    cc.sourceLanguages.clear();
+    if (j.contains("sourceLanguages") && j.at("sourceLanguages").is_object())
+        j.at("sourceLanguages").get_to(cc.sourceLanguages);
     cc.volume = j.value("volume", 0.5f);
     cc.guiHue = j.value("guiHue", 192);
     cc.guiSat = j.value("guiSaturation", 90);

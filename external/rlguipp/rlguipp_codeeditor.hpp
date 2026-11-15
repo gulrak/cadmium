@@ -150,6 +150,7 @@ public:
 
     // The look
     void setHighlighter(const SyntaxHighlighter* highlighter);  // not owned, it must outlive its use, nullptr shows plain text
+    const SyntaxHighlighter* highlighter() const { return _highlighter; }
     void updateHighlighting();                                  // scans the text again, after the rules of the highlighter changed
     void setTextStyle(const CodeTextStyle& style) { _textStyle = style; }
     const CodeTextStyle& textStyle() const { return _textStyle; }

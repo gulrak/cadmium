@@ -79,7 +79,7 @@ target_compile_definitions(editor-tests PRIVATE WITHOUT_STB_IMAGE)
 target_link_libraries(editor-tests PRIVATE doctest emulation rlguipp)
 doctest_discover_tests(editor-tests PROPERTIES TIMEOUT 30)
 
-add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp cartridge_tests.cpp display_wait_tests.cpp host_lifecycle_tests.cpp multipage_display_tests.cpp property_ids_tests.cpp property_rules_tests.cpp
+add_executable(hex-rom-tests main.cpp hex_rom_tests.cpp assembly_source_tests.cpp cartridge_tests.cpp display_wait_tests.cpp host_lifecycle_tests.cpp multipage_display_tests.cpp property_ids_tests.cpp property_rules_tests.cpp
     ../src/emuhostex.cpp ../src/librarian.cpp ../src/configuration.cpp ../src/systemtools.cpp)
 target_compile_definitions(hex-rom-tests PRIVATE WITHOUT_STB_IMAGE CADMIUM_VERSION="${PROJECT_VERSION}")
 if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/docs/ETI-660/Chip-8 ETI660 Hybrids")

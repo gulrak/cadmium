@@ -26,9 +26,11 @@
 #pragma once
 
 #include <chiplet/octocompiler.hpp>
+#include <chiplet/sourcelanguage.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <rlguipp/rlguipp_codeeditor.hpp>
@@ -79,6 +81,16 @@ public:
     bool isChangedOnDisk() const { return _changedOnDisk; }
     void reloadFromDisk();
 
+    // The language Chiplet detects from the file name and the text (see emu::detectSourceLanguage()), UNKNOWN if it can't
+    // tell. updateDetectedLanguage() detects it again if the text or the file changed since, and returns true if the
+    // result changed; setDetectedLanguage() sets it for a generated text.
+    emu::SourceLanguage detectedLanguage() const { return _detectedLanguage; }
+    bool updateDetectedLanguage();
+    void setDetectedLanguage(emu::SourceLanguage language);
+    // The language chosen for this file, it wins over the detected one (Editor remembers it by the path)
+    const std::optional<emu::SourceLanguage>& languageOverride() const { return _languageOverride; }
+    void setLanguageOverride(std::optional<emu::SourceLanguage> language) { _languageOverride = language; }
+
 private:
     bool writeDiskFile(bool overwriteChanged);
     void writeHistory();
@@ -97,4 +109,8 @@ private:
     std::string _historyDirectory;
     bool _historyWritten{false};
     bool _changedOnDisk{false};            // changed by another program while there were own unsaved changes
+    emu::SourceLanguage _detectedLanguage{emu::SourceLanguage::UNKNOWN};
+    uint32_t _detectedRevision{~0u};       // the text the language was detected for, with _detectedPath
+    std::string _detectedPath;
+    std::optional<emu::SourceLanguage> _languageOverride;
 };

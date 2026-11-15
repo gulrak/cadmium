@@ -56,6 +56,7 @@ static const std::string PROP_AUDIO = "audio";
 static const std::string PROP_KEYBOARD = "keyboard";
 static const std::string PROP_ROM_NAME = "romName";
 static const std::string PROP_START_ADDRESS = "startAddress";
+static const std::string PROP_CODE_START = "codeStart";
 static const std::string PROP_CRT_EFFECT{propid::CRT_EFFECT};
 
 enum ETIVideoType { ETI_VT_CDP1864 };
@@ -89,6 +90,7 @@ struct Eti660Options
         result[PROP_ROM_NAME].setString(romName);
         //result[PROP_INTERPRETER].setSelectedIndex(toType(interpreter));
         result[PROP_START_ADDRESS].setInt(startAddress);
+        result[PROP_CODE_START].setInt(codeStart);
         result.palette() = palette;
         return result;
     }
@@ -107,6 +109,7 @@ struct Eti660Options
         opts.romName = props[PROP_ROM_NAME].getString();
         //opts.interpreter = static_cast<VIPChip8Interpreter>(props[PROP_INTERPRETER].getSelectedIndex());
         opts.startAddress = props[PROP_START_ADDRESS].getInt();
+        opts.codeStart = props[PROP_CODE_START].getInt();
         opts.palette = props.palette();
         return opts;
     }
@@ -128,6 +131,7 @@ struct Eti660Options
             prototype.registerProperty({PROP_ROM_NAME, "ROM Name", "C8-MONITOR"s, "Rom image name, default c8-monitor"});
             //prototype.registerProperty({PROP_INTERPRETER, Property::Combo{"NONE", "CHIP8", "CHIP10", "CHIP8RB", "CHIP8TPD", "CHIP8FPD", "CHIP8X", "CHIP8XTPD", "CHIP8XFPD", "CHIP8E"}, "CHIP-8 interpreter variant"});
             prototype.registerProperty({PROP_START_ADDRESS, "Start Address", Property::Integer{0x600, 0, 4095}, "CHIP-8 entry address (0 boots the monitor)"});
+            prototype.registerProperty({PROP_CODE_START, "Code Start", Property::Integer{0, 0, 4095}, "Without CHIP-8 start address: machine code the interpreter calls like 0MMM once the monitor set up the machine (0 leaves the monitor waiting for keys)"});
         }
         return prototype;
     }
@@ -141,6 +145,7 @@ struct Eti660Options
     ETIKeyboard keyboard;
     std::string romName;
     uint16_t startAddress;
+    uint16_t codeStart{0};  // raw mode: machine code called like 0MMM after the monitor's setup, 0 for none
     bool crtEffect{false};
     Palette palette;
 };
@@ -387,7 +392,8 @@ void Eti660::handleReset(bool cold)
     _impl->_wavePhase = 0;
     _cpuState = eNORMAL;
     _errorMessage.clear();
-    if (_isHybridChipMode) {
+    const bool callCode = !_isHybridChipMode && _impl->_options.codeStart != 0;
+    if (_isHybridChipMode || callCode) {
         setExecMode(eRUNNING);
         const auto setupLimit = _impl->_cpu.cycles() + 4 * 8 * _impl->_video.cyclesPerFrame();
         while (_impl->_cpu.PC() != _impl->_fetchEntry && _execMode != ePAUSED && _impl->_cpu.cycles() < setupLimit)
@@ -406,11 +412,24 @@ void Eti660::handleReset(bool cold)
             _cpuState = eERROR;
             _errorMessage = "ETI INTERPRETER DIDN'T SETUP";
         }
-        else {
+        else if (_isHybridChipMode) {
             _impl->_initialChip8SP = _impl->_cpu.getR(2);
             _impl->_cpu.setR(5, _impl->_startAddress);
             _impl->_cpu.setR(8, 0);
             fetchState();
+            _cycles = 0;
+        }
+        else {
+            // like the interpreter does for 0MMM: R3 = MMM and SEP R3 with X = 2, a SEP R4 (D4) returns to 0x0227 (BR 0200),
+            // the CHIP-8 PC is the monitor's start then, so a returning program ends in the monitor
+            Cdp1802State state;
+            _impl->_cpu.getState(state);
+            state.r[3] = _impl->_options.codeStart;
+            state.r[4] = 0x0227;
+            state.r[5] = 0x001C;
+            state.p = 3;
+            state.x = 2;
+            _impl->_cpu.setState(state);
             _cycles = 0;
         }
     }
