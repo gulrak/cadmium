@@ -26,6 +26,10 @@
 
 #include <rlguipp/rlguipp.hpp>
 #include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <cstring>
+#include <optional>
 #include <fmt/format.h>
 #include <ghc/bit.hpp>
 #include <stylemanager.hpp>
@@ -98,6 +102,26 @@ T readStackEntry(const uint8_t* address, emu::GenericCpu::Endianness endianness)
         }
     }
     return 0;
+}
+
+// Parses a hex address as typed into the memory view, an optional "0x" or "$" prefix is allowed
+static std::optional<uint32_t> parseHexAddress(const char* text)
+{
+    const char* begin = text;
+    const char* end = text + std::strlen(text);
+    while (begin < end && *begin == ' ')
+        ++begin;
+    while (end > begin && end[-1] == ' ')
+        --end;
+    if (end - begin > 2 && begin[0] == '0' && (begin[1] == 'x' || begin[1] == 'X'))
+        begin += 2;
+    else if (begin < end && *begin == '$')
+        ++begin;
+    uint32_t value = 0;
+    const auto [ptr, ec] = std::from_chars(begin, end, value, 16);
+    if (begin == end || ec != std::errc() || ptr != end)
+        return std::nullopt;
+    return value;
 }
 
 static std::pair<const char*, bool> formatStackElement(const emu::GenericCpu::StackContent& stack, size_t index, const std::vector<uint8_t>& backupData)
@@ -235,12 +259,43 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
         showCpuPanels(*visibleUnit, font, lineSpacing);
     }
     static Vector2 memScroll{0,0};
-    static uint8_t memPage{0};
-    BeginPanel(memPage ? TextFormat("Memory [%02X....]", memPage) : "Memory", {0,0});
+    BeginPanel("Memory", {0,0});
     {
         auto pos = GetCurrentPos();
         auto area = GetContentAvailable();
+        const Rectangle memArea{pos.x, pos.y, area.width, area.height};
+        const auto bytesPerLine = 16;
+        const auto visibleLines = std::max(1, static_cast<int>(area.height / lineSpacing) - 1);
         GuiCheckBox({pos.x + area.width - 56, pos.y - 13, 10, 10}, "Follow", &_memViewFollow);
+        // Goto field in the title bar, it shows the address of the top line and is cleared for
+        // the input when clicked, Enter jumps to the address, a click elsewhere just leaves it.
+        // REVIEW: rlguipp has no TextBox at a given rectangle, so this is the raygui one like the
+        // Follow checkbox next to it.
+        if (!_memGotoEdit) {
+            const auto topLine = std::max(0, static_cast<int>(std::round(-memScroll.y / lineSpacing)));
+            *fmt::format_to_n(_memGotoText, sizeof(_memGotoText) - 1, "{:06X}", topLine * bytesPerLine).out = 0;
+        }
+        const Rectangle gotoRect{pos.x + area.width - 56 - 58, pos.y - 14, 52, 12};
+        GuiLabel({gotoRect.x - 36, gotoRect.y, 34, gotoRect.height}, "Goto:");
+        const auto textPadding = GuiGetStyle(TEXTBOX, TEXT_PADDING);
+        GuiSetStyle(TEXTBOX, TEXT_PADDING, 2);
+        const bool gotoToggled = GuiTextBox(gotoRect, _memGotoText, 9, _memGotoEdit);
+        GuiSetStyle(TEXTBOX, TEXT_PADDING, textPadding);
+        if (gotoToggled) {
+            if (_memGotoEdit) {
+                if (IsKeyPressed(KEY_ENTER)) {
+                    if (auto address = parseHexAddress(_memGotoText)) {
+                        // Jumping somewhere is a decision against following I
+                        _memViewFollow = false;
+                        memScroll.y = -static_cast<float>(std::min(*address, static_cast<uint32_t>(_core->memSize() - 1)) / bytesPerLine) * lineSpacing;
+                    }
+                }
+            }
+            else {
+                _memGotoText[0] = 0;
+            }
+            _memGotoEdit = !_memGotoEdit;
+        }
         pos.x += 6;
         pos.y -= lineSpacing / 2;
         SetStyle(DEFAULT, BORDER_WIDTH, 0);
@@ -248,11 +303,33 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
         if(_memViewFollow && chip8Core() && (_core->focussedExecutionUnit()->execMode() != emu::GenericCpu::ePAUSED || lastExecMode != emu::GenericCpu::ePAUSED))
             memScroll.y = -(float)(chip8Core()->getI() / 16) * lineSpacing;
         lastExecMode = _core->focussedExecutionUnit()->execMode();
-        auto bytesPerLine = 16;
+        // raygui scales the wheel step with the ratio of content to view height, with 16MB of
+        // MegaChip memory that is thousands of lines per notch. The view does its own wheel
+        // handling in lines and locks raygui for that frame, it still clamps the result.
+        bool lockedForWheel = false;
+        if (!GuiIsLocked() && CheckCollisionPointRec(GetMousePosition(), memArea)) {
+            const auto wheelV = GetMouseWheelMoveV();
+            const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+            // macOS turns a shifted mouse wheel into horizontal scrolling
+            const float wheel = shift && wheelV.y == 0.0f ? wheelV.x : wheelV.y;
+            if (wheel != 0.0f) {
+                if (wheel * _memWheelRemainder < 0.0f)
+                    _memWheelRemainder = 0.0f;
+                _memWheelRemainder += wheel;
+                if (const int units = static_cast<int>(_memWheelRemainder)) {
+                    _memWheelRemainder -= static_cast<float>(units);
+                    const int lines = units * (shift ? visibleLines : 3);
+                    memScroll.y = std::round(memScroll.y / lineSpacing + static_cast<float>(lines)) * lineSpacing;
+                }
+                GuiLock();
+                lockedForWheel = true;
+            }
+        }
         BeginScrollPanel(area.height, {0,0,area.width-6, (float)(_core->memSize()/bytesPerLine + 1) * lineSpacing}, &memScroll);
+        if (lockedForWheel)
+            GuiUnlock();
 #if 0
         auto addr = int(-memScroll.y / lineSpacing) * 8 - 8;
-        memPage = addr < 0 ? 0 : addr >> 16;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * 8 >= 0 && addr + i * 8 < _core->memSize()) {
                 DrawTextClipped(font, TextFormat("%06X", (addr + i * 8)), {pos.x, pos.y + i * lineSpacing}, lightgrayCol);
@@ -267,8 +344,7 @@ void Debugger::render(Font& font, const std::function<void(Rectangle,int)>& draw
             }
         }
 #else
-        auto addr = int(-memScroll.y / lineSpacing) * bytesPerLine - bytesPerLine;
-        memPage = addr < 0 ? 0 : addr >> 16;
+        auto addr = int(std::round(-memScroll.y / lineSpacing)) * bytesPerLine - bytesPerLine;
         for (int i = 0; i < area.height/lineSpacing + 1; ++i) {
             if(addr + i * bytesPerLine >= 0 && addr + i * bytesPerLine < _core->memSize()) {
                 DrawTextClipped(font, TextFormat("%06X", (addr + i * bytesPerLine)), {pos.x - 1, pos.y + i * lineSpacing}, lightgrayCol);

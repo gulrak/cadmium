@@ -76,6 +76,9 @@ private:
     float _wheelRemainder{0.0f};
     int _activeInstructionsTab{0};
     bool _memViewFollow{true};
+    float _memWheelRemainder{0.0f};
+    char _memGotoText[16]{};
+    bool _memGotoEdit{false};
     std::vector<RegPack> _cpuStates;
     std::vector<RegPack> _cpuStatesBackup;
     std::vector<std::vector<uint8_t>> _stackBackup;
