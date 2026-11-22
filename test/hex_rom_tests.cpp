@@ -6,6 +6,7 @@
 #include <chiplet/utility.hpp>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -25,10 +26,13 @@ public:
 struct HexFixture
 {
     HexFixture()
-        : directory(std::filesystem::temp_directory_path() /
-                    ("cadmium-hex-test-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())))
     {
-        std::filesystem::create_directory(directory);
+        const auto stamp = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+        for (int attempt = 0;; ++attempt) {
+            directory = std::filesystem::temp_directory_path() / ("cadmium-hex-test-" + stamp + "-" + std::to_string(attempt));
+            if (std::filesystem::create_directory(directory))
+                break;
+        }
     }
     ~HexFixture() { std::filesystem::remove_all(directory); }
     std::filesystem::path directory;

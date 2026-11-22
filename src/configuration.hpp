@@ -44,7 +44,11 @@ struct CadmiumConfiguration
     std::string workingDirectory;
     std::vector<std::string> libraryPath;
     std::string recordingDirectory;
+    bool gifShowShortcuts{true};
     RecentFiles recentFiles;
+    RecentFiles recentFolders;
+    std::map<std::string, std::string> projectMainFiles;
+    std::map<std::string, std::string> sourceLanguages;
     emu::Properties emuProperties;
     std::map<Sha1::Digest,emu::Properties> romConfigs;
     bool load(const std::string& filepath);

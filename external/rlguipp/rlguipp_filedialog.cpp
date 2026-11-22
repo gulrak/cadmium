@@ -22,6 +22,7 @@
 //
 //---------------------------------------------------------------------------------------
 #include <rlguipp/rlguipp_filedialog.hpp>
+#include <rlguipp/rlguipp_detail.hpp>
 #include <ghc/fs_fwd.hpp>
 
 #include <algorithm>
@@ -130,6 +131,34 @@ void SetDefaultFileIcons(const std::unordered_map<std::string_view, int>& icons)
     g_fileIconMap = icons;
 }
 
+namespace detail {
+
+bool listDirectory(const std::string& path, std::vector<DirectoryEntry>& entries)
+{
+    entries.clear();
+    std::error_code ec;
+    ghc::filesystem::directory_iterator iter(path, ghc::filesystem::directory_options::skip_permission_denied, ec);
+    if (ec)
+        return false;
+    for (const auto end = ghc::filesystem::directory_iterator(); iter != end; iter.increment(ec)) {
+        if (ec)
+            break;
+        const auto& entry = *iter;
+        if (entry.is_directory(ec))
+            entries.push_back({entry.path().string(), entry.path().filename().string(), true, 0, entry.last_write_time(ec)});
+        else if (entry.is_regular_file(ec))
+            entries.push_back({entry.path().string(), entry.path().filename().string(), false, entry.file_size(ec), entry.last_write_time(ec)});
+    }
+    std::ranges::sort(entries, [](const DirectoryEntry& a, const DirectoryEntry& b) {
+        if (a.isDirectory != b.isDirectory)
+            return a.isDirectory;
+        return std::ranges::lexicographical_compare(a.name, b.name, [](unsigned char x, unsigned char y) { return std::tolower(x) < std::tolower(y); });
+    });
+    return true;
+}
+
+}  // namespace detail
+
 bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
 {
     static Vector2 scroll{};
@@ -151,33 +180,18 @@ bool ModalFileDialog(FileDialogInfo& info, bool* isOpen)
         if (ghc::filesystem::path(fdi.path).has_parent_path()) {
             fdi.entries.emplace_back("..", 0, ghc::filesystem::file_time_type{}, FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
         }
-        try {
-            for (const auto& entry : ghc::filesystem::directory_iterator(fdi.path, ghc::filesystem::directory_options::skip_permission_denied)) {
-                if (entry.is_directory()) {
-                    fdi.entries.emplace_back(entry.path().string(), 0, entry.last_write_time(), FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
-                }
-                else if (entry.is_regular_file()) {
-                    auto ext = entry.path().extension().string();
-                    auto it = fdi.fileIcons.find(ext.empty() ? ext : ext.substr(1));
-                    fdi.entries.emplace_back(entry.path().string(), entry.file_size(), entry.last_write_time(), FileDialogInfo::DirEntry::File, entry.path().extension().string(), it != fdi.fileIcons.end() ? it->second : ICON_FILE);
-                }
+        std::vector<detail::DirectoryEntry> listing;
+        detail::listDirectory(fdi.path, listing);
+        for (const auto& entry : listing) {
+            if (entry.isDirectory) {
+                fdi.entries.emplace_back(entry.path, 0, entry.time, FileDialogInfo::DirEntry::Dir, "", ICON_FOLDER);
+            }
+            else {
+                auto ext = ghc::filesystem::path(entry.path).extension().string();
+                auto it = fdi.fileIcons.find(ext.empty() ? ext : ext.substr(1));
+                fdi.entries.emplace_back(entry.path, entry.size, entry.time, FileDialogInfo::DirEntry::File, ext, it != fdi.fileIcons.end() ? it->second : ICON_FILE);
             }
         }
-        catch (ghc::filesystem::filesystem_error& e) {
-            // ignore for now
-        }
-        std::ranges::sort(fdi.entries, [](const FileDialogInfo::DirEntry &a, const FileDialogInfo::DirEntry &b) {
-            if (a.name == "..") return true;
-            if (b.name == "..") return false;
-            if (a.type != b.type) {
-                return a.type == FileDialogInfo::DirEntry::Dir;
-            }
-            return std::ranges::lexicographical_compare(a.name, b.name,
-                [](unsigned char a, unsigned char b) {
-                    return std::tolower(a) < std::tolower(b);
-                }
-            );
-        });
         scroll = {0, 0};
         readPath = fdi.path;
     };

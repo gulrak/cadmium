@@ -67,8 +67,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <list>
 #include <ctime>
 #include <memory>
@@ -81,6 +83,10 @@
 
 #include "emulation/chip8strict.hpp"
 
+#ifndef PLATFORM_WEB
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#endif
 #ifdef PLATFORM_WEB
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
@@ -322,6 +328,48 @@ void LogHandler(int msgType, const char *text, va_list args)
 std::atomic_uint8_t g_soundTimer{0};
 std::atomic_int g_frameBoost{1};
 
+// The name of a key in a shortcut shown in window recordings, the printable keys as they are in the current
+// keyboard layout (raylib key codes are the positions on a US keyboard), empty for keys that can't be part of one.
+static std::string gifShortcutKeyName(int key)
+{
+    const bool macLike = gui::IsMacLike();
+    switch(key) {
+        case KEY_SPACE: return "Space";
+        case KEY_ESCAPE: return "Esc";
+        case KEY_ENTER: case KEY_KP_ENTER: return "Enter";
+        case KEY_TAB: return "Tab";
+        case KEY_BACKSPACE: return "Backspace";
+        case KEY_INSERT: return "Ins";
+        case KEY_DELETE: return "Del";
+        case KEY_LEFT: return macLike ? "←" : "Left";
+        case KEY_UP: return macLike ? "↑" : "Up";
+        case KEY_RIGHT: return macLike ? "→" : "Right";
+        case KEY_DOWN: return macLike ? "↓" : "Down";
+        case KEY_PAGE_UP: return "PgUp";
+        case KEY_PAGE_DOWN: return "PgDn";
+        case KEY_HOME: return "Home";
+        case KEY_END: return "End";
+        case KEY_KB_MENU: return "Menu";
+        default: break;
+    }
+    if(key >= KEY_F1 && key <= KEY_F12)
+        return fmt::format("F{}", key - KEY_F1 + 1);
+    if(key >= KEY_KP_0 && key <= KEY_KP_9)
+        return fmt::format("Num{}", key - KEY_KP_0);
+    if(key > KEY_SPACE && key <= KEY_GRAVE) {
+#ifndef PLATFORM_WEB
+        if(const char* name = glfwGetKeyName(key, 0); name && name[0]) {
+            std::string text = name;
+            if(text.size() == 1)
+                text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+            return text;
+        }
+#endif
+        return std::string(1, static_cast<char>(key));
+    }
+    return {};
+}
+
 class Cadmium : public emu::EmuHostEx
 {
 public:
@@ -342,9 +390,6 @@ public:
         , _audioBuffer(44100)
         , _screenWidth(MIN_SCREEN_WIDTH)
         , _screenHeight(MIN_SCREEN_HEIGHT)
-#ifndef PLATFORM_WEB
-        , _editor(_threadPool)
-#endif
     {
         SetTraceLogCallback(LogHandler);
 #ifdef NDEBUG
@@ -380,6 +425,7 @@ public:
         SetWindowPosition(winPos.x, winPos.y);
         _currentMonitor = GetCurrentMonitor();
         _recentFiles = cfg.recentFiles;
+        _recentFolders = cfg.recentFolders;
 #ifdef RESIZABLE_GUI
         if(GetMonitorWidth(_curentMonitor) > 1680 || GetWindowScaleDPI().x > 1.0f) {
             SetWindowSize(_screenWidth * 2, _screenHeight * 2);
@@ -502,6 +548,20 @@ public:
 */
 #ifndef PLATFORM_WEB
         _cfgPath = (fs::path(dataPath())/"config.json").string();
+        _editor.setHistoryDirectory((fs::path(dataPath()) / "history").string());
+        _editor.setMainFileHandler([this](const std::string& path) {
+            loadRom(path, LoadOptions::None);
+            _mainView = eEDITOR;
+        });
+        _editor.setOpenFolderHandler([this]() { openFolderDialog(); });
+        {
+            std::map<std::string, emu::SourceLanguage> languages;
+            for (const auto& [path, id] : _cfg.sourceLanguages) {
+                if (const auto language = emu::sourceLanguageFromId(id))
+                    languages[path] = *language;
+            }
+            _editor.setLanguageOverrides(std::move(languages));
+        }
         _volume = _volumeSlider = _cfg.volume;
         _styleManager.updateStyle(_cfg.guiHue, _cfg.guiSat, false);
 #else
@@ -509,7 +569,7 @@ public:
         openFileCallback = [this](std::string_view filename, ghc::span<const uint8_t> data) {
             loadBinary(filename, data, LoadOptions::None);
         };
-        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.gif,.bin,.ram,.c8x,.c8e,.mc8";
+        constexpr const char* acceptedFiles = ".ch8,.hex,.ch10,.hc8,.sc8,.xo8,.c8b,.8o,.asm,.asap,.gif,.bin,.ram,.c8x,.c8e,.mc8";
         webInitFilePicker(acceptedFiles, _screenWidth, _screenHeight);
 #endif
         // the text widgets use the clipboard of the editor, on the web the text arrives with the browser's paste event
@@ -527,6 +587,7 @@ public:
 
     ~Cadmium() override
     {
+        _editor.autoSave();
         if(!_cfgPath.empty()) {
             _cfg.workingDirectory = _currentDirectory;
             _cfg.guiHue = _styleManager.getGuiHue();
@@ -1027,43 +1088,14 @@ public:
     {
         auto* pixel = (uint32_t*)_screen.data;
         if(pixel) {
-            auto rgbaSpan = _chipEmu->getRGBASpan(
-                {static_cast<uint32_t*>(_screen.data), static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)}
-                );
-            // The pre-rendered HP LCD (including the generic core's HP display
-            // option) contains a fine grid, not bare CHIP-8 pixels.
-            _screenIsPreRendered = !rgbaSpan.empty();
+            const auto rendered = emu::renderScreen(*_chipEmu, {pixel, static_cast<size_t>(_screen.width), static_cast<size_t>(_screen.height)});
+            _screenIsPreRendered = rendered.preRendered;
             SetTextureFilter(_screenTexture, _screenIsPreRendered ? TEXTURE_FILTER_BILINEAR : TEXTURE_FILTER_POINT);
-            if(!rgbaSpan.empty()) {
-                auto textureSpan = ghc::span2d(static_cast<uint32_t*>(_screen.data), _screen.width, _screen.height);
-                for (size_t y = 0; y < rgbaSpan.height(); ++y) {
-                    std::memmove(textureSpan.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
-                }
+            if(!rendered.empty()) {
                 UpdateTexture(_screenTexture, _screen.data);
-                _screenRatio = 1;
-                _screenSize = {static_cast<float>(rgbaSpan.width()), static_cast<float>(rgbaSpan.height())};
-                _screenBorderColor = {0,0,0,255};
-            }
-            else {
-                const auto* screen = _chipEmu->getScreen();
-                if (screen) {
-                    screen->convert(pixel, _screen.width, 255, nullptr);
-                    UpdateTexture(_screenTexture, _screen.data);
-                    _screenRatio = screen->ratio();
-                    _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
-                    _screenBorderColor = GetColor(be32(screen->getBorderColor()));
-                }
-                else {
-                    // TraceLog(LOG_INFO, "Updating MC8 screen!");
-                    const auto* screenRgb = _chipEmu->getScreenRGBA();
-                    if(screenRgb) {
-                        screenRgb->convert(pixel, _screen.width, _chipEmu->getScreenAlpha(), _chipEmu->getWorkRGBA());
-                        UpdateTexture(_screenTexture, _screen.data);
-                        _screenRatio = screenRgb->ratio();
-                        _screenSize = {static_cast<float>(_chipEmu->getCurrentScreenWidth()), static_cast<float>(_chipEmu->getCurrentScreenHeight())};
-                        _screenBorderColor = GetColor(be32(screenRgb->getBorderColor()));
-                    }
-                }
+                _screenRatio = rendered.ratio;
+                _screenSize = {static_cast<float>(rendered.width), static_cast<float>(rendered.height)};
+                _screenBorderColor = GetColor(be32(rendered.borderColor));
             }
         }
     }
@@ -1103,12 +1135,29 @@ public:
         }
 
         updateEditorDisassembly();
+        // the source is saved when Cadmium loses the focus or the editor isn't shown
+        _editor.checkDiskFile();
+        if (_editor.hasUnsavedChanges() && (!IsWindowFocused() || _mainView != eEDITOR))
+            _editor.autoSave();
         if(_mainView == eEDITOR) {
             _editor.update();
+            const auto codeSize = _editor.programSize();
+            const auto loadAddress = _editor.programLoadAddress();
+            const bool fits = _editor.isBuildError() || fitsIntoMemory(codeSize, loadAddress);
+            const auto language = _editor.buildLanguage();
+            const bool otherMachine = !_editor.isBuildError() && language != emu::SourceLanguage::OCTO && !isProgramTarget(language);
+            if (otherMachine)
+                _editor.setProgramWarning(fmt::format("Choose a machine with a {} and no CHIP-8 interpreter, like the {} with interpreter NONE.", emu::sourceLanguageName(language),
+                                                       language == emu::SourceLanguage::SATURN ? "HP-48SX" : "VIP"));
+            else if (!fits)
+                _editor.setProgramWarning(fmt::format("The program ({} bytes) doesn't fit into the memory of the selected core ({}).", codeSize, _variantName));
+            else
+                _editor.setProgramWarning({});
             if(_editor.contentRevision() != _loadedSourceRevision && _editor.isCompiledUpToDate() &&
-               !_editor.compiler().isError() && _editor.compiler().sha1() != _romSha1) {
-                _debugger.updateOctoDebugInfo(_editor.compiler());
-                replaceProgramFromEditor({_editor.compiler().code(), _editor.compiler().code() + _editor.compiler().codeSize()}, _editor.compiler().sha1());
+               !_editor.isBuildError() && fits && !otherMachine && _editor.programSha1() != _romSha1) {
+                if (language == emu::SourceLanguage::OCTO)
+                    _debugger.updateOctoDebugInfo(_editor.compiler());
+                replaceProgramFromEditor({_editor.programCode(), _editor.programCode() + codeSize}, _editor.programSha1(), loadAddress);
             }
         }
 
@@ -1231,6 +1280,8 @@ public:
     // as loading a render texture while drawing the GUI would unbind the target of the GUI.
     void updateGifRecording(float deltaT)
     {
+        // the shortcut that started a recording shouldn't show up in it
+        const bool requestHandled = _gifRequest.has_value();
         if(_gifRequest) {
             if(_gifRecorder)
                 stopGifRecording();
@@ -1241,8 +1292,11 @@ public:
         }
         if(_gifRecorder) {
             // Every update has to look at the mouse, a click can fall between two captured frames.
-            if(_gifCapture == GifCapture::WINDOW)
+            if(_gifCapture == GifCapture::WINDOW) {
                 trackGifClicks(deltaT);
+                if(!requestHandled)
+                    trackGifShortcuts(deltaT);
+            }
             if(const auto delay = _gifPacer.advance(deltaT))
                 captureGifFrame(delay);
             if(!_gifRecorder->good() || _gifRecorder->bytesWritten() > MAX_GIF_BYTES) {
@@ -1307,6 +1361,7 @@ public:
         _gifCapture = capture;
         _gifPacer = GifFramePacer{};
         _gifClickMarks.clear();
+        _gifShortcut.clear();
         _gifElapsed = 0.0f;
         _gifRecorder = std::make_unique<GifRecorder>(width, height, std::move(sink));
         _gifMessageTime = 0.0f;
@@ -1319,6 +1374,55 @@ public:
             const auto mouse = GetMousePosition();
             _gifClickMarks.add(mouse.x, mouse.y);
         }
+    }
+
+    // Looks at every key, as the shortcuts are handled all over the place. A shortcut is a key pressed together
+    // with Cmd, Ctrl or Alt, or one of the keys that work alone (Esc, F1-F12, Menu), shift alone is just typing.
+    void trackGifShortcuts(float deltaT)
+    {
+        _gifShortcut.advance(deltaT);
+        if(!_cfg.gifShowShortcuts)
+            return;
+        const bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        const bool alt = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT);
+        const bool super = IsKeyDown(KEY_LEFT_SUPER) || IsKeyDown(KEY_RIGHT_SUPER);
+        const bool macLike = gui::IsMacLike();
+        int modifiers = (shift ? gui::SHORTCUT_SHIFT : 0) | (alt ? gui::SHORTCUT_ALT : 0);
+        if(macLike)
+            modifiers |= (super ? gui::SHORTCUT_SYS : 0) | (ctrl ? gui::SHORTCUT_CTRL : 0);
+        else
+            modifiers |= ctrl ? gui::SHORTCUT_SYS : 0;
+        // Option types characters on a Mac and AltGr is Ctrl+Alt elsewhere, so these only count with keys that type nothing.
+        const bool typing = macLike ? (alt && !super && !ctrl) : (ctrl && alt);
+        for(int key = KEY_SPACE; key <= KEY_KB_MENU; ++key) {
+            if(!IsKeyPressed(key))
+                continue;
+            const bool printable = key <= KEY_GRAVE || (key >= KEY_KP_0 && key <= KEY_KP_EQUAL);
+            const bool alone = key == KEY_ESCAPE || key == KEY_KB_MENU || (key >= KEY_F1 && key <= KEY_F12);
+            const bool chord = (modifiers & (gui::SHORTCUT_SYS | gui::SHORTCUT_CTRL | gui::SHORTCUT_ALT)) && !(typing && printable);
+            if(!alone && !chord)
+                continue;
+            if(const auto name = gifShortcutKeyName(key); !name.empty())
+                _gifShortcut.show(gui::ShortcutText(name, modifiers));
+        }
+    }
+
+    // Centered over the status bar, in the doubled GUI font and without blending, so it adds just two colors.
+    void drawGifShortcut(int width, int height, int scale) const
+    {
+        if(!_gifShortcut.visible())
+            return;
+        auto text = _gifShortcut.text();
+        if(_gifShortcut.count() > 1)
+            text += fmt::format(" ×{}", _gifShortcut.count());
+        const auto fontSize = 16.0f * scale;
+        const auto size = MeasureTextEx(_font, text.c_str(), fontSize, 0.0f);
+        const auto padding = 5.0f * scale;
+        const Rectangle box{std::floor((width - size.x) / 2 - padding), height - size.y - 2 * padding - 30.0f * scale, size.x + 2 * padding, size.y + 2 * padding};
+        DrawRectangleRec(box, BLACK);
+        DrawRectangleLinesEx(box, static_cast<float>(scale), {255, 200, 0, 255});
+        DrawTextEx(_font, text.c_str(), {box.x + padding, box.y + padding}, fontSize, 0.0f, WHITE);
     }
 
     // The positions are the ones the GUI uses, the system cursor isn't part of any texture.
@@ -1365,6 +1469,7 @@ public:
             drawScreen({_screenOverlay.x * scale, _screenOverlay.y * scale, _screenOverlay.width * scale, _screenOverlay.height * scale}, _screenScale);
         }
         DrawTexturePro(gui, {0, 0, static_cast<float>(gui.width), -static_cast<float>(gui.height)}, {0, 0, static_cast<float>(width), static_cast<float>(height)}, {0, 0}, 0.0f, WHITE);
+        drawGifShortcut(width, height, _gifWindowScale);
         drawGifPointer(_gifWindowScale);
         rlDrawRenderBatchActive();
         // Reads the bound texture and brings its rows into top to bottom order.
@@ -1646,14 +1751,16 @@ public:
             PopupMenu::Separator(),
             PopupMenu::Action("New...", [this](){
                 _mainView = eEDITOR;
+                _editor.autoSave();
                 _editor.setText(": main\n    jump main");
                 _romName = "unnamed.8o";
                 _editor.setFilename("");
+                _editor.setDiskFile("");
                 _sourcePath.clear();
                 for(auto& unit : *_chipEmu) {
                   unit.removeAllBreakpoints();
                 }
-            }, "⌘N"),
+            }, ShortcutText("N")),
             PopupMenu::Action("Open...", [this]() {
 #ifdef PLATFORM_WEB
                 loadFileWeb();
@@ -1661,15 +1768,26 @@ public:
                 _mainView = eROM_SELECTOR;
                 _librarian.fetchDir(_currentDirectory);
 #endif
-            }, "⌘O")
+            }, ShortcutText("O"))
         };
         if(!_recentFiles.empty()) {
             _mainMenu.push_back(PopupMenu::Submenu("Open recent", lruFiles));
         }
+#ifndef PLATFORM_WEB
+        _mainMenu.push_back(PopupMenu::Action("Open Folder...", [this]() { openFolderDialog(); }));
+        if (!_recentFolders.empty()) {
+            PopupMenu::Menu recentFolders;
+            for (const auto& folder : _recentFolders)
+                recentFolders.push_back(PopupMenu::Filename(ghc::utf8::truncateWithEllipsis(folder, 64), [this, folder]() { openProjectFolder(folder); }));
+            recentFolders.push_back(PopupMenu::Separator());
+            recentFolders.push_back(PopupMenu::Action("Clear recent folders", [this]() { _recentFolders.clear(); updateMainMenu(); }));
+            _mainMenu.push_back(PopupMenu::Submenu("Open recent folder", recentFolders));
+        }
+#endif
         _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Action("Save...", [this]() {
                 openSavePage(false);
-            }, "⌘S"),
+            }, ShortcutText("S")),
         });
 #ifndef PLATFORM_WEB
         // captures the current emulation settings as config of the ROM in the library
@@ -1680,19 +1798,19 @@ public:
 #endif
         _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Separator(),
-            PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, "⌘K"),
+            PopupMenu::Toggle("Key Map", &_showKeyMap, [this](){ _showKeyMap = !_showKeyMap; }, ShortcutText("K")),
         });
         if(_gifRecorder) {
-            _mainMenu.push_back(PopupMenu::Action("Stop GIF recording", [this]() { toggleGifRecording(_gifCapture); }, "⌘G"));
+            _mainMenu.push_back(PopupMenu::Action("Stop GIF recording", [this]() { toggleGifRecording(_gifCapture); }, ShortcutText("G")));
         }
         else {
-            _mainMenu.push_back(PopupMenu::Action("Record game screen as GIF", [this]() { toggleGifRecording(GifCapture::GAME_SCREEN); }, "⌘G"));
-            _mainMenu.push_back(PopupMenu::Action("Record window as GIF", [this]() { toggleGifRecording(GifCapture::WINDOW); }, "Shift+⌘G"));
+            _mainMenu.push_back(PopupMenu::Action("Record game screen as GIF", [this]() { toggleGifRecording(GifCapture::GAME_SCREEN); }, ShortcutText("G")));
+            _mainMenu.push_back(PopupMenu::Action("Record window as GIF", [this]() { toggleGifRecording(GifCapture::WINDOW); }, ShortcutText("G", SHORTCUT_SYS | SHORTCUT_SHIFT)));
         }
 #ifndef PLATFORM_WEB
         _mainMenu.insert(_mainMenu.end(), {
             PopupMenu::Separator(),
-            PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, "⌘Q")
+            PopupMenu::Action("Quit", [this](){ _shouldClose = true; }, ShortcutText("Q"))
         });
 #endif
     }
@@ -1708,6 +1826,7 @@ public:
         static bool selectorOpen = false;
 
         static std::chrono::steady_clock::time_point volumeClick{};
+        static Rectangle volumeButton{};
 
 #ifdef RESIZABLE_GUI
         //auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
@@ -1748,7 +1867,7 @@ public:
 
             auto ipsAvg = float(ipfAvg) * 1000000 / ftAvg_us;
             if (_mainView == eEDITOR) {
-                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.compiler().codeSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
+                StatusBar({{0.55f, fmt::format("UI:{}", _avgGuiRenderTime).c_str()}, {0.15f, fmt::format("{} byte", _editor.programSize()).c_str()}, {0.1f, fmt::format("{}:{}", _editor.line(), _editor.column()).c_str()}, {0.15f, _variantName.c_str()}});
             }
             else if (_chipEmu->coreState() == emu::IEmulationCore::ECS_ERROR) {
                 StatusBar({{0.55f, fmt::format("{}, UI:{}", _chipEmu->errorMessage(), _avgGuiRenderTime).c_str()}, {0.15f, formatUnit(ipsAvg, "IPS").c_str()}, {0.1f, formatUnit(_fps.getFps(), "FPS").c_str()}, {0.15f, _variantName.c_str()}});
@@ -1785,9 +1904,11 @@ public:
                     if (IsKeyPressed(KEY_N)) {
                         PopupMenu::Close();
                         _mainView = eEDITOR;
+                        _editor.autoSave();
                         _editor.setText(": main\n    jump main");
                         _romName = "unnamed.8o";
                         _editor.setFilename("");
+                        _editor.setDiskFile("");
                         _sourcePath.clear();
                         for(auto& unit : *_chipEmu) {
                             unit.removeAllBreakpoints();
@@ -1892,7 +2013,7 @@ public:
                         _mainView = eVIDEO;
                     }
                 }
-                SetTooltip("PAUSE [Shift+F5]");
+                SetTooltip("PAUSE [" + ShortcutText("F5", SHORTCUT_SHIFT) + "]");
                 if (iconButton(ICON_PLAYER_PLAY, _chipEmu->execMode() == ExecMode::eRUNNING /*, controlBack, controlColor*/) || (!IsKeyDown(KEY_LEFT_SHIFT) && !IsKeyDown(KEY_RIGHT_SHIFT) && IsKeyPressed(KEY_F5))) {
                     _debugger.setExecMode(ExecMode::eRUNNING);
                     if (_mainView == eEDITOR || _mainView == eSETTINGS) {
@@ -1926,7 +2047,7 @@ public:
                     }
                 }
                 GuiEnable();
-                SetTooltip("STEP OUT [Shift+F7]");
+                SetTooltip("STEP OUT [" + ShortcutText("F7", SHORTCUT_SHIFT) + "]");
                 if (const auto button = iconButtonDual(ICON_RESTART); button.has_value()) {
                     if (button == MOUSE_BUTTON_LEFT) {
                         reloadProgram();
@@ -1990,6 +2111,7 @@ public:
                 SetTooltip("SETTINGS");
                 if (iconButton(ICON_AUDIO, false))
                     volumeClick = std::chrono::steady_clock::now();
+                volumeButton = GetLastWidgetRect();  // the volume pop-up opens below it
                 SetTooltip("VOLUME");
 
                 static const char* titleString = "v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH;
@@ -2044,11 +2166,15 @@ public:
                     _lastView = _mainView;
                     SetSpacing(0);
                     Begin();
-                    BeginPanel("Editor", {1, 1});
                     {
-                        auto rect = GetContentAvailable();
-                        _editor.draw(_font, {rect.x, rect.y - 1, rect.width, rect.height});
+                        const auto titlePos = GetCurrentPos();
+                        const auto titleWidth = GetContentAvailable().width;
+                        BeginPanel(_editor.title().c_str(), {1, 1});
+                        const Rectangle titleBar{titlePos.x, titlePos.y, titleWidth, GetCurrentPos().y - 1 - titlePos.y};
+                        if (!GuiIsLocked() && !PopupMenu::IsOpen() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointRec(GetMousePosition(), titleBar))
+                            _editor.openFileMenu({titleBar.x, titleBar.y + titleBar.height});
                     }
+                    _editor.draw(_font, GetContentAvailable().height);
                     EndPanel();
                     End();
                     break;
@@ -2156,6 +2282,9 @@ public:
                             GuiEnable();
                             Space(4);
 #endif
+                            if (CheckBox("Show pressed shortcuts in window GIF recordings", &_cfg.gifShowShortcuts))
+                                saveConfig();
+                            Space(4);
                             /*
                             if (TextBox(_databaseDirectory, 4096)) {
                                 saveConfig();
@@ -2298,16 +2427,30 @@ public:
                     EndWindowBox();
                 }
             }
-            if (IsKeyDown(KEY_ESCAPE))
+#ifndef PLATFORM_WEB
+            if (_folderDialogOpen && ModalFileDialog(_folderDialog, &_folderDialogOpen)) {
+                _folderDialogOpen = false;
+                if (_folderDialog.action == FileDialogInfo::CloseAction::Okay && !_folderDialog.path.empty())
+                    openProjectFolder(_folderDialog.path);
+            }
+#endif
+            static bool volumeDragged = false;
+            if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+                volumeDragged = false;
+            if (IsKeyDown(KEY_ESCAPE) && !volumeDragged)
                 volumeClick = std::chrono::steady_clock::time_point{};
             if (volumeClick != std::chrono::steady_clock::time_point{}) {
-                if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
-                    Rectangle bounds{430.0, 21.0f, 80.0f, 14.0f};
+                if (volumeDragged || std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
+                    Rectangle bounds{volumeButton.x + volumeButton.width - 82.0f, volumeButton.y + volumeButton.height + 3.0f, 80.0f, 14.0f};
+                    bounds.x = std::max(bounds.x, 56.0f);
                     DrawRectangleRec({bounds.x - 56, bounds.y - 2, bounds.width + 58, bounds.height + 4}, {0, 0, 0, 128});
+                    const bool mouseOver = CheckCollisionPointRec(GetMousePosition(), bounds);
+                    if (mouseOver && IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+                        volumeDragged = true;
                     GuiSliderBar(bounds, "Volume: ", "", &_volumeSlider, 0.0001f, 1.0f);
                     if (_volumeSlider != _volume)
                         SetMasterVolume(_volumeSlider);
-                    if (CheckCollisionPointRec(GetMousePosition(), bounds)) {
+                    if (mouseOver || volumeDragged) {
                         volumeClick = std::chrono::steady_clock::now();
                     }
                 }
@@ -2740,7 +2883,8 @@ public:
                 switch (info.type) {
                     case Librarian::Info::eDIRECTORY: icon = ICON_FOLDER_OPEN; break;
                     case Librarian::Info::eROM_FILE: icon = ICON_ROM; break;
-                    case Librarian::Info::eOCTO_SOURCE: icon = ICON_FILETYPE_TEXT; break;
+                    case Librarian::Info::eOCTO_SOURCE:
+                    case Librarian::Info::eASSEMBLY_SOURCE: icon = ICON_FILETYPE_TEXT; break;
                     default: icon = ICON_FILE_DELETE; break;
                 }
                 {
@@ -2769,7 +2913,7 @@ public:
                         selectedInfo.isKnown = false;
                         break;
                     }
-                    else if(info.type == Librarian::Info::eOCTO_SOURCE) {
+                    else if(info.type == Librarian::Info::eOCTO_SOURCE || info.type == Librarian::Info::eASSEMBLY_SOURCE) {
                         selectedInfo = info;
                         _currentFileName = info.filePath;
                     }
@@ -2963,6 +3107,15 @@ public:
             _cfg.windowPosY = GetWindowPosition().y;
             _cfg.scaleMode = _scaleMode;
             _cfg.recentFiles = _recentFiles;
+            _cfg.recentFolders = _recentFolders;
+            std::erase_if(_cfg.projectMainFiles, [this](const auto& entry) { return std::ranges::find(_recentFolders, entry.first) == _recentFolders.end(); });
+            // the chosen source languages, of files that still exist
+            _cfg.sourceLanguages.clear();
+            for (const auto& [path, language] : _editor.languageOverrides()) {
+                std::error_code ec;
+                if (fs::is_regular_file(path, ec))
+                    _cfg.sourceLanguages[path] = emu::sourceLanguageId(language);
+            }
             if(!_cfg.save(_cfgPath)) {
                 TraceLog(LOG_ERROR, "Couldn't write config to '%s'", _cfgPath.c_str());
             }
@@ -2980,6 +3133,7 @@ public:
 
     void whenEmuChanged(emu::IEmulationCore& emu) override
     {
+        _editor.setFallbackLanguage(nativeSourceLanguage());
         _debugger.updateCore(&emu);
         _debugger.updateOctoDebugInfo(_editor.compiler());
         _propsMemento = *_properties;
@@ -3000,6 +3154,7 @@ public:
 
     void whenRomLoaded(const std::string& filename, bool autoRun, emu::OctoCompiler* compiler, const std::string& source) override
     {
+        _editor.autoSave();  // the changes of the source shown before
         _logView.clear();
         _audioBuffer.reset();
         _frameBoost = 1;
@@ -3008,13 +3163,21 @@ public:
             // A binary program, its disassembly is created when the editor needs it.
             _editor.setGeneratedText(DISASSEMBLY_PLACEHOLDER);
         }
-        else {
-            _editor.setText(source);
-        }
         _editorDisassemblyKey.reset();
-        _loadedSourceRevision = _editor.contentRevision();
         _editor.setFilename(filename);
-        _sourcePath = compiler && fs::path(filename).extension() == ".8o" ? filename : std::string{};
+        // an Octo source, or an assembly source (it comes without compiler, the editor assembles it)
+        _sourcePath = (compiler && fs::path(filename).extension() == ".8o") || (!compiler && !source.empty()) ? filename : std::string{};
+        if (!source.empty() || compiler) {
+            _editor.setText(source, _sourcePath);
+        }
+        _loadedSourceRevision = _editor.contentRevision();
+        if (compiler && !compiler->isError() && !fitsIntoMemory(compiler->codeSize())) {
+            _loadedSourceRevision = std::numeric_limits<uint32_t>::max();
+        }
+#ifndef PLATFORM_WEB
+        if (_editor.isInProject(_editor.mainFile().path()))
+            _cfg.projectMainFiles[_editor.projectFolder()] = fs::path(_editor.mainFile().path()).lexically_relative(_editor.projectFolder()).generic_string();
+#endif
         if (_romOrigin != ProgramOrigin::DATABASE)
             _recentFiles.usingFile(filename);
 #if defined(PLATFORM_WEB) && defined(CADMIUM_WITH_DATABASE)
@@ -3029,8 +3192,10 @@ public:
         else
             _debugger.clearOctoDebugInfo();
         saveConfig();
-        if(autoRun)
-            _mainView = eVIDEO;
+        if(autoRun) {
+            _debugger.setExecMode(ExecMode::eRUNNING);
+            _lastRunView = _mainView = eVIDEO;
+        }
         else if(compiler && compiler->isError())
             _mainView = eEDITOR;
     }
@@ -3051,7 +3216,9 @@ public:
 
     void saveShortcut()
     {
-        if (_mainView == eEDITOR && !_sourcePath.empty())
+        if (_mainView == eEDITOR && !_editor.diskFile().empty())
+            _editor.save();
+        else if (_mainView == eEDITOR && !_sourcePath.empty())
             saveSource(_sourcePath);
         else
             openSavePage(_mainView == eEDITOR);
@@ -3060,7 +3227,6 @@ public:
     void openSavePage(bool sourceCode)
     {
         if (sourceCode) {
-            // Suggest a source file next to the loaded program.
             _saveFileType = 1;
             const auto romPath = fs::path(_romName);
 #ifndef PLATFORM_WEB
@@ -3081,6 +3247,42 @@ public:
 #endif
     }
 
+#ifndef PLATFORM_WEB
+    void openFolderDialog()
+    {
+        gui::PopupMenu::Close();
+        const auto& start = !_editor.projectFolder().empty() ? _editor.projectFolder() : !_editor.treeRoot().empty() ? _editor.treeRoot() : _currentDirectory;
+        _folderDialog = {gui::FileDialogInfo::SelectFolder, "Open Folder", start};
+        _folderDialogOpen = true;
+    }
+
+    void openProjectFolder(const std::string& path)
+    {
+        std::error_code ec;
+        if (!fs::is_directory(path, ec))
+            return;
+        _editor.setProjectFolder(path);
+        const auto& folder = _editor.projectFolder();
+        _recentFolders.usingFile(folder);
+        _mainView = eEDITOR;
+        std::string mainFile;
+        if (auto stored = _cfg.projectMainFiles.find(folder); stored != _cfg.projectMainFiles.end()) {
+            mainFile = (fs::path(folder) / fs::path(stored->second)).lexically_normal().string();
+            if (!fs::is_regular_file(mainFile, ec))
+                mainFile.clear();
+        }
+        if (mainFile.empty())
+            mainFile = Editor::findMainFile(folder);
+        if (!mainFile.empty() && fs::absolute(mainFile, ec).lexically_normal().string() != _editor.mainFile().path()) {
+            loadRom(mainFile, LoadOptions::None);
+            _mainView = eEDITOR;
+        }
+        updateMainMenu();
+        saveConfig();
+        _editor.openFileTree();
+    }
+#endif
+
     void saveSource(const std::string& path)
     {
         updateEditorDisassembly(true);
@@ -3092,6 +3294,7 @@ public:
 #endif
         TraceLog(LOG_INFO, "Saved source to %s", path.c_str());
         _sourcePath = path;
+        _editor.setDiskFile(path);
     }
 
     void saveCartridgeFile(const std::string& path)
@@ -3184,6 +3387,7 @@ private:
     std::unique_ptr<GifRecorder> _gifRecorder;
     GifFramePacer _gifPacer;
     GifClickMarks _gifClickMarks;
+    GifShortcutCaption _gifShortcut;
     std::optional<GifCapture> _gifRequest;
     GifCapture _gifCapture{GifCapture::GAME_SCREEN};
     RenderTexture _gifTexture{};
@@ -3295,6 +3499,9 @@ private:
     bool _aboutOpen{false};
     Vector2 _aboutScroll{0,0};
     RecentFiles _recentFiles;
+    RecentFiles _recentFolders;
+    bool _folderDialogOpen{false};
+    gui::FileDialogInfo _folderDialog{gui::FileDialogInfo::SelectFolder, "Open Folder", "."};
 
     inline static KeyboardKey _keyMapping[16] = {KEY_X, KEY_ONE, KEY_TWO, KEY_THREE, KEY_Q, KEY_W, KEY_E, KEY_A, KEY_S, KEY_D, KEY_Z, KEY_C, KEY_FOUR, KEY_R, KEY_F, KEY_V};
     inline static int _keyPosition[16] = {1,2,3,12, 4,5,6,13, 7,8,9,14, 10,0,11,15};
@@ -3660,12 +3867,16 @@ int main(int argc, char* argv[])
     cli.option({"-t", "--trace"}, traceLines, "Run headless and dump given number of trace lines");
     cli.optionEnable({"-c", "--compare"}, compareRun, "Run and compare with reference engine, trace until diff");
     cli.option({"-b", "--benchmark"}, benchmark, "Run given number of cycles as benchmark");
-    cli.optionEnable({"--headless"}, headless, "Run a binary ROM deterministically without a window (generic CHIP-8 core)");
+    cli.optionEnable({"--headless"}, headless, "Run a ROM or source deterministically without a window (all cores, frame-driven unless the generic CHIP-8 core runs without --max-frames)");
     cli.option({"--until-presentations"}, headlessOptions.untilPresentations, "Stop after this many display updates; requires --headless").range(1, INT64_MAX);
-    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps (default 3000000)",
+    cli.option({"--max-instructions"}, headlessOptions.maxInstructions, "Limit headless instruction steps of the generic CHIP-8 core (default 3000000)",
+               [&](std::string) { headlessLimitSpecified = headlessOptions.maxInstructionsGiven = true; }).range(1, INT64_MAX);
+    cli.option({"--max-frames"}, headlessOptions.maxFrames, "Run headless for this many emulated frames, on every core (default 3600 for frame-driven runs)",
                [&headlessLimitSpecified](std::string) { headlessLimitSpecified = true; }).range(1, INT64_MAX);
     cli.option({"--dump-screen"}, headlessOptions.dumpScreen, "Export the last headless presentation as an image");
+    cli.option({"--dump-scale"}, headlessOptions.dumpScale, "Scale the --dump-screen image like the screen is shown: pixel aspect ratio and rotation applied, every pixel n times").range(1, 16);
     cli.option({"--dump-state"}, headlessOptions.dumpState, "Export headless machine state as JSON");
+    cli.option({"--keys"}, headlessOptions.keys, "Press CHIP-8 keys in a headless run: \"[+]<frame>:<hex keys>[+<frames held>] ...\", e.g. \"60:1 +30:16+300\", +<frame> counts from the previous release");
     cli.option({"--custom-palette"}, customPalette, "Set the colors of the palette, as comma separated list like \"#000000,#FFFFFF,...\"");
     cli.optionEnable({"--screen-dump"}, screenDump, "When in trace mode, dump the final screen content to the console");
     cli.optionEnable({"--draw-dump"}, drawDump, "Dump screen after every draw when in trace mode.");
@@ -3921,6 +4132,7 @@ int main(int argc, char* argv[])
             std::cerr << "ERROR: --headless requires one ROM and cannot be combined with --trace, --compare, or --benchmark" << std::endl;
             return 1;
         }
+        headlessOptions.applyCh8Attributes = presetName.empty();
         try {
             return runHeadless(romFile.front(), coreProperties, headlessOptions);
         }
@@ -3929,7 +4141,7 @@ int main(int argc, char* argv[])
             return 1;
         }
     }
-    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified ||
+    if (headlessOptions.untilPresentations >= 0 || headlessLimitSpecified || headlessOptions.dumpScale > 0 || !headlessOptions.keys.empty() ||
         !headlessOptions.dumpScreen.empty() || !headlessOptions.dumpState.empty()) {
         std::cerr << "ERROR: headless run options require --headless" << std::endl;
         return 1;

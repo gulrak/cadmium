@@ -1019,7 +1019,7 @@ void G48sxMachine::stepOne()
 
 std::uint8_t G48sxMachine::readHdw(std::uint32_t offset)
 {
-    return _bus.readNibble(HDW_BASE + offset) & 0x0fU;
+    return _hdw.peekRegister(offset) & 0x0fU;
 }
 
 std::uint32_t G48sxMachine::readPacked(std::uint32_t address, int count)
@@ -1033,7 +1033,11 @@ std::uint32_t G48sxMachine::readPacked(std::uint32_t address, int count)
 
 std::uint32_t G48sxMachine::readPackedHdw(std::uint32_t offset, int count)
 {
-    return readPacked(HDW_BASE + offset, count);
+    std::uint32_t value = 0;
+    for (int i = 0; i < count; ++i) {
+        value |= static_cast<std::uint32_t>(readHdw(offset + static_cast<std::uint32_t>(i))) << (i * 4);
+    }
+    return value;
 }
 
 void G48sxMachine::writePacked(std::uint32_t address, std::uint32_t value, int count)

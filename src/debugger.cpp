@@ -297,6 +297,11 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
     using namespace gui;
     auto lightgrayCol = /*StyleManager::getStyleColor(Style::TEXT_COLOR_FOCUSED);//*/ StyleManager::mappedColor(LIGHTGRAY);
     auto yellowCol = StyleManager::mappedColor(YELLOW);
+    _codeStyle.font = font;
+    _codeStyle.lineHeight = 10;
+    _codeStyle.palette.resize(Highlighter::NUM_STYLES);
+    for (int i = 0; i < Highlighter::NUM_STYLES; ++i)
+        _codeStyle.palette[i] = StyleManager::mappedColor(Highlighter::DEFAULT_PALETTE[i]);
     auto area = GetContentAvailable();
     Space(area.height);
     bool mouseInPanel = false;
@@ -351,14 +356,14 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
             instructionOffset = std::clamp(instructionOffset - step, 0, &cpu == _backend ? static_cast<int>(maxAddress) : 4096 - 9 * 2);
         }
     }
-    auto dialect = Dialect::eCHIP8OCTO;
+    auto dialect = Highlighter::eCHIP8OCTO;
     switch (cpu.cpuID()) {
-        case 1802: dialect = Dialect::eCDP1802; break;
-        case 6800: dialect = Dialect::eM6800; break;
-        case SATURN_CPU_ID: dialect = Dialect::eSATURN; break;
+        case 1802: dialect = Highlighter::eCDP1802; break;
+        case 6800: dialect = Highlighter::eM6800; break;
+        case SATURN_CPU_ID: dialect = Highlighter::eSATURN; break;
         default: break;
     }
-    setDialect(dialect);
+    _highlighter.setDialect(dialect);
     auto visibleInstructions = int(area.height / lineSpacing);
     auto extraLines = visibleInstructions / 2 + 1;
     auto insOff = instructionOffset >= 0 ? instructionOffset : pc;
@@ -390,7 +395,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         if (line.size() >= disassemblyOffset) {
             line[disassemblyOffset - 1] = 0;
             DrawTextClipped(font, line.c_str(), {area.x, yposPC - (i + 1) * lineSpacing}, lightgrayCol);
-            drawHighlightedTextLine(font, line.data() + disassemblyOffset, line.data() + disassemblyOffset, line.data() + line.size(), {area.x + disassemblyOffset * COLUMN_WIDTH, yposPC - (i + 1) * lineSpacing}, area.width, 0, 10);
+            DrawCodeLine(std::string_view(line).substr(disassemblyOffset), {area.x + disassemblyOffset * _codeStyle.cellWidth, yposPC - (i + 1) * lineSpacing}, area.width, _codeStyle, &_highlighter);
         }
         // DrawTextClipped(font, line.c_str(), {area.x, yposPC - (i+1)*lineSpacing}, pc == addr ? pcColor : lightgrayCol);
         if (bpi)
@@ -412,7 +417,7 @@ void Debugger::showInstructions(emu::GenericCpu& cpu, Font& font, const int line
         if (line.size() >= disassemblyOffset) {
             line[disassemblyOffset - 1] = 0;
             DrawTextClipped(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, lightgrayCol);
-            drawHighlightedTextLine(font, line.c_str() + disassemblyOffset, line.c_str() + disassemblyOffset, line.data() + line.size(), {area.x + disassemblyOffset * COLUMN_WIDTH, yposPC + i * lineSpacing}, area.width, 0, 10);
+            DrawCodeLine(std::string_view(line).substr(disassemblyOffset), {area.x + disassemblyOffset * _codeStyle.cellWidth, yposPC + i * lineSpacing}, area.width, _codeStyle, &_highlighter);
         }
         // DrawTextClipped(font, line.c_str(), {area.x, yposPC + i * lineSpacing}, pc == addr ? pcColor : lightgrayCol);
         if (bpi)

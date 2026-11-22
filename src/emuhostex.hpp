@@ -32,6 +32,7 @@
 #include <emulation/palette.hpp>
 #include <emulation/coreregistry.hpp>
 #include <chiplet/octocompiler.hpp>
+#include <chiplet/sourcelanguage.hpp>
 #include <chiplet/hexfile.hpp>
 #include <ghc/bitenum.hpp>
 #include <ghc/span.hpp>
@@ -50,6 +51,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <span>
 #include <limits>
 #include <cmath>
 
@@ -57,6 +59,18 @@ namespace emu {
 
 static constexpr int SUPPORTED_SCREEN_WIDTH = 540;
 static constexpr int SUPPORTED_SCREEN_HEIGHT = 296;
+
+struct RenderedScreen
+{
+    int width{0};
+    int height{0};
+    int ratio{1};
+    uint32_t borderColor{0};
+    bool preRendered{false};
+    bool empty() const { return width <= 0 || height <= 0; }
+};
+
+RenderedScreen renderScreen(const IEmulationCore& core, ghc::span2d<uint32_t> target);
 
 class IChip8Emulator;
 
@@ -81,7 +95,9 @@ public:
 class EmuHostEx : public EmulatorHost
 {
 public:
-    enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2 };
+    // ApplyCh8Attributes: a CH8 attribute header of the program configures the machine even with
+    // DontChangeOptions
+    enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2, ApplyCh8Attributes = 4 };
     explicit EmuHostEx(CadmiumConfiguration& cfg);
     ~EmuHostEx() override = default;
     //virtual bool isHeadless() const = 0;
@@ -165,11 +181,26 @@ protected:
     void requestReload();
     void applyPendingConfig();
     virtual bool applyRequests();
-    bool replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1);
-    // The palette as the current core uses it: exactly as many colors as it supports, missing ones from the default palette.
+    // A program built in the editor, at the load address if given (an assembly program at its first ORG), else at the
+    // default load address of the core
+    bool replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1, std::optional<uint32_t> loadAddress = {});
+    // If a program of the size fits into the memory of the selected core at the address, or its default load address
+    bool fitsIntoMemory(size_t size, std::optional<uint32_t> address = {}) const;
+    // The source language of programs for the selected machine: the assembly of its CPU if it runs without a CHIP-8
+    // interpreter (its only execution unit is the CPU then), Octo otherwise
+    emu::SourceLanguage nativeSourceLanguage() const;
+    // If programs built from sources of the language can run on the selected machine: it is its native language and the
+    // core can load programs (the Studio II can't yet, its sources are CDP1802 assembly nevertheless)
+    bool isProgramTarget(emu::SourceLanguage language) const;
+    // A machine that calls loaded machine code at an address (the "codeStart" property of the raw ETI-660) gets the
+    // address of an assembly program, so it runs after loading
+    void requestCodeStart(uint32_t address);
     Palette completedPalette(Palette palette) const;
 
     bool loadHexFile(std::string_view filename, LoadOptions loadOpt, std::string_view sourcePath = {});
+    // The configuration a CH8 attribute header of the image asks for, the base properties for what it
+    // leaves open, nothing without a header
+    std::optional<Properties> ch8AttributeConfig(std::span<const uint8_t> image, std::optional<uint32_t> loadAddress, const Properties& base) const;
     bool loadRomImage();
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     void resetAllBreakpoints();

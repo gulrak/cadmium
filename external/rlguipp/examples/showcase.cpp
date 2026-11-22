@@ -37,16 +37,23 @@
 
 #include <rlguipp/rlguiapp.hpp>
 #include <rlguipp/rlguipp.hpp>
+#include <rlguipp/rlguipp_codeeditor.hpp>
 #include <rlguipp/rlguipp_filedialog.hpp>
+#include <rlguipp/rlguipp_filetree.hpp>
 #include <rlguipp/rlguipp_leds.hpp>
 #include <stylemanager.hpp>
 #include <fmt/format.h>
 #include <ghc/fs_fwd.hpp>
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
 #include <ctime>
 #include <cstdio>
+#include <fstream>
 #include <functional>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -54,6 +61,66 @@
 namespace fs = ghc::filesystem;
 
 using namespace gui;
+
+// A small C-like highlighter for the CodeEditor demo: keywords, numbers, strings, line comments and
+// block comments, the only thing carried from line to line is being inside a block comment.
+class DemoHighlighter : public SyntaxHighlighter
+{
+public:
+    enum : uint8_t { PLAIN, KEYWORD, NUMBER, STRING, COMMENT };
+
+    LineState nextLineState(std::string_view line, LineState state) const override { return scan(line, state, nullptr); }
+    void highlightLine(std::string_view line, LineState state, std::span<uint8_t> styles) const override { scan(line, state, styles.data()); }
+
+private:
+    static LineState scan(std::string_view line, LineState state, uint8_t* styles)
+    {
+        static constexpr std::array<std::string_view, 10> keywords{"char", "const", "else", "for", "if", "int", "return", "struct", "void", "while"};
+        auto fill = [styles](size_t from, size_t to, uint8_t style) {
+            if (styles)
+                std::fill(styles + from, styles + to, style);
+        };
+        auto isWordChar = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+        size_t i = 0;
+        while (i < line.size()) {
+            if (state) {
+                const auto end = line.find("*/", i);
+                const auto stop = end == std::string_view::npos ? line.size() : end + 2;
+                fill(i, stop, COMMENT);
+                state = end == std::string_view::npos ? 1 : 0;
+                i = stop;
+            }
+            else if (line.compare(i, 2, "/*") == 0) {
+                state = 1;
+            }
+            else if (line.compare(i, 2, "//") == 0) {
+                fill(i, line.size(), COMMENT);
+                break;
+            }
+            else if (line[i] == '"') {
+                const auto end = line.find('"', i + 1);
+                const auto stop = end == std::string_view::npos ? line.size() : end + 1;
+                fill(i, stop, STRING);
+                i = stop;
+            }
+            else if (isWordChar(line[i])) {
+                auto stop = i;
+                while (stop < line.size() && isWordChar(line[stop]))
+                    ++stop;
+                const auto word = line.substr(i, stop - i);
+                if (std::isdigit(static_cast<unsigned char>(line[i])))
+                    fill(i, stop, NUMBER);
+                else if (std::ranges::find(keywords, word) != keywords.end())
+                    fill(i, stop, KEYWORD);
+                i = stop;
+            }
+            else {
+                ++i;
+            }
+        }
+        return state;
+    }
+};
 
 class ShowcaseApp : public gui::Application {
 public:
@@ -69,6 +136,42 @@ public:
         _styleManager.setTheme(0);
         _fileDlg.path = fs::current_path().string();
         buildMenu();
+        _codeEditor.setHighlighter(&_demoHighlighter);
+        _codeEditor.setText("/* The CodeEditor with a SyntaxHighlighter, a block comment\n"
+                            "   can go over lines. Sys+F finds, Sys+R replaces. */\n"
+                            "int main()\n"
+                            "{\n"
+                            "    const char* text = \"hello\";  // a string\n"
+                            "    for (int i = 0; i < 10; ++i)\n"
+                            "        draw(text, i * 0x10);\n"
+                            "    return 0;\n"
+                            "}\n");
+        _codeEditor.clearHistory();
+        // the file tree marks the file in the editor and has a small context menu
+        _fileTree.setMarkHandler([this](const std::string& path, bool) {
+            return path == _codeEditorFile ? FileTreeMark{-1, {219, 167, 39, 255}, "(in editor)"} : FileTreeMark{};
+        });
+        _fileTree.setContextMenuHandler([this](PopupMenu::Menu& menu, const std::string& path, bool isDirectory) {
+            if (!isDirectory)
+                menu.push_back(PopupMenu::Action("Load into Editor", [this, path]() { loadIntoEditor(path); }));
+            menu.push_back(PopupMenu::Action("Refresh", [this]() { _fileTree.refresh(); }));
+        });
+        // the application adds its own items to the context menu of the editor
+        _codeEditor.setContextMenuHandler([this](PopupMenu::Menu& menu, const CodeContext& context) {
+            auto changeCase = [this](bool upper) {
+                const auto [start, end] = _codeEditor.selection();
+                auto text = _codeEditor.selectedText();
+                for (auto& c : text)
+                    c = static_cast<char>(upper ? std::toupper(static_cast<unsigned char>(c)) : std::tolower(static_cast<unsigned char>(c)));
+                _codeEditor.replaceRange(start, end, text);
+            };
+            const bool hasSelection = context.selection.first != context.selection.second;
+            auto toUpper = PopupMenu::Action("To Uppercase", [=]() { changeCase(true); });
+            auto toLower = PopupMenu::Action("To Lowercase", [=]() { changeCase(false); });
+            menu.push_back(PopupMenu::Separator());
+            menu.push_back(hasSelection ? toUpper : PopupMenu::Disabled(toUpper));
+            menu.push_back(hasSelection ? toLower : PopupMenu::Disabled(toLower));
+        });
     }
 
 private:
@@ -103,7 +206,7 @@ private:
             PopupMenu::Separator(),
             PopupMenu::Submenu("Theme", themeMenu),
             PopupMenu::Separator(),
-            PopupMenu::Action("Quit", [this]() { requestClose(); }, "⌘Q"),
+            PopupMenu::Action("Quit", [this]() { requestClose(); }, ShortcutText("Q")),
         };
 
         PopupMenu::Menu tabMenu;
@@ -122,7 +225,7 @@ private:
                 PopupMenu::Action("Open File...", openFileDialog(FileDialogInfo::OpenFile, "Open File")),
                 PopupMenu::Action("Save File As...", openFileDialog(FileDialogInfo::SaveFile, "Save File As...")),
                 PopupMenu::Separator(),
-                PopupMenu::Action("Quit", [this]() { requestClose(); }, "⌘Q"),
+                PopupMenu::Action("Quit", [this]() { requestClose(); }, ShortcutText("Q")),
             }},
             {"View", {
                 PopupMenu::Submenu("Theme", themeMenu),
@@ -642,6 +745,48 @@ private:
         }
         End();
         EndColumns();
+
+        Space(4);
+        BeginColumns();
+        {
+            SetNextWidth(GetContentAvailable().width - 68);
+            Label("CodeEditor  (rlguipp_codeeditor.hpp, highlighting through a SyntaxHighlighter)");
+            SetNextWidth(GetContentAvailable().width);
+            if (Button(GuiIconText(ICON_FOLDER_OPEN, "Files"))) {
+                if (_fileTree.root().empty())
+                    _fileTree.setRoot(fs::current_path().string());
+                _filesOpen = !_filesOpen;
+            }
+            SetTooltip("A FileTree in a drawer (rlguipp_filetree.hpp),\na picked file is loaded into the editor");
+        }
+        EndColumns();
+        const Rectangle editorArea{GetCurrentPos().x, GetCurrentPos().y, GetContentAvailable().width, 150};
+        {
+            // the plain text follows the theme, the other styles keep their colors
+            auto style = _codeEditor.textStyle();
+            style.palette = {GetColor(GuiGetStyle(DEFAULT, TEXT_COLOR_NORMAL)), {219, 167, 39, 255}, {33, 210, 242, 255}, {238, 205, 51, 255}, {115, 154, 202, 255}};
+            _codeEditor.setTextStyle(style);
+        }
+        _codeEditor.render(150);
+        // the drawer lies over the left side of the editor, Escape or a click outside closes it
+        if (BeginDrawer({editorArea.x, editorArea.y, 220, editorArea.height}, "files", &_filesOpen)) {
+            if (auto file = _fileTree.render()) {
+                loadIntoEditor(*file);
+                _filesOpen = false;
+            }
+            EndDrawer();
+        }
+    }
+
+    void loadIntoEditor(const std::string& path)
+    {
+        std::ifstream file(path, std::ios::binary);
+        std::ostringstream text;
+        text << file.rdbuf();
+        const bool isText = file && text.str().size() <= 256 * 1024 && text.str().find('\0') == std::string::npos;
+        _codeEditor.setText(isText ? text.str() : "// " + path + " is no text file the demo shows\n");
+        _codeEditor.clearHistory();
+        _codeEditorFile = path;
     }
 
     // -----------------------------------------------------------------------
@@ -858,6 +1003,19 @@ public:
             {"file-dialog-open", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::OpenFile, "Open File"); }},
             {"file-dialog-save", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::SaveFile, "Save File As..."); }},
             {"file-dialog-folder", DIALOGS, 0, [=]() { openFileDialog(FileDialogInfo::SelectFolder, "Select Folder"); }},
+            // the context menu of the code editor with the items the showcase adds, opened at the selected word like the menu key does
+            {"code-editor-menu", WIDGETS, 0, [this]() {
+                 const auto pos = static_cast<uint32_t>(_codeEditor.getText().find("main"));
+                 _codeEditor.select(pos, pos + 4);
+             }, [this]() { _codeEditor.openContextMenu(); }},
+            // the file tree in its drawer, with an opened (empty) folder, a selection and a marked file
+            {"file-tree-drawer", WIDGETS, 0, [this]() {
+                 _fileTree.setRoot("fixture");
+                 _fileTree.setExpanded("fixture/games", true);
+                 _fileTree.select("fixture/notes.txt");
+                 _codeEditorFile = "fixture/Breakout.ch8";
+                 _filesOpen = true;
+             }},
         };
 
         int failed = 0;
@@ -865,7 +1023,7 @@ public:
             _activeTab = gc.tab;
             _themeIdx = gc.theme;
             _styleManager.setTheme(gc.theme);
-            _aboutOpen = _demoModalOpen = _inlinePopupOpen = _fileDlgOpen = _demoModalOtherItems = false;
+            _aboutOpen = _demoModalOpen = _inlinePopupOpen = _fileDlgOpen = _demoModalOtherItems = _filesOpen = false;
             _showStatusBar = true;
             _aboutScroll = _demoModalScroll = {};
             PopupMenu::Close();
@@ -1041,6 +1199,11 @@ private:
     std::string     _lastDialogResult;
 
     // Widgets tab
+    DemoHighlighter _demoHighlighter;
+    CodeEditor _codeEditor{"showcase-code"};
+    FileTree _fileTree{"showcase-files"};
+    std::string _codeEditorFile;  // the file loaded into the editor, empty for the demo text
+    bool _filesOpen{false};
     float   _segTimer{0.0f};
     int64_t _segValue{0};
 };

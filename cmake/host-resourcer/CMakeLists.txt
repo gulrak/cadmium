@@ -30,14 +30,15 @@ add_custom_command(
 )
 
 if(CADMIUM_HOST_HP48ROMASM_OUTPUT)
-    foreach(required CADMIUM_FMT_INCLUDE_DIR CADMIUM_CHIPLET_INCLUDE_DIR)
+    foreach(required CADMIUM_FMT_INCLUDE_DIR CADMIUM_CHIPLET_SOURCE_DIR)
         if(NOT ${required})
             message(FATAL_ERROR "${required} is required for hp48romasm")
         endif()
     endforeach()
-    set(HP48_DIR "${CADMIUM_SOURCE_DIR}/src/emulation/hardware/hp48")
-    add_executable(hp48romasm "${CADMIUM_SOURCE_DIR}/tools/hp48romasm.cpp" "${HP48_DIR}/asacpp/asacpp.cpp" "${HP48_DIR}/saturndecoder.cpp" "${HP48_DIR}/saturninstructions.cpp")
-    target_include_directories(hp48romasm PRIVATE "${CADMIUM_SOURCE_DIR}/src" "${CADMIUM_GHC_FILESYSTEM_INCLUDE_DIR}" "${CADMIUM_FMT_INCLUDE_DIR}" "${CADMIUM_CHIPLET_INCLUDE_DIR}")
+    # the assembler is asacpp in Chiplet, on Chiplet's Saturn decoder (nlohmann comes with Chiplet's external)
+    add_executable(hp48romasm "${CADMIUM_SOURCE_DIR}/tools/hp48romasm.cpp" "${CADMIUM_CHIPLET_SOURCE_DIR}/src/asacpp.cpp" "${CADMIUM_CHIPLET_SOURCE_DIR}/src/decoder/saturndecoder.cpp")
+    target_include_directories(hp48romasm PRIVATE "${CADMIUM_SOURCE_DIR}/src" "${CADMIUM_GHC_FILESYSTEM_INCLUDE_DIR}" "${CADMIUM_FMT_INCLUDE_DIR}"
+                               "${CADMIUM_CHIPLET_SOURCE_DIR}/include" "${CADMIUM_CHIPLET_SOURCE_DIR}/external")
     target_compile_definitions(hp48romasm PRIVATE FMT_HEADER_ONLY)
     add_custom_command(
             TARGET hp48romasm POST_BUILD

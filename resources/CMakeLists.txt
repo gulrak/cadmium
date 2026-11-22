@@ -63,12 +63,13 @@ if (NEED_HOST_TOOLS)
         list(APPEND HOST_TOOL_ARGS
                 -DCADMIUM_HOST_HP48ROMASM_OUTPUT=${HP48ROMASM_RUNNER}
                 -DCADMIUM_FMT_INCLUDE_DIR=${fmtlib_SOURCE_DIR}/include
-                -DCADMIUM_CHIPLET_INCLUDE_DIR=${chiplet_SOURCE_DIR}/include)
-        file(GLOB HP48ROMASM_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/asacpp/*)
-        list(APPEND HOST_TOOL_DEPENDS ${PROJECT_SOURCE_DIR}/tools/hp48romasm.cpp ${HP48ROMASM_SOURCES}
-                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturndecoder.cpp
-                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturndecoder.hpp
-                ${PROJECT_SOURCE_DIR}/src/emulation/hardware/hp48/saturninstructions.cpp)
+                -DCADMIUM_CHIPLET_SOURCE_DIR=${chiplet_SOURCE_DIR})
+        # the assembler is asacpp in Chiplet, on Chiplet's Saturn decoder
+        list(APPEND HOST_TOOL_DEPENDS ${PROJECT_SOURCE_DIR}/tools/hp48romasm.cpp
+                ${chiplet_SOURCE_DIR}/src/asacpp.cpp
+                ${chiplet_SOURCE_DIR}/include/chiplet/asacpp.hpp
+                ${chiplet_SOURCE_DIR}/src/decoder/saturndecoder.cpp
+                ${chiplet_SOURCE_DIR}/include/chiplet/decoder/saturndecoder.hpp)
     endif()
     add_custom_command(
             OUTPUT ${HOST_TOOL_OUTPUTS}

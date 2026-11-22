@@ -1,5 +1,7 @@
 
 set(CHIP8_EMU_SOURCE
+    ch8attributes.cpp
+    ch8attributes.hpp
     chip8generic.cpp
     chip8generic.hpp
     chip8genericbase.cpp
@@ -70,8 +72,6 @@ if(CADMIUM_WITH_HP48)
         hp48sx.cpp
         hp48sx.hpp
         filter.hpp
-        hardware/hp48/asacpp/asacpp.cpp
-        hardware/hp48/asacpp/asacpp.hpp
         hardware/hp48/binary.hpp
         hardware/hp48/emptyportcontroller.hpp
         hardware/hp48/g48statefile.cpp
@@ -109,7 +109,8 @@ if(CADMIUM_WITH_HP48)
     target_link_libraries(emulation PUBLIC libzstd_static ghc_filesystem resourcemanager)
     target_include_directories(emulation PRIVATE "${zstd_SOURCE_DIR}/lib")
     target_compile_definitions(emulation PUBLIC HP48_ENABLE_INSTRUCTION_CACHE=1)
-    target_compile_definitions(emulation PRIVATE CADMIUM_WITH_HP48=1)
+    # public: the editor and the host build Saturn sources only with the HP-48SX core
+    target_compile_definitions(emulation PUBLIC CADMIUM_WITH_HP48=1)
 endif()
 if(CODE_COVERAGE)
     target_code_coverage(emulation)

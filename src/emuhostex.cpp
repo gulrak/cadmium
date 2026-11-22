@@ -28,10 +28,16 @@
 
 #include <chiplet/chip8decompiler.hpp>
 #include <chiplet/octocartridge.hpp>
+#include <chiplet/cdp1802assembler.hpp>
+#include <chiplet/sourcelanguage.hpp>
+#ifdef CADMIUM_WITH_HP48
+#include <chiplet/asacpp.hpp>
+#endif
 #include <sstream>
 #include <chiplet/utility.hpp>
 #include <configuration.hpp>
 #include <emulation/c8bfile.hpp>
+#include <emulation/ch8attributes.hpp>
 #include <emulation/coreregistry.hpp>
 //#include <emulation/chip8generic.hpp>
 //#include <emulation/chip8strict.hpp>
@@ -43,10 +49,50 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <sstream>
 #include <ghc/span.hpp>
 
 namespace emu {
+
+RenderedScreen renderScreen(const IEmulationCore& core, ghc::span2d<uint32_t> target)
+{
+    RenderedScreen result;
+    if (target.empty())
+        return result;
+    // The pre-rendered HP LCD (including the generic core's HP display option) contains a fine grid, not bare CHIP-8 pixels.
+    if (const auto rgbaSpan = core.getRGBASpan(target); !rgbaSpan.empty()) {
+        if (rgbaSpan.data() != target.data()) {
+            for (size_t y = 0; y < rgbaSpan.height(); ++y)
+                std::memmove(target.row(y).data(), rgbaSpan.row(y).data(), rgbaSpan.width() * sizeof(uint32_t));
+        }
+        result.width = static_cast<int>(rgbaSpan.width());
+        result.height = static_cast<int>(rgbaSpan.height());
+        result.borderColor = be32(0x000000FF);
+        result.preRendered = true;
+        return result;
+    }
+    auto takeScreen = [&](const auto& screen) {
+        if (screen.width() > static_cast<int>(target.width()) || screen.height() > static_cast<int>(target.height()))
+            return false;
+        const int currentWidth = core.getCurrentScreenWidth();
+        const int currentHeight = core.getCurrentScreenHeight();
+        result.width = currentWidth > 0 ? std::min(currentWidth, screen.width()) : screen.width();
+        result.height = currentHeight > 0 ? std::min(currentHeight, screen.height()) : screen.height();
+        result.ratio = screen.ratio();
+        result.borderColor = screen.getBorderColor();
+        return true;
+    };
+    if (const auto* screen = core.getScreen()) {
+        if (takeScreen(*screen))
+            screen->convert(target.data(), static_cast<int>(target.stride()), 255, nullptr);
+    }
+    else if (const auto* screenRgb = core.getScreenRGBA()) {
+        if (takeScreen(*screenRgb))
+            screenRgb->convert(target.data(), static_cast<int>(target.stride()), core.getScreenAlpha(), core.getWorkRGBA());
+    }
+    return result;
+}
 
 #ifdef CADMIUM_WITH_DATABASE
 std::unique_ptr<Database> EmuHostEx::_database;
@@ -315,6 +361,11 @@ bool EmuHostEx::applyRequests()
         else {
             TraceLog(LOG_WARNING, "Program `%s` does not fit into the selected core", program->name.c_str());
             programOk = false;
+            if (!program->source.empty() && program->origin == ProgramOrigin::FILE) {
+                _romName = program->name;
+                _romOrigin = ProgramOrigin::FILE;
+                whenRomLoaded(_romName, false, program->compiler.get(), program->source);
+            }
         }
     }
     const bool coreChanged = std::exchange(_coreChanged, false);
@@ -340,17 +391,60 @@ bool EmuHostEx::applyRequests()
     return programOk;
 }
 
-bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1)
+bool EmuHostEx::replaceProgramFromEditor(std::vector<uint8_t> image, const Sha1::Digest& sha1, std::optional<uint32_t> loadAddress)
 {
     RequestScope scope(*this);
     Program program;
     program.name = _romName;
     program.image = std::move(image);
     program.sha1 = sha1;
+    program.loadAddress = loadAddress;
+    if (loadAddress)
+        requestCodeStart(*loadAddress);
     program.isKnown = _romIsWellKnown;
     program.origin = ProgramOrigin::EDITOR;
     requestProgram(std::move(program));
     return scope.finish();
+}
+
+bool EmuHostEx::fitsIntoMemory(size_t size, std::optional<uint32_t> address) const
+{
+    if (!_chipEmu)
+        return true;
+    const auto memSize = static_cast<uint64_t>(_chipEmu->memSize());
+    const uint64_t start = address ? *address : _chipEmu->defaultLoadAddress();
+    return start < memSize && size <= memSize - start;
+}
+
+void EmuHostEx::requestCodeStart(uint32_t address)
+{
+    auto props = _pendingConfig ? *_pendingConfig : _properties ? *_properties : Properties{};
+    if (auto* start = props.find("codeStart"); start && start->getInt() != static_cast<int>(address)) {
+        start->setInt(static_cast<int>(address));
+        requestConfig(props);
+    }
+}
+
+bool EmuHostEx::isProgramTarget(emu::SourceLanguage language) const
+{
+    return _chipEmu && _chipEmu->canLoadPrograms() && nativeSourceLanguage() == language;
+}
+
+emu::SourceLanguage EmuHostEx::nativeSourceLanguage() const
+{
+    if (!_chipEmu || _chipEmu->numberOfExecutionUnits() != 1)
+        return emu::SourceLanguage::OCTO;
+    auto* unit = _chipEmu->executionUnit(0);
+    if (!unit || dynamic_cast<IChip8Emulator*>(unit))
+        return emu::SourceLanguage::OCTO;
+    const auto name = unit->name();
+    if (name == "CDP1802")
+        return emu::SourceLanguage::CDP1802;
+    if (name == "M6800")
+        return emu::SourceLanguage::M6800;
+    if (name.starts_with("SATURN"))
+        return emu::SourceLanguage::SATURN;
+    return emu::SourceLanguage::OCTO;
 }
 
 bool EmuHostEx::programFits(const Program& program) const
@@ -711,6 +805,26 @@ static Chip8EmulatorOptions optionsFromOctoOptions(const OctoOptions& octo)
 }
 #endif
 
+static emu::SourceLanguage assemblySourceLanguage(std::string_view filename, std::span<const uint8_t> data, emu::SourceLanguage native)
+{
+    if (std::ranges::find(data, uint8_t{0}) != data.end() || CoreRegistry::propertiesForExtension(fs::path(filename).extension().string()))
+        return emu::SourceLanguage::UNKNOWN;
+    auto language = emu::detectSourceLanguage(filename, {reinterpret_cast<const char*>(data.data()), data.size()}).language;
+    if (language == emu::SourceLanguage::UNKNOWN)
+        language = native;
+    return language == emu::SourceLanguage::OCTO ? emu::SourceLanguage::UNKNOWN : language;
+}
+
+std::optional<Properties> EmuHostEx::ch8AttributeConfig(std::span<const uint8_t> image, std::optional<uint32_t> loadAddress, const Properties& base) const
+{
+    const auto attributes = Ch8Attributes::parse(image, loadAddress);
+    if (!attributes)
+        return {};
+    auto props = attributes->properties(base);
+    TraceLog(LOG_INFO, "CH8 attribute header: %s, using the %s configuration", attributes->toString().c_str(), props.propertyClass().c_str());
+    return props;
+}
+
 bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt)
 {
     if (fs::path(filename).extension() == ".hex") {
@@ -752,6 +866,51 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         if ((loadOpt & DontChangeOptions) == 0) {
             isKnown = _librarian.isKnownFile(program.image);
         }
+        // A source has no configuration of its own, only its CH8 attribute header can give one
+        const bool knownConfig = isKnown && !_librarian.isGenericChip8(program.image);
+        if (((loadOpt & DontChangeOptions) == 0 && !knownConfig) || (loadOpt & ApplyCh8Attributes)) {
+            if (auto props = ch8AttributeConfig(program.image, program.loadAddress, *_properties))
+                requestConfig(*props);
+        }
+    }
+    else if (const auto language = assemblySourceLanguage(filename, fileData, nativeSourceLanguage()); language != emu::SourceLanguage::UNKNOWN) {
+        program.source.assign(reinterpret_cast<const char*>(fileData.data()), fileData.size());
+        const bool changeMachine = (loadOpt & DontChangeOptions) == 0 && !isProgramTarget(language);
+        bool built = false;
+        if (language == emu::SourceLanguage::CDP1802) {
+            emu::Cdp1802Assembler assembler;
+            if (assembler.compile(std::string(filename), program.source).resultType == emu::CompileResult::eOK) {
+                program.image.assign(assembler.code(), assembler.code() + assembler.codeSize());
+                program.sha1 = assembler.sha1();
+                program.loadAddress = assembler.startAddress();
+                if (changeMachine)
+                    requestConfig(CoreRegistry::propertiesForPreset("vip-none"));
+                if ((loadOpt & DontChangeOptions) == 0)
+                    requestCodeStart(assembler.startAddress());
+                built = true;
+            }
+        }
+#ifdef CADMIUM_WITH_HP48
+        else if (language == emu::SourceLanguage::SATURN) {
+            const auto rawHp48 = changeMachine ? CoreRegistry::propertiesForPreset("hp-48-none") : Properties{};
+            emu::AsaCpp assembler;
+            if ((!changeMachine || rawHp48) && assembler.compile(fs::path(std::string(filename)), std::span<const char>(program.source.data(), program.source.size())).resultType != emu::CompileResult::eERROR) {
+                const auto code = assembler.code();
+                program.image.assign(code.begin(), code.end());
+                program.sha1 = assembler.sha1();
+                if (changeMachine)
+                    requestConfig(rawHp48);
+                built = true;
+            }
+        }
+#endif
+        if (!built) {
+            _romName = filename;
+            _romOrigin = ProgramOrigin::FILE;
+            whenRomLoaded(_romName, false, nullptr, program.source);
+            return true;
+        }
+        isKnown = false;
     }
     else if (endsWith(filename, ".c8b")) {
         // A CBF container: the bytecode of the best supported variant, with the palette and
@@ -780,17 +939,31 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     else {
         if (Librarian::isPrefixedTPDRom(binary))
             program.loadAddress = 0x200;
+        // The database knows the tested configuration of a program, so it goes before the CH8
+        // attribute header, the header goes before the extension
+        const auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string());
+        const auto headerProps = ((loadOpt & DontChangeOptions) == 0 && !(isKnown && !isGenericChip8)) || (loadOpt & ApplyCh8Attributes)
+                                     ? ch8AttributeConfig(fileData, program.loadAddress, extensionProps && !isKnown ? extensionProps : *_properties)
+                                     : std::nullopt;
         if ((loadOpt & DontChangeOptions) == 0) {
-            if (isKnown) {
-                if (!isGenericChip8)
-                    requestConfig(_librarian.getPropertiesForFile(fileData));
+            if (isKnown && !isGenericChip8) {
+                requestConfig(_librarian.getPropertiesForFile(fileData));
             }
-            else if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
+            else if (headerProps) {
+                requestConfig(*headerProps);
+            }
+            else if (isKnown) {
+                // a generic CHIP-8 program runs with the current configuration
+            }
+            else if (extensionProps) {
                 requestConfig(extensionProps);
             }
             else {
                 return false; // unknown file type
             }
+        }
+        else if (headerProps) {
+            requestConfig(*headerProps);
         }
         program.image = std::move(fileData);
     }

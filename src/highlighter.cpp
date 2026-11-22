@@ -25,18 +25,22 @@
 //---------------------------------------------------------------------------------------
 
 #include "highlighter.hpp"
-#include <chiplet/octocompiler.hpp>
+#include <chiplet/sourcesyntax.hpp>
 #include <chiplet/utility.hpp>
 
 #include <ghc/utf8.hpp>
-#include <rlguipp/rlguipp.hpp>
-#include <fast_float/fast_float.h>
 
+#include <algorithm>
 #include <cctype>
-#include <charconv>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace utf8 = ghc::utf8;
+
+namespace {
+
+using Dialect = Highlighter::Dialect;
 
 static std::unordered_set<std::string> g_octoOpcodes = {
     "!=", "&=", "+=", "-=", "-key", ":", ":=", ";", "<", "<<=", "<=", "=-", "==", ">", ">=", ">>=", "^=", "|=",
@@ -49,67 +53,51 @@ static std::unordered_set<std::string> g_octoDirectives = {
     ":pointer", ":proto", ":stringmode", ":unpack"
 };
 
-static std::unordered_set<std::string> g_chipperOpcodes = {
-    "add", "add", "add", "alpha", "and", "bmode", "call", "ccol", "cls", "digisnd", "drw", "exit", "high",
-    "jp", "jp", "jp", "ld", "ldhi", "ldpal", "low", "megaoff", "megaon", "or", "ret", "rnd", "scd", "scl", "scr",
-    "scru", "scu", "se", "se", "shl", "shr", "sknp", "skp", "sne", "sprh", "sprw", "stopsnd", "sub", "subn", "xor"
-};
-static std::unordered_set<std::string> g_chipperDirectives = {
-    "align", "da", "db", "define", "ds", "dw", "else", "end", "endif", "ifdef", "ifund", "include", "option",
-    "binary", "chip8", "chip48", "hpasc", "hpbin", "schip10", "schip11", "string",
-    "org", "undef", "used", "on", "off", "symbol", "xref", "yes", "no"
+// Progress of an Octo `:asm <cpu> { ... }` block, carried from line to line packed into the LineState
+enum AsmPhase : uint8_t { ASM_NONE, ASM_EXPECT_CPU, ASM_EXPECT_BRACE, ASM_BODY };
+
+struct AsmState
+{
+    AsmPhase phase{ASM_NONE};
+    Dialect dialect{Highlighter::eNONE};
 };
 
-Highlighter::Highlighter() = default;
+AsmState unpack(gui::SyntaxHighlighter::LineState state)
+{
+    return {static_cast<AsmPhase>(state & 0xff), static_cast<Dialect>(state >> 8)};
+}
 
-static bool isAsmIdentifierChar(char c)
+gui::SyntaxHighlighter::LineState pack(AsmState state)
+{
+    return static_cast<gui::SyntaxHighlighter::LineState>(state.phase) | static_cast<gui::SyntaxHighlighter::LineState>(state.dialect) << 8;
+}
+
+// The style ids of the bytes of the line that is highlighted
+struct LineStyles
+{
+    const char* lineStart;
+    std::span<uint8_t> styles;
+    void set(const char* from, const char* to, Highlighter::Style style) const
+    {
+        std::fill(styles.begin() + (from - lineStart), styles.begin() + (to - lineStart), style);
+    }
+};
+
+bool isAsmIdentifierChar(char c)
 {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-}
-
-Highlighter::LineState Highlighter::highlightLine(const char* text, const char* end, LineState state)
-{
-    _highlighting.resize(end - text);
-    size_t index = 0;
-    while (text < end && *text != '\n') {
-        auto segmentState = state;
-        const auto* segmentEnd = nextModeChange(text, end, state);
-        index = highlightSegment(segmentState.asmPhase == ASM_BODY ? segmentState.asmDialect : _dialect, text, segmentEnd, index);
-        text = segmentEnd;
-    }
-    return state;
-}
-
-size_t Highlighter::highlightSegment(Dialect dialect, const char* text, const char* end, size_t index)
-{
-    switch (dialect) {
-        case eCHIP8OCTO: return highlightLineOcto(text, end, index);
-        case eCHIP8CHIPPER: return highlightLineChipper(text, end, index);
-        case eCDP1802: return highlightLine1802(text, end, index);
-        case eM6800: return highlightLine6800(text, end, index);
-        case eSATURN: return highlightLineSaturn(text, end, index);
-        case eNONE: break;
-    }
-    return highlightPlain(text, end, index);
-}
-
-size_t Highlighter::highlightPlain(const char* text, const char* end, size_t index)
-{
-    while (text < end && *text != '\n')
-        utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eNORMAL];
-    return index;
 }
 
 // Scans a single line starting in `state` and returns the position where the
 // highlighting dialect changes (with `state` updated), or `end` if it doesn't.
 // The rules mirror Chiplet's Octo lexer for `:asm <cpu> { ... }` blocks.
-const char* Highlighter::nextModeChange(const char* text, const char* end, LineState& state) const
+const char* nextModeChange(Dialect dialect, const char* text, const char* end, AsmState& state)
 {
-    if (_dialect != eCHIP8OCTO)
+    if (dialect != Highlighter::eCHIP8OCTO)
         return end;
     while (text < end) {
         char c = *text;
-        if (state.asmPhase == ASM_BODY) {
+        if (state.phase == ASM_BODY) {
             if (c == '.' && text + 1 < end && text[1] == '.')
                 return end;
             if (c == '\'') {
@@ -133,19 +121,19 @@ const char* Highlighter::nextModeChange(const char* text, const char* end, LineS
             ++text;
             continue;
         }
-        if (state.asmPhase == ASM_EXPECT_CPU) {
+        if (state.phase == ASM_EXPECT_CPU) {
             const auto* cpuStart = text;
             while (text < end && isAsmIdentifierChar(*text))
                 ++text;
             if (text == cpuStart)
                 state = {};
             else
-                state = {ASM_EXPECT_BRACE, std::string_view(cpuStart, text - cpuStart) == "cdp1802" ? eCDP1802 : eNONE};
+                state = {ASM_EXPECT_BRACE, std::string_view(cpuStart, text - cpuStart) == "cdp1802" ? Highlighter::eCDP1802 : Highlighter::eNONE};
             continue;
         }
-        if (state.asmPhase == ASM_EXPECT_BRACE) {
+        if (state.phase == ASM_EXPECT_BRACE) {
             if (c == '{') {
-                state.asmPhase = ASM_BODY;
+                state.phase = ASM_BODY;
                 return text + 1;
             }
             state = {};
@@ -156,378 +144,197 @@ const char* Highlighter::nextModeChange(const char* text, const char* end, LineS
         while (text < end && static_cast<unsigned char>(*text) > ' ')
             ++text;
         if (std::string_view(token, text - token) == ":asm")
-            state.asmPhase = ASM_EXPECT_CPU;
+            state.phase = ASM_EXPECT_CPU;
     }
     return end;
 }
 
-Highlighter::LineState Highlighter::scanLineState(const char* text, const char* end, LineState state) const
+void highlightPlain(const char* text, const char* end, const LineStyles& out)
 {
-    while (text < end)
-        text = nextModeChange(text, end, state);
-    return state;
+    out.set(text, end, Highlighter::eNORMAL);
 }
 
-
-static std::pair<std::size_t, double> parseChipperNumber(const char* text, const char* end)
-{
-    if (text == end) {
-        return {0, 0};
-    }
-    int base = 10;
-    const char* p = text;
-    if (*p == '#') {
-        base = 16;
-        ++p;
-    } else if (*p == '@') {
-        base = 8;
-        ++p;
-    } else if (*p == '$') {
-        base = 2;
-        ++p;
-    } else if (!std::isdigit(static_cast<unsigned char>(*p))) {
-        return {0, 0};
-    }
-    if (p == end) {
-        return {0, 0};
-    }
-
-    std::uint32_t result = 0;
-    const char* digitStart = p;
-    while (p != end) {
-        char ch = *p;
-        int digitValue = -1;
-        if (ch >= '0' && ch <= '9') {
-            digitValue = ch - '0';
-        } else if (ch >= 'a' && ch <= 'f') {
-            digitValue = 10 + (ch - 'a');
-        } else if (ch >= 'A' && ch <= 'F') {
-            digitValue = 10 + (ch - 'A');
-        } else {
-            break;
-        }
-        if (digitValue >= base)
-            break;
-        if (result > (std::numeric_limits<std::uint32_t>::max() - static_cast<std::uint32_t>(digitValue)) / base)
-            return {0, 0};  // Overflow: number is too big for uint32_t.
-        result = result * base + digitValue;
-        ++p;
-    }
-    if (p == digitStart) {
-        return {0, 0};
-    }
-    return {static_cast<std::size_t>(p - text), result};
-}
-
-static std::pair<std::size_t, double> parseOctoNumber(const char* text, const char* end) {
-    if (text == end) {
-        return {0, 0.0};
-    }
-    bool isInteger = false;
-    int base = 10;
-    const char* numStart = text;
-    if (*text == '0') {
-        if (text + 1 < end) {
-            char c = *(text + 1);
-            if (c == 'x' || c == 'X') {
-                isInteger = true;
-                base = 16;
-                numStart = text + 2;
-            } else if (c == 'b' || c == 'B') {
-                isInteger = true;
-                base = 2;
-                numStart = text + 2;
-            } else if (c == '.' || c == 'e' || c == 'E') {
-                isInteger = false;
-                numStart = text;
-            } else if (std::isdigit(static_cast<unsigned char>(c))) {
-                isInteger = true;
-                base = 8;
-                numStart = text;
-            } else {
-                isInteger = true;
-                base = 10;
-                numStart = text;
-            }
-        } else {
-            isInteger = true;
-            base = 10;
-            numStart = text;
-        }
-    }
-    else if (std::isdigit(static_cast<unsigned char>(*text))) {
-        const char* scan = text;
-        while (scan < end && std::isdigit(static_cast<unsigned char>(*scan)))
-            ++scan;
-        if (scan < end && (*scan == '.' || *scan == 'e' || *scan == 'E'))
-            isInteger = false;
-        else {
-            isInteger = true;
-            base = 10;
-        }
-        numStart = text;
-    }
-    else if (*text == '.') {
-        if (text + 1 < end && std::isdigit(static_cast<unsigned char>(*(text + 1))))
-            isInteger = false;
-        else
-            return {0, 0.0};
-        numStart = text;
-    }
-    else {
-        return {0, 0.0};
-    }
-
-    if (isInteger) {
-        uint64_t value = 0;
-        auto res = std::from_chars(numStart, end, value, base);
-        if (res.ec != std::errc() || res.ptr == numStart)
-            return {0, 0.0};
-        return {static_cast<std::size_t>(res.ptr - text), value};
-    }
-    else {
-        double value = 0.0;
-        auto res = fast_float::from_chars(text, end, value);
-        if (res.ec != std::errc() || res.ptr == text)
-            return {0, 0.0};
-        return {static_cast<std::size_t>(res.ptr - text), value};
-    }
-}
-
-size_t Highlighter::highlightLineOcto(const char* text, const char* end, size_t index)
+void highlightOcto(const char* text, const char* end, const LineStyles& out)
 {
     bool wasColon = false;
     bool wasAsm = false;
-    const char* token;
     while (text < end && *text != '\n') {
-        token = text;
+        const char* token = text;
         uint32_t cp = utf8::fetchCodepoint(text, end);
         if (cp == ' ')
-            ++index;
-        else if (cp == '#') {
-            _highlighting[index++].front = _colors[eCOMMENT];
-            while (text < end)
-                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+            continue;
+        if (cp == '#') {
+            out.set(token, end, Highlighter::eCOMMENT);
+            break;
         }
-        else {
-            auto start = index++;
-            bool isColon = false;
-            while (text < end && *text > ' ')
-                utf8::fetchCodepoint(text, end), ++index;
-            auto len = index - start;
-            std::string_view tok(token, text - token);
-            Color col = _colors[eNORMAL];
-            if (wasAsm)
-                col = _colors[eDIRECTIVE];
-            else if (cp == ':' && len == 1 || wasColon)
-                col = _colors[eLABEL], isColon = true;
-            else if (cp >= '0' && cp <= '9')
-                col = _colors[eNUMBER];
-            else if (len == 1 && (cp == 'i' || cp == 'I'))
-                col = _colors[eREGISTER];
-            else if (len == 2 && (cp == 'v' || cp == 'V') && isHexDigit(*(token + 1)))
-                col = _colors[eREGISTER];
-            else if (g_octoOpcodes.contains(std::string(tok)))
-                col = _colors[eOPCODE];
-            else if (g_octoDirectives.contains(std::string(tok)))
-                col = _colors[eDIRECTIVE];
-            while (start < index)
-                _highlighting[start++].front = col;
-            wasColon = isColon;
-            wasAsm = tok == ":asm";
-        }
+        bool isColon = false;
+        size_t len = 1;
+        while (text < end && *text > ' ')
+            utf8::fetchCodepoint(text, end), ++len;
+        std::string_view tok(token, text - token);
+        auto style = Highlighter::eNORMAL;
+        if (wasAsm)
+            style = Highlighter::eDIRECTIVE;
+        else if (cp == ':' && len == 1 || wasColon)
+            style = Highlighter::eLABEL, isColon = true;
+        else if (cp >= '0' && cp <= '9')
+            style = Highlighter::eNUMBER;
+        else if (len == 1 && (cp == 'i' || cp == 'I'))
+            style = Highlighter::eREGISTER;
+        else if (len == 2 && (cp == 'v' || cp == 'V') && isHexDigit(*(token + 1)))
+            style = Highlighter::eREGISTER;
+        else if (g_octoOpcodes.contains(std::string(tok)))
+            style = Highlighter::eOPCODE;
+        else if (g_octoDirectives.contains(std::string(tok)))
+            style = Highlighter::eDIRECTIVE;
+        out.set(token, text, style);
+        wasColon = isColon;
+        wasAsm = tok == ":asm";
     }
-    return index;
 }
 
-size_t Highlighter::highlightLineChipper(const char* text, const char* end, size_t index)
+// Highlights assembly as Chiplet describes the language (emu::SourceSyntax, the words from the assemblers' own tables):
+// labels ("name:", and a first-column name that is no keyword where the language has those), the mnemonic or directive
+// of a statement, then its operands as numbers, registers, strings or plain words. A word the language doesn't know stays
+// plain, also where a mnemonic is expected; so does the "???" of a disassembler.
+void highlightAssembly(const emu::SourceSyntax& syntax, const char* text, const char* end, const LineStyles& out)
 {
-    return highlightPlain(text, end, index);
-}
-
-static std::unordered_set<std::string> g_cdp1802Opcodes = {
-    "ADC",  "ADCI", "ADD",  "ADI",  "AND",  "ANI",  "B1",   "B2",   "B3",  "B4",   "BDF",  "BN1",  "BN2",  "BN3",  "BN4", "BNF", "BNQ",  "BNZ", "BQ",  "BR",
-    "BZ",   "DEC",  "DIS",  "GHI",  "GLO",  "IDL",  "INC",  "INP",  "IRX", "LBDF", "LBNF", "LBNQ", "LBNZ", "LBQ",  "LBR", "LBZ", "LDA",  "LDI", "LDN", "LDX",
-    "LDXA", "LSDF", "LSIE", "LSKP", "LSNF", "LSNQ", "LSNZ", "LSQ",  "LSZ", "MARK", "NOP",  "OR",   "ORI",  "OUT",  "PHI", "PLO", "REQ",  "RET", "SAV", "SD",
-    "SDB",  "SDBI", "SDI",  "SEP",  "SEQ",  "SEX",  "SHL",  "SHLC", "SHR", "SHRC", "SKP",  "SM",   "SMB",  "SMBI", "SMI", "STR", "STXD", "XOR", "XRI"
-};
-
-static std::unordered_set<std::string> g_cdp1802Directives = {
-    "#include", "define", "#undef", "#if", "#ifdef", "#ifndef", "#else", "#elif", "#endif", "#error",
-    "ORG", "DC", "DB", "PAGE", "END", "EQU"
-};
-
-// Follows Chiplet's CDP1802 syntax: `..` starts a comment, `;` separates statements,
-// `,` separates inline data, `'...'` are strings (or based numbers with X/D/B prefix)
-size_t Highlighter::highlightLine1802(const char* text, const char* end, size_t index)
-{
+    if (syntax.firstColumnComment && text == out.lineStart && text < end && *text == syntax.firstColumnComment) {
+        out.set(text, std::find(text, end, '\n'), Highlighter::eCOMMENT);
+        return;
+    }
+    const bool atIsSeparator = syntax.numberPrefixes.find('@') == std::string_view::npos;  // Saturn's @d0, but 6800's @17 octal
+    auto startsComment = [&](const char* at) { return !syntax.lineComment.empty() && std::string_view(at, end - at).starts_with(syntax.lineComment); };
+    auto isSeparator = [&](char c) { return c == ' ' || c == '\t' || c == ',' || (c == '@' && atIsSeparator); };
+    auto operandStyle = [&](std::string_view tok) {
+        const auto first = tok.empty() ? '\0' : tok.front();
+        if ((first >= '0' && first <= '9') || (first && syntax.numberPrefixes.find(first) != std::string_view::npos))
+            return Highlighter::eNUMBER;
+        return syntax.isRegister(tok) ? Highlighter::eREGISTER : Highlighter::eNORMAL;
+    };
+    bool expectKeyword = true;  // where the mnemonic or directive of a statement is
     while (text < end && *text != '\n') {
         const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ';' || cp == ',')
-            _highlighting[index++].front = _colors[eNORMAL];
-        else if (cp == '.' && text < end && *text == '.') {
-            _highlighting[index++].front = _colors[eCOMMENT];
-            while (text < end && *text != '\n')
-                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
+        if (startsComment(text)) {
+            out.set(text, std::find(text, end, '\n'), Highlighter::eCOMMENT);
+            return;
         }
-        else {
-            auto start = index++;
-            bool inString = cp == '\'';
-            bool hasString = inString;
-            while (text < end && *text != '\n') {
-                if (inString) {
-                    if (*text == '\\' && text + 1 < end && text[1] != '\n')
-                        utf8::fetchCodepoint(text, end), ++index;
-                    else if (*text == '\'')
-                        inString = false;
-                }
-                else {
-                    if (static_cast<unsigned char>(*text) <= ' ' || *text == ';' || *text == ',' || (*text == '.' && text + 1 < end && text[1] == '.'))
-                        break;
-                    if (*text == '\'')
-                        inString = hasString = true;
-                }
-                utf8::fetchCodepoint(text, end), ++index;
-            }
-            auto len = index - start;
-            std::string tok(token, text - token);
-            for (auto& c : tok)
-                c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-            Color col = _colors[eNORMAL];
-            if (hasString)
-                col = _colors[tok.size() > 1 && tok[1] == '\'' && (tok[0] == 'X' || tok[0] == 'D' || tok[0] == 'B') ? eNUMBER : eSTRING];
-            else if (tok.size() > 1 && tok.back() == ':')
-                col = _colors[eLABEL];
-            else if (cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
-                col = _colors[eNUMBER];
-            else if (len > 2 && (cp == '#' || (*(token + 1)>= '0' && *(token + 1) <= '9'))) {
-                _highlighting[start++].front = _colors[eNORMAL];
-                col = _colors[eNUMBER];
-            }
-            else if ((len == 2 || len == 3) && (cp == 'r' || cp == 'R') && isHexDigit(*(token + 1)))
-                col = _colors[eREGISTER];
-            else if (g_cdp1802Opcodes.contains(tok))
-                col = _colors[eOPCODE];
-            else if (g_cdp1802Directives.contains(tok))
-                col = _colors[eDIRECTIVE];
-            while (start < index)
-                _highlighting[start++].front = col;
+        if (syntax.statementSeparator && *text == syntax.statementSeparator) {
+            out.set(text, text + 1, Highlighter::eNORMAL);
+            ++text;
+            expectKeyword = true;
+            continue;
         }
+        if (isSeparator(*text)) {
+            out.set(text, text + 1, Highlighter::eNORMAL);
+            ++text;
+            continue;
+        }
+        // a word, quoted parts belong to it with their spaces (T'TEXT', X'1F', "HI THERE")
+        char quote = 0;
+        bool quoted = false;
+        while (text < end && *text != '\n') {
+            if (!quote) {
+                if (isSeparator(*text) || startsComment(text) || (syntax.statementSeparator && *text == syntax.statementSeparator))
+                    break;
+                if (syntax.quotes.find(*text) != std::string_view::npos)
+                    quote = *text, quoted = true;
+            }
+            else if (*text == quote) {
+                quote = 0;
+            }
+            utf8::fetchCodepoint(text, end);
+        }
+        const std::string_view tok(token, text - token);
+        if (quoted) {
+            // a based number of the CDP1802 (X'1F'), or a string
+            const bool based = tok.size() > 2 && syntax.quotes.find(tok[1]) != std::string_view::npos &&
+                               syntax.basedNumberPrefixes.find(static_cast<char>(std::toupper(static_cast<unsigned char>(tok[0])))) != std::string_view::npos;
+            out.set(token, text, based ? Highlighter::eNUMBER : Highlighter::eSTRING);
+            expectKeyword = false;
+            continue;
+        }
+        if (const auto assign = tok.find(":="); assign != std::string_view::npos) {
+            // a symbol and its value (Saturn)
+            out.set(token, token + assign, Highlighter::eLABEL);
+            out.set(token + assign, token + assign + 2, Highlighter::eNORMAL);
+            out.set(token + assign + 2, text, operandStyle(tok.substr(assign + 2)));
+            expectKeyword = false;
+            continue;
+        }
+        if (tok.size() > 1 && tok.back() == ':') {
+            out.set(token, text, Highlighter::eLABEL);
+            continue;
+        }
+        if (tok == "???") {
+            out.set(token, text, Highlighter::eNORMAL);
+            expectKeyword = false;
+            continue;
+        }
+        if (syntax.directivePrefix && tok.front() == syntax.directivePrefix) {
+            out.set(token, text, Highlighter::eDIRECTIVE);
+            expectKeyword = false;
+            continue;
+        }
+        if (expectKeyword) {
+            const auto name = syntax.nameOf(tok);
+            const bool directive = !name.empty() && syntax.isDirective(name);
+            const bool known = directive || (!name.empty() && (syntax.isMnemonic(name) || syntax.isRegisterOperandMnemonic(name)));
+            if (!known && token == out.lineStart && syntax.firstColumnLabels) {
+                out.set(token, text, Highlighter::eLABEL);
+                continue;
+            }
+            expectKeyword = false;
+            if (!known) {
+                out.set(token, text, Highlighter::eNORMAL);
+                continue;
+            }
+            // the size suffix belongs to the mnemonic ("move.a"), what follows a name otherwise is an operand ("LDI#00")
+            const char* keywordEnd = syntax.sizeSuffix ? text : token + name.size();
+            out.set(token, keywordEnd, directive ? Highlighter::eDIRECTIVE : Highlighter::eOPCODE);
+            if (keywordEnd < text)
+                out.set(keywordEnd, text, operandStyle(std::string_view(keywordEnd, text - keywordEnd)));
+            continue;
+        }
+        out.set(token, text, operandStyle(tok));
     }
-    return index;
 }
 
-// Follows the M6800 disassembly: the mnemonic with its accumulator (`LDAA`), then one operand
-// where `#` marks immediate values, `$` hex numbers and `,X` indexed addressing. A `label:` and
-// `;` comments are taken as in common 6800 assemblers.
-size_t Highlighter::highlightLine6800(const char* text, const char* end, size_t index)
+void highlightSegment(Dialect dialect, const char* text, const char* end, const LineStyles& out)
 {
-    bool expectOpcode = true;
+    switch (dialect) {
+        case Highlighter::eCHIP8OCTO: highlightOcto(text, end, out); return;
+        case Highlighter::eCDP1802: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::CDP1802), text, end, out); return;
+        case Highlighter::eM6800: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::M6800), text, end, out); return;
+        case Highlighter::eSATURN: highlightAssembly(*emu::SourceSyntax::forLanguage(emu::SourceLanguage::SATURN), text, end, out); return;
+        case Highlighter::eCHIP8CHIPPER:
+        case Highlighter::eNONE: break;
+    }
+    highlightPlain(text, end, out);
+}
+
+}  // namespace
+
+gui::SyntaxHighlighter::LineState Highlighter::nextLineState(std::string_view line, LineState state) const
+{
+    auto asmState = unpack(state);
+    const char* text = line.data();
+    const char* end = text + line.size();
+    while (text < end)
+        text = nextModeChange(_dialect, text, end, asmState);
+    return pack(asmState);
+}
+
+void Highlighter::highlightLine(std::string_view line, LineState state, std::span<uint8_t> styles) const
+{
+    const char* text = line.data();
+    const char* end = text + line.size();
+    const LineStyles out{text, styles};
+    auto asmState = unpack(state);
     while (text < end && *text != '\n') {
-        const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ',')
-            _highlighting[index++].front = _colors[eNORMAL];
-        else if (cp == ';') {
-            _highlighting[index++].front = _colors[eCOMMENT];
-            while (text < end && *text != '\n')
-                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
-        }
-        else {
-            auto start = index++;
-            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
-                utf8::fetchCodepoint(text, end), ++index;
-            std::string_view tok(token, text - token);
-            Color col = _colors[eNORMAL];
-            if (tok.size() > 1 && tok.back() == ':')
-                col = _colors[eLABEL];
-            else if (tok == "???")
-                expectOpcode = false;  // an invalid opcode or operand stays plain like CHIP-8's "invalid"
-            else if (expectOpcode)
-                col = _colors[eOPCODE], expectOpcode = false;
-            else if (cp == '#' || cp == '$' || cp == '%' || (cp >= '0' && cp <= '9'))
-                col = _colors[eNUMBER];
-            else if (tok == "X" || tok == "x")
-                col = _colors[eREGISTER];
-            while (start < index)
-                _highlighting[start++].front = col;
-        }
+        const auto segmentState = asmState;
+        const auto* segmentEnd = nextModeChange(_dialect, text, end, asmState);
+        highlightSegment(segmentState.phase == ASM_BODY ? segmentState.dialect : _dialect, text, segmentEnd, out);
+        text = segmentEnd;
     }
-    return index;
-}
-
-static std::unordered_set<std::string_view> g_saturnRegisters = {
-    "a", "b", "c", "d", "d0", "d1", "r0", "r1", "r2", "r3", "r4", "p", "pc", "st", "id"
-};
-
-// Follows the ASAP syntax the Saturn disassembler emits: an optional `label:`, the
-// mnemonic with its field suffix, then operands separated by `,`, where `#` marks
-// hex numbers and `@` memory access. `;` starts a comment.
-size_t Highlighter::highlightLineSaturn(const char* text, const char* end, size_t index)
-{
-    bool expectOpcode = true;
-    while (text < end && *text != '\n') {
-        const char* token = text;
-        uint32_t cp = utf8::fetchCodepoint(text, end);
-        if (cp == ' ' || cp == '\t' || cp == ',' || cp == '@')
-            _highlighting[index++].front = _colors[eNORMAL];
-        else if (cp == ';') {
-            _highlighting[index++].front = _colors[eCOMMENT];
-            while (text < end && *text != '\n')
-                utf8::fetchCodepoint(text, end), _highlighting[index++].front = _colors[eCOMMENT];
-        }
-        else {
-            auto start = index++;
-            while (text < end && static_cast<unsigned char>(*text) > ' ' && *text != ',' && *text != ';')
-                utf8::fetchCodepoint(text, end), ++index;
-            std::string_view tok(token, text - token);
-            Color col = _colors[eNORMAL];
-            if (tok.size() > 1 && tok.back() == ':')
-                col = _colors[eLABEL];
-            else if (expectOpcode)
-                col = _colors[eOPCODE], expectOpcode = false;
-            else if (cp == '#' || (cp >= '0' && cp <= '9'))
-                col = _colors[eNUMBER];
-            else if (g_saturnRegisters.contains(tok))
-                col = _colors[eREGISTER];
-            while (start < index)
-                _highlighting[start++].front = col;
-        }
-    }
-    return index;
-}
-
-void Highlighter::drawHighlightedTextLine(Font& font, const char* textRoot, const char* text, const char* end, Vector2 position, float width, int columnOffset, int lineHeight, LineState state)
-{
-    uint32_t selStart = _selectionStart > _selectionEnd ? _selectionEnd : _selectionStart;
-    uint32_t selEnd = _selectionStart > _selectionEnd ? _selectionStart : _selectionEnd;
-    highlightLine(text, end, state);
-    float textOffsetX = 0.0f;
-    size_t index = 0;
-    while (text < end && textOffsetX < width && *text != '\n') {
-        uint32_t offset = text - textRoot;
-        int codepoint = (int)utf8::fetchCodepoint(text, end);
-        if (columnOffset <= 0) {
-            if (_selectionStart < _selectionEnd) {
-                if (offset >= selStart && offset < selEnd)
-                    DrawRectangleRec({position.x + textOffsetX, position.y - 2, 6, (float)lineHeight}, _selected);
-            }
-            if ((codepoint != ' ') && (codepoint != '\t')) {
-                DrawTextCodepointClipped(font, codepoint, (Vector2){position.x + textOffsetX, position.y}, 8, _highlighting[index].front);
-            }
-        }
-        --columnOffset;
-        if (columnOffset < 0)
-            textOffsetX += COLUMN_WIDTH;
-        ++index;
-    }
-    uint32_t offset = text - textRoot;
-    if (textOffsetX < width && offset >= selStart && offset < selEnd)
-        DrawRectangleRec({position.x + textOffsetX, position.y - 2, width - textOffsetX, (float)lineHeight}, _selected);
-}
-
-void Highlighter::setDialect(Dialect dialect)
-{
-    _dialect = dialect;
 }

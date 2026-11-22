@@ -29,13 +29,47 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
+
+struct KeyEvent
+{
+    int64_t frame{0};     // first frame (counted from 0) the keys are down
+    int64_t hold{0};      // number of frames they stay down
+    uint16_t keys{0};     // bit n set: CHIP-8 key n
+};
+
+class KeyScript
+{
+public:
+    static constexpr int64_t DEFAULT_HOLD_FRAMES = 4;
+    // Parses a list of "[+]<frame>:<hex keys>[+<frames held>]" separated by spaces or commas: "60:1 +30:16+300"
+    // holds key 1 from frame 60 for 4 frames, then keys 1 and 6 together for 300 frames, starting 30 frames after
+    // the release of the previous keys; throws std::invalid_argument on a syntax error.
+    static KeyScript parse(const std::string& script);
+    bool empty() const { return _events.empty(); }
+    const std::string& text() const { return _text; }
+    uint16_t keysDownAt(int64_t frame) const;
+    int64_t endFrame() const;
+    const std::vector<KeyEvent>& events() const { return _events; }
+
+private:
+    std::string _text;
+    std::vector<KeyEvent> _events;
+};
 
 struct HeadlessRunOptions
 {
+    static constexpr int64_t DEFAULT_MAX_INSTRUCTIONS = 3'000'000;
+    static constexpr int64_t DEFAULT_MAX_FRAMES = 3600;
     int64_t untilPresentations{-1};
-    int64_t maxInstructions{3'000'000};
+    int64_t maxInstructions{DEFAULT_MAX_INSTRUCTIONS};
+    bool maxInstructionsGiven{false};
+    int64_t maxFrames{-1};
+    int64_t dumpScale{0};
+    std::string keys;
     std::string dumpScreen;
     std::string dumpState;
+    bool applyCh8Attributes{false};
 };
 
 int runHeadless(const std::string& romPath, const emu::Properties& properties, const HeadlessRunOptions& options);

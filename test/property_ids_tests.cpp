@@ -108,6 +108,7 @@ const std::vector<ExpectedProperty> EXPECTED_PROPERTIES = {
     {"ETI660", "Keyboard", "keyboard", "keyboard"},
     {"ETI660", "ROM Name", "romName", "rom-name"},
     {"ETI660", "Start Address", "startAddress", "start-address"},
+    {"ETI660", "Code Start", "codeStart", "code-start"},
     {"STUDIO-II", "Trace Log", "traceLog", "trace-log"},
     {"STUDIO-II", "CPU", "cpu", "cpu"},
     {"STUDIO-II", "Clock Rate", "clockRate", "clock-rate"},

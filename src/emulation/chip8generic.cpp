@@ -660,7 +660,6 @@ void Chip8GenericEmulator::handleReset(bool cold)
     _sampleStep = 0;
     _mcSamplePos = 0;
     _blendMode = eBLEND_NORMAL;
-    _simpleRandState = _simpleRandSeed;
     if(_options.behaviorBase == Chip8GenericOptions::eCHIP8X) {
         _screen.setMode(256, 192, 1); // actual resolution doesn't matter, just needs to be bigger than max resolution, but ratio matters
         _screen.setOverlayCellHeight(-1); // reset
@@ -1988,7 +1987,7 @@ void Chip8GenericEmulator::opCxnn(uint16_t opcode)
         _rV[(opcode >> 8) & 0xF] = result;
     }
     else {
-        _rV[(opcode >> 8) & 0xF] = (rand() >> 4) & (opcode & 0xFF);
+        _rV[(opcode >> 8) & 0xF] = classicRand(_simpleRandState) & (opcode & 0xFF);
     }
 }
 

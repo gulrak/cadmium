@@ -84,6 +84,15 @@ private:
     static constexpr std::uint8_t TIMER_WAKE = 0x04;
     static constexpr std::uint8_t TIMER_SERVICE_REQUEST = 0x08;
     static constexpr std::uint8_t TIMER_SERVICE_LINE = 0x04;
+    static constexpr std::uint32_t DISPLAY_CONTROL_OFFSET = 0x00;
+    static constexpr std::uint8_t DISPLAY_ON = 0x08;
+    static constexpr std::uint32_t LINE_COUNTER_LOW_OFFSET = 0x28;
+    static constexpr std::uint32_t LINE_COUNTER_HIGH_OFFSET = 0x29;
+    static constexpr std::uint8_t LINE_COUNTER_HIGH_MASK = 0x03;
+    static constexpr std::uint32_t LCD_LINES = 64;
+    // The LCD refreshes at 64 Hz with 64 scan lines, i.e. 4096 lines per second,
+    // which is two Timer2 ticks (8192 Hz) per line.
+    static constexpr std::uint32_t TIMER2_TICKS_PER_LCD_LINE = 2;
 
     // Timer2 is a 32-bit down-counter returned at nibble addr 0x138-0x13F
     // (local offset 0x38-0x3F) on the SX.
@@ -110,6 +119,19 @@ public:
 
     [[nodiscard]] std::uint32_t timer2CyclesPerTick() const {
         return _timer2CyclesPerTick;
+    }
+
+    // Register value as last written, without the side effects of a CPU read.
+    [[nodiscard]] std::uint8_t peekRegister(std::uint32_t localOffset) const {
+        return localOffset < _registers.size() ? _registers[localOffset] : 0;
+    }
+
+    // Line the LCD controller is currently scanning, counting down from 63 to 0.
+    [[nodiscard]] std::uint8_t currentLcdLine() const {
+        const std::uint64_t cyclesPerLine =
+            static_cast<std::uint64_t>(_timer2CyclesPerTick) * TIMER2_TICKS_PER_LCD_LINE;
+        const std::uint64_t line = (currentCycles() / cyclesPerLine) % LCD_LINES;
+        return static_cast<std::uint8_t>(LCD_LINES - 1U - line);
     }
 
     void setTimer2CyclesPerTick(std::uint32_t timer2CyclesPerTick) {
@@ -292,6 +314,16 @@ public:
             advanceTimer2BeforeRead(localOffset);
             updateTimer2Control(true);
             return static_cast<std::uint8_t>((_timerCounter >> ((localOffset - TIMER2_OFFSET) * 4)) & 0x0f);
+        }
+        if ((localOffset == LINE_COUNTER_LOW_OFFSET || localOffset == LINE_COUNTER_HIGH_OFFSET)
+            && (_registers[DISPLAY_CONTROL_OFFSET] & DISPLAY_ON) != 0) {
+            // Writes set the menu split line, reads return the live scan line.
+            const std::uint8_t line = currentLcdLine();
+            if (localOffset == LINE_COUNTER_LOW_OFFSET) {
+                return static_cast<std::uint8_t>(line & 0x0fU);
+            }
+            return static_cast<std::uint8_t>((_registers[localOffset] & ~LINE_COUNTER_HIGH_MASK)
+                                             | ((line >> 4) & LINE_COUNTER_HIGH_MASK));
         }
         return _registers[localOffset];
     }

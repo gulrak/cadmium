@@ -386,3 +386,49 @@ TEST_CASE("ETI660 Wipeout hybrid uses the colour board")
 }
 
 #endif
+
+TEST_CASE("ETI660 raw machine calls machine code at Code Start like 0MMM")
+{
+    auto props = emu::CoreRegistry::propertiesForPreset("eti-none");
+    props["cleanRam"].setBool(true);
+    props["codeStart"].setInt(0x700);
+    EtiTestHost host(props);
+    auto [name, instance] = emu::CoreRegistry::create(host, props, nullptr);
+    REQUIRE(instance);
+    auto* eti = dynamic_cast<emu::Eti660*>(instance.get());
+    REQUIRE(eti);
+    instance->reset();
+    REQUIRE_FALSE(eti->inErrorState());
+    // a machine without CHIP-8 interpreter, the monitor set it up, the CPU is about to run the code
+    CHECK(instance->numberOfExecutionUnits() == 1);
+    auto& cpu = static_cast<emu::Cdp1802&>(eti->getBackendCpu());
+    CHECK(cpu.getP() == 3);
+    CHECK(cpu.getX() == 2);
+    CHECK(cpu.getR(3) == 0x700);
+    CHECK(cpu.getR(4) == 0x227);
+    // RF = 0xE80, store 0x2A there and stay in a loop
+    const uint8_t code[] = {0xF8, 0x0E, 0xBF, 0xF8, 0x80, 0xAF, 0xF8, 0x2A, 0x5F, 0x30, 0x09};
+    REQUIRE(instance->loadData(code, 0x700));
+    for (int frame = 0; frame < 10; ++frame)
+        instance->executeFrame();
+    CHECK(eti->readByte(0xE80) == 0x2A);
+    CHECK_FALSE(eti->inErrorState());
+    CHECK(cpu.getP() == 3);
+    CHECK(cpu.getR(3) >= 0x709);
+    CHECK(cpu.getR(3) <= 0x70B);
+
+    // a SEP R4 (D4) returns to the interpreter, it goes on with the monitor
+    instance->reset();
+    const uint8_t back[] = {0xD4};
+    REQUIRE(instance->loadData(back, 0x700));
+    for (int frame = 0; frame < 10; ++frame)
+        instance->executeFrame();
+    CHECK_FALSE(eti->inErrorState());
+    CHECK(cpu.getP() != 3);
+
+    // without Code Start the raw machine stays at the monitor
+    props["codeStart"].setInt(0);
+    auto [otherName, other] = emu::CoreRegistry::create(host, props, nullptr);
+    other->reset();
+    CHECK(static_cast<emu::Cdp1802&>(dynamic_cast<emu::Eti660*>(other.get())->getBackendCpu()).getP() != 3);
+}

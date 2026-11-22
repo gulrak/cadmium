@@ -59,6 +59,7 @@ public:
 
     uint32_t defaultLoadAddress() const override;
     bool loadData(std::span<const uint8_t> data, std::optional<uint32_t> loadAddress) override;
+    bool canLoadPrograms() const override { return false; }  // cartridges are not supported yet
 
     ExecMode execMode() const override;
     void setExecMode(ExecMode mode) override;

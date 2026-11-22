@@ -28,7 +28,7 @@
 
 #include <emulation/hardware/hp48/binary.hpp>
 #include <emulation/hardware/hp48/g48sxmachine.hpp>
-#include <emulation/hardware/hp48/asacpp/asacpp.hpp>
+#include <chiplet/asacpp.hpp>
 #include <resourcemanager.hpp>
 
 #include <fmt/format.h>
