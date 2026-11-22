@@ -86,6 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Chiplet's Saturn decoder), the interpreters and the replacement ROM assemble byte-identically with it
 - Requires Chiplet with `CompileResult::includedFiles`, `chiplet/sourcelanguage.hpp`,
   `chiplet/cdp1802assembler.hpp` and `chiplet/asacpp.hpp` (newer than v2.0.0)
+- rlguipp is its own project now ([gulrak/rlguipp](https://github.com/gulrak/rlguipp), with the history it had in
+  Cadmium) and is fetched as v0.5.0 instead of being vendored in `external/rlguipp`;
+  `FETCHCONTENT_SOURCE_DIR_RLGUIPP` builds Cadmium with a local checkout of it. This brings rlguipp's menu bar
+  fix for bars that are built anew every frame.
 
 ### Fixed
 

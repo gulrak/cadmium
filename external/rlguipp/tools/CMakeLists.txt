@@ -1,1 +1,0 @@
-add_executable(rlguipp_fontgenerator fontgenerator.cpp)

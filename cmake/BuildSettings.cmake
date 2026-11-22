@@ -141,6 +141,17 @@ FetchContent_MakeAvailable(Chiplet)
 include_directories(${chiplet_SOURCE_DIR}/external)
 include(${chiplet_SOURCE_DIR}/cmake/code-coverage.cmake)
 
+# rlguipp comes after raylib and Chiplet (which brings ghc_filesystem), so it uses
+# their targets and fetches nothing itself. FETCHCONTENT_SOURCE_DIR_RLGUIPP points
+# it to a local checkout.
+FetchContent_Declare(
+        rlguipp
+        GIT_REPOSITORY "https://github.com/gulrak/rlguipp.git"
+        GIT_TAG "v0.5.0"
+        GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(rlguipp)
+
 # zstd packs the compiled in resources and compresses the HP-48 state files
 set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
