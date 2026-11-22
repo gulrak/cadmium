@@ -878,6 +878,11 @@ void BeginGui(Rectangle area, RenderTexture* renderTexture, Vector2 mouseOffset,
     g_renderTargets.assign(1, renderTexture);
     SetMouseOffset(mouseOffset.x, mouseOffset.y);
 
+    if (guiControlExclusiveMode && !IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        guiControlExclusiveMode = false;
+        guiControlExclusiveRec = {0, 0, 0, 0};
+    }
+
     g_tabViewStack.clear();
     GuiContext::popupStack.clear();
     detail::pruneUnusedState(renderTexture);

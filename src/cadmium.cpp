@@ -1826,6 +1826,7 @@ public:
         static bool selectorOpen = false;
 
         static std::chrono::steady_clock::time_point volumeClick{};
+        static Rectangle volumeButton{};
 
 #ifdef RESIZABLE_GUI
         //auto screenScale = std::min(std::clamp(int(GetScreenWidth() / _screenWidth), 1, 8), std::clamp(int(GetScreenHeight() / _screenHeight), 1, 8));
@@ -2110,6 +2111,7 @@ public:
                 SetTooltip("SETTINGS");
                 if (iconButton(ICON_AUDIO, false))
                     volumeClick = std::chrono::steady_clock::now();
+                volumeButton = GetLastWidgetRect();  // the volume pop-up opens below it
                 SetTooltip("VOLUME");
 
                 static const char* titleString = "v" CADMIUM_VERSION "-" CADMIUM_GIT_HASH;
@@ -2432,16 +2434,23 @@ public:
                     openProjectFolder(_folderDialog.path);
             }
 #endif
-            if (IsKeyDown(KEY_ESCAPE))
+            static bool volumeDragged = false;
+            if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+                volumeDragged = false;
+            if (IsKeyDown(KEY_ESCAPE) && !volumeDragged)
                 volumeClick = std::chrono::steady_clock::time_point{};
             if (volumeClick != std::chrono::steady_clock::time_point{}) {
-                if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
-                    Rectangle bounds{430.0, 21.0f, 80.0f, 14.0f};
+                if (volumeDragged || std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - volumeClick).count() < 2) {
+                    Rectangle bounds{volumeButton.x + volumeButton.width - 82.0f, volumeButton.y + volumeButton.height + 3.0f, 80.0f, 14.0f};
+                    bounds.x = std::max(bounds.x, 56.0f);
                     DrawRectangleRec({bounds.x - 56, bounds.y - 2, bounds.width + 58, bounds.height + 4}, {0, 0, 0, 128});
+                    const bool mouseOver = CheckCollisionPointRec(GetMousePosition(), bounds);
+                    if (mouseOver && IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+                        volumeDragged = true;
                     GuiSliderBar(bounds, "Volume: ", "", &_volumeSlider, 0.0001f, 1.0f);
                     if (_volumeSlider != _volume)
                         SetMasterVolume(_volumeSlider);
-                    if (CheckCollisionPointRec(GetMousePosition(), bounds)) {
+                    if (mouseOver || volumeDragged) {
                         volumeClick = std::chrono::steady_clock::now();
                     }
                 }
