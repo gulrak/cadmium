@@ -69,6 +69,7 @@ struct HeadlessRunOptions
     std::string keys;
     std::string dumpScreen;
     std::string dumpState;
+    bool applyCh8Attributes{false};
 };
 
 int runHeadless(const std::string& romPath, const emu::Properties& properties, const HeadlessRunOptions& options);

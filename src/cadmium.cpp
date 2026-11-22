@@ -3192,8 +3192,10 @@ public:
         else
             _debugger.clearOctoDebugInfo();
         saveConfig();
-        if(autoRun)
-            _mainView = eVIDEO;
+        if(autoRun) {
+            _debugger.setExecMode(ExecMode::eRUNNING);
+            _lastRunView = _mainView = eVIDEO;
+        }
         else if(compiler && compiler->isError())
             _mainView = eEDITOR;
     }
@@ -4130,6 +4132,7 @@ int main(int argc, char* argv[])
             std::cerr << "ERROR: --headless requires one ROM and cannot be combined with --trace, --compare, or --benchmark" << std::endl;
             return 1;
         }
+        headlessOptions.applyCh8Attributes = presetName.empty();
         try {
             return runHeadless(romFile.front(), coreProperties, headlessOptions);
         }

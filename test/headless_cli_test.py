@@ -1,5 +1,6 @@
 """End-to-end checks for bounded headless execution and exported artifacts."""
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -155,6 +156,7 @@ def check_dump_scale(directory, mono):
     run(mono, directory, '--preset', 'chip-8', '--dump-scale', 2,
         expected_code=1)
     check_keys(directory)
+    check_ch8_attributes(directory)
 
 
 def run_keys(rom, directory, preset, keys, frames, expected_code=0):
@@ -209,6 +211,53 @@ def check_keys(directory):
         capture_output=True, text=True, timeout=20,
     )
     assert result.returncode == 1 and 'require --headless' in result.stderr
+
+
+def run_ch8(rom_bytes, directory, *options, expected_code=0):
+    """Runs a ROM without the default --preset of run(), in an own HOME so
+    no saved configuration of the user is used."""
+    rom = directory / 'attributes.ch8'
+    rom.write_bytes(bytes(rom_bytes))
+    result = subprocess.run(
+        [str(BINARY), str(rom), '--headless', '--max-frames', '5',
+         '--dump-state', 'attributes.json', *map(str, options)],
+        cwd=directory, capture_output=True, text=True, timeout=20,
+        env={**os.environ, 'HOME': str(directory)},
+    )
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    return json.loads((directory / 'attributes.json').read_text())
+
+
+def check_ch8_attributes(directory):
+    """A CH8 attribute header (C8RFC-001) configures runs without --preset."""
+    tag = [0xB0, 0x43, 0x48, 0x38]
+    # XO-CHIP with IPF 1000 (0x13), code at 0x20A is a loop
+    xo = [0x12, 0x0A, *tag, 0x02, 0x04, 0x13, 0x00, 0x12, 0x0A]
+    state = run_ch8(xo, directory)
+    assert state['instructionsPerFrame'] == 1000
+    # An explicit preset goes before the header
+    state = run_ch8(xo, directory, '--preset', 'chip-8')
+    assert state['instructionsPerFrame'] != 1000
+    # The jump target 0x208 doesn't skip the two attribute bytes, so there
+    # is no header, the IPF byte 0x12 is the loop at 0x208
+    state = run_ch8([0x12, 0x08, *tag, 0x02, 0x04, 0x12, 0x08], directory)
+    assert state['instructionsPerFrame'] != 100
+    # ETI-660 is loaded at 0x600 and runs the original interpreter
+    state = run_ch8([0x16, 0x0A, *tag, 0x02, 0x08, 0xC1, 0x00, 0x16, 0x0A],
+                    directory)
+    assert state['loadAddress'] == 0x600
+    # Quirks on CHIP-8: v0 = 2 >> v1 (shift), v3 = VF after OR (logic), I
+    # after saving v0-v1 at 0x21E (memory)
+    code = [0x60, 0x02, 0x61, 0x08, 0x80, 0x16, 0x6F, 0x05, 0x62, 0x01,
+            0x82, 0x11, 0x83, 0xF0, 0xA2, 0x1E, 0xF1, 0x55, 0x12, 0x1C,
+            0, 0, 0, 0]
+    for quirks, v0, v3, i in ((0x41, 4, 0, 0x220), (0x0A, 1, 5, 0x21F),
+                              (0x0C, 1, 5, 0x21E)):
+        state = run_ch8([0x12, 0x0A, *tag, 0x03, 0x01, 0xF0, quirks, *code],
+                        directory)
+        assert state['instructionsPerFrame'] == 15
+        assert (state['v'][0], state['v'][3], state['i']) == (v0, v3, i), \
+            (hex(quirks), state['v'], state['i'])
 
 
 def main():

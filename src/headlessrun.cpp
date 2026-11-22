@@ -441,8 +441,11 @@ int runHeadless(const std::string& romPath, const emu::Properties& properties, c
         throw std::runtime_error("--dump-scale requires --dump-screen");
     RunHost host(KeyScript::parse(options.keys));
     host.updateEmulatorOptions(properties);
+    auto loadOptions = emu::EmuHostEx::DontChangeOptions;
+    if (options.applyCh8Attributes)
+        loadOptions |= emu::EmuHostEx::ApplyCh8Attributes;
     const auto loadsBefore = host.lifecycleCounters().programLoads;
-    if (!host.loadRom(romPath, emu::EmuHostEx::DontChangeOptions) || host.lifecycleCounters().programLoads == loadsBefore)
+    if (!host.loadRom(romPath, loadOptions) || host.lifecycleCounters().programLoads == loadsBefore)
         throw std::runtime_error("Could not load ROM: " + romPath);
     auto& core = host.emuCore();
     auto* chip8 = dynamic_cast<emu::IChip8Emulator*>(core.executionUnit(0));

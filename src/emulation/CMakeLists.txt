@@ -1,5 +1,7 @@
 
 set(CHIP8_EMU_SOURCE
+    ch8attributes.cpp
+    ch8attributes.hpp
     chip8generic.cpp
     chip8generic.hpp
     chip8genericbase.cpp

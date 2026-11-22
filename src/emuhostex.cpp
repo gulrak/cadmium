@@ -37,6 +37,7 @@
 #include <chiplet/utility.hpp>
 #include <configuration.hpp>
 #include <emulation/c8bfile.hpp>
+#include <emulation/ch8attributes.hpp>
 #include <emulation/coreregistry.hpp>
 //#include <emulation/chip8generic.hpp>
 //#include <emulation/chip8strict.hpp>
@@ -814,6 +815,16 @@ static emu::SourceLanguage assemblySourceLanguage(std::string_view filename, std
     return language == emu::SourceLanguage::OCTO ? emu::SourceLanguage::UNKNOWN : language;
 }
 
+std::optional<Properties> EmuHostEx::ch8AttributeConfig(std::span<const uint8_t> image, std::optional<uint32_t> loadAddress, const Properties& base) const
+{
+    const auto attributes = Ch8Attributes::parse(image, loadAddress);
+    if (!attributes)
+        return {};
+    auto props = attributes->properties(base);
+    TraceLog(LOG_INFO, "CH8 attribute header: %s, using the %s configuration", attributes->toString().c_str(), props.propertyClass().c_str());
+    return props;
+}
+
 bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> binary, LoadOptions loadOpt)
 {
     if (fs::path(filename).extension() == ".hex") {
@@ -854,6 +865,12 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
         program.compiler = c8c;
         if ((loadOpt & DontChangeOptions) == 0) {
             isKnown = _librarian.isKnownFile(program.image);
+        }
+        // A source has no configuration of its own, only its CH8 attribute header can give one
+        const bool knownConfig = isKnown && !_librarian.isGenericChip8(program.image);
+        if (((loadOpt & DontChangeOptions) == 0 && !knownConfig) || (loadOpt & ApplyCh8Attributes)) {
+            if (auto props = ch8AttributeConfig(program.image, program.loadAddress, *_properties))
+                requestConfig(*props);
         }
     }
     else if (const auto language = assemblySourceLanguage(filename, fileData, nativeSourceLanguage()); language != emu::SourceLanguage::UNKNOWN) {
@@ -922,17 +939,31 @@ bool EmuHostEx::loadBinary(std::string_view filename, ghc::span<const uint8_t> b
     else {
         if (Librarian::isPrefixedTPDRom(binary))
             program.loadAddress = 0x200;
+        // The database knows the tested configuration of a program, so it goes before the CH8
+        // attribute header, the header goes before the extension
+        const auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string());
+        const auto headerProps = ((loadOpt & DontChangeOptions) == 0 && !(isKnown && !isGenericChip8)) || (loadOpt & ApplyCh8Attributes)
+                                     ? ch8AttributeConfig(fileData, program.loadAddress, extensionProps && !isKnown ? extensionProps : *_properties)
+                                     : std::nullopt;
         if ((loadOpt & DontChangeOptions) == 0) {
-            if (isKnown) {
-                if (!isGenericChip8)
-                    requestConfig(_librarian.getPropertiesForFile(fileData));
+            if (isKnown && !isGenericChip8) {
+                requestConfig(_librarian.getPropertiesForFile(fileData));
             }
-            else if (auto extensionProps = CoreRegistry::propertiesForExtension(fs::path(filename).extension().string())) {
+            else if (headerProps) {
+                requestConfig(*headerProps);
+            }
+            else if (isKnown) {
+                // a generic CHIP-8 program runs with the current configuration
+            }
+            else if (extensionProps) {
                 requestConfig(extensionProps);
             }
             else {
                 return false; // unknown file type
             }
+        }
+        else if (headerProps) {
+            requestConfig(*headerProps);
         }
         program.image = std::move(fileData);
     }

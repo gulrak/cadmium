@@ -51,6 +51,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <span>
 #include <limits>
 #include <cmath>
 
@@ -94,7 +95,9 @@ public:
 class EmuHostEx : public EmulatorHost
 {
 public:
-    enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2 };
+    // ApplyCh8Attributes: a CH8 attribute header of the program configures the machine even with
+    // DontChangeOptions
+    enum LoadOptions { None = 0, DontChangeOptions = 1, SetToRun = 2, ApplyCh8Attributes = 4 };
     explicit EmuHostEx(CadmiumConfiguration& cfg);
     ~EmuHostEx() override = default;
     //virtual bool isHeadless() const = 0;
@@ -195,6 +198,9 @@ protected:
     Palette completedPalette(Palette palette) const;
 
     bool loadHexFile(std::string_view filename, LoadOptions loadOpt, std::string_view sourcePath = {});
+    // The configuration a CH8 attribute header of the image asks for, the base properties for what it
+    // leaves open, nothing without a header
+    std::optional<Properties> ch8AttributeConfig(std::span<const uint8_t> image, std::optional<uint32_t> loadAddress, const Properties& base) const;
     bool loadRomImage();
     std::unique_ptr<IEmulationCore> create(Properties& properties, IEmulationCore* iother = nullptr);
     void resetAllBreakpoints();
